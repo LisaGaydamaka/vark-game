@@ -5,6 +5,7 @@ enum LocomotionState {
 	NORMAL,
 	LEDGE_CATCH,
 	LEDGE_HANG,
+	LEDGE_CORNER,
 }
 
 
@@ -59,6 +60,10 @@ const LOOK_DIRECTION_EPSILON_SQUARED: float = 0.000001
 @export var ledge_debug_logging: bool = true
 
 
+@export_category("Ledge Corner")
+@export var ledge_corner_turn_speed_degrees: float = 720.0
+
+
 @export_category("Look")
 @export var mouse_sensitivity: float = 0.007
 
@@ -71,6 +76,7 @@ var movement: PlayerMovement
 var ledge_detector: PlayerLedgeDetector
 var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
+var ledge_corner: PlayerLedgeCorner
 
 var locomotion_state: int = LocomotionState.NORMAL
 var ledge_view_center_yaw: float = 0.0
@@ -138,6 +144,11 @@ func _ready() -> void:
 		ledge_detector
 	)
 
+	ledge_corner = PlayerLedgeCorner.new(
+		ledge_corner_turn_speed_degrees,
+		ledge_detector
+	)
+
 
 func _physics_process(
 	delta: float
@@ -155,6 +166,14 @@ func _physics_process(
 
 	if locomotion_state == LocomotionState.LEDGE_HANG:
 		update_ledge_hang(
+			jump_pressed,
+			crouch_pressed,
+			delta
+		)
+		return
+
+	if locomotion_state == LocomotionState.LEDGE_CORNER:
+		update_ledge_corner(
 			jump_pressed,
 			crouch_pressed,
 			delta
@@ -357,6 +376,37 @@ func update_ledge_hang(
 			)
 		return
 
+	if action == PlayerLedgeHang.Action.SHIMMY_BLOCKED:
+		var shimmy_direction: Vector3 = (
+			ledge_hang.take_blocked_shimmy_direction()
+		)
+		var corner_candidate: PlayerLedgeCorner.CornerCandidate = (
+			ledge_corner.find_candidate(
+				self,
+				support,
+				ledge_hang.get_candidate(),
+				ledge_hang.get_segment_wall_normal(),
+				shimmy_direction
+			)
+		)
+
+		if (
+			corner_candidate != null
+			and ledge_corner.try_start(
+				self,
+				corner_candidate
+			)
+		):
+			locomotion_state = LocomotionState.LEDGE_CORNER
+			update_ledge_view_center(
+				ledge_corner.get_current_wall_normal()
+			)
+
+			if ledge_debug_logging:
+				print("Ledge corner entered")
+
+		return
+
 	if action == PlayerLedgeHang.Action.DIRECTIONAL_JUMP:
 		var released_candidate: PlayerLedgeDetector.LedgeCandidate = (
 			ledge_hang.get_candidate()
@@ -382,6 +432,99 @@ func update_ledge_hang(
 		support.update(self)
 
 
+func update_ledge_corner(
+	jump_pressed: bool,
+	crouch_pressed: bool,
+	delta: float
+) -> void:
+	var input_direction: Vector3 = (
+		player_input.get_movement_direction(
+			head.global_transform
+		)
+	)
+
+	if crouch_pressed:
+		release_corner_to_air(
+			input_direction,
+			delta
+		)
+		return
+
+	if jump_pressed:
+		if (
+			input_direction.length_squared()
+			> LOOK_DIRECTION_EPSILON_SQUARED
+		):
+			var released_candidate: PlayerLedgeDetector.LedgeCandidate = (
+				ledge_corner.get_release_candidate()
+			)
+
+			if released_candidate != null:
+				jump_regrab_candidate = released_candidate
+
+			ledge_hang.apply_directional_jump(
+				self,
+				input_direction
+			)
+			ledge_corner.cancel()
+			ledge_hang.cancel()
+			exit_ledge_view()
+			locomotion_state = LocomotionState.NORMAL
+			movement.move(
+				self,
+				support,
+				input_direction,
+				false,
+				delta
+			)
+			support.update(self)
+			return
+
+		if ledge_debug_logging:
+			print(
+				"Mantle requested during ledge corner; ",
+				"mantle traversal is not implemented yet"
+			)
+		return
+
+	if not ledge_corner.update(self, delta):
+		release_corner_to_air(
+			input_direction,
+			delta
+		)
+
+		if ledge_debug_logging:
+			print("Ledge corner lost valid traversal")
+
+		return
+
+	update_ledge_view_center(
+		ledge_corner.get_current_wall_normal()
+	)
+
+	if ledge_corner.has_completed():
+		var completed_candidate: PlayerLedgeDetector.LedgeCandidate = (
+			ledge_corner.take_completed_candidate()
+		)
+
+		if completed_candidate == null:
+			release_corner_to_air(
+				input_direction,
+				delta
+			)
+			return
+
+		ledge_hang.start(completed_candidate)
+		velocity = Vector3.ZERO
+		locomotion_state = LocomotionState.LEDGE_HANG
+		update_ledge_view_center(
+			completed_candidate.wall_normal
+		)
+
+		if ledge_debug_logging:
+			print("Ledge corner completed")
+
+
 func release_ledge_to_air(
 	input_direction: Vector3,
 	delta: float
@@ -395,6 +538,34 @@ func release_ledge_to_air(
 			released_candidate
 		)
 
+	ledge_hang.cancel()
+	exit_ledge_view()
+	locomotion_state = LocomotionState.NORMAL
+	velocity = Vector3.DOWN * gravity * delta
+	movement.move(
+		self,
+		support,
+		input_direction,
+		false,
+		delta
+	)
+	support.update(self)
+
+
+func release_corner_to_air(
+	input_direction: Vector3,
+	delta: float
+) -> void:
+	var released_candidate: PlayerLedgeDetector.LedgeCandidate = (
+		ledge_corner.get_release_candidate()
+	)
+
+	if released_candidate != null:
+		ledge_detector.suppress_candidate(
+			released_candidate
+		)
+
+	ledge_corner.cancel()
 	ledge_hang.cancel()
 	exit_ledge_view()
 	locomotion_state = LocomotionState.NORMAL
@@ -552,6 +723,40 @@ func enter_ledge_view(
 	head.rotation.y = 0.0
 
 
+func update_ledge_view_center(
+	wall_normal: Vector3
+) -> void:
+	var toward_wall: Vector3 = -wall_normal
+	toward_wall.y = 0.0
+
+	if (
+		toward_wall.length_squared()
+		<= LOOK_DIRECTION_EPSILON_SQUARED
+	):
+		return
+
+	toward_wall = toward_wall.normalized()
+	ledge_view_center_yaw = atan2(
+		-toward_wall.x,
+		-toward_wall.z
+	)
+	var yaw_limit: float = deg_to_rad(
+		HANG_LOOK_YAW_LIMIT_DEGREES
+	)
+	ledge_view_yaw_offset = clampf(
+		ledge_view_yaw_offset,
+		-yaw_limit,
+		yaw_limit
+	)
+	rotation.y = wrapf(
+		ledge_view_center_yaw
+		+ ledge_view_yaw_offset,
+		-PI,
+		PI
+	)
+	head.rotation.y = 0.0
+
+
 func exit_ledge_view() -> void:
 	head.rotation.y = 0.0
 	ledge_view_center_yaw = rotation.y
@@ -562,6 +767,7 @@ func is_ledge_view_active() -> bool:
 	return (
 		locomotion_state == LocomotionState.LEDGE_CATCH
 		or locomotion_state == LocomotionState.LEDGE_HANG
+		or locomotion_state == LocomotionState.LEDGE_CORNER
 	)
 
 

@@ -15,6 +15,7 @@ enum Action {
 	DROP,
 	DIRECTIONAL_JUMP,
 	MANTLE_REQUEST,
+	SHIMMY_BLOCKED,
 	LOST_LEDGE,
 }
 
@@ -29,6 +30,7 @@ var active_candidate: PlayerLedgeDetector.LedgeCandidate = null
 var segment_wall_normal: Vector3 = Vector3.ZERO
 var segment_ledge_direction: Vector3 = Vector3.ZERO
 var shimmy_velocity: float = 0.0
+var blocked_shimmy_direction: Vector3 = Vector3.ZERO
 
 
 func _init(
@@ -67,6 +69,7 @@ func start(
 ) -> void:
 	active_candidate = candidate
 	shimmy_velocity = 0.0
+	blocked_shimmy_direction = Vector3.ZERO
 	segment_wall_normal = candidate.wall_normal.normalized()
 	segment_ledge_direction = (
 		Vector3.UP.cross(segment_wall_normal)
@@ -85,6 +88,7 @@ func update(
 		return Action.NONE
 
 	player.velocity = Vector3.ZERO
+	blocked_shimmy_direction = Vector3.ZERO
 
 	if drop_pressed:
 		return Action.DROP
@@ -111,6 +115,12 @@ func update(
 		delta
 	):
 		return Action.LOST_LEDGE
+
+	if (
+		blocked_shimmy_direction.length_squared()
+		> MOTION_EPSILON_SQUARED
+	):
+		return Action.SHIMMY_BLOCKED
 
 	return Action.NONE
 
@@ -186,6 +196,15 @@ func update_shimmy(
 	)
 
 	if next_candidate == null:
+		var shimmy_sign: float = 1.0
+
+		if shimmy_velocity < 0.0:
+			shimmy_sign = -1.0
+
+		blocked_shimmy_direction = (
+			segment_ledge_direction
+			* shimmy_sign
+		)
 		shimmy_velocity = 0.0
 		return true
 
@@ -512,8 +531,19 @@ func get_candidate() -> PlayerLedgeDetector.LedgeCandidate:
 	return active_candidate
 
 
+func get_segment_wall_normal() -> Vector3:
+	return segment_wall_normal
+
+
+func take_blocked_shimmy_direction() -> Vector3:
+	var result: Vector3 = blocked_shimmy_direction
+	blocked_shimmy_direction = Vector3.ZERO
+	return result
+
+
 func cancel() -> void:
 	active_candidate = null
 	segment_wall_normal = Vector3.ZERO
 	segment_ledge_direction = Vector3.ZERO
 	shimmy_velocity = 0.0
+	blocked_shimmy_direction = Vector3.ZERO
