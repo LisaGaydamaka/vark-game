@@ -98,6 +98,7 @@ func _physics_process(
 	movement.move(
 		self,
 		support,
+		input_direction,
 		delta
 	)
 
