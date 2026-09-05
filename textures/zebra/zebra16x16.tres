@@ -1,0 +1,8 @@
+[gd_resource type="StandardMaterial3D" format=3 uid="uid://btshcrgn47065"]
+
+[ext_resource type="Texture2D" uid="uid://jxpwjo3swhtf" path="res://textures/zebra/zebra16x16.png" id="1_pp8it"]
+
+[resource]
+albedo_texture = ExtResource("1_pp8it")
+metallic_specular = 0.0
+texture_filter = 2
