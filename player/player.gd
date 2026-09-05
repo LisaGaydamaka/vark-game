@@ -91,6 +91,7 @@ func _physics_process(
 
 	movement.move(
 		self,
+		support,
 		delta
 	)
 

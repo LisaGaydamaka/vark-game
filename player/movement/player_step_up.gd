@@ -23,10 +23,11 @@ func _init(
 
 func probe_horizontal_obstacle(
 	player: CharacterBody3D,
-	horizontal_motion: Vector3
-) -> KinematicCollision3D:
+	horizontal_motion: Vector3,
+	support: PlayerSupport
+) -> void:
 	if horizontal_motion.length_squared() <= 0.000001:
-		return null
+		return
 
 	var collision: KinematicCollision3D = KinematicCollision3D.new()
 	var blocked: bool = player.test_move(
@@ -39,7 +40,7 @@ func probe_horizontal_obstacle(
 	)
 
 	if not blocked:
-		return null
+		return
 
 	debug("DETECT: horizontal motion blocked")
 	debug("motion: " + str(horizontal_motion))
@@ -48,16 +49,50 @@ func probe_horizontal_obstacle(
 	debug("collision count: " + str(collision_count))
 
 	for collision_index: int in range(collision_count):
+		var collision_position: Vector3 = (
+			collision.get_position(collision_index)
+		)
+		var collision_normal: Vector3 = (
+			collision.get_normal(collision_index)
+		)
+		var classification: String = classify_surface(
+			collision_normal,
+			support
+		)
+
 		debug(
 			"collision "
 			+ str(collision_index)
 			+ ": position="
-			+ str(collision.get_position(collision_index))
+			+ str(collision_position)
 			+ " normal="
-			+ str(collision.get_normal(collision_index))
+			+ str(collision_normal)
+			+ " classification="
+			+ classification
 		)
 
-	return collision
+
+func classify_surface(
+	normal: Vector3,
+	support: PlayerSupport
+) -> String:
+	if support.is_walkable_surface(normal):
+		return "WALKABLE"
+
+	if is_step_riser(normal):
+		return "RISER"
+
+	return "STEEP_SLOPE"
+
+
+func is_step_riser(
+	normal: Vector3
+) -> bool:
+	var maximum_normal_y: float = sin(
+		deg_to_rad(max_riser_tilt_degrees)
+	)
+
+	return absf(normal.y) <= maximum_normal_y
 
 
 func debug(

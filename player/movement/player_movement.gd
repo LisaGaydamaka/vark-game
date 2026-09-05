@@ -16,6 +16,7 @@ func _init(
 
 func move(
 	player: CharacterBody3D,
+	support: PlayerSupport,
 	delta: float
 ) -> void:
 	var motion: Vector3 = player.velocity * delta
@@ -27,7 +28,8 @@ func move(
 
 	step_up.probe_horizontal_obstacle(
 		player,
-		horizontal_motion
+		horizontal_motion,
+		support
 	)
 
 	for _iteration: int in range(
