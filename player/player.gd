@@ -73,6 +73,8 @@ var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
 
 var locomotion_state: int = LocomotionState.NORMAL
+var ledge_view_center_yaw: float = 0.0
+var ledge_view_yaw_offset: float = 0.0
 
 
 func _ready() -> void:
@@ -357,14 +359,17 @@ func enter_ledge_view(
 		toward_wall.length_squared()
 		<= LOOK_DIRECTION_EPSILON_SQUARED
 	):
+		ledge_view_center_yaw = rotation.y
+		ledge_view_yaw_offset = 0.0
+		head.rotation.y = 0.0
 		return
 
 	toward_wall = toward_wall.normalized()
-
-	var body_yaw: float = atan2(
+	ledge_view_center_yaw = atan2(
 		-toward_wall.x,
 		-toward_wall.z
 	)
+
 	var view_yaw: float = atan2(
 		-view_forward.x,
 		-view_forward.z
@@ -372,9 +377,9 @@ func enter_ledge_view(
 	var yaw_limit: float = deg_to_rad(
 		HANG_LOOK_YAW_LIMIT_DEGREES
 	)
-	var head_yaw: float = clampf(
+	ledge_view_yaw_offset = clampf(
 		wrapf(
-			view_yaw - body_yaw,
+			view_yaw - ledge_view_center_yaw,
 			-PI,
 			PI
 		),
@@ -382,17 +387,19 @@ func enter_ledge_view(
 		yaw_limit
 	)
 
-	rotation.y = body_yaw
-	head.rotation.y = head_yaw
-
-
-func exit_ledge_view() -> void:
 	rotation.y = wrapf(
-		rotation.y + head.rotation.y,
+		ledge_view_center_yaw
+		+ ledge_view_yaw_offset,
 		-PI,
 		PI
 	)
 	head.rotation.y = 0.0
+
+
+func exit_ledge_view() -> void:
+	head.rotation.y = 0.0
+	ledge_view_center_yaw = rotation.y
+	ledge_view_yaw_offset = 0.0
 
 
 func is_ledge_view_active() -> bool:
@@ -408,10 +415,16 @@ func apply_ledge_yaw_motion(
 	var yaw_limit: float = deg_to_rad(
 		HANG_LOOK_YAW_LIMIT_DEGREES
 	)
-	head.rotation.y = clampf(
-		head.rotation.y + yaw_motion,
+	ledge_view_yaw_offset = clampf(
+		ledge_view_yaw_offset + yaw_motion,
 		-yaw_limit,
 		yaw_limit
+	)
+	rotation.y = wrapf(
+		ledge_view_center_yaw
+		+ ledge_view_yaw_offset,
+		-PI,
+		PI
 	)
 
 
