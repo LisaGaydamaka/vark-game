@@ -114,6 +114,36 @@ func apply_jump(
 	player.velocity.y = jump_speed
 
 
+func apply_directional_jump(
+	player: CharacterBody3D,
+	input_direction: Vector3,
+	jump_height: float
+) -> void:
+	var horizontal_input: Vector3 = Vector3(
+		input_direction.x,
+		0.0,
+		input_direction.z
+	)
+	var input_strength: float = minf(
+		horizontal_input.length(),
+		1.0
+	)
+	var horizontal_velocity: Vector3 = Vector3.ZERO
+
+	if input_strength > 0.000001:
+		horizontal_velocity = (
+			horizontal_input.normalized()
+			* max_speed
+			* input_strength
+		)
+
+	player.velocity = horizontal_velocity
+	apply_jump(
+		player,
+		jump_height
+	)
+
+
 func apply_air_horizontal_velocity(
 	player: CharacterBody3D,
 	input_direction: Vector3,

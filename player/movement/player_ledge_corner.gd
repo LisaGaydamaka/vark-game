@@ -6,21 +6,25 @@ const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const CORNER_ENDPOINT_SEARCH_STEPS: int = 8
-const CORNER_MIN_TURN_DEGREES: float = 45.0
-const CORNER_MAX_TURN_DEGREES: float = 135.0
-const TARGET_NORMAL_MAX_DEVIATION_DEGREES: float = 30.0
+const MAX_RIGHT_ANGLE_ERROR_DEGREES: float = 15.0
 const MAX_ROUTE_SEGMENT_ANGLE_DEGREES: float = 5.0
-const EXPECTED_CONTACT_MIN_ALIGNMENT: float = 0.75
 
 
 class CornerCandidate:
 	var source_candidate: PlayerLedgeDetector.LedgeCandidate = null
 	var target_candidate: PlayerLedgeDetector.LedgeCandidate = null
+
 	var corner_point: Vector3 = Vector3.ZERO
+
 	var source_wall_normal: Vector3 = Vector3.ZERO
+	var source_travel_direction: Vector3 = Vector3.ZERO
+
 	var target_wall_normal: Vector3 = Vector3.ZERO
+	var target_continuation_direction: Vector3 = Vector3.ZERO
+
 	var source_arc_position: Vector3 = Vector3.ZERO
 	var target_arc_position: Vector3 = Vector3.ZERO
+
 	var signed_turn_angle: float = 0.0
 	var valid: bool = false
 
@@ -78,58 +82,74 @@ func find_candidate(
 
 	source_normal = source_normal.normalized()
 
-	var travel_direction: Vector3 = shimmy_direction
-	travel_direction.y = 0.0
+	var source_travel: Vector3 = shimmy_direction
+	source_travel.y = 0.0
 
 	if (
-		travel_direction.length_squared()
+		source_travel.length_squared()
 		<= MOTION_EPSILON_SQUARED
 	):
 		return null
 
-	travel_direction = travel_direction.normalized()
+	source_travel = source_travel.normalized()
+
+	if (
+		absf(source_normal.dot(source_travel))
+		> sin(
+			deg_to_rad(
+				MAX_RIGHT_ANGLE_ERROR_DEGREES
+			)
+		)
+	):
+		return null
 
 	var endpoint_result: Dictionary = find_source_endpoint(
 		player,
 		source_candidate,
 		source_normal,
-		travel_direction
+		source_travel
 	)
 
 	if endpoint_result.is_empty():
 		return null
 
 	var endpoint_value: Variant = endpoint_result.get("point")
+	var endpoint_resolution_value: Variant = (
+		endpoint_result.get("resolution")
+	)
 
 	if not (endpoint_value is Vector3):
 		return null
 
-	var endpoint_guess: Vector3 = endpoint_value
-
-	var expected_target_normal: Vector3 = travel_direction
-	var expected_target_tangent: Vector3 = (
-		Vector3.UP.cross(expected_target_normal)
-	)
-
 	if (
-		expected_target_tangent.length_squared()
-		<= MOTION_EPSILON_SQUARED
+		typeof(endpoint_resolution_value) != TYPE_FLOAT
+		and typeof(endpoint_resolution_value) != TYPE_INT
 	):
 		return null
 
-	expected_target_tangent = (
-		expected_target_tangent.normalized()
+	var endpoint_guess: Vector3 = endpoint_value
+	var endpoint_resolution: float = float(
+		endpoint_resolution_value
 	)
+	var endpoint_tolerance: float = maxf(
+		PROBE_SAFE_MARGIN * 2.0,
+		endpoint_resolution + PROBE_SAFE_MARGIN * 2.0
+	)
+
+	var expected_target_normal: Vector3 = source_travel
+	var expected_target_continuation: Vector3 = -source_normal
 
 	var target_probe_inset: float = (
 		detector.get_ledge_span_half_width()
+		+ detector.get_top_probe_inset()
 		+ PROBE_SAFE_MARGIN
 	)
 	var target_probe_point: Vector3 = (
 		endpoint_guess
-		+ expected_target_tangent
+		+ expected_target_continuation
 		* target_probe_inset
 	)
+
 	var target_wall: PlayerLedgeDetector.WallHit = (
 		detector.find_wall_near_edge(
 			player,
@@ -143,7 +163,7 @@ func find_candidate(
 
 	var minimum_target_alignment: float = cos(
 		deg_to_rad(
-			TARGET_NORMAL_MAX_DEVIATION_DEGREES
+			MAX_RIGHT_ANGLE_ERROR_DEGREES
 		)
 	)
 
@@ -152,6 +172,35 @@ func find_candidate(
 			expected_target_normal
 		)
 		< minimum_target_alignment
+	):
+		return null
+
+	var signed_turn_angle: float = get_signed_horizontal_angle(
+		source_normal,
+		target_wall.normal
+	)
+	var absolute_turn_degrees: float = rad_to_deg(
+		absf(signed_turn_angle)
+	)
+
+	if (
+		absolute_turn_degrees
+		< 90.0 - MAX_RIGHT_ANGLE_ERROR_DEGREES
+		or absolute_turn_degrees
+		> 90.0 + MAX_RIGHT_ANGLE_ERROR_DEGREES
+	):
+		return null
+
+	var target_continuation: Vector3 = (
+		get_oriented_wall_tangent(
+			target_wall.normal,
+			expected_target_continuation
+		)
+	)
+
+	if (
+		target_continuation.length_squared()
+		<= MOTION_EPSILON_SQUARED
 	):
 		return null
 
@@ -184,14 +233,13 @@ func find_candidate(
 
 	if (
 		corner_guess_delta.length()
-		> detector.get_ledge_span_half_width()
-		+ detector.get_top_probe_inset()
+		> endpoint_tolerance
 	):
 		return null
 
 	target_probe_point = (
 		corner_point
-		+ expected_target_tangent
+		+ target_continuation
 		* target_probe_inset
 	)
 	target_wall = detector.find_wall_near_edge(
@@ -208,6 +256,33 @@ func find_candidate(
 			expected_target_normal
 		)
 		< minimum_target_alignment
+	):
+		return null
+
+	signed_turn_angle = get_signed_horizontal_angle(
+		source_normal,
+		target_wall.normal
+	)
+	absolute_turn_degrees = rad_to_deg(
+		absf(signed_turn_angle)
+	)
+
+	if (
+		absolute_turn_degrees
+		< 90.0 - MAX_RIGHT_ANGLE_ERROR_DEGREES
+		or absolute_turn_degrees
+		> 90.0 + MAX_RIGHT_ANGLE_ERROR_DEGREES
+	):
+		return null
+
+	target_continuation = get_oriented_wall_tangent(
+		target_wall.normal,
+		expected_target_continuation
+	)
+
+	if (
+		target_continuation.length_squared()
+		<= MOTION_EPSILON_SQUARED
 	):
 		return null
 
@@ -237,23 +312,38 @@ func find_candidate(
 		target_top.point.y,
 		target_wall.point.z
 	)
-	var target_ledge_direction: Vector3 = (
+	var target_from_corner: Vector3 = Vector3(
+		target_edge_point.x - corner_point.x,
+		0.0,
+		target_edge_point.z - corner_point.z
+	)
+	var target_progress: float = target_from_corner.dot(
+		target_continuation
+	)
+
+	if (
+		target_progress
+		< target_probe_inset - endpoint_tolerance
+	):
+		return null
+
+	var target_ledge_axis: Vector3 = (
 		Vector3.UP.cross(target_wall.normal)
 	)
 
 	if (
-		target_ledge_direction.length_squared()
+		target_ledge_axis.length_squared()
 		<= MOTION_EPSILON_SQUARED
 	):
 		return null
 
-	target_ledge_direction = (
-		target_ledge_direction.normalized()
-	)
+	target_ledge_axis = target_ledge_axis.normalized()
 
 	if (
-		target_ledge_direction.dot(
-			expected_target_tangent
+		absf(
+			target_ledge_axis.dot(
+				target_continuation
+			)
 		)
 		< minimum_target_alignment
 	):
@@ -265,7 +355,7 @@ func find_candidate(
 		target_edge_point,
 		target_wall.normal,
 		target_top.point.y,
-		target_ledge_direction
+		target_ledge_axis
 	):
 		return null
 
@@ -278,15 +368,23 @@ func find_candidate(
 	var target_candidate: PlayerLedgeDetector.LedgeCandidate = (
 		PlayerLedgeDetector.LedgeCandidate.new()
 	)
-	target_candidate.wall_collider_rid = target_wall.collider_rid
-	target_candidate.wall_shape_index = target_wall.shape_index
-	target_candidate.top_collider_rid = target_top.collider_rid
-	target_candidate.top_shape_index = target_top.shape_index
+	target_candidate.wall_collider_rid = (
+		target_wall.collider_rid
+	)
+	target_candidate.wall_shape_index = (
+		target_wall.shape_index
+	)
+	target_candidate.top_collider_rid = (
+		target_top.collider_rid
+	)
+	target_candidate.top_shape_index = (
+		target_top.shape_index
+	)
 	target_candidate.edge_point = target_edge_point
 	target_candidate.wall_normal = target_wall.normal
 	target_candidate.top_point = target_top.point
 	target_candidate.top_normal = target_top.normal
-	target_candidate.ledge_direction = target_ledge_direction
+	target_candidate.ledge_direction = target_ledge_axis
 	target_candidate.hang_position = target_hang_position
 	target_candidate.hangable = detector.is_hang_pose_valid(
 		player,
@@ -297,38 +395,14 @@ func find_candidate(
 	if not target_candidate.hangable:
 		return null
 
-	var normal_dot: float = clampf(
-		source_normal.dot(target_wall.normal),
-		-1.0,
-		1.0
-	)
-	var cross_y: float = (
-		source_normal.cross(target_wall.normal).dot(
-			Vector3.UP
-		)
-	)
-	var signed_turn_angle: float = atan2(
-		cross_y,
-		normal_dot
-	)
-	var absolute_turn_degrees: float = rad_to_deg(
-		absf(signed_turn_angle)
-	)
-
-	if (
-		absolute_turn_degrees
-		< CORNER_MIN_TURN_DEGREES
-		or absolute_turn_degrees
-		> CORNER_MAX_TURN_DEGREES
-	):
-		return null
-
 	var arc_radius: float = get_arc_radius()
 	var source_arc_position: Vector3 = (
 		corner_point
 		+ source_normal * arc_radius
 	)
-	source_arc_position.y = source_candidate.hang_position.y
+	source_arc_position.y = (
+		source_candidate.hang_position.y
+	)
 
 	var target_arc_position: Vector3 = (
 		corner_point
@@ -341,7 +415,11 @@ func find_candidate(
 	candidate.target_candidate = target_candidate
 	candidate.corner_point = corner_point
 	candidate.source_wall_normal = source_normal
+	candidate.source_travel_direction = source_travel
 	candidate.target_wall_normal = target_wall.normal
+	candidate.target_continuation_direction = (
+		target_continuation
+	)
 	candidate.source_arc_position = source_arc_position
 	candidate.target_arc_position = target_arc_position
 	candidate.signed_turn_angle = signed_turn_angle
@@ -355,6 +433,24 @@ func find_source_endpoint(
 	source_normal: Vector3,
 	travel_direction: Vector3
 ) -> Dictionary:
+	var start_wall: PlayerLedgeDetector.WallHit = (
+		detector.find_wall_near_edge(
+			player,
+			source_normal,
+			source_candidate.edge_point
+		)
+	)
+
+	if (
+		start_wall == null
+		or not detector.is_wall_continuous(
+			start_wall,
+			source_normal,
+			source_candidate.edge_point
+		)
+	):
+		return {}
+
 	var search_distance: float = (
 		detector.get_max_horizontal_reach()
 	)
@@ -422,8 +518,10 @@ func find_source_endpoint(
 		* lower_distance
 	)
 	endpoint.y = source_candidate.edge_point.y
+
 	return {
-		"point": endpoint
+		"point": endpoint,
+		"resolution": upper_distance - lower_distance,
 	}
 
 
@@ -484,6 +582,7 @@ func try_start(
 	cancel()
 	active_corner = candidate
 	start_position = player.global_position
+
 	source_lead_length = start_position.distance_to(
 		candidate.source_arc_position
 	)
@@ -557,25 +656,17 @@ func update(
 				next_route_distance
 			)
 		)
-		var expected_normal: Vector3 = (
-			get_route_wall_normal(
-				next_route_distance
-			)
-		)
-		var motion: Vector3 = (
-			target_position
-			- player.global_position
-		)
 
-		if not move_corner_motion(
+		if not move_corner_to_position(
 			player,
-			motion,
-			expected_normal
+			target_position
 		):
 			return false
 
 		route_distance = next_route_distance
-		current_wall_normal = expected_normal
+		current_wall_normal = get_route_wall_normal(
+			route_distance
+		)
 		remaining_distance -= segment_distance
 
 	if (
@@ -617,18 +708,10 @@ func is_route_clear(
 		var target_position: Vector3 = (
 			get_route_position(next_distance)
 		)
-		var expected_normal: Vector3 = (
-			get_route_wall_normal(next_distance)
-		)
-		var motion: Vector3 = (
-			target_position
-			- simulated_transform.origin
-		)
-		var result: Dictionary = simulate_corner_motion(
+		var result: Dictionary = simulate_corner_to_position(
 			player,
 			simulated_transform,
-			motion,
-			expected_normal
+			target_position
 		)
 
 		if result.is_empty():
@@ -647,14 +730,16 @@ func is_route_clear(
 	return true
 
 
-func simulate_corner_motion(
+func simulate_corner_to_position(
 	player: CharacterBody3D,
 	from_transform: Transform3D,
-	motion: Vector3,
-	expected_normal: Vector3
+	target_position: Vector3
 ) -> Dictionary:
 	var simulated_transform: Transform3D = from_transform
-	var remaining_motion: Vector3 = motion
+	var remaining_motion: Vector3 = (
+		target_position
+		- simulated_transform.origin
+	)
 
 	for _iteration: int in range(
 		PROBE_MAX_COLLISIONS
@@ -663,9 +748,7 @@ func simulate_corner_motion(
 			remaining_motion.length_squared()
 			<= MOTION_EPSILON_SQUARED
 		):
-			return {
-				"transform": simulated_transform
-			}
+			break
 
 		var collision: KinematicCollision3D = (
 			KinematicCollision3D.new()
@@ -681,9 +764,8 @@ func simulate_corner_motion(
 
 		if not blocked:
 			simulated_transform.origin += remaining_motion
-			return {
-				"transform": simulated_transform
-			}
+			remaining_motion = Vector3.ZERO
+			break
 
 		var previous_length_squared: float = (
 			remaining_motion.length_squared()
@@ -700,8 +782,7 @@ func simulate_corner_motion(
 		):
 			if not is_expected_corner_contact(
 				collision,
-				collision_index,
-				expected_normal
+				collision_index
 			):
 				return {}
 
@@ -725,15 +806,27 @@ func simulate_corner_motion(
 
 		remaining_motion = next_motion
 
-	return {}
+	if (
+		simulated_transform.origin.distance_to(
+			target_position
+		)
+		> get_route_position_tolerance()
+	):
+		return {}
+
+	return {
+		"transform": simulated_transform
+	}
 
 
-func move_corner_motion(
+func move_corner_to_position(
 	player: CharacterBody3D,
-	motion: Vector3,
-	expected_normal: Vector3
+	target_position: Vector3
 ) -> bool:
-	var remaining_motion: Vector3 = motion
+	var remaining_motion: Vector3 = (
+		target_position
+		- player.global_position
+	)
 
 	for _iteration: int in range(
 		PROBE_MAX_COLLISIONS
@@ -742,7 +835,7 @@ func move_corner_motion(
 			remaining_motion.length_squared()
 			<= MOTION_EPSILON_SQUARED
 		):
-			return true
+			break
 
 		var collision: KinematicCollision3D = (
 			player.move_and_collide(
@@ -755,7 +848,8 @@ func move_corner_motion(
 		)
 
 		if collision == null:
-			return true
+			remaining_motion = Vector3.ZERO
+			break
 
 		var previous_length_squared: float = (
 			remaining_motion.length_squared()
@@ -772,8 +866,7 @@ func move_corner_motion(
 		):
 			if not is_expected_corner_contact(
 				collision,
-				collision_index,
-				expected_normal
+				collision_index
 			):
 				return false
 
@@ -794,15 +887,33 @@ func move_corner_motion(
 
 		remaining_motion = next_motion
 
-	return false
+	return (
+		player.global_position.distance_to(
+			target_position
+		)
+		<= get_route_position_tolerance()
+	)
 
 
 func is_expected_corner_contact(
 	collision: KinematicCollision3D,
-	collision_index: int,
-	expected_normal: Vector3
+	collision_index: int
 ) -> bool:
 	if active_corner == null:
+		return false
+
+	var matches_source: bool = matches_candidate_wall(
+		collision,
+		collision_index,
+		active_corner.source_candidate
+	)
+	var matches_target: bool = matches_candidate_wall(
+		collision,
+		collision_index,
+		active_corner.target_candidate
+	)
+
+	if not matches_source and not matches_target:
 		return false
 
 	var collision_normal: Vector3 = collision.get_normal(
@@ -818,34 +929,37 @@ func is_expected_corner_contact(
 
 	collision_normal = collision_normal.normalized()
 
-	var normalized_expected: Vector3 = expected_normal
-	normalized_expected.y = 0.0
+	return is_normal_in_corner_sector(
+		collision_normal
+	)
 
-	if (
-		normalized_expected.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+
+func is_normal_in_corner_sector(
+	normal: Vector3
+) -> bool:
+	if active_corner == null:
 		return false
 
-	normalized_expected = normalized_expected.normalized()
+	var normal_angle: float = get_signed_horizontal_angle(
+		active_corner.source_wall_normal,
+		normal
+	)
+	var total_angle: float = (
+		active_corner.signed_turn_angle
+	)
+	var margin: float = deg_to_rad(
+		MAX_RIGHT_ANGLE_ERROR_DEGREES
+	)
 
-	if (
-		collision_normal.dot(normalized_expected)
-		< EXPECTED_CONTACT_MIN_ALIGNMENT
-	):
-		return false
+	if total_angle > 0.0:
+		return (
+			normal_angle >= -margin
+			and normal_angle <= total_angle + margin
+		)
 
 	return (
-		matches_candidate_wall(
-			collision,
-			collision_index,
-			active_corner.source_candidate
-		)
-		or matches_candidate_wall(
-			collision,
-			collision_index,
-			active_corner.target_candidate
-		)
+		normal_angle <= margin
+		and normal_angle >= total_angle - margin
 	)
 
 
@@ -1000,6 +1114,74 @@ func get_route_wall_normal(
 	return active_corner.target_wall_normal
 
 
+func get_oriented_wall_tangent(
+	wall_normal: Vector3,
+	preferred_direction: Vector3
+) -> Vector3:
+	var tangent: Vector3 = (
+		Vector3.UP.cross(wall_normal)
+	)
+	tangent.y = 0.0
+
+	if (
+		tangent.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return Vector3.ZERO
+
+	tangent = tangent.normalized()
+
+	var preferred: Vector3 = preferred_direction
+	preferred.y = 0.0
+
+	if (
+		preferred.length_squared()
+		> MOTION_EPSILON_SQUARED
+		and tangent.dot(preferred) < 0.0
+	):
+		tangent = -tangent
+
+	return tangent
+
+
+func get_signed_horizontal_angle(
+	from_normal: Vector3,
+	to_normal: Vector3
+) -> float:
+	var normalized_from: Vector3 = from_normal
+	normalized_from.y = 0.0
+
+	var normalized_to: Vector3 = to_normal
+	normalized_to.y = 0.0
+
+	if (
+		normalized_from.length_squared()
+		<= MOTION_EPSILON_SQUARED
+		or normalized_to.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return 0.0
+
+	normalized_from = normalized_from.normalized()
+	normalized_to = normalized_to.normalized()
+
+	var normal_dot: float = clampf(
+		normalized_from.dot(normalized_to),
+		-1.0,
+		1.0
+	)
+	var cross_y: float = (
+		normalized_from.cross(normalized_to).dot(
+			Vector3.UP
+		)
+	)
+
+	return atan2(
+		cross_y,
+		normal_dot
+	)
+
+
 func get_arc_radius() -> float:
 	return (
 		detector.get_hang_wall_distance()
@@ -1017,6 +1199,10 @@ func get_maximum_segment_distance() -> float:
 	)
 
 
+func get_route_position_tolerance() -> float:
+	return PROBE_SAFE_MARGIN * 2.0
+
+
 func is_active() -> bool:
 	return active_corner != null
 
@@ -1029,29 +1215,36 @@ func get_current_wall_normal() -> Vector3:
 	return current_wall_normal
 
 
-func get_release_candidate() -> PlayerLedgeDetector.LedgeCandidate:
+func get_target_candidate() -> PlayerLedgeDetector.LedgeCandidate:
 	if active_corner == null:
 		return null
-
-	var arc_midpoint: float = (
-		source_lead_length
-		+ arc_length * 0.5
-	)
-
-	if route_distance < arc_midpoint:
-		return active_corner.source_candidate
 
 	return active_corner.target_candidate
 
 
-func take_completed_candidate() -> PlayerLedgeDetector.LedgeCandidate:
-	if not completed or active_corner == null:
-		return null
+func get_target_wall_normal() -> Vector3:
+	if active_corner == null:
+		return Vector3.ZERO
 
-	var result: PlayerLedgeDetector.LedgeCandidate = (
-		active_corner.target_candidate
-	)
-	cancel()
+	return active_corner.target_wall_normal
+
+
+func get_release_candidates() -> Array[PlayerLedgeDetector.LedgeCandidate]:
+	var result: Array[PlayerLedgeDetector.LedgeCandidate] = []
+
+	if active_corner == null:
+		return result
+
+	if active_corner.source_candidate != null:
+		result.append(
+			active_corner.source_candidate
+		)
+
+	if active_corner.target_candidate != null:
+		result.append(
+			active_corner.target_candidate
+		)
+
 	return result
 
 

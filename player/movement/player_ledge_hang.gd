@@ -22,8 +22,6 @@ enum Action {
 
 var max_speed: float
 var acceleration: float
-var jump_height: float
-var gravity: float
 var detector: PlayerLedgeDetector
 
 var active_candidate: PlayerLedgeDetector.LedgeCandidate = null
@@ -36,14 +34,10 @@ var blocked_shimmy_direction: Vector3 = Vector3.ZERO
 func _init(
 	p_max_speed: float,
 	p_acceleration: float,
-	p_jump_height: float,
-	p_gravity: float,
 	p_detector: PlayerLedgeDetector
 ) -> void:
 	max_speed = p_max_speed
 	acceleration = p_acceleration
-	jump_height = p_jump_height
-	gravity = p_gravity
 	detector = p_detector
 
 	assert(
@@ -55,12 +49,8 @@ func _init(
 		"PlayerLedgeHang requires acceleration to be non-negative."
 	)
 	assert(
-		jump_height >= 0.0,
-		"PlayerLedgeHang requires jump_height to be non-negative."
-	)
-	assert(
-		gravity > 0.0,
-		"PlayerLedgeHang requires gravity to be greater than zero."
+		detector != null,
+		"PlayerLedgeHang requires a PlayerLedgeDetector."
 	)
 
 
@@ -179,6 +169,11 @@ func update_shimmy(
 		shimmy_velocity = 0.0
 		return true
 
+	var shimmy_direction: Vector3 = segment_ledge_direction
+
+	if shimmy_velocity < 0.0:
+		shimmy_direction = -segment_ledge_direction
+
 	var proposed_position: Vector3 = (
 		player.global_position
 		+ segment_ledge_direction
@@ -196,16 +191,9 @@ func update_shimmy(
 	)
 
 	if next_candidate == null:
-		var shimmy_sign: float = 1.0
-
-		if shimmy_velocity < 0.0:
-			shimmy_sign = -1.0
-
-		blocked_shimmy_direction = (
-			segment_ledge_direction
-			* shimmy_sign
+		set_blocked_shimmy_direction(
+			shimmy_direction
 		)
-		shimmy_velocity = 0.0
 		return true
 
 	var motion: Vector3 = (
@@ -222,7 +210,9 @@ func update_shimmy(
 		motion,
 		next_candidate
 	):
-		shimmy_velocity = 0.0
+		set_blocked_shimmy_direction(
+			shimmy_direction
+		)
 		return true
 
 	if not move_shimmy_motion(
@@ -231,13 +221,27 @@ func update_shimmy(
 		next_candidate
 	):
 		shimmy_velocity = 0.0
-		return revalidate_attachment(
+
+		if not revalidate_attachment(
 			player,
 			support
+		):
+			return false
+
+		blocked_shimmy_direction = (
+			shimmy_direction
 		)
+		return true
 
 	active_candidate = next_candidate
 	return true
+
+
+func set_blocked_shimmy_direction(
+	direction: Vector3
+) -> void:
+	blocked_shimmy_direction = direction
+	shimmy_velocity = 0.0
 
 
 func is_shimmy_path_clear(
@@ -482,45 +486,8 @@ func update_shimmy_velocity(
 	shimmy_velocity += velocity_change
 
 
-func apply_directional_jump(
-	player: CharacterBody3D,
-	input_direction: Vector3
-) -> void:
-	if active_candidate == null:
-		return
-
-	var horizontal_input: Vector3 = Vector3(
-		input_direction.x,
-		0.0,
-		input_direction.z
-	)
-	var input_strength: float = minf(
-		horizontal_input.length(),
-		1.0
-	)
-	var horizontal_velocity: Vector3 = Vector3.ZERO
-
-	if input_strength > 0.000001:
-		horizontal_velocity = (
-			horizontal_input.normalized()
-			* max_speed
-			* input_strength
-		)
-
-	player.velocity = horizontal_velocity
-	player.velocity.y = get_jump_speed()
-
-
 func get_max_shimmy_speed() -> float:
 	return max_speed * SHIMMY_SPEED_RATIO
-
-
-func get_jump_speed() -> float:
-	return sqrt(
-		2.0
-		* gravity
-		* maxf(jump_height, 0.0)
-	)
 
 
 func is_active() -> bool:
