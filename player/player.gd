@@ -11,7 +11,7 @@ extends CharacterBody3D
 
 
 @export_category("Jump")
-@export var jump_height: float = 1.0
+@export var jump_height: float = 0.75
 
 
 @export_category("Air")
