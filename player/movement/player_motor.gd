@@ -9,13 +9,20 @@ var gravity: float
 var static_friction_coefficient: float
 var kinetic_friction_coefficient: float
 
+var air_max_speed: float
+var air_acceleration: float
+var air_deceleration: float
+
 
 func _init(
 	p_max_speed: float,
 	p_acceleration: float,
 	p_gravity: float,
 	p_static_friction_coefficient: float,
-	p_kinetic_friction_coefficient: float
+	p_kinetic_friction_coefficient: float,
+	p_air_max_speed: float,
+	p_air_acceleration: float,
+	p_air_deceleration: float
 ) -> void:
 	max_speed = p_max_speed
 	acceleration = p_acceleration
@@ -29,13 +36,32 @@ func _init(
 		p_kinetic_friction_coefficient
 	)
 
+	air_max_speed = p_air_max_speed
+	air_acceleration = p_air_acceleration
+	air_deceleration = p_air_deceleration
+
 
 func update(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	input_direction: Vector3,
+	use_air_control: bool,
 	delta: float
 ) -> void:
+	if use_air_control:
+		player.velocity += (
+			Vector3.DOWN
+			* gravity
+			* delta
+		)
+
+		apply_air_horizontal_velocity(
+			player,
+			input_direction,
+			delta
+		)
+		return
+
 	var external_acceleration: Vector3 = (
 		Vector3.DOWN
 		* gravity
@@ -73,6 +99,48 @@ func update(
 			support,
 			delta
 		)
+
+
+func apply_jump(
+	player: CharacterBody3D,
+	jump_height: float
+) -> void:
+	var jump_speed: float = sqrt(
+		2.0
+		* gravity
+		* maxf(jump_height, 0.0)
+	)
+
+	player.velocity.y = jump_speed
+
+
+func apply_air_horizontal_velocity(
+	player: CharacterBody3D,
+	input_direction: Vector3,
+	delta: float
+) -> void:
+	var horizontal_velocity: Vector3 = Vector3(
+		player.velocity.x,
+		0.0,
+		player.velocity.z
+	)
+	var target_velocity: Vector3 = Vector3.ZERO
+	var change_rate: float = air_deceleration
+
+	if not input_direction.is_zero_approx():
+		target_velocity = (
+			input_direction
+			* air_max_speed
+		)
+		change_rate = air_acceleration
+
+	horizontal_velocity = horizontal_velocity.move_toward(
+		target_velocity,
+		change_rate * delta
+	)
+
+	player.velocity.x = horizontal_velocity.x
+	player.velocity.z = horizontal_velocity.z
 
 
 func get_motor_acceleration(
@@ -239,7 +307,7 @@ func get_normal_load_acceleration(
 	if not support.has_support:
 		return 0.0
 
-	return max(
+	return maxf(
 		0.0,
 		gravity
 		* support.support_normal.dot(

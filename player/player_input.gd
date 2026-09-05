@@ -12,7 +12,7 @@ func get_movement_direction(
 		"move_backward"
 	)
 
-	var direction := Vector3(
+	var direction: Vector3 = Vector3(
 		input.x,
 		0.0,
 		input.y
@@ -29,3 +29,7 @@ func get_movement_direction(
 		direction = direction.normalized()
 
 	return direction
+
+
+func is_jump_just_pressed() -> bool:
+	return Input.is_action_just_pressed("jump")

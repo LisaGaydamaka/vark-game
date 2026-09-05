@@ -10,6 +10,16 @@ extends CharacterBody3D
 @export var acceleration: float = 28.0
 
 
+@export_category("Jump")
+@export var jump_height: float = 1.0
+
+
+@export_category("Air")
+@export var air_max_speed: float = 2.5
+@export var air_acceleration: float = 3.0
+@export var air_deceleration: float = 6.0
+
+
 @export_category("Surface")
 @export var max_walkable_slope: float = 45.0
 @export var support_check_distance: float = 0.05
@@ -58,7 +68,10 @@ func _ready() -> void:
 		acceleration,
 		gravity,
 		static_friction_coefficient,
-		kinetic_friction_coefficient
+		kinetic_friction_coefficient,
+		air_max_speed,
+		air_acceleration,
+		air_deceleration
 	)
 
 	step_up = PlayerStepUp.new(
@@ -83,15 +96,37 @@ func _physics_process(
 			global_transform
 		)
 	)
+	var jump_pressed: bool = (
+		player_input.is_jump_just_pressed()
+	)
 
 	support.update(self)
+
+	var use_air_control: bool = (
+		not (
+			support.has_support
+			and support.walkable
+		)
+		and not step_up.is_active()
+	)
 
 	motor.update(
 		self,
 		support,
 		input_direction,
+		use_air_control,
 		delta
 	)
+
+	if (
+		jump_pressed
+		and support.has_support
+		and support.walkable
+	):
+		motor.apply_jump(
+			self,
+			jump_height
+		)
 
 	movement.move(
 		self,
