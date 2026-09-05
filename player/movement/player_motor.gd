@@ -45,25 +45,9 @@ func update(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	input_direction: Vector3,
-	step_riser_normal: Vector3,
 	use_air_control: bool,
 	delta: float
 ) -> void:
-	if not step_riser_normal.is_zero_approx():
-		player.velocity += (
-			Vector3.DOWN
-			* gravity
-			* delta
-		)
-
-		apply_step_horizontal_velocity(
-			player,
-			input_direction,
-			step_riser_normal,
-			delta
-		)
-		return
-
 	if use_air_control:
 		player.velocity += (
 			Vector3.DOWN
@@ -128,47 +112,6 @@ func apply_jump(
 	)
 
 	player.velocity.y = jump_speed
-
-
-func apply_step_horizontal_velocity(
-	player: CharacterBody3D,
-	input_direction: Vector3,
-	riser_normal: Vector3,
-	delta: float
-) -> void:
-	var horizontal_velocity: Vector3 = Vector3(
-		player.velocity.x,
-		0.0,
-		player.velocity.z
-	)
-	var perpendicular_velocity: Vector3 = (
-		riser_normal
-		* horizontal_velocity.dot(riser_normal)
-	)
-	var tangent_velocity: Vector3 = (
-		horizontal_velocity
-		- perpendicular_velocity
-	)
-	var tangent_input: Vector3 = (
-		input_direction.slide(riser_normal)
-	)
-	var target_tangent_velocity: Vector3 = (
-		tangent_input
-		* max_speed
-	)
-
-	tangent_velocity = tangent_velocity.move_toward(
-		target_tangent_velocity,
-		acceleration * delta
-	)
-
-	var new_horizontal_velocity: Vector3 = (
-		perpendicular_velocity
-		+ tangent_velocity
-	)
-
-	player.velocity.x = new_horizontal_velocity.x
-	player.velocity.z = new_horizontal_velocity.z
 
 
 func apply_air_horizontal_velocity(

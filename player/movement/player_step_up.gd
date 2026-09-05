@@ -51,13 +51,6 @@ func is_active() -> bool:
 	return active_plan != null
 
 
-func get_active_riser_normal() -> Vector3:
-	if active_plan == null:
-		return Vector3.ZERO
-
-	return active_plan.riser_normal
-
-
 func try_start_step(
 	player: CharacterBody3D,
 	horizontal_motion: Vector3,
