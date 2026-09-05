@@ -3,12 +3,15 @@ extends RefCounted
 
 
 var max_collision_iterations: int
+var step_up: PlayerStepUp
 
 
 func _init(
-	p_max_collision_iterations: int
+	p_max_collision_iterations: int,
+	p_step_up: PlayerStepUp
 ) -> void:
 	max_collision_iterations = p_max_collision_iterations
+	step_up = p_step_up
 
 
 func move(
@@ -16,6 +19,16 @@ func move(
 	delta: float
 ) -> void:
 	var motion: Vector3 = player.velocity * delta
+	var horizontal_motion: Vector3 = Vector3(
+		motion.x,
+		0.0,
+		motion.z
+	)
+
+	step_up.probe_horizontal_obstacle(
+		player,
+		horizontal_motion
+	)
 
 	for _iteration: int in range(
 		max_collision_iterations
