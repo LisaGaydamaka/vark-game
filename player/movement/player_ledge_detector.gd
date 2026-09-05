@@ -6,6 +6,12 @@ const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 
+const FORWARD_REACH_RADIUS_MULTIPLIER: float = 2.0
+const HAND_REACH_HEIGHT_RATIO: float = 0.25
+const MIN_CATCH_HEIGHT_RATIO: float = 0.55
+const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.32
+const MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER: float = 2.0
+
 
 class LedgeCandidate:
 	var wall_collider_rid: RID = RID()
@@ -35,16 +41,10 @@ class TopHit:
 	var shape_index: int = -1
 
 
-var wall_check_distance: float
-var min_reach_height: float
-var max_reach_height: float
-var max_horizontal_reach: float
+var jump_height: float
+var gravity: float
 var max_wall_tilt_degrees: float
 var max_approach_angle_degrees: float
-var max_fall_speed: float
-var hang_edge_height: float
-var hang_wall_gap: float
-var top_probe_inset: float
 var debug_logging: bool
 var collision_shape: CollisionShape3D
 
@@ -52,48 +52,38 @@ var current_candidate: LedgeCandidate = null
 
 
 func _init(
-	p_wall_check_distance: float,
-	p_min_reach_height: float,
-	p_max_reach_height: float,
-	p_max_horizontal_reach: float,
+	p_jump_height: float,
+	p_gravity: float,
 	p_max_wall_tilt_degrees: float,
 	p_max_approach_angle_degrees: float,
-	p_max_fall_speed: float,
-	p_hang_edge_height: float,
-	p_hang_wall_gap: float,
-	p_top_probe_inset: float,
 	p_debug_logging: bool,
 	p_collision_shape: CollisionShape3D
 ) -> void:
-	wall_check_distance = p_wall_check_distance
-	min_reach_height = p_min_reach_height
-	max_reach_height = p_max_reach_height
-	max_horizontal_reach = p_max_horizontal_reach
+	jump_height = p_jump_height
+	gravity = p_gravity
 	max_wall_tilt_degrees = p_max_wall_tilt_degrees
 	max_approach_angle_degrees = p_max_approach_angle_degrees
-	max_fall_speed = p_max_fall_speed
-	hang_edge_height = p_hang_edge_height
-	hang_wall_gap = p_hang_wall_gap
-	top_probe_inset = p_top_probe_inset
 	debug_logging = p_debug_logging
 	collision_shape = p_collision_shape
 
 	assert(
-		wall_check_distance > 0.0,
-		"PlayerLedgeDetector requires wall_check_distance to be greater than zero."
+		jump_height >= 0.0,
+		"PlayerLedgeDetector requires jump_height to be non-negative."
 	)
 	assert(
-		max_reach_height > min_reach_height,
-		"PlayerLedgeDetector requires max_reach_height to be greater than min_reach_height."
+		gravity > 0.0,
+		"PlayerLedgeDetector requires gravity to be greater than zero."
 	)
 	assert(
-		max_horizontal_reach > 0.0,
-		"PlayerLedgeDetector requires max_horizontal_reach to be greater than zero."
+		max_wall_tilt_degrees >= 0.0,
+		"PlayerLedgeDetector requires max_wall_tilt_degrees to be non-negative."
 	)
 	assert(
-		max_fall_speed >= 0.0,
-		"PlayerLedgeDetector requires max_fall_speed to be non-negative."
+		max_approach_angle_degrees >= 0.0,
+		"PlayerLedgeDetector requires max_approach_angle_degrees to be non-negative."
 	)
+
+	get_capsule_shape()
 
 
 func update(
@@ -112,7 +102,7 @@ func update(
 			and support.walkable
 		)
 		and not step_up_active
-		and player.velocity.y >= -max_fall_speed
+		and player.velocity.y >= -get_max_catch_fall_speed()
 	):
 		next_candidate = find_candidate(
 			player,
@@ -183,7 +173,7 @@ func find_candidate(
 
 	if (
 		horizontal_edge_offset.length()
-		> max_horizontal_reach + PROBE_SAFE_MARGIN
+		> get_max_horizontal_reach() + PROBE_SAFE_MARGIN
 	):
 		return null
 
@@ -192,10 +182,16 @@ func find_candidate(
 		- player.global_position.y
 	)
 
-	if relative_height < min_reach_height - PROBE_SAFE_MARGIN:
+	if (
+		relative_height
+		< get_min_catch_height() - PROBE_SAFE_MARGIN
+	):
 		return null
 
-	if relative_height > max_reach_height + PROBE_SAFE_MARGIN:
+	if (
+		relative_height
+		> get_max_catch_height() + PROBE_SAFE_MARGIN
+	):
 		return null
 
 	var hang_position: Vector3 = get_hang_position(
@@ -243,7 +239,7 @@ func find_wall(
 	var collision: KinematicCollision3D = KinematicCollision3D.new()
 	var blocked: bool = player.test_move(
 		player.global_transform,
-		approach_direction * wall_check_distance,
+		approach_direction * get_forward_probe_distance(),
 		collision,
 		PROBE_SAFE_MARGIN,
 		false,
@@ -314,18 +310,18 @@ func find_top(
 ) -> TopHit:
 	var ray_from: Vector3 = (
 		wall_hit.point
-		- wall_hit.normal * top_probe_inset
+		- wall_hit.normal * get_top_probe_inset()
 	)
 	ray_from.y = (
 		player.global_position.y
-		+ max_reach_height
+		+ get_max_catch_height()
 		+ PROBE_SAFE_MARGIN
 	)
 
 	var ray_to: Vector3 = ray_from
 	ray_to.y = (
 		player.global_position.y
-		+ min_reach_height
+		+ get_min_catch_height()
 		- PROBE_SAFE_MARGIN
 	)
 
@@ -356,28 +352,29 @@ func find_top(
 	var rid_value: Variant = hit.get("rid")
 	var shape_value: Variant = hit.get("shape")
 
-	if position_value is Vector3:
-		var point: Vector3 = position_value
+	if not (position_value is Vector3):
+		return null
 
-		if normal_value is Vector3:
-			var normal: Vector3 = normal_value
+	if not (normal_value is Vector3):
+		return null
 
-			if not support.is_walkable_surface(normal):
-				return null
+	var point: Vector3 = position_value
+	var normal: Vector3 = normal_value
 
-			var top_hit: TopHit = TopHit.new()
-			top_hit.point = point
-			top_hit.normal = normal
+	if not support.is_walkable_surface(normal):
+		return null
 
-			if rid_value is RID:
-				top_hit.collider_rid = rid_value
+	var top_hit: TopHit = TopHit.new()
+	top_hit.point = point
+	top_hit.normal = normal
 
-			if shape_value is int:
-				top_hit.shape_index = shape_value
+	if rid_value is RID:
+		top_hit.collider_rid = rid_value
 
-			return top_hit
+	if shape_value is int:
+		top_hit.shape_index = shape_value
 
-	return null
+	return top_hit
 
 
 func is_wall_surface(
@@ -396,13 +393,12 @@ func get_hang_position(
 ) -> Vector3:
 	var hang_position: Vector3 = (
 		edge_point
-		+ wall_normal
-		* (
-			get_capsule_radius()
-			+ hang_wall_gap
-		)
+		+ wall_normal * get_hang_wall_distance()
 	)
-	hang_position.y = edge_point.y - hang_edge_height
+	hang_position.y = (
+		edge_point.y
+		- get_hang_anchor_height()
+	)
 
 	return hang_position
 
@@ -424,15 +420,99 @@ func is_hang_position_clear(
 	)
 
 
+func get_forward_probe_distance() -> float:
+	return (
+		get_capsule_radius()
+		* FORWARD_REACH_RADIUS_MULTIPLIER
+	)
+
+
+func get_max_horizontal_reach() -> float:
+	return (
+		get_capsule_radius()
+		+ get_forward_probe_distance()
+	)
+
+
+func get_min_catch_height() -> float:
+	return (
+		get_capsule_bottom_offset()
+		+ get_capsule_height() * MIN_CATCH_HEIGHT_RATIO
+	)
+
+
+func get_max_catch_height() -> float:
+	return (
+		get_capsule_top_offset()
+		+ get_hand_reach_height()
+	)
+
+
+func get_hand_reach_height() -> float:
+	return (
+		get_capsule_height()
+		* HAND_REACH_HEIGHT_RATIO
+	)
+
+
+func get_hang_anchor_height() -> float:
+	return get_max_catch_height()
+
+
+func get_hang_wall_distance() -> float:
+	return get_capsule_radius() + PROBE_SAFE_MARGIN
+
+
+func get_top_probe_inset() -> float:
+	return (
+		get_capsule_radius()
+		* TOP_PROBE_INSET_RADIUS_RATIO
+	)
+
+
+func get_max_catch_fall_speed() -> float:
+	var jump_speed: float = sqrt(
+		2.0
+		* gravity
+		* maxf(jump_height, 0.0)
+	)
+
+	return (
+		jump_speed
+		* MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER
+	)
+
+
+func get_capsule_bottom_offset() -> float:
+	return (
+		collision_shape.position.y
+		- get_capsule_height() * 0.5
+	)
+
+
+func get_capsule_top_offset() -> float:
+	return (
+		collision_shape.position.y
+		+ get_capsule_height() * 0.5
+	)
+
+
 func get_capsule_radius() -> float:
+	return get_capsule_shape().radius
+
+
+func get_capsule_height() -> float:
+	return get_capsule_shape().height
+
+
+func get_capsule_shape() -> CapsuleShape3D:
 	var shape: Shape3D = collision_shape.shape
 	assert(
 		shape is CapsuleShape3D,
 		"PlayerLedgeDetector requires the player collision shape to be CapsuleShape3D."
 	)
 
-	var capsule_shape: CapsuleShape3D = shape as CapsuleShape3D
-	return capsule_shape.radius
+	return shape as CapsuleShape3D
 
 
 func update_debug_logging(
@@ -450,7 +530,11 @@ func update_debug_logging(
 			" wall_normal=",
 			current_candidate.wall_normal,
 			" hang_position=",
-			current_candidate.hang_position
+			current_candidate.hang_position,
+			" max_catch_height=",
+			get_max_catch_height(),
+			" max_fall_speed=",
+			get_max_catch_fall_speed()
 		)
 	elif previously_had_candidate and not has_candidate_now:
 		print("Ledge candidate lost")
