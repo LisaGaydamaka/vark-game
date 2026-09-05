@@ -163,6 +163,12 @@ func _physics_process(
 			jump_height
 		)
 
+	ledge_detector.update(
+		self,
+		support,
+		step_up.is_active()
+	)
+
 	movement.move(
 		self,
 		support,
@@ -172,12 +178,6 @@ func _physics_process(
 	)
 
 	support.update(self)
-
-	ledge_detector.update(
-		self,
-		support,
-		step_up.is_active()
-	)
 
 
 func _unhandled_input(
