@@ -237,6 +237,107 @@ func find_candidate(
 	return candidate
 
 
+func find_hang_candidate_at_position(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	reference_candidate: LedgeCandidate,
+	proposed_hang_position: Vector3
+) -> LedgeCandidate:
+	if reference_candidate == null:
+		return null
+
+	var expected_edge_point: Vector3 = (
+		proposed_hang_position
+		- reference_candidate.wall_normal
+		* get_hang_wall_distance()
+	)
+	expected_edge_point.y = (
+		proposed_hang_position.y
+		+ get_hang_anchor_height()
+	)
+
+	var wall_hit: WallHit = find_wall_for_hang(
+		player,
+		reference_candidate,
+		expected_edge_point
+	)
+
+	if wall_hit == null:
+		return null
+
+	var minimum_normal_alignment: float = cos(
+		deg_to_rad(max_wall_tilt_degrees)
+	)
+	var normal_alignment: float = wall_hit.normal.dot(
+		reference_candidate.wall_normal
+	)
+
+	if normal_alignment < minimum_normal_alignment:
+		return null
+
+	var top_hit: TopHit = find_top_for_hang(
+		player,
+		support,
+		wall_hit,
+		expected_edge_point.y
+	)
+
+	if top_hit == null:
+		return null
+
+	var edge_point: Vector3 = Vector3(
+		wall_hit.point.x,
+		top_hit.point.y,
+		wall_hit.point.z
+	)
+	var hang_position: Vector3 = get_hang_position(
+		edge_point,
+		wall_hit.normal
+	)
+
+	if (
+		absf(
+			hang_position.y
+			- proposed_hang_position.y
+		)
+		> get_top_probe_inset() + PROBE_SAFE_MARGIN
+	):
+		return null
+
+	if not is_hang_position_clear(
+		player,
+		hang_position
+	):
+		return null
+
+	var ledge_direction: Vector3 = (
+		Vector3.UP.cross(wall_hit.normal)
+	)
+
+	if (
+		ledge_direction.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return null
+
+	ledge_direction = ledge_direction.normalized()
+
+	var candidate: LedgeCandidate = LedgeCandidate.new()
+	candidate.wall_collider_rid = wall_hit.collider_rid
+	candidate.wall_shape_index = wall_hit.shape_index
+	candidate.top_collider_rid = top_hit.collider_rid
+	candidate.top_shape_index = top_hit.shape_index
+	candidate.edge_point = edge_point
+	candidate.wall_normal = wall_hit.normal
+	candidate.top_point = top_hit.point
+	candidate.top_normal = top_hit.normal
+	candidate.ledge_direction = ledge_direction
+	candidate.hang_position = hang_position
+	candidate.hangable = true
+
+	return candidate
+
+
 func find_wall(
 	player: CharacterBody3D,
 	approach_direction: Vector3
@@ -308,6 +409,96 @@ func find_wall(
 	return best_hit
 
 
+func find_wall_for_hang(
+	player: CharacterBody3D,
+	reference_candidate: LedgeCandidate,
+	expected_edge_point: Vector3
+) -> WallHit:
+	var ray_from: Vector3 = (
+		expected_edge_point
+		+ reference_candidate.wall_normal
+		* (
+			get_hang_wall_distance()
+			+ get_top_probe_inset()
+		)
+	)
+	ray_from.y = (
+		expected_edge_point.y
+		- get_capsule_radius() * 0.5
+	)
+
+	var ray_to: Vector3 = (
+		expected_edge_point
+		- reference_candidate.wall_normal
+		* get_top_probe_inset()
+	)
+	ray_to.y = ray_from.y
+
+	var exclusions: Array[RID] = [player.get_rid()]
+	var query: PhysicsRayQueryParameters3D = (
+		PhysicsRayQueryParameters3D.create(
+			ray_from,
+			ray_to,
+			player.collision_mask,
+			exclusions
+		)
+	)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.hit_back_faces = false
+	query.hit_from_inside = false
+
+	var space_state: PhysicsDirectSpaceState3D = (
+		player.get_world_3d().direct_space_state
+	)
+	var hit: Dictionary = space_state.intersect_ray(query)
+
+	if hit.is_empty():
+		return null
+
+	var position_value: Variant = hit.get("position")
+	var normal_value: Variant = hit.get("normal")
+	var rid_value: Variant = hit.get("rid")
+	var shape_value: Variant = hit.get("shape")
+
+	if not (position_value is Vector3):
+		return null
+
+	if not (normal_value is Vector3):
+		return null
+
+	var collision_normal: Vector3 = normal_value
+
+	if not is_wall_surface(collision_normal):
+		return null
+
+	var horizontal_normal: Vector3 = Vector3(
+		collision_normal.x,
+		0.0,
+		collision_normal.z
+	)
+
+	if (
+		horizontal_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return null
+
+	horizontal_normal = horizontal_normal.normalized()
+
+	var wall_hit: WallHit = WallHit.new()
+	wall_hit.point = position_value
+	wall_hit.normal = horizontal_normal
+
+	if rid_value is RID:
+		wall_hit.collider_rid = rid_value
+
+	if shape_value is int:
+		wall_hit.shape_index = shape_value
+
+	return wall_hit
+
+
 func find_top(
 	player: CharacterBody3D,
 	support: PlayerSupport,
@@ -330,6 +521,49 @@ func find_top(
 		- PROBE_SAFE_MARGIN
 	)
 
+	return raycast_top(
+		player,
+		support,
+		ray_from,
+		ray_to
+	)
+
+
+func find_top_for_hang(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	wall_hit: WallHit,
+	expected_edge_height: float
+) -> TopHit:
+	var probe_center: Vector3 = (
+		wall_hit.point
+		- wall_hit.normal * get_top_probe_inset()
+	)
+	probe_center.y = expected_edge_height
+
+	var ray_from: Vector3 = (
+		probe_center
+		+ Vector3.UP * get_capsule_radius()
+	)
+	var ray_to: Vector3 = (
+		probe_center
+		- Vector3.UP * get_capsule_radius()
+	)
+
+	return raycast_top(
+		player,
+		support,
+		ray_from,
+		ray_to
+	)
+
+
+func raycast_top(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	ray_from: Vector3,
+	ray_to: Vector3
+) -> TopHit:
 	var exclusions: Array[RID] = [player.get_rid()]
 	var query: PhysicsRayQueryParameters3D = (
 		PhysicsRayQueryParameters3D.create(
