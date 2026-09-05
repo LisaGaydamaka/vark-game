@@ -4,7 +4,6 @@ extends RefCounted
 
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
-const STEP_CLEARANCE: float = 0.01
 
 
 var max_step_height: float
@@ -100,7 +99,7 @@ func test_up_clearance(
 	player: CharacterBody3D
 ) -> bool:
 	var up_motion: Vector3 = Vector3.UP * (
-		max_step_height + STEP_CLEARANCE
+		max_step_height + PROBE_SAFE_MARGIN
 	)
 
 	debug("UP TEST: motion=" + str(up_motion))
