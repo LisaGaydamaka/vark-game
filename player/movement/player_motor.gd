@@ -324,6 +324,7 @@ func apply_kinetic_friction(
 		get_normal_load_acceleration(
 			support
 		)
+	)
 
 	if normal_load_acceleration <= 0.0:
 		return
