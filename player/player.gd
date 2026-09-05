@@ -131,7 +131,6 @@ func _ready() -> void:
 	ledge_hang = PlayerLedgeHang.new(
 		max_speed,
 		acceleration,
-		air_max_speed,
 		jump_height,
 		gravity,
 		ledge_detector
@@ -209,10 +208,20 @@ func update_normal_movement(
 			jump_height
 		)
 
+	var ledge_detection_allowed: bool = (
+		not support.has_support
+		and not step_up.is_active()
+	)
+	var view_forward: Vector3 = (
+		-head.global_transform.basis.z
+	)
+
 	ledge_detector.update(
 		self,
 		support,
-		step_up.is_active()
+		ledge_detection_allowed,
+		input_direction,
+		view_forward
 	)
 
 	var candidate: PlayerLedgeDetector.LedgeCandidate = (
@@ -270,6 +279,15 @@ func finish_ledge_catch_if_ready() -> void:
 			return
 
 	if ledge_catch.has_failed():
+		var failed_candidate: PlayerLedgeDetector.LedgeCandidate = (
+			ledge_catch.get_failed_candidate()
+		)
+
+		if failed_candidate != null:
+			ledge_detector.suppress_candidate(
+				failed_candidate
+			)
+
 		var failure_description: String = (
 			ledge_catch.take_failure_description()
 		)
@@ -309,18 +327,21 @@ func update_ledge_hang(
 	)
 
 	if action == PlayerLedgeHang.Action.DROP:
-		ledge_hang.cancel()
-		exit_ledge_view()
-		locomotion_state = LocomotionState.NORMAL
-		velocity = Vector3.DOWN * gravity * delta
-		movement.move(
-			self,
-			support,
+		release_ledge_to_air(
 			input_direction,
-			false,
 			delta
 		)
-		support.update(self)
+		return
+
+	if action == PlayerLedgeHang.Action.LOST_LEDGE:
+		release_ledge_to_air(
+			input_direction,
+			delta
+		)
+
+		if ledge_debug_logging:
+			print("Ledge hang lost valid geometry")
+
 		return
 
 	if action == PlayerLedgeHang.Action.MANTLE_REQUEST:
@@ -332,10 +353,20 @@ func update_ledge_hang(
 		return
 
 	if action == PlayerLedgeHang.Action.DIRECTIONAL_JUMP:
+		var released_candidate: PlayerLedgeDetector.LedgeCandidate = (
+			ledge_hang.get_candidate()
+		)
+
+		if released_candidate != null:
+			ledge_detector.suppress_candidate(
+				released_candidate
+			)
+
 		ledge_hang.apply_directional_jump(
 			self,
 			input_direction
 		)
+		ledge_hang.cancel()
 		exit_ledge_view()
 		locomotion_state = LocomotionState.NORMAL
 		movement.move(
@@ -346,6 +377,33 @@ func update_ledge_hang(
 			delta
 		)
 		support.update(self)
+
+
+func release_ledge_to_air(
+	input_direction: Vector3,
+	delta: float
+) -> void:
+	var released_candidate: PlayerLedgeDetector.LedgeCandidate = (
+		ledge_hang.get_candidate()
+	)
+
+	if released_candidate != null:
+		ledge_detector.suppress_candidate(
+			released_candidate
+		)
+
+	ledge_hang.cancel()
+	exit_ledge_view()
+	locomotion_state = LocomotionState.NORMAL
+	velocity = Vector3.DOWN * gravity * delta
+	movement.move(
+		self,
+		support,
+		input_direction,
+		false,
+		delta
+	)
+	support.update(self)
 
 
 func enter_ledge_view(

@@ -12,6 +12,10 @@ const HANG_EDGE_ABOVE_EYE_RADIUS_RATIO: float = 0.25
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.32
 const MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER: float = 2.0
 const SHIMMY_MAX_WALL_TURN_DEGREES: float = 15.0
+const SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO: float = 0.05
+const SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO: float = 0.1
+const LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO: float = 0.75
+const SUPPRESSION_VERTICAL_MARGIN_RADIUS_RATIO: float = 1.0
 
 
 class LedgeCandidate:
@@ -53,6 +57,7 @@ var debug_logging: bool
 var collision_shape: CollisionShape3D
 
 var current_candidate: LedgeCandidate = null
+var suppressed_candidate: LedgeCandidate = null
 
 
 func _init(
@@ -105,24 +110,26 @@ func _init(
 func update(
 	player: CharacterBody3D,
 	support: PlayerSupport,
-	step_up_active: bool
+	detection_allowed: bool,
+	intent_direction: Vector3,
+	view_forward: Vector3
 ) -> void:
 	var previously_had_candidate: bool = (
 		current_candidate != null
 	)
 	var next_candidate: LedgeCandidate = null
 
+	update_suppression(player)
+
 	if (
-		not (
-			support.has_support
-			and support.walkable
-		)
-		and not step_up_active
+		detection_allowed
 		and player.velocity.y >= -get_max_catch_fall_speed()
 	):
 		next_candidate = find_candidate(
 			player,
-			support
+			support,
+			intent_direction,
+			view_forward
 		)
 
 	current_candidate = next_candidate
@@ -141,9 +148,68 @@ func clear_candidate() -> void:
 	current_candidate = null
 
 
+func suppress_candidate(
+	candidate: LedgeCandidate
+) -> void:
+	suppressed_candidate = candidate
+	current_candidate = null
+
+
+func update_suppression(
+	player: CharacterBody3D
+) -> void:
+	if suppressed_candidate == null:
+		return
+
+	var horizontal_velocity: Vector3 = Vector3(
+		player.velocity.x,
+		0.0,
+		player.velocity.z
+	)
+	var toward_wall: Vector3 = -suppressed_candidate.wall_normal
+	var approach_speed: float = horizontal_velocity.dot(
+		toward_wall
+	)
+
+	if approach_speed <= 0.0:
+		suppressed_candidate = null
+		return
+
+	var edge_offset: Vector3 = (
+		suppressed_candidate.edge_point
+		- player.global_position
+	)
+	var horizontal_edge_offset: Vector3 = Vector3(
+		edge_offset.x,
+		0.0,
+		edge_offset.z
+	)
+	var vertical_margin: float = (
+		get_capsule_radius()
+		* SUPPRESSION_VERTICAL_MARGIN_RADIUS_RATIO
+	)
+
+	if (
+		horizontal_edge_offset.length()
+		> get_max_horizontal_reach() + get_capsule_radius()
+	):
+		suppressed_candidate = null
+		return
+
+	if (
+		edge_offset.y
+		< get_min_edge_height() - vertical_margin
+		or edge_offset.y
+		> get_max_catch_height() + vertical_margin
+	):
+		suppressed_candidate = null
+
+
 func find_candidate(
 	player: CharacterBody3D,
-	support: PlayerSupport
+	support: PlayerSupport,
+	intent_direction: Vector3,
+	view_forward: Vector3
 ) -> LedgeCandidate:
 	var horizontal_velocity: Vector3 = Vector3(
 		player.velocity.x,
@@ -168,6 +234,16 @@ func find_candidate(
 	if wall_hit == null:
 		return null
 
+	if is_suppressed_wall(wall_hit):
+		return null
+
+	if not has_catch_intent(
+		wall_hit.normal,
+		intent_direction,
+		view_forward
+	):
+		return null
+
 	var top_hit: TopHit = find_top(
 		player,
 		support,
@@ -182,6 +258,22 @@ func find_candidate(
 		top_hit.point.y,
 		wall_hit.point.z
 	)
+	var near_edge_wall: WallHit = find_wall_near_edge(
+		player,
+		wall_hit.normal,
+		edge_point
+	)
+
+	if (
+		near_edge_wall == null
+		or not is_wall_continuous(
+			near_edge_wall,
+			wall_hit.normal,
+			edge_point
+		)
+	):
+		return null
+
 	var edge_offset: Vector3 = (
 		edge_point - player.global_position
 	)
@@ -214,14 +306,6 @@ func find_candidate(
 	):
 		return null
 
-	var hang_position: Vector3 = get_hang_position(
-		edge_point,
-		wall_hit.normal
-	)
-	var hangable: bool = is_hang_position_clear(
-		player,
-		hang_position
-	)
 	var ledge_direction: Vector3 = (
 		Vector3.UP.cross(wall_hit.normal)
 	)
@@ -233,6 +317,25 @@ func find_candidate(
 		return null
 
 	ledge_direction = ledge_direction.normalized()
+
+	if not has_usable_ledge_span(
+		player,
+		support,
+		edge_point,
+		wall_hit.normal,
+		top_hit.point.y,
+		ledge_direction
+	):
+		return null
+
+	var hang_position: Vector3 = get_hang_position(
+		edge_point,
+		wall_hit.normal
+	)
+	var hangable: bool = is_hang_position_clear(
+		player,
+		hang_position
+	)
 
 	var candidate: LedgeCandidate = LedgeCandidate.new()
 	candidate.wall_collider_rid = wall_hit.collider_rid
@@ -254,14 +357,25 @@ func find_hang_candidate_at_position(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	reference_candidate: LedgeCandidate,
+	segment_wall_normal: Vector3,
 	proposed_hang_position: Vector3
 ) -> LedgeCandidate:
 	if reference_candidate == null:
 		return null
 
+	var fixed_wall_normal: Vector3 = segment_wall_normal
+
+	if (
+		fixed_wall_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return null
+
+	fixed_wall_normal = fixed_wall_normal.normalized()
+
 	var expected_edge_point: Vector3 = (
 		proposed_hang_position
-		- reference_candidate.wall_normal
+		- fixed_wall_normal
 		* get_hang_wall_distance()
 	)
 	expected_edge_point.y = (
@@ -269,23 +383,20 @@ func find_hang_candidate_at_position(
 		+ get_hang_anchor_height()
 	)
 
-	var wall_hit: WallHit = find_wall_for_hang(
+	var wall_hit: WallHit = find_wall_near_edge(
 		player,
-		reference_candidate,
+		fixed_wall_normal,
 		expected_edge_point
 	)
 
-	if wall_hit == null:
-		return null
-
-	var minimum_normal_alignment: float = cos(
-		deg_to_rad(SHIMMY_MAX_WALL_TURN_DEGREES)
-	)
-	var normal_alignment: float = wall_hit.normal.dot(
-		reference_candidate.wall_normal
-	)
-
-	if normal_alignment < minimum_normal_alignment:
+	if (
+		wall_hit == null
+		or not is_wall_continuous(
+			wall_hit,
+			fixed_wall_normal,
+			expected_edge_point
+		)
+	):
 		return null
 
 	var top_hit: TopHit = find_top_for_hang(
@@ -313,7 +424,19 @@ func find_hang_candidate_at_position(
 			hang_position.y
 			- proposed_hang_position.y
 		)
-		> get_top_probe_inset() + PROBE_SAFE_MARGIN
+		> get_shimmy_level_tolerance()
+	):
+		return null
+
+	var horizontal_correction: Vector3 = Vector3(
+		hang_position.x - proposed_hang_position.x,
+		0.0,
+		hang_position.z - proposed_hang_position.z
+	)
+
+	if (
+		horizontal_correction.length()
+		> get_shimmy_attachment_correction_limit()
 	):
 		return null
 
@@ -334,6 +457,16 @@ func find_hang_candidate_at_position(
 		return null
 
 	ledge_direction = ledge_direction.normalized()
+
+	if not has_usable_ledge_span(
+		player,
+		support,
+		edge_point,
+		fixed_wall_normal,
+		top_hit.point.y,
+		Vector3.UP.cross(fixed_wall_normal).normalized()
+	):
+		return null
 
 	var candidate: LedgeCandidate = LedgeCandidate.new()
 	candidate.wall_collider_rid = wall_hit.collider_rid
@@ -422,14 +555,14 @@ func find_wall(
 	return best_hit
 
 
-func find_wall_for_hang(
+func find_wall_near_edge(
 	player: CharacterBody3D,
-	reference_candidate: LedgeCandidate,
+	expected_wall_normal: Vector3,
 	expected_edge_point: Vector3
 ) -> WallHit:
 	var ray_from: Vector3 = (
 		expected_edge_point
-		+ reference_candidate.wall_normal
+		+ expected_wall_normal
 		* (
 			get_hang_wall_distance()
 			+ get_top_probe_inset()
@@ -442,7 +575,7 @@ func find_wall_for_hang(
 
 	var ray_to: Vector3 = (
 		expected_edge_point
-		- reference_candidate.wall_normal
+		- expected_wall_normal
 		* get_top_probe_inset()
 	)
 	ray_to.y = ray_from.y
@@ -629,6 +762,155 @@ func raycast_top(
 	return top_hit
 
 
+func has_catch_intent(
+	wall_normal: Vector3,
+	intent_direction: Vector3,
+	view_forward: Vector3
+) -> bool:
+	var toward_wall: Vector3 = -wall_normal
+	var minimum_alignment: float = cos(
+		deg_to_rad(max_approach_angle_degrees)
+	)
+	var horizontal_intent: Vector3 = Vector3(
+		intent_direction.x,
+		0.0,
+		intent_direction.z
+	)
+
+	if (
+		horizontal_intent.length_squared()
+		> MOTION_EPSILON_SQUARED
+	):
+		horizontal_intent = horizontal_intent.normalized()
+
+		if (
+			horizontal_intent.dot(toward_wall)
+			>= minimum_alignment
+		):
+			return true
+
+	var horizontal_view: Vector3 = Vector3(
+		view_forward.x,
+		0.0,
+		view_forward.z
+	)
+
+	if (
+		horizontal_view.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	horizontal_view = horizontal_view.normalized()
+	return (
+		horizontal_view.dot(toward_wall)
+		>= minimum_alignment
+	)
+
+
+func has_usable_ledge_span(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	edge_point: Vector3,
+	wall_normal: Vector3,
+	edge_height: float,
+	ledge_direction: Vector3
+) -> bool:
+	var half_width: float = get_ledge_span_half_width()
+
+	for direction_sign: float in [-1.0, 1.0]:
+		var sample_edge_point: Vector3 = (
+			edge_point
+			+ ledge_direction
+			* half_width
+			* direction_sign
+		)
+		var wall_hit: WallHit = find_wall_near_edge(
+			player,
+			wall_normal,
+			sample_edge_point
+		)
+
+		if (
+			wall_hit == null
+			or not is_wall_continuous(
+				wall_hit,
+				wall_normal,
+				sample_edge_point
+			)
+		):
+			return false
+
+		var top_hit: TopHit = find_top_for_hang(
+			player,
+			support,
+			wall_hit,
+			edge_height
+		)
+
+		if top_hit == null:
+			return false
+
+		if (
+			absf(top_hit.point.y - edge_height)
+			> get_shimmy_level_tolerance()
+		):
+			return false
+
+	return true
+
+
+func is_wall_continuous(
+	wall_hit: WallHit,
+	expected_wall_normal: Vector3,
+	expected_edge_point: Vector3
+) -> bool:
+	var minimum_alignment: float = cos(
+		deg_to_rad(SHIMMY_MAX_WALL_TURN_DEGREES)
+	)
+
+	if (
+		wall_hit.normal.dot(expected_wall_normal)
+		< minimum_alignment
+	):
+		return false
+
+	var plane_distance: float = absf(
+		(
+			wall_hit.point
+			- expected_edge_point
+		).dot(expected_wall_normal)
+	)
+
+	return (
+		plane_distance
+		<= get_top_probe_inset() + PROBE_SAFE_MARGIN
+	)
+
+
+func is_suppressed_wall(
+	wall_hit: WallHit
+) -> bool:
+	if suppressed_candidate == null:
+		return false
+
+	if (
+		wall_hit.collider_rid
+		!= suppressed_candidate.wall_collider_rid
+	):
+		return false
+
+	if (
+		suppressed_candidate.wall_shape_index >= 0
+		and wall_hit.shape_index >= 0
+		and wall_hit.shape_index
+		!= suppressed_candidate.wall_shape_index
+	):
+		return false
+
+	return true
+
+
 func is_wall_surface(
 	normal: Vector3
 ) -> bool:
@@ -723,6 +1005,29 @@ func get_top_probe_inset() -> float:
 	return (
 		get_capsule_radius()
 		* TOP_PROBE_INSET_RADIUS_RATIO
+	)
+
+
+func get_shimmy_level_tolerance() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		get_capsule_radius()
+		* SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO
+	)
+
+
+func get_shimmy_attachment_correction_limit() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		get_capsule_radius()
+		* SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO
+	)
+
+
+func get_ledge_span_half_width() -> float:
+	return (
+		get_capsule_radius()
+		* LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO
 	)
 
 

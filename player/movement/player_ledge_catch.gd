@@ -7,7 +7,8 @@ const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const CATCH_ACCELERATION_GRAVITY_MULTIPLIER: float = 2.0
 const CATCH_COMPLETION_RADIUS_RATIO: float = 0.02
-const EXPECTED_WALL_CONTACT_MIN_ALIGNMENT: float = 0.95
+const EXPECTED_WALL_CONTACT_MIN_ALIGNMENT: float = 0.9
+const EXPECTED_WALL_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
 
 
 enum State {
@@ -21,6 +22,7 @@ enum State {
 enum FailureReason {
 	NONE,
 	UNEXPECTED_COLLISION,
+	BLOCKED_PATH,
 }
 
 
@@ -30,6 +32,7 @@ var collision_shape: CollisionShape3D
 
 var active_candidate: PlayerLedgeDetector.LedgeCandidate = null
 var completed_candidate: PlayerLedgeDetector.LedgeCandidate = null
+var failed_candidate: PlayerLedgeDetector.LedgeCandidate = null
 var catch_velocity: Vector3 = Vector3.ZERO
 var state: int = State.INACTIVE
 var failure_reason: int = FailureReason.NONE
@@ -73,22 +76,17 @@ func try_start(
 		- player.global_position
 	)
 
-	if (
-		motion_to_hang.length_squared()
-		> MOTION_EPSILON_SQUARED
-		and player.test_move(
-			player.global_transform,
-			motion_to_hang,
-			null,
-			PROBE_SAFE_MARGIN,
-			false,
-			PROBE_MAX_COLLISIONS
-		)
+	if not is_catch_path_valid(
+		player,
+		candidate,
+		player.global_transform,
+		motion_to_hang
 	):
 		return false
 
 	active_candidate = candidate
 	completed_candidate = null
+	failed_candidate = null
 	catch_velocity = player.velocity
 	state = State.ACTIVE
 	reset_failure()
@@ -115,6 +113,20 @@ func update(
 		complete(player)
 		return
 
+	if not is_catch_path_valid(
+		player,
+		active_candidate,
+		player.global_transform,
+		to_target
+	):
+		player.velocity = catch_velocity
+		fail_catch(
+			FailureReason.BLOCKED_PATH,
+			RID(),
+			Vector3.ZERO
+		)
+		return
+
 	var catch_acceleration: float = (
 		gravity
 		* CATCH_ACCELERATION_GRAVITY_MULTIPLIER
@@ -128,9 +140,12 @@ func update(
 		get_max_catch_speed(),
 		braking_speed
 	)
-	var target_velocity: Vector3 = (
+	var target_direction: Vector3 = (
 		to_target
 		/ distance_to_target
+	)
+	var target_velocity: Vector3 = (
+		target_direction
 		* target_speed
 	)
 
@@ -138,6 +153,16 @@ func update(
 		target_velocity,
 		catch_acceleration * delta
 	)
+
+	var away_speed: float = catch_velocity.dot(
+		target_direction
+	)
+
+	if away_speed < 0.0:
+		catch_velocity -= (
+			target_direction
+			* away_speed
+		)
 
 	var motion: Vector3 = catch_velocity * delta
 
@@ -178,22 +203,29 @@ func move_catch_motion(
 			remaining_motion.length_squared()
 			<= MOTION_EPSILON_SQUARED
 		):
-			break
+			return true
 
 		var collision: KinematicCollision3D = (
 			player.move_and_collide(
-				remaining_motion
+				remaining_motion,
+				false,
+				PROBE_SAFE_MARGIN,
+				false,
+				PROBE_MAX_COLLISIONS
 			)
 		)
 
 		if collision == null:
-			break
+			return true
 
-		var collision_count: int = (
-			collision.get_collision_count()
+		var previous_motion_length_squared: float = (
+			remaining_motion.length_squared()
 		)
 		var next_motion: Vector3 = (
 			collision.get_remainder()
+		)
+		var collision_count: int = (
+			collision.get_collision_count()
 		)
 
 		for collision_index: int in range(
@@ -207,13 +239,15 @@ func move_catch_motion(
 
 			if not is_expected_wall_contact(
 				collision,
-				collision_index
+				collision_index,
+				active_candidate
 			):
 				constrain_velocity_against_normal(
 					collision_normal
 				)
 				player.velocity = catch_velocity
 				fail_catch(
+					FailureReason.UNEXPECTED_COLLISION,
 					collision.get_collider_rid(
 						collision_index
 					),
@@ -228,23 +262,147 @@ func move_catch_motion(
 				collision_normal
 			)
 
+		var travel_length_squared: float = (
+			collision.get_travel().length_squared()
+		)
+
+		if (
+			travel_length_squared <= MOTION_EPSILON_SQUARED
+			and next_motion.length_squared()
+			>= previous_motion_length_squared
+			- MOTION_EPSILON_SQUARED
+		):
+			player.velocity = catch_velocity
+			fail_catch(
+				FailureReason.BLOCKED_PATH,
+				RID(),
+				Vector3.ZERO
+			)
+			return false
+
 		remaining_motion = next_motion
+
+	if (
+		remaining_motion.length_squared()
+		> MOTION_EPSILON_SQUARED
+	):
+		player.velocity = catch_velocity
+		fail_catch(
+			FailureReason.BLOCKED_PATH,
+			RID(),
+			Vector3.ZERO
+		)
+		return false
 
 	return true
 
 
+func is_catch_path_valid(
+	player: CharacterBody3D,
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	from_transform: Transform3D,
+	motion: Vector3
+) -> bool:
+	var simulated_transform: Transform3D = from_transform
+	var remaining_motion: Vector3 = motion
+
+	for _iteration: int in range(
+		PROBE_MAX_COLLISIONS
+	):
+		if (
+			remaining_motion.length_squared()
+			<= MOTION_EPSILON_SQUARED
+		):
+			return true
+
+		var collision: KinematicCollision3D = (
+			KinematicCollision3D.new()
+		)
+		var blocked: bool = player.test_move(
+			simulated_transform,
+			remaining_motion,
+			collision,
+			PROBE_SAFE_MARGIN,
+			false,
+			PROBE_MAX_COLLISIONS
+		)
+
+		if not blocked:
+			return true
+
+		var previous_motion_length_squared: float = (
+			remaining_motion.length_squared()
+		)
+		var next_motion: Vector3 = (
+			collision.get_remainder()
+		)
+		var collision_count: int = (
+			collision.get_collision_count()
+		)
+
+		for collision_index: int in range(
+			collision_count
+		):
+			if not is_expected_wall_contact(
+				collision,
+				collision_index,
+				candidate
+			):
+				return false
+
+			next_motion = next_motion.slide(
+				collision.get_normal(
+					collision_index
+				)
+			)
+
+		var travel: Vector3 = collision.get_travel()
+		simulated_transform.origin += travel
+
+		if (
+			travel.length_squared()
+			<= MOTION_EPSILON_SQUARED
+			and next_motion.length_squared()
+			>= previous_motion_length_squared
+			- MOTION_EPSILON_SQUARED
+		):
+			return false
+
+		remaining_motion = next_motion
+
+	return (
+		remaining_motion.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	)
+
+
 func is_expected_wall_contact(
 	collision: KinematicCollision3D,
-	collision_index: int
+	collision_index: int,
+	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
-	if active_candidate == null:
+	if candidate == null:
 		return false
 
 	if (
 		collision.get_collider_rid(
 			collision_index
 		)
-		!= active_candidate.wall_collider_rid
+		!= candidate.wall_collider_rid
+	):
+		return false
+
+	var collider_shape_index: int = (
+		collision.get_collider_shape_index(
+			collision_index
+		)
+	)
+
+	if (
+		candidate.wall_shape_index >= 0
+		and collider_shape_index >= 0
+		and collider_shape_index
+		!= candidate.wall_shape_index
 	):
 		return false
 
@@ -255,13 +413,31 @@ func is_expected_wall_contact(
 	)
 	var normal_alignment: float = (
 		collision_normal.dot(
-			active_candidate.wall_normal
+			candidate.wall_normal
 		)
 	)
 
-	return (
+	if (
 		normal_alignment
-		>= EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
+		< EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
+	):
+		return false
+
+	var collision_point: Vector3 = (
+		collision.get_position(
+			collision_index
+		)
+	)
+	var plane_distance: float = absf(
+		(
+			collision_point
+			- candidate.edge_point
+		).dot(candidate.wall_normal)
+	)
+
+	return (
+		plane_distance
+		<= get_expected_wall_plane_tolerance()
 	)
 
 
@@ -294,6 +470,10 @@ func has_failed() -> bool:
 	return state == State.FAILED
 
 
+func get_failed_candidate() -> PlayerLedgeDetector.LedgeCandidate:
+	return failed_candidate
+
+
 func take_completed_candidate() -> PlayerLedgeDetector.LedgeCandidate:
 	var candidate: PlayerLedgeDetector.LedgeCandidate = (
 		completed_candidate
@@ -313,8 +493,11 @@ func take_failure_description() -> String:
 			+ " normal="
 			+ str(failure_normal)
 		)
+	elif failure_reason == FailureReason.BLOCKED_PATH:
+		description = "catch path could not make progress"
 
 	state = State.INACTIVE
+	failed_candidate = null
 	reset_failure()
 	return description
 
@@ -322,6 +505,7 @@ func take_failure_description() -> String:
 func cancel() -> void:
 	active_candidate = null
 	completed_candidate = null
+	failed_candidate = null
 	catch_velocity = Vector3.ZERO
 	state = State.INACTIVE
 	reset_failure()
@@ -332,20 +516,23 @@ func complete(
 ) -> void:
 	completed_candidate = active_candidate
 	active_candidate = null
+	failed_candidate = null
 	catch_velocity = Vector3.ZERO
 	state = State.COMPLETED
 	player.velocity = Vector3.ZERO
 
 
 func fail_catch(
+	reason: int,
 	collider_rid: RID,
 	collision_normal: Vector3
 ) -> void:
+	failed_candidate = active_candidate
 	active_candidate = null
 	completed_candidate = null
 	catch_velocity = Vector3.ZERO
 	state = State.FAILED
-	failure_reason = FailureReason.UNEXPECTED_COLLISION
+	failure_reason = reason
 	failure_collider_rid = collider_rid
 	failure_normal = collision_normal
 
@@ -374,6 +561,14 @@ func get_completion_distance() -> float:
 		PROBE_SAFE_MARGIN,
 		get_capsule_radius()
 		* CATCH_COMPLETION_RADIUS_RATIO
+	)
+
+
+func get_expected_wall_plane_tolerance() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		get_capsule_radius()
+		* EXPECTED_WALL_PLANE_TOLERANCE_RADIUS_RATIO
 	)
 
 
