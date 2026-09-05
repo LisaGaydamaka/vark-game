@@ -111,20 +111,18 @@ func _physics_process(
 	if jump_accepted:
 		step_up.cancel_traversal()
 
-	var step_up_active: bool = step_up.is_active()
 	var use_air_control: bool = (
 		not (
 			support.has_support
 			and support.walkable
 		)
-		and not step_up_active
+		and not step_up.is_active()
 	)
 
 	motor.update(
 		self,
 		support,
 		input_direction,
-		step_up_active,
 		use_air_control,
 		delta
 	)
