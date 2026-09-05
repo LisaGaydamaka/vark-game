@@ -212,21 +212,33 @@ func find_candidate(
 	intent_direction: Vector3,
 	view_forward: Vector3
 ) -> LedgeCandidate:
-	var horizontal_velocity: Vector3 = Vector3(
-		player.velocity.x,
+	var horizontal_intent: Vector3 = Vector3(
+		intent_direction.x,
 		0.0,
-		player.velocity.z
+		intent_direction.z
 	)
+	var approach_direction: Vector3 = Vector3.ZERO
 
 	if (
-		horizontal_velocity.length_squared()
-		<= MOTION_EPSILON_SQUARED
+		horizontal_intent.length_squared()
+		> MOTION_EPSILON_SQUARED
 	):
-		return null
+		approach_direction = horizontal_intent.normalized()
+	else:
+		var horizontal_velocity: Vector3 = Vector3(
+			player.velocity.x,
+			0.0,
+			player.velocity.z
+		)
 
-	var approach_direction: Vector3 = (
-		horizontal_velocity.normalized()
-	)
+		if (
+			horizontal_velocity.length_squared()
+			<= MOTION_EPSILON_SQUARED
+		):
+			return null
+
+		approach_direction = horizontal_velocity.normalized()
+
 	var wall_hit: WallHit = find_wall(
 		player,
 		approach_direction
