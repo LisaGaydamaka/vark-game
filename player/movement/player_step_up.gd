@@ -46,8 +46,6 @@ func _init(
 		"PlayerStepUp requires max_step_up_speed to be greater than zero."
 	)
 
-	get_capsule_radius()
-
 
 func is_active() -> bool:
 	return active_plan != null
