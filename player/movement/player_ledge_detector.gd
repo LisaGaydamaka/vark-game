@@ -1,0 +1,456 @@
+class_name PlayerLedgeDetector
+extends RefCounted
+
+
+const PROBE_SAFE_MARGIN: float = 0.001
+const PROBE_MAX_COLLISIONS: int = 8
+const MOTION_EPSILON_SQUARED: float = 0.000001
+
+
+class LedgeCandidate:
+	var wall_collider_rid: RID = RID()
+	var wall_shape_index: int = -1
+	var top_collider_rid: RID = RID()
+	var top_shape_index: int = -1
+
+	var edge_point: Vector3 = Vector3.ZERO
+	var wall_normal: Vector3 = Vector3.ZERO
+	var top_point: Vector3 = Vector3.ZERO
+	var top_normal: Vector3 = Vector3.UP
+	var ledge_direction: Vector3 = Vector3.ZERO
+	var hang_position: Vector3 = Vector3.ZERO
+
+
+class WallHit:
+	var point: Vector3 = Vector3.ZERO
+	var normal: Vector3 = Vector3.ZERO
+	var collider_rid: RID = RID()
+	var shape_index: int = -1
+
+
+class TopHit:
+	var point: Vector3 = Vector3.ZERO
+	var normal: Vector3 = Vector3.UP
+	var collider_rid: RID = RID()
+	var shape_index: int = -1
+
+
+var wall_check_distance: float
+var min_reach_height: float
+var max_reach_height: float
+var max_horizontal_reach: float
+var max_wall_tilt_degrees: float
+var max_approach_angle_degrees: float
+var max_fall_speed: float
+var hang_edge_height: float
+var hang_wall_gap: float
+var top_probe_inset: float
+var debug_logging: bool
+var collision_shape: CollisionShape3D
+
+var current_candidate: LedgeCandidate = null
+
+
+func _init(
+	p_wall_check_distance: float,
+	p_min_reach_height: float,
+	p_max_reach_height: float,
+	p_max_horizontal_reach: float,
+	p_max_wall_tilt_degrees: float,
+	p_max_approach_angle_degrees: float,
+	p_max_fall_speed: float,
+	p_hang_edge_height: float,
+	p_hang_wall_gap: float,
+	p_top_probe_inset: float,
+	p_debug_logging: bool,
+	p_collision_shape: CollisionShape3D
+) -> void:
+	wall_check_distance = p_wall_check_distance
+	min_reach_height = p_min_reach_height
+	max_reach_height = p_max_reach_height
+	max_horizontal_reach = p_max_horizontal_reach
+	max_wall_tilt_degrees = p_max_wall_tilt_degrees
+	max_approach_angle_degrees = p_max_approach_angle_degrees
+	max_fall_speed = p_max_fall_speed
+	hang_edge_height = p_hang_edge_height
+	hang_wall_gap = p_hang_wall_gap
+	top_probe_inset = p_top_probe_inset
+	debug_logging = p_debug_logging
+	collision_shape = p_collision_shape
+
+	assert(
+		wall_check_distance > 0.0,
+		"PlayerLedgeDetector requires wall_check_distance to be greater than zero."
+	)
+	assert(
+		max_reach_height > min_reach_height,
+		"PlayerLedgeDetector requires max_reach_height to be greater than min_reach_height."
+	)
+	assert(
+		max_horizontal_reach > 0.0,
+		"PlayerLedgeDetector requires max_horizontal_reach to be greater than zero."
+	)
+	assert(
+		max_fall_speed >= 0.0,
+		"PlayerLedgeDetector requires max_fall_speed to be non-negative."
+	)
+
+
+func update(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	step_up_active: bool
+) -> void:
+	var previously_had_candidate: bool = (
+		current_candidate != null
+	)
+	var next_candidate: LedgeCandidate = null
+
+	if (
+		not (
+			support.has_support
+			and support.walkable
+		)
+		and not step_up_active
+		and player.velocity.y >= -max_fall_speed
+	):
+		next_candidate = find_candidate(
+			player,
+			support
+		)
+
+	current_candidate = next_candidate
+	update_debug_logging(previously_had_candidate)
+
+
+func has_candidate() -> bool:
+	return current_candidate != null
+
+
+func get_candidate() -> LedgeCandidate:
+	return current_candidate
+
+
+func find_candidate(
+	player: CharacterBody3D,
+	support: PlayerSupport
+) -> LedgeCandidate:
+	var horizontal_velocity: Vector3 = Vector3(
+		player.velocity.x,
+		0.0,
+		player.velocity.z
+	)
+
+	if (
+		horizontal_velocity.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return null
+
+	var approach_direction: Vector3 = (
+		horizontal_velocity.normalized()
+	)
+	var wall_hit: WallHit = find_wall(
+		player,
+		approach_direction
+	)
+
+	if wall_hit == null:
+		return null
+
+	var top_hit: TopHit = find_top(
+		player,
+		support,
+		wall_hit
+	)
+
+	if top_hit == null:
+		return null
+
+	var edge_point: Vector3 = Vector3(
+		wall_hit.point.x,
+		top_hit.point.y,
+		wall_hit.point.z
+	)
+	var edge_offset: Vector3 = (
+		edge_point - player.global_position
+	)
+	var horizontal_edge_offset: Vector3 = Vector3(
+		edge_offset.x,
+		0.0,
+		edge_offset.z
+	)
+
+	if (
+		horizontal_edge_offset.length()
+		> max_horizontal_reach + PROBE_SAFE_MARGIN
+	):
+		return null
+
+	var relative_height: float = (
+		top_hit.point.y
+		- player.global_position.y
+	)
+
+	if relative_height < min_reach_height - PROBE_SAFE_MARGIN:
+		return null
+
+	if relative_height > max_reach_height + PROBE_SAFE_MARGIN:
+		return null
+
+	var hang_position: Vector3 = get_hang_position(
+		edge_point,
+		wall_hit.normal
+	)
+
+	if not is_hang_position_clear(
+		player,
+		hang_position
+	):
+		return null
+
+	var ledge_direction: Vector3 = (
+		Vector3.UP.cross(wall_hit.normal)
+	)
+
+	if (
+		ledge_direction.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return null
+
+	ledge_direction = ledge_direction.normalized()
+
+	var candidate: LedgeCandidate = LedgeCandidate.new()
+	candidate.wall_collider_rid = wall_hit.collider_rid
+	candidate.wall_shape_index = wall_hit.shape_index
+	candidate.top_collider_rid = top_hit.collider_rid
+	candidate.top_shape_index = top_hit.shape_index
+	candidate.edge_point = edge_point
+	candidate.wall_normal = wall_hit.normal
+	candidate.top_point = top_hit.point
+	candidate.top_normal = top_hit.normal
+	candidate.ledge_direction = ledge_direction
+	candidate.hang_position = hang_position
+
+	return candidate
+
+
+func find_wall(
+	player: CharacterBody3D,
+	approach_direction: Vector3
+) -> WallHit:
+	var collision: KinematicCollision3D = KinematicCollision3D.new()
+	var blocked: bool = player.test_move(
+		player.global_transform,
+		approach_direction * wall_check_distance,
+		collision,
+		PROBE_SAFE_MARGIN,
+		false,
+		PROBE_MAX_COLLISIONS
+	)
+
+	if not blocked:
+		return null
+
+	var minimum_push_strength: float = cos(
+		deg_to_rad(max_approach_angle_degrees)
+	)
+	var best_push_strength: float = minimum_push_strength
+	var best_hit: WallHit = null
+	var collision_count: int = collision.get_collision_count()
+
+	for collision_index: int in range(collision_count):
+		var collision_normal: Vector3 = collision.get_normal(
+			collision_index
+		)
+
+		if not is_wall_surface(collision_normal):
+			continue
+
+		var horizontal_normal: Vector3 = Vector3(
+			collision_normal.x,
+			0.0,
+			collision_normal.z
+		)
+
+		if (
+			horizontal_normal.length_squared()
+			<= MOTION_EPSILON_SQUARED
+		):
+			continue
+
+		horizontal_normal = horizontal_normal.normalized()
+
+		var push_strength: float = -approach_direction.dot(
+			horizontal_normal
+		)
+
+		if push_strength < best_push_strength:
+			continue
+
+		best_push_strength = push_strength
+		best_hit = WallHit.new()
+		best_hit.point = collision.get_position(
+			collision_index
+		)
+		best_hit.normal = horizontal_normal
+		best_hit.collider_rid = collision.get_collider_rid(
+			collision_index
+		)
+		best_hit.shape_index = (
+			collision.get_collider_shape_index(
+				collision_index
+			)
+		)
+
+	return best_hit
+
+
+func find_top(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	wall_hit: WallHit
+) -> TopHit:
+	var ray_from: Vector3 = (
+		wall_hit.point
+		- wall_hit.normal * top_probe_inset
+	)
+	ray_from.y = (
+		player.global_position.y
+		+ max_reach_height
+		+ PROBE_SAFE_MARGIN
+	)
+
+	var ray_to: Vector3 = ray_from
+	ray_to.y = (
+		player.global_position.y
+		+ min_reach_height
+		- PROBE_SAFE_MARGIN
+	)
+
+	var exclusions: Array[RID] = [player.get_rid()]
+	var query: PhysicsRayQueryParameters3D = (
+		PhysicsRayQueryParameters3D.create(
+			ray_from,
+			ray_to,
+			player.collision_mask,
+			exclusions
+		)
+	)
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.hit_back_faces = false
+	query.hit_from_inside = false
+
+	var space_state: PhysicsDirectSpaceState3D = (
+		player.get_world_3d().direct_space_state
+	)
+	var hit: Dictionary = space_state.intersect_ray(query)
+
+	if hit.is_empty():
+		return null
+
+	var position_value: Variant = hit.get("position")
+	var normal_value: Variant = hit.get("normal")
+	var rid_value: Variant = hit.get("rid")
+	var shape_value: Variant = hit.get("shape")
+
+	if position_value is Vector3:
+		var point: Vector3 = position_value
+
+		if normal_value is Vector3:
+			var normal: Vector3 = normal_value
+
+			if not support.is_walkable_surface(normal):
+				return null
+
+			var top_hit: TopHit = TopHit.new()
+			top_hit.point = point
+			top_hit.normal = normal
+
+			if rid_value is RID:
+				top_hit.collider_rid = rid_value
+
+			if shape_value is int:
+				top_hit.shape_index = shape_value
+
+			return top_hit
+
+	return null
+
+
+func is_wall_surface(
+	normal: Vector3
+) -> bool:
+	var maximum_normal_y: float = sin(
+		deg_to_rad(max_wall_tilt_degrees)
+	)
+
+	return absf(normal.y) <= maximum_normal_y
+
+
+func get_hang_position(
+	edge_point: Vector3,
+	wall_normal: Vector3
+) -> Vector3:
+	var hang_position: Vector3 = (
+		edge_point
+		+ wall_normal
+		* (
+			get_capsule_radius()
+			+ hang_wall_gap
+		)
+	)
+	hang_position.y = edge_point.y - hang_edge_height
+
+	return hang_position
+
+
+func is_hang_position_clear(
+	player: CharacterBody3D,
+	hang_position: Vector3
+) -> bool:
+	var hang_transform: Transform3D = player.global_transform
+	hang_transform.origin = hang_position
+
+	return not player.test_move(
+		hang_transform,
+		Vector3.ZERO,
+		null,
+		PROBE_SAFE_MARGIN,
+		true,
+		PROBE_MAX_COLLISIONS
+	)
+
+
+func get_capsule_radius() -> float:
+	var shape: Shape3D = collision_shape.shape
+	assert(
+		shape is CapsuleShape3D,
+		"PlayerLedgeDetector requires the player collision shape to be CapsuleShape3D."
+	)
+
+	var capsule_shape: CapsuleShape3D = shape as CapsuleShape3D
+	return capsule_shape.radius
+
+
+func update_debug_logging(
+	previously_had_candidate: bool
+) -> void:
+	if not debug_logging:
+		return
+
+	var has_candidate_now: bool = current_candidate != null
+
+	if has_candidate_now and not previously_had_candidate:
+		print(
+			"Ledge candidate acquired: edge=",
+			current_candidate.edge_point,
+			" wall_normal=",
+			current_candidate.wall_normal,
+			" hang_position=",
+			current_candidate.hang_position
+		)
+	elif previously_had_candidate and not has_candidate_now:
+		print("Ledge candidate lost")

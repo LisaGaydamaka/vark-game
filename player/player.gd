@@ -42,6 +42,20 @@ extends CharacterBody3D
 @export var max_step_up_speed: float = 2.0
 
 
+@export_category("Ledge Detection")
+@export var ledge_wall_check_distance: float = 0.45
+@export var ledge_min_reach_height: float = 0.85
+@export var ledge_max_reach_height: float = 1.75
+@export var ledge_max_horizontal_reach: float = 0.75
+@export var ledge_max_wall_tilt_degrees: float = 15.0
+@export var ledge_max_approach_angle_degrees: float = 65.0
+@export var ledge_max_fall_speed: float = 8.0
+@export var ledge_hang_edge_height: float = 1.3
+@export var ledge_hang_wall_gap: float = 0.03
+@export var ledge_top_probe_inset: float = 0.08
+@export var ledge_debug_logging: bool = true
+
+
 @export_category("Look")
 @export var mouse_sensitivity: float = 0.007
 
@@ -51,6 +65,7 @@ var support: PlayerSupport
 var motor: PlayerMotor
 var step_up: PlayerStepUp
 var movement: PlayerMovement
+var ledge_detector: PlayerLedgeDetector
 
 
 func _ready() -> void:
@@ -85,6 +100,21 @@ func _ready() -> void:
 	movement = PlayerMovement.new(
 		max_collision_iterations,
 		step_up
+	)
+
+	ledge_detector = PlayerLedgeDetector.new(
+		ledge_wall_check_distance,
+		ledge_min_reach_height,
+		ledge_max_reach_height,
+		ledge_max_horizontal_reach,
+		ledge_max_wall_tilt_degrees,
+		ledge_max_approach_angle_degrees,
+		ledge_max_fall_speed,
+		ledge_hang_edge_height,
+		ledge_hang_wall_gap,
+		ledge_top_probe_inset,
+		ledge_debug_logging,
+		collision_shape
 	)
 
 
@@ -142,6 +172,12 @@ func _physics_process(
 	)
 
 	support.update(self)
+
+	ledge_detector.update(
+		self,
+		support,
+		step_up.is_active()
+	)
 
 
 func _unhandled_input(
