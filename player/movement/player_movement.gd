@@ -21,6 +21,25 @@ func move(
 	delta: float
 ) -> void:
 	var motion: Vector3 = player.velocity * delta
+	var horizontal_motion: Vector3 = Vector3(
+		motion.x,
+		0.0,
+		motion.z
+	)
+
+	# Step detection is a horizontal pre-sweep only. The player's actual
+	# fallback movement remains the normal combined velocity * delta sweep.
+	# This keeps floor/gravity collisions from stealing the step candidate
+	# without introducing axis-order movement artifacts.
+	if step_up.try_step(
+		player,
+		support,
+		horizontal_motion,
+		input_direction
+	):
+		if step_up.debug_enabled:
+			print("STEP MOVE: pre-sweep geometric step committed")
+		return
 
 	for iteration: int in range(
 		max_collision_iterations
@@ -39,29 +58,9 @@ func move(
 		var remainder: Vector3 = collision.get_remainder()
 
 		if step_up.debug_enabled:
-			print("STEP MOVE: collision iteration ", iteration)
+			print("STEP MOVE: normal solver collision iteration ", iteration)
 			print("STEP MOVE: normal ", normal)
 			print("STEP MOVE: remainder ", remainder)
-
-		var horizontal_remainder: Vector3 = Vector3(
-			remainder.x,
-			0.0,
-			remainder.z
-		)
-
-		if step_up.try_step(
-			player,
-			support,
-			horizontal_remainder,
-			input_direction,
-			collision
-		):
-			if step_up.debug_enabled:
-				print("STEP MOVE: geometric step committed")
-			return
-
-		if step_up.debug_enabled:
-			print("STEP MOVE: step rejected, using normal slide")
 
 		var normal_velocity: float = (
 			player.velocity.dot(normal)
