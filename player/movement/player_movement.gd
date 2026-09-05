@@ -22,7 +22,7 @@ func move(
 ) -> void:
 	var motion: Vector3 = player.velocity * delta
 
-	for _iteration: int in range(
+	for iteration: int in range(
 		max_collision_iterations
 	):
 		if motion.length_squared() <= 0.000001:
@@ -38,9 +38,11 @@ func move(
 		var normal: Vector3 = collision.get_normal()
 		var remainder: Vector3 = collision.get_remainder()
 
-		# The first normal move has already brought the capsule to the
-		# blocking contact. Try to consume the remaining horizontal
-		# movement through an alternate UP -> FORWARD -> DOWN path.
+		if step_up.debug_enabled:
+			print("STEP MOVE: collision iteration ", iteration)
+			print("STEP MOVE: normal ", normal)
+			print("STEP MOVE: remainder ", remainder)
+
 		var horizontal_remainder: Vector3 = Vector3(
 			remainder.x,
 			0.0,
@@ -54,10 +56,12 @@ func move(
 			input_direction,
 			collision
 		):
-			# Support will be refreshed immediately after movement by
-			# Player.gd. Do not also run the normal slide response for the
-			# collision we just stepped over.
+			if step_up.debug_enabled:
+				print("STEP MOVE: geometric step committed")
 			return
+
+		if step_up.debug_enabled:
+			print("STEP MOVE: step rejected, using normal slide")
 
 		var normal_velocity: float = (
 			player.velocity.dot(normal)
