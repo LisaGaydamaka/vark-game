@@ -70,10 +70,14 @@ func is_active() -> bool:
 func try_start_step(
 	player: CharacterBody3D,
 	horizontal_motion: Vector3,
+	input_direction: Vector3,
 	support: PlayerSupport
 ) -> bool:
 	if is_active():
 		return true
+
+	if input_direction.is_zero_approx():
+		return false
 
 	if horizontal_motion.length_squared() <= 0.000001:
 		return false
@@ -90,6 +94,13 @@ func try_start_step(
 	if plan == null:
 		return false
 
+	var input_push: float = -input_direction.dot(
+		plan.riser_normal
+	)
+
+	if input_push <= 0.0:
+		return false
+
 	active_plan = plan
 
 	var rise: float = (
@@ -103,7 +114,7 @@ func try_start_step(
 
 func update_traversal(
 	player: CharacterBody3D,
-	horizontal_motion: Vector3,
+	input_direction: Vector3,
 	support: PlayerSupport,
 	delta: float
 ) -> void:
@@ -126,17 +137,16 @@ func update_traversal(
 
 		return
 
-	if horizontal_motion.length_squared() <= 0.000001:
-		cancel_traversal("no horizontal movement")
+	if input_direction.is_zero_approx():
+		cancel_traversal("input released")
 		return
 
-	var horizontal_direction: Vector3 = horizontal_motion.normalized()
-	var push_strength: float = -horizontal_direction.dot(
+	var input_push: float = -input_direction.dot(
 		active_plan.riser_normal
 	)
 
-	if push_strength <= 0.0:
-		cancel_traversal("moving away from riser")
+	if input_push <= 0.0:
+		cancel_traversal("input no longer into riser")
 		return
 
 	var target_y: float = (
