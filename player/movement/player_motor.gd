@@ -154,9 +154,12 @@ func get_motor_acceleration(
 	var movement_direction: Vector3 = (
 		input_direction
 	)
-
 	var input_projection_scale: float = 1.0
-	var current_speed: float = 0.0
+	var controlled_velocity: Vector3 = Vector3(
+		player.velocity.x,
+		0.0,
+		player.velocity.z
+	)
 
 	if support.has_support:
 		var projected_input: Vector3 = (
@@ -181,38 +184,24 @@ func get_motor_acceleration(
 			projected_input_length
 		)
 
-		var surface_velocity: Vector3 = (
+		controlled_velocity = (
 			player.velocity.slide(
 				support.support_normal
 			)
 		)
 
-		current_speed = (
-			surface_velocity.dot(
-				movement_direction
-			)
-		)
-
-	else:
-		current_speed = (
-			player.velocity.dot(
-				input_direction
-			)
-		)
-
-	var speed_error: float = (
-		max_speed
-		- current_speed
+	var target_velocity: Vector3 = (
+		movement_direction
+		* max_speed
+	)
+	var velocity_error: Vector3 = (
+		target_velocity
+		- controlled_velocity
 	)
 
-	var speed_control_acceleration: float = (
+	return velocity_error * (
 		acceleration
-		* speed_error
 		/ max_speed
-	)
-
-	return movement_direction * (
-		speed_control_acceleration
 		* input_projection_scale
 	)
 
