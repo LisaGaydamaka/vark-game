@@ -30,7 +30,6 @@ extends CharacterBody3D
 @export var max_riser_tilt_degrees: float = 5.0
 @export var step_up_acceleration: float = 40.0
 @export var max_step_up_speed: float = 2.0
-@export var step_debug_enabled: bool = true
 
 
 @export_category("Look")
@@ -67,8 +66,7 @@ func _ready() -> void:
 		max_riser_tilt_degrees,
 		step_up_acceleration,
 		max_step_up_speed,
-		collision_shape,
-		step_debug_enabled
+		collision_shape
 	)
 
 	movement = PlayerMovement.new(

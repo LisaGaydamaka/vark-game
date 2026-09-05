@@ -27,6 +27,14 @@ func move(
 		motion.z
 	)
 
+	if not step_up.is_active():
+		step_up.try_start_step(
+			player,
+			horizontal_motion,
+			input_direction,
+			support
+		)
+
 	if step_up.is_active():
 		step_up.update_traversal(
 			player,
@@ -34,19 +42,6 @@ func move(
 			support,
 			delta
 		)
-	else:
-		if step_up.try_start_step(
-			player,
-			horizontal_motion,
-			input_direction,
-			support
-		):
-			step_up.update_traversal(
-				player,
-				input_direction,
-				support,
-				delta
-			)
 
 	motion = player.velocity * delta
 
