@@ -5,35 +5,37 @@ extends RefCounted
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const SHIMMY_SPEED_RATIO: float = 0.5
 const SHIMMY_INTENT_DEADZONE: float = 0.2
-const MANTLE_INTENT_THRESHOLD: float = 0.35
-const HANG_JUMP_AWAY_SPEED_RATIO: float = 0.5
 
 
 enum Action {
 	NONE,
 	DROP,
-	JUMP,
-	MANTLE,
+	DIRECTIONAL_JUMP,
+	MANTLE_REQUEST,
 }
 
 
 var max_speed: float
+var acceleration: float
 var air_max_speed: float
 var jump_height: float
 var gravity: float
 var detector: PlayerLedgeDetector
 
 var active_candidate: PlayerLedgeDetector.LedgeCandidate = null
+var shimmy_velocity: float = 0.0
 
 
 func _init(
 	p_max_speed: float,
+	p_acceleration: float,
 	p_air_max_speed: float,
 	p_jump_height: float,
 	p_gravity: float,
 	p_detector: PlayerLedgeDetector
 ) -> void:
 	max_speed = p_max_speed
+	acceleration = p_acceleration
 	air_max_speed = p_air_max_speed
 	jump_height = p_jump_height
 	gravity = p_gravity
@@ -42,6 +44,10 @@ func _init(
 	assert(
 		max_speed >= 0.0,
 		"PlayerLedgeHang requires max_speed to be non-negative."
+	)
+	assert(
+		acceleration >= 0.0,
+		"PlayerLedgeHang requires acceleration to be non-negative."
 	)
 	assert(
 		air_max_speed >= 0.0,
@@ -61,6 +67,7 @@ func start(
 	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> void:
 	active_candidate = candidate
+	shimmy_velocity = 0.0
 
 
 func update(
@@ -80,16 +87,13 @@ func update(
 		return Action.DROP
 
 	if jump_pressed:
-		var toward_wall_strength: float = (
-			input_direction.dot(
-				-active_candidate.wall_normal
-			)
-		)
+		if (
+			input_direction.length_squared()
+			> MOTION_EPSILON_SQUARED
+		):
+			return Action.DIRECTIONAL_JUMP
 
-		if toward_wall_strength >= MANTLE_INTENT_THRESHOLD:
-			return Action.MANTLE
-
-		return Action.JUMP
+		return Action.MANTLE_REQUEST
 
 	update_shimmy(
 		player,
@@ -112,24 +116,28 @@ func update_shimmy(
 	var ledge_intent: float = input_direction.dot(
 		active_candidate.ledge_direction
 	)
+	var target_speed: float = 0.0
+	var maximum_shimmy_speed: float = get_max_shimmy_speed()
 
-	if absf(ledge_intent) <= SHIMMY_INTENT_DEADZONE:
+	if absf(ledge_intent) > SHIMMY_INTENT_DEADZONE:
+		if ledge_intent > 0.0:
+			target_speed = maximum_shimmy_speed
+		else:
+			target_speed = -maximum_shimmy_speed
+
+	update_shimmy_velocity(
+		target_speed,
+		delta
+	)
+
+	if absf(shimmy_velocity) <= 0.000001:
+		shimmy_velocity = 0.0
 		return
 
-	var direction_sign: float = 1.0
-
-	if ledge_intent < 0.0:
-		direction_sign = -1.0
-
-	var shimmy_speed: float = (
-		max_speed
-		* SHIMMY_SPEED_RATIO
-	)
 	var proposed_position: Vector3 = (
 		player.global_position
 		+ active_candidate.ledge_direction
-		* direction_sign
-		* shimmy_speed
+		* shimmy_velocity
 		* delta
 	)
 	var next_candidate: PlayerLedgeDetector.LedgeCandidate = (
@@ -142,6 +150,7 @@ func update_shimmy(
 	)
 
 	if next_candidate == null:
+		shimmy_velocity = 0.0
 		return
 
 	var motion: Vector3 = (
@@ -158,44 +167,80 @@ func update_shimmy(
 	)
 
 	if collision != null:
+		shimmy_velocity = 0.0
 		return
 
 	active_candidate = next_candidate
 
 
-func apply_jump_away(
-	player: CharacterBody3D
+func update_shimmy_velocity(
+	target_speed: float,
+	delta: float
+) -> void:
+	if max_speed <= 0.000001:
+		shimmy_velocity = 0.0
+		return
+
+	var velocity_error: float = (
+		target_speed
+		- shimmy_velocity
+	)
+	var response_rate: float = (
+		acceleration
+		/ max_speed
+	)
+	var velocity_change: float = (
+		velocity_error
+		* response_rate
+		* delta
+	)
+
+	if absf(velocity_change) > absf(velocity_error):
+		velocity_change = velocity_error
+
+	shimmy_velocity += velocity_change
+
+
+func apply_directional_jump(
+	player: CharacterBody3D,
+	input_direction: Vector3
 ) -> void:
 	if active_candidate == null:
 		return
 
-	var jump_speed: float = sqrt(
+	var horizontal_input: Vector3 = Vector3(
+		input_direction.x,
+		0.0,
+		input_direction.z
+	)
+	var input_strength: float = minf(
+		horizontal_input.length(),
+		1.0
+	)
+	var horizontal_velocity: Vector3 = Vector3.ZERO
+
+	if input_strength > 0.000001:
+		horizontal_velocity = (
+			horizontal_input.normalized()
+			* air_max_speed
+			* input_strength
+		)
+
+	player.velocity = horizontal_velocity
+	player.velocity.y = get_jump_speed()
+	cancel()
+
+
+func get_max_shimmy_speed() -> float:
+	return max_speed * SHIMMY_SPEED_RATIO
+
+
+func get_jump_speed() -> float:
+	return sqrt(
 		2.0
 		* gravity
 		* maxf(jump_height, 0.0)
 	)
-	var away_speed: float = minf(
-		air_max_speed,
-		jump_speed
-		* HANG_JUMP_AWAY_SPEED_RATIO
-	)
-	var vertical_speed_squared: float = maxf(
-		0.0,
-		jump_speed * jump_speed
-		- away_speed * away_speed
-	)
-	var vertical_speed: float = sqrt(
-		vertical_speed_squared
-	)
-
-	player.velocity = (
-		active_candidate.wall_normal
-		* away_speed
-		+ Vector3.UP
-		* vertical_speed
-	)
-
-	cancel()
 
 
 func is_active() -> bool:
@@ -208,3 +253,4 @@ func get_candidate() -> PlayerLedgeDetector.LedgeCandidate:
 
 func cancel() -> void:
 	active_candidate = null
+	shimmy_velocity = 0.0

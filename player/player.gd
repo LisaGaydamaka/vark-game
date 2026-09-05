@@ -73,8 +73,6 @@ var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
 
 var locomotion_state: int = LocomotionState.NORMAL
-var ledge_view_center_yaw: float = 0.0
-var ledge_view_yaw_offset: float = 0.0
 
 
 func _ready() -> void:
@@ -115,6 +113,7 @@ func _ready() -> void:
 		jump_height,
 		gravity,
 		max_step_height,
+		head.position.y,
 		ledge_max_wall_tilt_degrees,
 		ledge_max_approach_angle_degrees,
 		ledge_debug_logging,
@@ -129,6 +128,7 @@ func _ready() -> void:
 
 	ledge_hang = PlayerLedgeHang.new(
 		max_speed,
+		acceleration,
 		air_max_speed,
 		jump_height,
 		gravity,
@@ -281,7 +281,7 @@ func update_ledge_hang(
 ) -> void:
 	var input_direction: Vector3 = (
 		player_input.get_movement_direction(
-			global_transform
+			head.global_transform
 		)
 	)
 	var action: int = ledge_hang.update(
@@ -308,21 +308,19 @@ func update_ledge_hang(
 		support.update(self)
 		return
 
-	if (
-		action == PlayerLedgeHang.Action.JUMP
-		or action == PlayerLedgeHang.Action.MANTLE
-	):
-		if (
-			action == PlayerLedgeHang.Action.MANTLE
-			and ledge_debug_logging
-		):
+	if action == PlayerLedgeHang.Action.MANTLE_REQUEST:
+		if ledge_debug_logging:
 			print(
-				"Mantle intent detected; ",
-				"mantle traversal is Step 3, ",
-				"so this falls back to hang jump"
+				"Mantle requested; ",
+				"mantle traversal is not implemented yet"
 			)
+		return
 
-		ledge_hang.apply_jump_away(self)
+	if action == PlayerLedgeHang.Action.DIRECTIONAL_JUMP:
+		ledge_hang.apply_directional_jump(
+			self,
+			input_direction
+		)
 		exit_ledge_view()
 		locomotion_state = LocomotionState.NORMAL
 		movement.move(
@@ -359,17 +357,14 @@ func enter_ledge_view(
 		toward_wall.length_squared()
 		<= LOOK_DIRECTION_EPSILON_SQUARED
 	):
-		ledge_view_center_yaw = rotation.y
-		ledge_view_yaw_offset = 0.0
-		head.rotation.y = 0.0
 		return
 
 	toward_wall = toward_wall.normalized()
-	ledge_view_center_yaw = atan2(
+
+	var body_yaw: float = atan2(
 		-toward_wall.x,
 		-toward_wall.z
 	)
-
 	var view_yaw: float = atan2(
 		-view_forward.x,
 		-view_forward.z
@@ -377,26 +372,27 @@ func enter_ledge_view(
 	var yaw_limit: float = deg_to_rad(
 		HANG_LOOK_YAW_LIMIT_DEGREES
 	)
-	ledge_view_yaw_offset = clampf(
+	var head_yaw: float = clampf(
 		wrapf(
-			view_yaw - ledge_view_center_yaw,
+			view_yaw - body_yaw,
 			-PI,
 			PI
 		),
 		-yaw_limit,
 		yaw_limit
 	)
-	rotation.y = (
-		ledge_view_center_yaw
-		+ ledge_view_yaw_offset
-	)
-	head.rotation.y = 0.0
+
+	rotation.y = body_yaw
+	head.rotation.y = head_yaw
 
 
 func exit_ledge_view() -> void:
+	rotation.y = wrapf(
+		rotation.y + head.rotation.y,
+		-PI,
+		PI
+	)
 	head.rotation.y = 0.0
-	ledge_view_center_yaw = rotation.y
-	ledge_view_yaw_offset = 0.0
 
 
 func is_ledge_view_active() -> bool:
@@ -412,14 +408,10 @@ func apply_ledge_yaw_motion(
 	var yaw_limit: float = deg_to_rad(
 		HANG_LOOK_YAW_LIMIT_DEGREES
 	)
-	ledge_view_yaw_offset = clampf(
-		ledge_view_yaw_offset + yaw_motion,
+	head.rotation.y = clampf(
+		head.rotation.y + yaw_motion,
 		-yaw_limit,
 		yaw_limit
-	)
-	rotation.y = (
-		ledge_view_center_yaw
-		+ ledge_view_yaw_offset
 	)
 
 

@@ -8,8 +8,10 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 
 const FORWARD_REACH_RADIUS_MULTIPLIER: float = 2.0
 const HAND_REACH_HEIGHT_RATIO: float = 0.25
+const HANG_EDGE_ABOVE_EYE_RADIUS_RATIO: float = 0.25
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.32
 const MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER: float = 2.0
+const SHIMMY_MAX_WALL_TURN_DEGREES: float = 15.0
 
 
 class LedgeCandidate:
@@ -44,6 +46,7 @@ class TopHit:
 var jump_height: float
 var gravity: float
 var max_step_height: float
+var eye_height: float
 var max_wall_tilt_degrees: float
 var max_approach_angle_degrees: float
 var debug_logging: bool
@@ -56,6 +59,7 @@ func _init(
 	p_jump_height: float,
 	p_gravity: float,
 	p_max_step_height: float,
+	p_eye_height: float,
 	p_max_wall_tilt_degrees: float,
 	p_max_approach_angle_degrees: float,
 	p_debug_logging: bool,
@@ -64,6 +68,7 @@ func _init(
 	jump_height = p_jump_height
 	gravity = p_gravity
 	max_step_height = p_max_step_height
+	eye_height = p_eye_height
 	max_wall_tilt_degrees = p_max_wall_tilt_degrees
 	max_approach_angle_degrees = p_max_approach_angle_degrees
 	debug_logging = p_debug_logging
@@ -80,6 +85,10 @@ func _init(
 	assert(
 		max_step_height >= 0.0,
 		"PlayerLedgeDetector requires max_step_height to be non-negative."
+	)
+	assert(
+		eye_height >= 0.0,
+		"PlayerLedgeDetector requires eye_height to be non-negative."
 	)
 	assert(
 		max_wall_tilt_degrees >= 0.0,
@@ -266,7 +275,7 @@ func find_hang_candidate_at_position(
 		return null
 
 	var minimum_normal_alignment: float = cos(
-		deg_to_rad(max_wall_tilt_degrees)
+		deg_to_rad(SHIMMY_MAX_WALL_TURN_DEGREES)
 	)
 	var normal_alignment: float = wall_hit.normal.dot(
 		reference_candidate.wall_normal
@@ -695,7 +704,11 @@ func get_hand_reach_height() -> float:
 
 
 func get_hang_anchor_height() -> float:
-	return get_max_catch_height()
+	return (
+		eye_height
+		+ get_capsule_radius()
+		* HANG_EDGE_ABOVE_EYE_RADIUS_RATIO
+	)
 
 
 func get_hang_wall_distance() -> float:
@@ -775,7 +788,9 @@ func update_debug_logging(
 			" min_edge_height=",
 			get_min_edge_height(),
 			" max_catch_height=",
-			get_max_catch_height()
+			get_max_catch_height(),
+			" hang_anchor_height=",
+			get_hang_anchor_height()
 		)
 	elif previously_had_candidate and not has_candidate_now:
 		print("Ledge candidate lost")
