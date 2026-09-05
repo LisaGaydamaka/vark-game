@@ -17,6 +17,7 @@ func _init(
 func move(
 	player: CharacterBody3D,
 	support: PlayerSupport,
+	input_direction: Vector3,
 	delta: float
 ) -> void:
 	var motion: Vector3 = player.velocity * delta
@@ -29,7 +30,7 @@ func move(
 	if step_up.is_active():
 		step_up.update_traversal(
 			player,
-			horizontal_motion,
+			input_direction,
 			support,
 			delta
 		)
@@ -37,11 +38,12 @@ func move(
 		if step_up.try_start_step(
 			player,
 			horizontal_motion,
+			input_direction,
 			support
 		):
 			step_up.update_traversal(
 				player,
-				horizontal_motion,
+				input_direction,
 				support,
 				delta
 			)
