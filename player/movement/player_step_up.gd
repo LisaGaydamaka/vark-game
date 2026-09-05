@@ -40,6 +40,7 @@ func probe_horizontal_obstacle(
 	if horizontal_motion.length_squared() <= 0.000001:
 		return
 
+	var horizontal_direction: Vector3 = horizontal_motion.normalized()
 	var collision: KinematicCollision3D = KinematicCollision3D.new()
 	var blocked: bool = player.test_move(
 		player.global_transform,
@@ -57,7 +58,8 @@ func probe_horizontal_obstacle(
 	debug("motion: " + str(horizontal_motion))
 
 	var collision_count: int = collision.get_collision_count()
-	var has_riser: bool = false
+	var candidate_riser_normal: Vector3 = Vector3.ZERO
+	var candidate_push_strength: float = 0.0
 	debug("collision count: " + str(collision_count))
 
 	for collision_index: int in range(collision_count):
@@ -71,9 +73,16 @@ func probe_horizontal_obstacle(
 			collision_normal,
 			support
 		)
+		var push_strength: float = 0.0
 
 		if classification == "RISER":
-			has_riser = true
+			push_strength = -horizontal_direction.dot(
+				collision_normal
+			)
+
+			if push_strength > candidate_push_strength:
+				candidate_push_strength = push_strength
+				candidate_riser_normal = collision_normal
 
 		debug(
 			"collision "
@@ -84,23 +93,31 @@ func probe_horizontal_obstacle(
 			+ str(collision_normal)
 			+ " classification="
 			+ classification
+			+ " push="
+			+ str(push_strength)
 		)
 
-	if not has_riser:
+	if candidate_push_strength <= 0.0:
 		return
 
 	if not support.has_support:
 		return
 
-	test_up_clearance(player)
+	if not test_up_clearance(player):
+		return
+
+	test_across_clearance(
+		player,
+		horizontal_direction,
+		candidate_riser_normal,
+		candidate_push_strength
+	)
 
 
 func test_up_clearance(
 	player: CharacterBody3D
 ) -> bool:
-	var up_motion: Vector3 = Vector3.UP * (
-		max_step_height + PROBE_SAFE_MARGIN
-	)
+	var up_motion: Vector3 = get_up_motion()
 
 	debug("UP TEST: motion=" + str(up_motion))
 
@@ -119,6 +136,53 @@ func test_up_clearance(
 
 	debug("UP CLEAR")
 	return true
+
+
+func test_across_clearance(
+	player: CharacterBody3D,
+	horizontal_direction: Vector3,
+	riser_normal: Vector3,
+	push_strength: float
+) -> bool:
+	var raised_transform: Transform3D = (
+		player.global_transform.translated(
+			get_up_motion()
+		)
+	)
+	var capsule_radius: float = get_capsule_radius()
+	var across_distance: float = (
+		capsule_radius + PROBE_SAFE_MARGIN
+	) / push_strength
+	var across_motion: Vector3 = (
+		horizontal_direction * across_distance
+	)
+
+	debug("ACROSS TEST: riser normal=" + str(riser_normal))
+	debug("ACROSS TEST: push=" + str(push_strength))
+	debug("ACROSS TEST: distance=" + str(across_distance))
+	debug("ACROSS TEST: motion=" + str(across_motion))
+
+	var blocked: bool = player.test_move(
+		raised_transform,
+		across_motion,
+		null,
+		PROBE_SAFE_MARGIN,
+		false,
+		1
+	)
+
+	if blocked:
+		debug("ACROSS BLOCKED")
+		return false
+
+	debug("ACROSS CLEAR")
+	return true
+
+
+func get_up_motion() -> Vector3:
+	return Vector3.UP * (
+		max_step_height + PROBE_SAFE_MARGIN
+	)
 
 
 func classify_surface(
