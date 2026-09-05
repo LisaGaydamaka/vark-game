@@ -16,7 +16,7 @@ extends CharacterBody3D
 
 @export_category("Air")
 @export var air_max_speed: float = 2.5
-@export var air_acceleration: float = 3.0
+@export var air_acceleration: float = 8.0
 @export var air_deceleration: float = 6.0
 
 
@@ -43,7 +43,7 @@ extends CharacterBody3D
 
 
 @export_category("Look")
-@export var mouse_sensitivity: float = 0.002
+@export var mouse_sensitivity: float = 0.007
 
 
 var player_input: PlayerInput
