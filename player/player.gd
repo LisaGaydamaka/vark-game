@@ -354,15 +354,6 @@ func update_ledge_hang(
 		return
 
 	if action == PlayerLedgeHang.Action.DIRECTIONAL_JUMP:
-		var released_candidate: PlayerLedgeDetector.LedgeCandidate = (
-			ledge_hang.get_candidate()
-		)
-
-		if released_candidate != null:
-			ledge_detector.suppress_candidate(
-				released_candidate
-			)
-
 		ledge_hang.apply_directional_jump(
 			self,
 			input_direction
