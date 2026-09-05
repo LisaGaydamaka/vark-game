@@ -34,7 +34,7 @@ extends CharacterBody3D
 @export var step_height_epsilon: float = 0.01
 @export var capsule_radius: float = 0.4
 @export var step_contact_epsilon: float = 0.02
-@export var step_debug_enabled: bool = false
+@export var step_debug_enabled: bool = true
 
 
 var player_input: PlayerInput
