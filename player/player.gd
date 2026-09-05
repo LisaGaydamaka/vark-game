@@ -228,6 +228,7 @@ func update_normal_movement(
 		)
 	):
 		step_up.cancel_traversal()
+		ledge_detector.clear_candidate()
 		enter_ledge_view(candidate.wall_normal)
 		locomotion_state = LocomotionState.LEDGE_CATCH
 		ledge_catch.update(self, delta)
@@ -268,12 +269,24 @@ func finish_ledge_catch_if_ready() -> void:
 
 			return
 
-	if not ledge_catch.is_active():
+	if ledge_catch.has_failed():
+		var failure_description: String = (
+			ledge_catch.take_failure_description()
+		)
 		exit_ledge_view()
 		locomotion_state = LocomotionState.NORMAL
 
 		if ledge_debug_logging:
-			print("Ledge catch failed")
+			print(
+				"Ledge catch failed: ",
+				failure_description
+			)
+
+		return
+
+	if not ledge_catch.is_active():
+		exit_ledge_view()
+		locomotion_state = LocomotionState.NORMAL
 
 
 func update_ledge_hang(
