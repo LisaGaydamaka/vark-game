@@ -28,19 +28,9 @@ extends CharacterBody3D
 @export var mouse_sensitivity: float = 0.002
 
 
-@export_category("Step Up")
-@export var step_push_threshold: float = 0.1
-@export var max_step_height: float = 0.5
-@export var step_height_epsilon: float = 0.01
-@export var capsule_radius: float = 0.4
-@export var step_contact_epsilon: float = 0.02
-@export var step_debug_enabled: bool = true
-
-
 var player_input: PlayerInput
 var support: PlayerSupport
 var motor: PlayerMotor
-var step_up: PlayerStepUp
 var movement: PlayerMovement
 
 
@@ -62,20 +52,8 @@ func _ready() -> void:
 		kinetic_friction_coefficient
 	)
 
-	step_up = PlayerStepUp.new(
-		max_step_height,
-		step_height_epsilon,
-		max_walkable_slope,
-		step_push_threshold,
-		capsule_radius,
-		step_contact_epsilon
-	)
-
-	step_up.debug_enabled = step_debug_enabled
-
 	movement = PlayerMovement.new(
-		max_collision_iterations,
-		step_up
+		max_collision_iterations
 	)
 
 
@@ -99,8 +77,6 @@ func _physics_process(
 
 	movement.move(
 		self,
-		input_direction,
-		support,
 		delta
 	)
 
