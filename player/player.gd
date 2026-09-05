@@ -75,6 +75,7 @@ var ledge_hang: PlayerLedgeHang
 var locomotion_state: int = LocomotionState.NORMAL
 var ledge_view_center_yaw: float = 0.0
 var ledge_view_yaw_offset: float = 0.0
+var jump_regrab_candidate: PlayerLedgeDetector.LedgeCandidate = null
 
 
 func _ready() -> void:
@@ -229,9 +230,12 @@ func update_normal_movement(
 		ledge_detector.get_candidate()
 	)
 
+	update_jump_regrab_guard()
+
 	if (
 		candidate != null
 		and candidate.hangable
+		and not is_jump_regrab_blocked(candidate)
 		and ledge_catch.try_start(
 			self,
 			candidate
@@ -354,6 +358,13 @@ func update_ledge_hang(
 		return
 
 	if action == PlayerLedgeHang.Action.DIRECTIONAL_JUMP:
+		var released_candidate: PlayerLedgeDetector.LedgeCandidate = (
+			ledge_hang.get_candidate()
+		)
+
+		if released_candidate != null:
+			jump_regrab_candidate = released_candidate
+
 		ledge_hang.apply_directional_jump(
 			self,
 			input_direction
@@ -396,6 +407,88 @@ func release_ledge_to_air(
 		delta
 	)
 	support.update(self)
+
+
+func update_jump_regrab_guard() -> void:
+	if jump_regrab_candidate == null:
+		return
+
+	if velocity.y <= 0.0:
+		jump_regrab_candidate = null
+		return
+
+	var edge_offset: Vector3 = (
+		jump_regrab_candidate.edge_point
+		- global_position
+	)
+	var horizontal_edge_offset: Vector3 = Vector3(
+		edge_offset.x,
+		0.0,
+		edge_offset.z
+	)
+
+	if (
+		horizontal_edge_offset.length()
+		> ledge_detector.get_max_horizontal_reach()
+	):
+		jump_regrab_candidate = null
+		return
+
+	if (
+		edge_offset.y
+		< ledge_detector.get_min_edge_height()
+		or edge_offset.y
+		> ledge_detector.get_max_catch_height()
+	):
+		jump_regrab_candidate = null
+
+
+func is_jump_regrab_blocked(
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> bool:
+	if (
+		jump_regrab_candidate == null
+		or candidate == null
+	):
+		return false
+
+	if (
+		candidate.wall_collider_rid
+		!= jump_regrab_candidate.wall_collider_rid
+	):
+		return false
+
+	if (
+		candidate.wall_shape_index >= 0
+		and jump_regrab_candidate.wall_shape_index >= 0
+		and candidate.wall_shape_index
+		!= jump_regrab_candidate.wall_shape_index
+	):
+		return false
+
+	if (
+		absf(
+			candidate.edge_point.y
+			- jump_regrab_candidate.edge_point.y
+		)
+		> ledge_detector.get_shimmy_level_tolerance()
+	):
+		return false
+
+	var edge_delta: Vector3 = (
+		candidate.edge_point
+		- jump_regrab_candidate.edge_point
+	)
+	var horizontal_edge_delta: Vector3 = Vector3(
+		edge_delta.x,
+		0.0,
+		edge_delta.z
+	)
+
+	return (
+		horizontal_edge_delta.length()
+		<= ledge_detector.get_max_horizontal_reach()
+	)
 
 
 func enter_ledge_view(
