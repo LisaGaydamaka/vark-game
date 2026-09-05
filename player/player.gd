@@ -97,6 +97,7 @@ func _ready() -> void:
 	ledge_detector = PlayerLedgeDetector.new(
 		jump_height,
 		gravity,
+		max_step_height,
 		ledge_max_wall_tilt_degrees,
 		ledge_max_approach_angle_degrees,
 		ledge_debug_logging,

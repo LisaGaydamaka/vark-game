@@ -8,7 +8,6 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 
 const FORWARD_REACH_RADIUS_MULTIPLIER: float = 2.0
 const HAND_REACH_HEIGHT_RATIO: float = 0.25
-const MIN_CATCH_HEIGHT_RATIO: float = 0.55
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.32
 const MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER: float = 2.0
 
@@ -25,6 +24,7 @@ class LedgeCandidate:
 	var top_normal: Vector3 = Vector3.UP
 	var ledge_direction: Vector3 = Vector3.ZERO
 	var hang_position: Vector3 = Vector3.ZERO
+	var hangable: bool = false
 
 
 class WallHit:
@@ -43,6 +43,7 @@ class TopHit:
 
 var jump_height: float
 var gravity: float
+var max_step_height: float
 var max_wall_tilt_degrees: float
 var max_approach_angle_degrees: float
 var debug_logging: bool
@@ -54,6 +55,7 @@ var current_candidate: LedgeCandidate = null
 func _init(
 	p_jump_height: float,
 	p_gravity: float,
+	p_max_step_height: float,
 	p_max_wall_tilt_degrees: float,
 	p_max_approach_angle_degrees: float,
 	p_debug_logging: bool,
@@ -61,6 +63,7 @@ func _init(
 ) -> void:
 	jump_height = p_jump_height
 	gravity = p_gravity
+	max_step_height = p_max_step_height
 	max_wall_tilt_degrees = p_max_wall_tilt_degrees
 	max_approach_angle_degrees = p_max_approach_angle_degrees
 	debug_logging = p_debug_logging
@@ -73,6 +76,10 @@ func _init(
 	assert(
 		gravity > 0.0,
 		"PlayerLedgeDetector requires gravity to be greater than zero."
+	)
+	assert(
+		max_step_height >= 0.0,
+		"PlayerLedgeDetector requires max_step_height to be non-negative."
 	)
 	assert(
 		max_wall_tilt_degrees >= 0.0,
@@ -184,7 +191,7 @@ func find_candidate(
 
 	if (
 		relative_height
-		< get_min_catch_height() - PROBE_SAFE_MARGIN
+		< get_min_edge_height() - PROBE_SAFE_MARGIN
 	):
 		return null
 
@@ -198,13 +205,10 @@ func find_candidate(
 		edge_point,
 		wall_hit.normal
 	)
-
-	if not is_hang_position_clear(
+	var hangable: bool = is_hang_position_clear(
 		player,
 		hang_position
-	):
-		return null
-
+	)
 	var ledge_direction: Vector3 = (
 		Vector3.UP.cross(wall_hit.normal)
 	)
@@ -228,6 +232,7 @@ func find_candidate(
 	candidate.top_normal = top_hit.normal
 	candidate.ledge_direction = ledge_direction
 	candidate.hang_position = hang_position
+	candidate.hangable = hangable
 
 	return candidate
 
@@ -321,7 +326,7 @@ func find_top(
 	var ray_to: Vector3 = ray_from
 	ray_to.y = (
 		player.global_position.y
-		+ get_min_catch_height()
+		+ get_min_edge_height()
 		- PROBE_SAFE_MARGIN
 	)
 
@@ -434,10 +439,10 @@ func get_max_horizontal_reach() -> float:
 	)
 
 
-func get_min_catch_height() -> float:
+func get_min_edge_height() -> float:
 	return (
 		get_capsule_bottom_offset()
-		+ get_capsule_height() * MIN_CATCH_HEIGHT_RATIO
+		+ max_step_height
 	)
 
 
@@ -529,12 +534,14 @@ func update_debug_logging(
 			current_candidate.edge_point,
 			" wall_normal=",
 			current_candidate.wall_normal,
+			" hangable=",
+			current_candidate.hangable,
 			" hang_position=",
 			current_candidate.hang_position,
+			" min_edge_height=",
+			get_min_edge_height(),
 			" max_catch_height=",
-			get_max_catch_height(),
-			" max_fall_speed=",
-			get_max_catch_fall_speed()
+			get_max_catch_height()
 		)
 	elif previously_had_candidate and not has_candidate_now:
 		print("Ledge candidate lost")
