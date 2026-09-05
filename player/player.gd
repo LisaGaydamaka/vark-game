@@ -102,6 +102,15 @@ func _physics_process(
 
 	support.update(self)
 
+	var jump_accepted: bool = (
+		jump_pressed
+		and support.has_support
+		and support.walkable
+	)
+
+	if jump_accepted:
+		step_up.cancel_traversal()
+
 	var use_air_control: bool = (
 		not (
 			support.has_support
@@ -118,11 +127,7 @@ func _physics_process(
 		delta
 	)
 
-	if (
-		jump_pressed
-		and support.has_support
-		and support.walkable
-	):
+	if jump_accepted:
 		motor.apply_jump(
 			self,
 			jump_height
@@ -132,6 +137,7 @@ func _physics_process(
 		self,
 		support,
 		input_direction,
+		not jump_accepted,
 		delta
 	)
 

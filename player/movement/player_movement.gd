@@ -18,6 +18,7 @@ func move(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	input_direction: Vector3,
+	allow_step_up: bool,
 	delta: float
 ) -> void:
 	var motion: Vector3 = player.velocity * delta
@@ -27,7 +28,7 @@ func move(
 		motion.z
 	)
 
-	if not step_up.is_active():
+	if allow_step_up and not step_up.is_active():
 		step_up.try_start_step(
 			player,
 			horizontal_motion,
