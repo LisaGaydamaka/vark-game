@@ -26,12 +26,27 @@ func move(
 		motion.z
 	)
 
-	if step_up.try_step(
-		player,
-		horizontal_motion,
-		support
-	):
-		return
+	if step_up.is_active():
+		step_up.update_traversal(
+			player,
+			horizontal_motion,
+			support,
+			delta
+		)
+	else:
+		if step_up.try_start_step(
+			player,
+			horizontal_motion,
+			support
+		):
+			step_up.update_traversal(
+				player,
+				horizontal_motion,
+				support,
+				delta
+			)
+
+	motion = player.velocity * delta
 
 	for _iteration: int in range(
 		max_collision_iterations
@@ -52,7 +67,12 @@ func move(
 			player.velocity.dot(normal)
 		)
 
-		if normal_velocity < 0.0:
+		if (
+			normal_velocity < 0.0
+			and not step_up.should_preserve_velocity(
+				collision
+			)
+		):
 			player.velocity -= normal * normal_velocity
 
 		motion = remainder.slide(normal)
