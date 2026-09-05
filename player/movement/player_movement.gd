@@ -26,11 +26,12 @@ func move(
 		motion.z
 	)
 
-	step_up.probe_horizontal_obstacle(
+	if step_up.try_step(
 		player,
 		horizontal_motion,
 		support
-	)
+	):
+		return
 
 	for _iteration: int in range(
 		max_collision_iterations

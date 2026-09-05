@@ -32,13 +32,16 @@ func _init(
 	)
 
 
-func probe_horizontal_obstacle(
+func try_step(
 	player: CharacterBody3D,
 	horizontal_motion: Vector3,
 	support: PlayerSupport
-) -> void:
+) -> bool:
 	if horizontal_motion.length_squared() <= 0.000001:
-		return
+		return false
+
+	if not support.walkable:
+		return false
 
 	var horizontal_direction: Vector3 = horizontal_motion.normalized()
 	var collision: KinematicCollision3D = KinematicCollision3D.new()
@@ -52,7 +55,7 @@ func probe_horizontal_obstacle(
 	)
 
 	if not blocked:
-		return
+		return false
 
 	debug("DETECT: horizontal motion blocked")
 	debug("motion: " + str(horizontal_motion))
@@ -98,28 +101,71 @@ func probe_horizontal_obstacle(
 		)
 
 	if candidate_push_strength <= 0.0:
-		return
+		return false
 
-	if not support.has_support:
-		return
+	var up_motion: Vector3 = get_up_motion()
 
-	if not test_up_clearance(player):
-		return
-
-	test_across_clearance(
+	if not test_up_clearance(
 		player,
-		support,
+		up_motion
+	):
+		return false
+
+	var raised_transform: Transform3D = (
+		player.global_transform.translated(up_motion)
+	)
+	var across_motion: Vector3 = get_across_motion(
 		horizontal_direction,
-		candidate_riser_normal,
 		candidate_push_strength
 	)
 
+	if not test_across_clearance(
+		player,
+		raised_transform,
+		across_motion,
+		candidate_riser_normal,
+		candidate_push_strength
+	):
+		return false
+
+	var across_transform: Transform3D = (
+		raised_transform.translated(across_motion)
+	)
+	var down_collision: KinematicCollision3D = (
+		find_valid_down_landing(
+			player,
+			support,
+			across_transform
+		)
+	)
+
+	if down_collision == null:
+		return false
+
+	var down_motion: Vector3 = down_collision.get_travel()
+	var landing_transform: Transform3D = (
+		across_transform.translated(down_motion)
+	)
+	var rise: float = (
+		landing_transform.origin.y
+		- player.global_transform.origin.y
+	)
+
+	commit_step(
+		player,
+		up_motion,
+		across_motion,
+		down_motion
+	)
+
+	debug("SUCCESS: rise=" + str(rise))
+	return true
+
 
 func test_up_clearance(
-	player: CharacterBody3D
+	player: CharacterBody3D,
+	up_motion: Vector3
 ) -> bool:
-	var up_motion: Vector3 = get_up_motion()
-
 	debug("UP TEST: motion=" + str(up_motion))
 
 	var blocked: bool = player.test_move(
@@ -141,27 +187,14 @@ func test_up_clearance(
 
 func test_across_clearance(
 	player: CharacterBody3D,
-	support: PlayerSupport,
-	horizontal_direction: Vector3,
+	raised_transform: Transform3D,
+	across_motion: Vector3,
 	riser_normal: Vector3,
 	push_strength: float
 ) -> bool:
-	var raised_transform: Transform3D = (
-		player.global_transform.translated(
-			get_up_motion()
-		)
-	)
-	var capsule_radius: float = get_capsule_radius()
-	var across_distance: float = (
-		capsule_radius + PROBE_SAFE_MARGIN
-	) / push_strength
-	var across_motion: Vector3 = (
-		horizontal_direction * across_distance
-	)
-
 	debug("ACROSS TEST: riser normal=" + str(riser_normal))
 	debug("ACROSS TEST: push=" + str(push_strength))
-	debug("ACROSS TEST: distance=" + str(across_distance))
+	debug("ACROSS TEST: distance=" + str(across_motion.length()))
 	debug("ACROSS TEST: motion=" + str(across_motion))
 
 	var blocked: bool = player.test_move(
@@ -178,23 +211,14 @@ func test_across_clearance(
 		return false
 
 	debug("ACROSS CLEAR")
-
-	var across_transform: Transform3D = (
-		raised_transform.translated(across_motion)
-	)
-
-	return test_down_landing(
-		player,
-		support,
-		across_transform
-	)
+	return true
 
 
-func test_down_landing(
+func find_valid_down_landing(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	across_transform: Transform3D
-) -> bool:
+) -> KinematicCollision3D:
 	var down_motion: Vector3 = Vector3.DOWN * (
 		get_up_motion().y + PROBE_SAFE_MARGIN
 	)
@@ -213,7 +237,7 @@ func test_down_landing(
 
 	if not blocked:
 		debug("DOWN REJECT: no landing")
-		return false
+		return null
 
 	var collision_count: int = collision.get_collision_count()
 	var has_walkable_landing: bool = false
@@ -255,7 +279,7 @@ func test_down_landing(
 
 	if not has_walkable_landing:
 		debug("DOWN REJECT: landing is not walkable")
-		return false
+		return null
 
 	var down_travel: Vector3 = collision.get_travel()
 	var landing_transform: Transform3D = (
@@ -272,20 +296,66 @@ func test_down_landing(
 
 	if rise <= PROBE_SAFE_MARGIN:
 		debug("DOWN REJECT: landing does not rise above support")
-		return false
+		return null
 
 	if rise > max_step_height + PROBE_SAFE_MARGIN:
 		debug("DOWN REJECT: landing exceeds max step height")
-		return false
+		return null
 
 	debug("DOWN VALID")
-	return true
+	return collision
+
+
+func commit_step(
+	player: CharacterBody3D,
+	up_motion: Vector3,
+	across_motion: Vector3,
+	down_motion: Vector3
+) -> void:
+	debug("COMMIT: UP=" + str(up_motion))
+	player.move_and_collide(
+		up_motion,
+		false,
+		PROBE_SAFE_MARGIN,
+		false,
+		PROBE_MAX_COLLISIONS
+	)
+
+	debug("COMMIT: ACROSS=" + str(across_motion))
+	player.move_and_collide(
+		across_motion,
+		false,
+		PROBE_SAFE_MARGIN,
+		false,
+		PROBE_MAX_COLLISIONS
+	)
+
+	debug("COMMIT: DOWN=" + str(down_motion))
+	player.move_and_collide(
+		down_motion,
+		false,
+		PROBE_SAFE_MARGIN,
+		false,
+		PROBE_MAX_COLLISIONS
+	)
 
 
 func get_up_motion() -> Vector3:
 	return Vector3.UP * (
 		max_step_height + PROBE_SAFE_MARGIN
 	)
+
+
+func get_across_motion(
+	horizontal_direction: Vector3,
+	push_strength: float
+) -> Vector3:
+	var capsule_radius: float = get_capsule_radius()
+	var across_distance: float = (
+		capsule_radius + PROBE_SAFE_MARGIN
+	) / push_strength
+
+	return horizontal_direction * across_distance
 
 
 func classify_surface(
