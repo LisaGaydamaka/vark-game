@@ -6,7 +6,7 @@ extends CharacterBody3D
 
 
 @export_category("Movement")
-@export var max_speed: float = 3.0
+@export var max_speed: float = 4.0
 @export var acceleration: float = 28.0
 
 
@@ -28,8 +28,8 @@ extends CharacterBody3D
 @export_category("Step Up")
 @export var max_step_height: float = 0.5
 @export var max_riser_tilt_degrees: float = 5.0
-@export var step_up_acceleration: float = 30.0
-@export var max_step_up_speed: float = 1.5
+@export var step_up_acceleration: float = 40.0
+@export var max_step_up_speed: float = 2.0
 @export var step_debug_enabled: bool = true
 
 
