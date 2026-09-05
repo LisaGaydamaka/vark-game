@@ -16,6 +16,7 @@ const SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO: float = 0.05
 const SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO: float = 0.1
 const LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO: float = 0.75
 const SUPPRESSION_VERTICAL_MARGIN_RADIUS_RATIO: float = 1.0
+const EXPECTED_HANG_WALL_MIN_ALIGNMENT: float = 0.9
 
 
 class LedgeCandidate:
@@ -274,6 +275,12 @@ func find_candidate(
 	):
 		return null
 
+	edge_point = Vector3(
+		near_edge_wall.point.x,
+		top_hit.point.y,
+		near_edge_wall.point.z
+	)
+
 	var edge_offset: Vector3 = (
 		edge_point - player.global_position
 	)
@@ -307,7 +314,7 @@ func find_candidate(
 		return null
 
 	var ledge_direction: Vector3 = (
-		Vector3.UP.cross(wall_hit.normal)
+		Vector3.UP.cross(near_edge_wall.normal)
 	)
 
 	if (
@@ -322,7 +329,7 @@ func find_candidate(
 		player,
 		support,
 		edge_point,
-		wall_hit.normal,
+		near_edge_wall.normal,
 		top_hit.point.y,
 		ledge_direction
 	):
@@ -330,25 +337,25 @@ func find_candidate(
 
 	var hang_position: Vector3 = get_hang_position(
 		edge_point,
-		wall_hit.normal
-	)
-	var hangable: bool = is_hang_position_clear(
-		player,
-		hang_position
+		near_edge_wall.normal
 	)
 
 	var candidate: LedgeCandidate = LedgeCandidate.new()
-	candidate.wall_collider_rid = wall_hit.collider_rid
-	candidate.wall_shape_index = wall_hit.shape_index
+	candidate.wall_collider_rid = near_edge_wall.collider_rid
+	candidate.wall_shape_index = near_edge_wall.shape_index
 	candidate.top_collider_rid = top_hit.collider_rid
 	candidate.top_shape_index = top_hit.shape_index
 	candidate.edge_point = edge_point
-	candidate.wall_normal = wall_hit.normal
+	candidate.wall_normal = near_edge_wall.normal
 	candidate.top_point = top_hit.point
 	candidate.top_normal = top_hit.normal
 	candidate.ledge_direction = ledge_direction
 	candidate.hang_position = hang_position
-	candidate.hangable = hangable
+	candidate.hangable = is_hang_pose_valid(
+		player,
+		candidate,
+		hang_position
+	)
 
 	return candidate
 
@@ -440,12 +447,6 @@ func find_hang_candidate_at_position(
 	):
 		return null
 
-	if not is_hang_position_clear(
-		player,
-		hang_position
-	):
-		return null
-
 	var ledge_direction: Vector3 = (
 		Vector3.UP.cross(wall_hit.normal)
 	)
@@ -479,7 +480,14 @@ func find_hang_candidate_at_position(
 	candidate.top_normal = top_hit.normal
 	candidate.ledge_direction = ledge_direction
 	candidate.hang_position = hang_position
-	candidate.hangable = true
+	candidate.hangable = is_hang_pose_valid(
+		player,
+		candidate,
+		hang_position
+	)
+
+	if not candidate.hangable:
+		return null
 
 	return candidate
 
@@ -937,20 +945,115 @@ func get_hang_position(
 	return hang_position
 
 
-func is_hang_position_clear(
+func is_hang_pose_valid(
 	player: CharacterBody3D,
+	candidate: LedgeCandidate,
 	hang_position: Vector3
 ) -> bool:
+	if candidate == null:
+		return false
+
 	var hang_transform: Transform3D = player.global_transform
 	hang_transform.origin = hang_position
 
-	return not player.test_move(
+	var collision: KinematicCollision3D = (
+		KinematicCollision3D.new()
+	)
+	var has_contact: bool = player.test_move(
 		hang_transform,
 		Vector3.ZERO,
-		null,
+		collision,
 		PROBE_SAFE_MARGIN,
 		true,
 		PROBE_MAX_COLLISIONS
+	)
+
+	if not has_contact:
+		return true
+
+	var collision_count: int = (
+		collision.get_collision_count()
+	)
+
+	if collision_count <= 0:
+		return false
+
+	for collision_index: int in range(
+		collision_count
+	):
+		if not is_expected_hang_wall_contact(
+			collision,
+			collision_index,
+			candidate
+		):
+			return false
+
+	return true
+
+
+func is_expected_hang_wall_contact(
+	collision: KinematicCollision3D,
+	collision_index: int,
+	candidate: LedgeCandidate
+) -> bool:
+	if candidate == null:
+		return false
+
+	if (
+		collision.get_collider_rid(
+			collision_index
+		)
+		!= candidate.wall_collider_rid
+	):
+		return false
+
+	var collider_shape_index: int = (
+		collision.get_collider_shape_index(
+			collision_index
+		)
+	)
+
+	if (
+		candidate.wall_shape_index >= 0
+		and collider_shape_index >= 0
+		and collider_shape_index
+		!= candidate.wall_shape_index
+	):
+		return false
+
+	var collision_normal: Vector3 = (
+		collision.get_normal(
+			collision_index
+		)
+	)
+
+	if (
+		collision_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	collision_normal = collision_normal.normalized()
+
+	var expected_wall_normal: Vector3 = (
+		candidate.wall_normal
+	)
+
+	if (
+		expected_wall_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	expected_wall_normal = (
+		expected_wall_normal.normalized()
+	)
+
+	return (
+		collision_normal.dot(
+			expected_wall_normal
+		)
+		>= EXPECTED_HANG_WALL_MIN_ALIGNMENT
 	)
 
 

@@ -125,6 +125,7 @@ func _ready() -> void:
 	ledge_catch = PlayerLedgeCatch.new(
 		jump_height,
 		gravity,
+		ledge_detector,
 		collision_shape
 	)
 

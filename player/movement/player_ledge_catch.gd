@@ -23,11 +23,13 @@ enum FailureReason {
 	NONE,
 	UNEXPECTED_COLLISION,
 	BLOCKED_PATH,
+	INVALID_HANG_POSE,
 }
 
 
 var jump_height: float
 var gravity: float
+var detector: PlayerLedgeDetector
 var collision_shape: CollisionShape3D
 
 var active_candidate: PlayerLedgeDetector.LedgeCandidate = null
@@ -43,10 +45,12 @@ var failure_normal: Vector3 = Vector3.ZERO
 func _init(
 	p_jump_height: float,
 	p_gravity: float,
+	p_detector: PlayerLedgeDetector,
 	p_collision_shape: CollisionShape3D
 ) -> void:
 	jump_height = p_jump_height
 	gravity = p_gravity
+	detector = p_detector
 	collision_shape = p_collision_shape
 
 	assert(
@@ -56,6 +60,10 @@ func _init(
 	assert(
 		gravity > 0.0,
 		"PlayerLedgeCatch requires gravity to be greater than zero."
+	)
+	assert(
+		detector != null,
+		"PlayerLedgeCatch requires a ledge detector."
 	)
 
 	get_capsule_shape()
@@ -69,6 +77,13 @@ func try_start(
 		return false
 
 	if not candidate.hangable:
+		return false
+
+	if not detector.is_hang_pose_valid(
+		player,
+		candidate,
+		candidate.hang_position
+	):
 		return false
 
 	var motion_to_hang: Vector3 = (
@@ -110,7 +125,7 @@ func update(
 	var distance_to_target: float = to_target.length()
 
 	if distance_to_target <= get_completion_distance():
-		complete(player)
+		try_complete(player)
 		return
 
 	if not is_catch_path_valid(
@@ -187,7 +202,7 @@ func update(
 		)
 		<= get_completion_distance()
 	):
-		complete(player)
+		try_complete(player)
 
 
 func move_catch_motion(
@@ -495,6 +510,10 @@ func take_failure_description() -> String:
 		)
 	elif failure_reason == FailureReason.BLOCKED_PATH:
 		description = "catch path could not make progress"
+	elif failure_reason == FailureReason.INVALID_HANG_POSE:
+		description = (
+			"catch destination is no longer a valid hang pose"
+		)
 
 	state = State.INACTIVE
 	failed_candidate = null
@@ -509,6 +528,28 @@ func cancel() -> void:
 	catch_velocity = Vector3.ZERO
 	state = State.INACTIVE
 	reset_failure()
+
+
+func try_complete(
+	player: CharacterBody3D
+) -> void:
+	if active_candidate == null:
+		return
+
+	if not detector.is_hang_pose_valid(
+		player,
+		active_candidate,
+		player.global_position
+	):
+		player.velocity = catch_velocity
+		fail_catch(
+			FailureReason.INVALID_HANG_POSE,
+			RID(),
+			Vector3.ZERO
+		)
+		return
+
+	complete(player)
 
 
 func complete(
