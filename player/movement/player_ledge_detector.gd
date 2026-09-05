@@ -137,6 +137,10 @@ func get_candidate() -> LedgeCandidate:
 	return current_candidate
 
 
+func clear_candidate() -> void:
+	current_candidate = null
+
+
 func find_candidate(
 	player: CharacterBody3D,
 	support: PlayerSupport
