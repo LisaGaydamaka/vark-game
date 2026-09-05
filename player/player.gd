@@ -28,6 +28,8 @@ extends CharacterBody3D
 @export_category("Step Up")
 @export var max_step_height: float = 0.5
 @export var max_riser_tilt_degrees: float = 5.0
+@export var step_up_acceleration: float = 30.0
+@export var max_step_up_speed: float = 1.5
 @export var step_debug_enabled: bool = true
 
 
@@ -63,6 +65,8 @@ func _ready() -> void:
 	step_up = PlayerStepUp.new(
 		max_step_height,
 		max_riser_tilt_degrees,
+		step_up_acceleration,
+		max_step_up_speed,
 		collision_shape,
 		step_debug_enabled
 	)
