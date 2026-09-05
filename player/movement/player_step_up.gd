@@ -108,6 +108,7 @@ func probe_horizontal_obstacle(
 
 	test_across_clearance(
 		player,
+		support,
 		horizontal_direction,
 		candidate_riser_normal,
 		candidate_push_strength
@@ -140,6 +141,7 @@ func test_up_clearance(
 
 func test_across_clearance(
 	player: CharacterBody3D,
+	support: PlayerSupport,
 	horizontal_direction: Vector3,
 	riser_normal: Vector3,
 	push_strength: float
@@ -176,6 +178,107 @@ func test_across_clearance(
 		return false
 
 	debug("ACROSS CLEAR")
+
+	var across_transform: Transform3D = (
+		raised_transform.translated(across_motion)
+	)
+
+	return test_down_landing(
+		player,
+		support,
+		across_transform
+	)
+
+
+func test_down_landing(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	across_transform: Transform3D
+) -> bool:
+	var down_motion: Vector3 = Vector3.DOWN * (
+		get_up_motion().y + PROBE_SAFE_MARGIN
+	)
+	var collision: KinematicCollision3D = KinematicCollision3D.new()
+
+	debug("DOWN TEST: motion=" + str(down_motion))
+
+	var blocked: bool = player.test_move(
+		across_transform,
+		down_motion,
+		collision,
+		PROBE_SAFE_MARGIN,
+		false,
+		PROBE_MAX_COLLISIONS
+	)
+
+	if not blocked:
+		debug("DOWN REJECT: no landing")
+		return false
+
+	var collision_count: int = collision.get_collision_count()
+	var has_walkable_landing: bool = false
+	var best_landing_normal: Vector3 = Vector3.ZERO
+
+	debug("DOWN collision count: " + str(collision_count))
+
+	for collision_index: int in range(collision_count):
+		var collision_position: Vector3 = (
+			collision.get_position(collision_index)
+		)
+		var collision_normal: Vector3 = (
+			collision.get_normal(collision_index)
+		)
+		var walkable: bool = support.is_walkable_surface(
+			collision_normal
+		)
+
+		if (
+			walkable
+			and (
+				not has_walkable_landing
+				or collision_normal.y > best_landing_normal.y
+			)
+		):
+			has_walkable_landing = true
+			best_landing_normal = collision_normal
+
+		debug(
+			"DOWN collision "
+			+ str(collision_index)
+			+ ": position="
+			+ str(collision_position)
+			+ " normal="
+			+ str(collision_normal)
+			+ " walkable="
+			+ str(walkable)
+		)
+
+	if not has_walkable_landing:
+		debug("DOWN REJECT: landing is not walkable")
+		return false
+
+	var down_travel: Vector3 = collision.get_travel()
+	var landing_transform: Transform3D = (
+		across_transform.translated(down_travel)
+	)
+	var rise: float = (
+		landing_transform.origin.y
+		- player.global_transform.origin.y
+	)
+
+	debug("DOWN travel=" + str(down_travel))
+	debug("DOWN landing normal=" + str(best_landing_normal))
+	debug("DOWN rise=" + str(rise))
+
+	if rise <= PROBE_SAFE_MARGIN:
+		debug("DOWN REJECT: landing does not rise above support")
+		return false
+
+	if rise > max_step_height + PROBE_SAFE_MARGIN:
+		debug("DOWN REJECT: landing exceeds max step height")
+		return false
+
+	debug("DOWN VALID")
 	return true
 
 
