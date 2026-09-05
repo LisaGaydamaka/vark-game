@@ -4,6 +4,7 @@ extends RefCounted
 
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
+const STEP_CLEARANCE: float = 0.01
 
 
 var max_step_height: float
@@ -57,6 +58,7 @@ func probe_horizontal_obstacle(
 	debug("motion: " + str(horizontal_motion))
 
 	var collision_count: int = collision.get_collision_count()
+	var has_riser: bool = false
 	debug("collision count: " + str(collision_count))
 
 	for collision_index: int in range(collision_count):
@@ -71,6 +73,9 @@ func probe_horizontal_obstacle(
 			support
 		)
 
+		if classification == "RISER":
+			has_riser = true
+
 		debug(
 			"collision "
 			+ str(collision_index)
@@ -81,6 +86,40 @@ func probe_horizontal_obstacle(
 			+ " classification="
 			+ classification
 		)
+
+	if not has_riser:
+		return
+
+	if not support.has_support:
+		return
+
+	test_up_clearance(player)
+
+
+func test_up_clearance(
+	player: CharacterBody3D
+) -> bool:
+	var up_motion: Vector3 = Vector3.UP * (
+		max_step_height + STEP_CLEARANCE
+	)
+
+	debug("UP TEST: motion=" + str(up_motion))
+
+	var blocked: bool = player.test_move(
+		player.global_transform,
+		up_motion,
+		null,
+		PROBE_SAFE_MARGIN,
+		false,
+		1
+	)
+
+	if blocked:
+		debug("UP BLOCKED")
+		return false
+
+	debug("UP CLEAR")
+	return true
 
 
 func classify_surface(
