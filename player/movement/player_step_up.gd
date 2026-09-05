@@ -8,17 +8,28 @@ const PROBE_MAX_COLLISIONS: int = 8
 
 var max_step_height: float
 var max_riser_tilt_degrees: float
+var collision_shape: CollisionShape3D
 var debug_enabled: bool
 
 
 func _init(
-	p_max_step_height: float = 0.5,
-	p_max_riser_tilt_degrees: float = 5.0,
-	p_debug_enabled: bool = false
+	p_max_step_height: float,
+	p_max_riser_tilt_degrees: float,
+	p_collision_shape: CollisionShape3D,
+	p_debug_enabled: bool
 ) -> void:
 	max_step_height = p_max_step_height
 	max_riser_tilt_degrees = p_max_riser_tilt_degrees
+	collision_shape = p_collision_shape
 	debug_enabled = p_debug_enabled
+
+	var capsule_shape: CapsuleShape3D = get_capsule_shape()
+	debug(
+		"CONFIG: capsule radius="
+		+ str(capsule_shape.radius)
+		+ " height="
+		+ str(capsule_shape.height)
+	)
 
 
 func probe_horizontal_obstacle(
@@ -93,6 +104,21 @@ func is_step_riser(
 	)
 
 	return absf(normal.y) <= maximum_normal_y
+
+
+func get_capsule_shape() -> CapsuleShape3D:
+	var shape: Shape3D = collision_shape.shape
+	assert(
+		shape is CapsuleShape3D,
+		"PlayerStepUp requires the player collision shape to be CapsuleShape3D."
+	)
+
+	return shape as CapsuleShape3D
+
+
+func get_capsule_radius() -> float:
+	var capsule_shape: CapsuleShape3D = get_capsule_shape()
+	return capsule_shape.radius
 
 
 func debug(

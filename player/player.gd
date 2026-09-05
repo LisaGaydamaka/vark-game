@@ -2,6 +2,7 @@ extends CharacterBody3D
 
 
 @onready var head: Node3D = $Head
+@onready var collision_shape: CollisionShape3D = $CollisionShape3D
 
 
 @export_category("Movement")
@@ -62,6 +63,7 @@ func _ready() -> void:
 	step_up = PlayerStepUp.new(
 		max_step_height,
 		max_riser_tilt_degrees,
+		collision_shape,
 		step_debug_enabled
 	)
 
