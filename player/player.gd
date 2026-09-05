@@ -73,6 +73,8 @@ var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
 
 var locomotion_state: int = LocomotionState.NORMAL
+var ledge_view_center_yaw: float = 0.0
+var ledge_view_yaw_offset: float = 0.0
 
 
 func _ready() -> void:
@@ -279,7 +281,7 @@ func update_ledge_hang(
 ) -> void:
 	var input_direction: Vector3 = (
 		player_input.get_movement_direction(
-			head.global_transform
+			global_transform
 		)
 	)
 	var action: int = ledge_hang.update(
@@ -350,51 +352,74 @@ func enter_ledge_view(
 
 	view_forward = view_forward.normalized()
 
-	var look_target: Vector3 = (
-		global_position
-		- wall_normal
-	)
-	look_target.y = global_position.y
-	look_at(
-		look_target,
-		Vector3.UP,
-		false
+	var toward_wall: Vector3 = -wall_normal
+	toward_wall.y = 0.0
+
+	if (
+		toward_wall.length_squared()
+		<= LOOK_DIRECTION_EPSILON_SQUARED
+	):
+		ledge_view_center_yaw = rotation.y
+		ledge_view_yaw_offset = 0.0
+		head.rotation.y = 0.0
+		return
+
+	toward_wall = toward_wall.normalized()
+	ledge_view_center_yaw = atan2(
+		-toward_wall.x,
+		-toward_wall.z
 	)
 
-	var body_forward: Vector3 = (
-		-global_transform.basis.z
-	)
-	var body_right: Vector3 = (
-		global_transform.basis.x
-	)
-	body_forward.y = 0.0
-	body_right.y = 0.0
-	body_forward = body_forward.normalized()
-	body_right = body_right.normalized()
-
-	var yaw_offset: float = atan2(
-		-view_forward.dot(body_right),
-		view_forward.dot(body_forward)
+	var view_yaw: float = atan2(
+		-view_forward.x,
+		-view_forward.z
 	)
 	var yaw_limit: float = deg_to_rad(
 		HANG_LOOK_YAW_LIMIT_DEGREES
 	)
-	head.rotation.y = clampf(
-		yaw_offset,
+	ledge_view_yaw_offset = clampf(
+		wrapf(
+			view_yaw - ledge_view_center_yaw,
+			-PI,
+			PI
+		),
 		-yaw_limit,
 		yaw_limit
 	)
+	rotation.y = (
+		ledge_view_center_yaw
+		+ ledge_view_yaw_offset
+	)
+	head.rotation.y = 0.0
 
 
 func exit_ledge_view() -> void:
-	rotate_y(head.rotation.y)
 	head.rotation.y = 0.0
+	ledge_view_center_yaw = rotation.y
+	ledge_view_yaw_offset = 0.0
 
 
 func is_ledge_view_active() -> bool:
 	return (
 		locomotion_state == LocomotionState.LEDGE_CATCH
 		or locomotion_state == LocomotionState.LEDGE_HANG
+	)
+
+
+func apply_ledge_yaw_motion(
+	yaw_motion: float
+) -> void:
+	var yaw_limit: float = deg_to_rad(
+		HANG_LOOK_YAW_LIMIT_DEGREES
+	)
+	ledge_view_yaw_offset = clampf(
+		ledge_view_yaw_offset + yaw_motion,
+		-yaw_limit,
+		yaw_limit
+	)
+	rotation.y = (
+		ledge_view_center_yaw
+		+ ledge_view_yaw_offset
 	)
 
 
@@ -408,16 +433,7 @@ func _unhandled_input(
 		)
 
 		if is_ledge_view_active():
-			head.rotate_y(yaw_motion)
-
-			var yaw_limit: float = deg_to_rad(
-				HANG_LOOK_YAW_LIMIT_DEGREES
-			)
-			head.rotation.y = clampf(
-				head.rotation.y,
-				-yaw_limit,
-				yaw_limit
-			)
+			apply_ledge_yaw_motion(yaw_motion)
 		else:
 			rotate_y(yaw_motion)
 
