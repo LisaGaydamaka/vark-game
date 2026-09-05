@@ -45,9 +45,24 @@ func update(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	input_direction: Vector3,
+	step_up_active: bool,
 	use_air_control: bool,
 	delta: float
 ) -> void:
+	if step_up_active:
+		player.velocity += (
+			Vector3.DOWN
+			* gravity
+			* delta
+		)
+
+		apply_step_horizontal_velocity(
+			player,
+			input_direction,
+			delta
+		)
+		return
+
 	if use_air_control:
 		player.velocity += (
 			Vector3.DOWN
@@ -112,6 +127,43 @@ func apply_jump(
 	)
 
 	player.velocity.y = jump_speed
+
+
+func apply_step_horizontal_velocity(
+	player: CharacterBody3D,
+	input_direction: Vector3,
+	delta: float
+) -> void:
+	if max_speed <= 0.000001:
+		player.velocity.x = 0.0
+		player.velocity.z = 0.0
+		return
+
+	var horizontal_velocity: Vector3 = Vector3(
+		player.velocity.x,
+		0.0,
+		player.velocity.z
+	)
+	var target_velocity: Vector3 = (
+		input_direction
+		* max_speed
+	)
+
+	horizontal_velocity = horizontal_velocity.move_toward(
+		target_velocity,
+		acceleration * delta
+	)
+
+	var horizontal_speed: float = horizontal_velocity.length()
+
+	if horizontal_speed > max_speed:
+		horizontal_velocity *= (
+			max_speed
+			/ horizontal_speed
+		)
+
+	player.velocity.x = horizontal_velocity.x
+	player.velocity.z = horizontal_velocity.z
 
 
 func apply_air_horizontal_velocity(
@@ -272,7 +324,6 @@ func apply_kinetic_friction(
 		get_normal_load_acceleration(
 			support
 		)
-	)
 
 	if normal_load_acceleration <= 0.0:
 		return
