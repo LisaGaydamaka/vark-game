@@ -61,3 +61,7 @@ func is_jump_just_pressed() -> bool:
 
 func is_crouch_just_pressed() -> bool:
 	return Input.is_action_just_pressed("crouch")
+
+
+func is_sprint_pressed() -> bool:
+	return Input.is_action_pressed("sprint")

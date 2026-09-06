@@ -21,6 +21,7 @@ const LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES: float = 15.0
 
 @export_category("Movement")
 @export var max_speed: float = 4.0
+@export var sprint_speed: float = 6.0
 @export var acceleration: float = 28.0
 
 
@@ -227,6 +228,16 @@ func update_normal_movement(
 	if jump_accepted:
 		step_up.cancel_traversal()
 
+	var ground_target_speed: float = max_speed
+
+	if (
+		support.has_support
+		and support.walkable
+		and not input_direction.is_zero_approx()
+		and player_input.is_sprint_pressed()
+	):
+		ground_target_speed = sprint_speed
+
 	var use_air_control: bool = (
 		not (
 			support.has_support
@@ -239,6 +250,7 @@ func update_normal_movement(
 		self,
 		support,
 		input_direction,
+		ground_target_speed,
 		use_air_control,
 		delta
 	)

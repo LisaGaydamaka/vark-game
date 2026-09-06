@@ -45,6 +45,7 @@ func update(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	input_direction: Vector3,
+	ground_target_speed: float,
 	use_air_control: bool,
 	delta: float
 ) -> void:
@@ -72,7 +73,8 @@ func update(
 			get_motor_acceleration(
 				player,
 				support,
-				input_direction
+				input_direction,
+				ground_target_speed
 			)
 		)
 
@@ -176,9 +178,15 @@ func apply_air_horizontal_velocity(
 func get_motor_acceleration(
 	player: CharacterBody3D,
 	support: PlayerSupport,
-	input_direction: Vector3
+	input_direction: Vector3,
+	target_speed: float
 ) -> Vector3:
-	if max_speed <= 0.000001:
+	var clamped_target_speed: float = maxf(
+		target_speed,
+		0.0
+	)
+
+	if clamped_target_speed <= 0.000001:
 		return Vector3.ZERO
 
 	var movement_direction: Vector3 = (
@@ -222,7 +230,7 @@ func get_motor_acceleration(
 
 	var target_velocity: Vector3 = (
 		movement_direction
-		* max_speed
+		* clamped_target_speed
 	)
 	var velocity_error: Vector3 = (
 		target_velocity
@@ -231,7 +239,7 @@ func get_motor_acceleration(
 
 	return velocity_error * (
 		acceleration
-		/ max_speed
+		/ clamped_target_speed
 		* input_projection_scale
 	)
 
