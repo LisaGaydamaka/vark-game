@@ -8,6 +8,7 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 const SHIMMY_SPEED_RATIO: float = 0.5
 const SHIMMY_INTENT_DEADZONE: float = 0.2
 const EXPECTED_WALL_CONTACT_MIN_ALIGNMENT: float = 0.95
+const ATTACHMENT_REVALIDATION_INTERVAL_SECONDS: float = 1.0 / 30.0
 
 
 enum Action {
@@ -31,6 +32,7 @@ var shimmy_velocity: float = 0.0
 var blocked_shimmy_direction: Vector3 = Vector3.ZERO
 var blocked_endpoint_direction: Vector3 = Vector3.ZERO
 var blocked_endpoint_input_released: bool = false
+var attachment_revalidation_elapsed: float = 0.0
 
 
 func _init(
@@ -62,6 +64,7 @@ func start(
 	active_candidate = candidate
 	shimmy_velocity = 0.0
 	blocked_shimmy_direction = Vector3.ZERO
+	attachment_revalidation_elapsed = 0.0
 	clear_blocked_endpoint()
 	segment_wall_normal = candidate.wall_normal.normalized()
 	segment_ledge_direction = (
@@ -95,9 +98,15 @@ func update(
 
 		return Action.MANTLE_REQUEST
 
-	if not revalidate_attachment(
-		player,
-		support
+	attachment_revalidation_elapsed += delta
+
+	if (
+		attachment_revalidation_elapsed
+		>= ATTACHMENT_REVALIDATION_INTERVAL_SECONDS
+		and not revalidate_attachment(
+			player,
+			support
+		)
 	):
 		return Action.LOST_LEDGE
 
@@ -143,6 +152,7 @@ func revalidate_attachment(
 		return false
 
 	active_candidate = refreshed_candidate
+	attachment_revalidation_elapsed = 0.0
 	return true
 
 
@@ -569,4 +579,5 @@ func cancel() -> void:
 	segment_ledge_direction = Vector3.ZERO
 	shimmy_velocity = 0.0
 	blocked_shimmy_direction = Vector3.ZERO
+	attachment_revalidation_elapsed = 0.0
 	clear_blocked_endpoint()
