@@ -59,8 +59,8 @@ const LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES: float = 15.0
 @export_category("Step Up")
 @export var max_step_height: float = 0.5
 @export var max_riser_tilt_degrees: float = 5.0
-@export var step_up_acceleration: float = 40.0
-@export var max_step_up_speed: float = 2.0
+@export var step_up_acceleration: float = 80.0
+@export var max_step_up_speed: float = 5.0
 
 
 @export_category("Ledge Detection")
