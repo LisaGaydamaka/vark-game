@@ -176,6 +176,16 @@ func find_candidate_with_source_mode(
 	if target_top == null:
 		return null
 
+	var target_normal: Vector3 = target_top.normal
+
+	if (
+		target_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return null
+
+	target_normal = target_normal.normalized()
+
 	var allowed_height_change: float = (
 		target_surface_inset
 		* tan(maximum_slope_radians)
@@ -192,7 +202,7 @@ func find_candidate_with_source_mode(
 		return null
 
 	var top_path_normal: Vector3 = (
-		target_top.normal.slide(ledge_axis)
+		target_normal.slide(ledge_axis)
 	)
 
 	if (
@@ -238,6 +248,29 @@ func find_candidate_with_source_mode(
 	):
 		return null
 
+	var top_inward_direction: Vector3 = (
+		(-wall_normal).slide(target_normal)
+	)
+
+	if (
+		top_inward_direction.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return null
+
+	top_inward_direction = top_inward_direction.normalized()
+
+	var edge_plane_offset: float = (
+		(
+			refreshed_source.edge_point
+			- target_top.point
+		).dot(target_normal)
+	)
+	var landing_surface_point: Vector3 = (
+		refreshed_source.edge_point
+		- target_normal * edge_plane_offset
+		+ top_inward_direction * PROBE_SAFE_MARGIN
+	)
 	var bottom_cap_center_offset: float = (
 		get_bottom_cap_center_offset()
 	)
@@ -252,8 +285,8 @@ func find_candidate_with_source_mode(
 		- Vector3.UP * bottom_cap_center_offset
 	)
 	var target_position: Vector3 = (
-		target_top.point
-		+ target_top.normal.normalized() * clearance_radius
+		landing_surface_point
+		+ target_normal * clearance_radius
 		- Vector3.UP * bottom_cap_center_offset
 	)
 
