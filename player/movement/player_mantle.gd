@@ -7,6 +7,7 @@ const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const ANGLE_EPSILON: float = 0.00001
 const MAX_ROUTE_SEGMENT_ANGLE_DEGREES: float = 5.0
+const TARGET_SURFACE_INSET_RADIUS_RATIO: float = 0.5
 
 
 class MantleCandidate:
@@ -137,12 +138,10 @@ func find_candidate_with_source_mode(
 			89.0
 		)
 	)
-	var target_surface_inset: float = (
-		clearance_radius
-		* (
-			1.0
-			+ sin(maximum_slope_radians)
-		)
+	var target_surface_inset: float = maxf(
+		PROBE_SAFE_MARGIN,
+		detector.get_capsule_radius()
+		* TARGET_SURFACE_INSET_RADIUS_RATIO
 	)
 	var target_probe_point: Vector3 = (
 		refreshed_source.edge_point
