@@ -156,20 +156,71 @@ func apply_air_horizontal_velocity(
 		0.0,
 		player.velocity.z
 	)
-	var target_velocity: Vector3 = Vector3.ZERO
-	var change_rate: float = air_deceleration
+	var horizontal_input: Vector3 = Vector3(
+		input_direction.x,
+		0.0,
+		input_direction.z
+	)
+	var input_strength: float = minf(
+		horizontal_input.length(),
+		1.0
+	)
 
-	if not input_direction.is_zero_approx():
-		target_velocity = (
-			input_direction
-			* air_max_speed
-		)
-		change_rate = air_acceleration
+	if input_strength <= 0.000001:
+		return
+
+	var desired_direction: Vector3 = (
+		horizontal_input
+		/ horizontal_input.length()
+	)
+	var current_speed: float = (
+		horizontal_velocity.length()
+	)
+	var current_alignment: float = 1.0
+
+	if current_speed > 0.000001:
+		current_alignment = (
+			horizontal_velocity
+			/ current_speed
+		).dot(desired_direction)
+
+	var preserve_inherited_speed: bool = (
+		current_speed > air_max_speed
+		and current_alignment >= 0.0
+	)
+	var target_speed: float = (
+		air_max_speed
+		* input_strength
+	)
+
+	if preserve_inherited_speed:
+		target_speed = current_speed
+
+	var target_velocity: Vector3 = (
+		desired_direction
+		* target_speed
+	)
+	var change_rate: float = air_acceleration
+
+	if current_alignment < 0.0:
+		change_rate = air_deceleration
 
 	horizontal_velocity = horizontal_velocity.move_toward(
 		target_velocity,
 		change_rate * delta
 	)
+
+	if preserve_inherited_speed:
+		var steered_speed: float = (
+			horizontal_velocity.length()
+		)
+
+		if steered_speed > 0.000001:
+			horizontal_velocity = (
+				horizontal_velocity
+				/ steered_speed
+				* current_speed
+			)
 
 	player.velocity.x = horizontal_velocity.x
 	player.velocity.z = horizontal_velocity.z
