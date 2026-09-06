@@ -281,6 +281,7 @@ func update_normal_movement(
 
 	if (
 		candidate != null
+		and not candidate.hangable
 		and not candidate_transition_blocked
 		and should_attempt_air_mantle(
 			candidate,
@@ -346,6 +347,9 @@ func should_attempt_air_mantle(
 	input_direction: Vector3
 ) -> bool:
 	if candidate == null:
+		return false
+
+	if candidate.hangable:
 		return false
 
 	if support.has_support or step_up.is_active():
