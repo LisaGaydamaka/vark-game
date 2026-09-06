@@ -361,11 +361,7 @@ func _update_ledge_corner(
 			target_wall_normal,
 			body.global_position
 		)
-		if completed_candidate == null or not ledge_detector.is_hang_pose_valid(
-			body,
-			completed_candidate,
-			body.global_position
-		):
+		if completed_candidate == null:
 			_release_corner_to_air(input_direction, delta)
 			if debug_logging:
 				print("Ledge corner final hang validation failed")
