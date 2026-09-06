@@ -4,6 +4,7 @@ extends RefCounted
 
 var max_speed: float
 var acceleration: float
+var ground_deceleration: float
 var gravity: float
 
 var static_friction_coefficient: float
@@ -17,6 +18,7 @@ var air_deceleration: float
 func _init(
 	p_max_speed: float,
 	p_acceleration: float,
+	p_ground_deceleration: float,
 	p_gravity: float,
 	p_static_friction_coefficient: float,
 	p_kinetic_friction_coefficient: float,
@@ -26,6 +28,7 @@ func _init(
 ) -> void:
 	max_speed = p_max_speed
 	acceleration = p_acceleration
+	ground_deceleration = p_ground_deceleration
 	gravity = p_gravity
 
 	static_friction_coefficient = (
@@ -95,7 +98,17 @@ func update(
 		* delta
 	)
 
-	if support.has_support:
+	if (
+		support.has_support
+		and support.walkable
+		and input_direction.is_zero_approx()
+	):
+		apply_ground_deceleration(
+			player,
+			support,
+			delta
+		)
+	elif support.has_support:
 		apply_kinetic_friction(
 			player,
 			support,
@@ -331,6 +344,54 @@ func apply_static_friction(
 		)
 
 	return external_acceleration
+
+
+func apply_ground_deceleration(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	delta: float
+) -> void:
+	var surface_velocity: Vector3 = (
+		player.velocity.slide(
+			support.support_normal
+		)
+	)
+	var surface_speed: float = (
+		surface_velocity.length()
+	)
+
+	if surface_speed <= 0.000001:
+		return
+
+	var friction_acceleration: float = (
+		kinetic_friction_coefficient
+		* get_normal_load_acceleration(
+			support
+		)
+	)
+	var stopping_acceleration: float = maxf(
+		maxf(
+			ground_deceleration,
+			0.0
+		),
+		friction_acceleration
+	)
+	var new_surface_velocity: Vector3 = (
+		surface_velocity.move_toward(
+			Vector3.ZERO,
+			stopping_acceleration
+			* delta
+		)
+	)
+	var normal_velocity: Vector3 = (
+		player.velocity
+		- surface_velocity
+	)
+
+	player.velocity = (
+		normal_velocity
+		+ new_surface_velocity
+	)
 
 
 func apply_kinetic_friction(

@@ -23,6 +23,7 @@ const LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES: float = 15.0
 @export var max_speed: float = 4.0
 @export var sprint_speed: float = 6.0
 @export var acceleration: float = 28.0
+@export var ground_deceleration: float = 36.0
 
 
 @export_category("Jump")
@@ -112,6 +113,7 @@ func _ready() -> void:
 	motor = PlayerMotor.new(
 		max_speed,
 		acceleration,
+		ground_deceleration,
 		gravity,
 		static_friction_coefficient,
 		kinetic_friction_coefficient,
