@@ -58,21 +58,53 @@ func find_candidate(
 	support: PlayerSupport,
 	source_candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> MantleCandidate:
+	return find_candidate_with_source_mode(
+		player,
+		support,
+		source_candidate,
+		true
+	)
+
+
+func find_air_candidate(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	source_candidate: PlayerLedgeDetector.LedgeCandidate
+) -> MantleCandidate:
+	return find_candidate_with_source_mode(
+		player,
+		support,
+		source_candidate,
+		false
+	)
+
+
+func find_candidate_with_source_mode(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	source_candidate: PlayerLedgeDetector.LedgeCandidate,
+	refresh_source_as_hang: bool
+) -> MantleCandidate:
 	if source_candidate == null:
 		return null
 
 	var refreshed_source: PlayerLedgeDetector.LedgeCandidate = (
-		detector.find_hang_candidate_at_position(
-			player,
-			support,
-			source_candidate,
-			source_candidate.wall_normal,
-			player.global_position
-		)
+		source_candidate
 	)
 
-	if refreshed_source == null:
-		return null
+	if refresh_source_as_hang:
+		refreshed_source = (
+			detector.find_hang_candidate_at_position(
+				player,
+				support,
+				source_candidate,
+				source_candidate.wall_normal,
+				player.global_position
+			)
+		)
+
+		if refreshed_source == null:
+			return null
 
 	var wall_normal: Vector3 = refreshed_source.wall_normal
 	wall_normal.y = 0.0

@@ -271,12 +271,52 @@ func update_normal_movement(
 	var candidate: PlayerLedgeDetector.LedgeCandidate = (
 		ledge_detector.get_candidate()
 	)
+	var candidate_transition_blocked: bool = (
+		candidate != null
+		and (
+			is_jump_regrab_blocked(candidate)
+			or is_corner_release_suppressed(candidate)
+		)
+	)
+
+	if (
+		candidate != null
+		and not candidate_transition_blocked
+		and should_attempt_air_mantle(
+			candidate,
+			input_direction
+		)
+	):
+		var mantle_candidate: PlayerMantle.MantleCandidate = (
+			ledge_mantle.find_air_candidate(
+				self,
+				support,
+				candidate
+			)
+		)
+
+		if (
+			mantle_candidate != null
+			and ledge_mantle.try_start(
+				self,
+				mantle_candidate
+			)
+		):
+			step_up.cancel_traversal()
+			ledge_detector.clear_candidate()
+			enter_ledge_view(candidate.wall_normal)
+			locomotion_state = LocomotionState.LEDGE_MANTLE
+			velocity = Vector3.ZERO
+
+			if ledge_debug_logging:
+				print("Air mantle entered")
+
+			return
 
 	if (
 		candidate != null
 		and candidate.hangable
-		and not is_jump_regrab_blocked(candidate)
-		and not is_corner_release_suppressed(candidate)
+		and not candidate_transition_blocked
 		and ledge_catch.try_start(
 			self,
 			candidate
@@ -299,6 +339,67 @@ func update_normal_movement(
 	)
 
 	support.update(self)
+
+
+func should_attempt_air_mantle(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	input_direction: Vector3
+) -> bool:
+	if candidate == null:
+		return false
+
+	if support.has_support or step_up.is_active():
+		return false
+
+	var feet_height: float = (
+		global_position.y
+		+ ledge_detector.get_capsule_bottom_offset()
+	)
+	var obstacle_height: float = (
+		candidate.edge_point.y
+		- feet_height
+	)
+
+	if obstacle_height <= max_step_height:
+		return false
+
+	var horizontal_input: Vector3 = Vector3(
+		input_direction.x,
+		0.0,
+		input_direction.z
+	)
+
+	if (
+		horizontal_input.length_squared()
+		<= LOOK_DIRECTION_EPSILON_SQUARED
+	):
+		return false
+
+	var toward_wall: Vector3 = -candidate.wall_normal
+	toward_wall.y = 0.0
+
+	if (
+		toward_wall.length_squared()
+		<= LOOK_DIRECTION_EPSILON_SQUARED
+	):
+		return false
+
+	horizontal_input = horizontal_input.normalized()
+	toward_wall = toward_wall.normalized()
+
+	var maximum_approach_angle: float = clampf(
+		ledge_max_approach_angle_degrees,
+		0.0,
+		89.0
+	)
+	var minimum_alignment: float = cos(
+		deg_to_rad(maximum_approach_angle)
+	)
+
+	return (
+		horizontal_input.dot(toward_wall)
+		>= minimum_alignment
+	)
 
 
 func update_ledge_catch(
