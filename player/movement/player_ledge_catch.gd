@@ -9,6 +9,11 @@ const CATCH_ACCELERATION_GRAVITY_MULTIPLIER: float = 2.0
 const CATCH_COMPLETION_RADIUS_RATIO: float = 0.02
 const EXPECTED_WALL_CONTACT_MIN_ALIGNMENT: float = 0.9
 const EXPECTED_WALL_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
+const EXPECTED_TOP_CONTACT_MIN_ALIGNMENT: float = 0.9
+const EXPECTED_TOP_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
+const EXPECTED_TOP_SIDE_PLANE_TOLERANCE_RADIUS_RATIO: float = 1.0
+const EXPECTED_TOP_SIDE_VERTICAL_RANGE_RADIUS_RATIO: float = 1.0
+const EXPECTED_TOP_CONTACT_RANGE_RADIUS_RATIO: float = 1.5
 
 
 enum State {
@@ -86,19 +91,6 @@ func try_start(
 	):
 		return false
 
-	var motion_to_hang: Vector3 = (
-		candidate.hang_position
-		- player.global_position
-	)
-
-	if not is_catch_path_valid(
-		player,
-		candidate,
-		player.global_transform,
-		motion_to_hang
-	):
-		return false
-
 	active_candidate = candidate
 	completed_candidate = null
 	failed_candidate = null
@@ -126,20 +118,6 @@ func update(
 
 	if distance_to_target <= get_completion_distance():
 		try_complete(player)
-		return
-
-	if not is_catch_path_valid(
-		player,
-		active_candidate,
-		player.global_transform,
-		to_target
-	):
-		player.velocity = catch_velocity
-		fail_catch(
-			FailureReason.BLOCKED_PATH,
-			RID(),
-			Vector3.ZERO
-		)
 		return
 
 	var catch_acceleration: float = (
@@ -187,6 +165,20 @@ func update(
 		> to_target.length_squared()
 	):
 		motion = to_target
+
+	if not is_catch_path_valid(
+		player,
+		active_candidate,
+		player.global_transform,
+		motion
+	):
+		player.velocity = catch_velocity
+		fail_catch(
+			FailureReason.BLOCKED_PATH,
+			RID(),
+			Vector3.ZERO
+		)
+		return
 
 	if not move_catch_motion(
 		player,
@@ -252,7 +244,7 @@ func move_catch_motion(
 				)
 			)
 
-			if not is_expected_wall_contact(
+			if not is_expected_catch_contact(
 				collision,
 				collision_index,
 				active_candidate
@@ -358,7 +350,7 @@ func is_catch_path_valid(
 		for collision_index: int in range(
 			collision_count
 		):
-			if not is_expected_wall_contact(
+			if not is_expected_catch_contact(
 				collision,
 				collision_index,
 				candidate
@@ -391,7 +383,7 @@ func is_catch_path_valid(
 	)
 
 
-func is_expected_wall_contact(
+func is_expected_catch_contact(
 	collision: KinematicCollision3D,
 	collision_index: int,
 	candidate: PlayerLedgeDetector.LedgeCandidate
@@ -399,11 +391,164 @@ func is_expected_wall_contact(
 	if candidate == null:
 		return false
 
+	var matches_wall: bool = matches_geometry_identity(
+		collision,
+		collision_index,
+		candidate.wall_collider_rid,
+		candidate.wall_shape_index
+	)
+	var matches_top: bool = matches_geometry_identity(
+		collision,
+		collision_index,
+		candidate.top_collider_rid,
+		candidate.top_shape_index
+	)
+
+	if not matches_wall and not matches_top:
+		return false
+
+	var collision_normal: Vector3 = collision.get_normal(
+		collision_index
+	)
+
+	if (
+		collision_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	collision_normal = collision_normal.normalized()
+	var collision_point: Vector3 = collision.get_position(
+		collision_index
+	)
+
+	if is_expected_wall_plane_contact(
+		collision_point,
+		collision_normal,
+		candidate,
+		matches_top
+	):
+		return true
+
+	return (
+		matches_top
+		and is_expected_top_plane_contact(
+			collision_point,
+			collision_normal,
+			candidate
+		)
+	)
+
+
+func is_expected_wall_plane_contact(
+	collision_point: Vector3,
+	collision_normal: Vector3,
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	matches_top: bool
+) -> bool:
+	var wall_normal: Vector3 = candidate.wall_normal
+
+	if (
+		wall_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	wall_normal = wall_normal.normalized()
+
+	if (
+		collision_normal.dot(wall_normal)
+		< EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
+	):
+		return false
+
+	var plane_distance: float = absf(
+		(
+			collision_point
+			- candidate.edge_point
+		).dot(wall_normal)
+	)
+
+	if not matches_top:
+		return (
+			plane_distance
+			<= get_expected_wall_plane_tolerance()
+		)
+
+	if (
+		plane_distance
+		> get_expected_top_side_plane_tolerance()
+	):
+		return false
+
+	return (
+		absf(
+			collision_point.y
+			- candidate.edge_point.y
+		)
+		<= get_expected_top_side_vertical_range()
+	)
+
+
+func is_expected_top_plane_contact(
+	collision_point: Vector3,
+	collision_normal: Vector3,
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> bool:
+	var top_normal: Vector3 = candidate.top_normal
+
+	if (
+		top_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	top_normal = top_normal.normalized()
+
+	if (
+		collision_normal.dot(top_normal)
+		< EXPECTED_TOP_CONTACT_MIN_ALIGNMENT
+	):
+		return false
+
+	var point_offset: Vector3 = (
+		collision_point
+		- candidate.top_point
+	)
+	var plane_distance: float = absf(
+		point_offset.dot(top_normal)
+	)
+
+	if (
+		plane_distance
+		> get_expected_top_plane_tolerance()
+	):
+		return false
+
+	var in_plane_offset: Vector3 = point_offset.slide(
+		top_normal
+	)
+	var contact_range: float = get_expected_top_contact_range()
+	return (
+		in_plane_offset.length_squared()
+		<= contact_range * contact_range
+	)
+
+
+func matches_geometry_identity(
+	collision: KinematicCollision3D,
+	collision_index: int,
+	collider_rid: RID,
+	shape_index: int
+) -> bool:
+	if collider_rid == RID():
+		return false
+
 	if (
 		collision.get_collider_rid(
 			collision_index
 		)
-		!= candidate.wall_collider_rid
+		!= collider_rid
 	):
 		return false
 
@@ -414,46 +559,13 @@ func is_expected_wall_contact(
 	)
 
 	if (
-		candidate.wall_shape_index >= 0
+		shape_index >= 0
 		and collider_shape_index >= 0
-		and collider_shape_index
-		!= candidate.wall_shape_index
+		and collider_shape_index != shape_index
 	):
 		return false
 
-	var collision_normal: Vector3 = (
-		collision.get_normal(
-			collision_index
-		)
-	)
-	var normal_alignment: float = (
-		collision_normal.dot(
-			candidate.wall_normal
-		)
-	)
-
-	if (
-		normal_alignment
-		< EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
-	):
-		return false
-
-	var collision_point: Vector3 = (
-		collision.get_position(
-			collision_index
-		)
-	)
-	var plane_distance: float = absf(
-		(
-			collision_point
-			- candidate.edge_point
-		).dot(candidate.wall_normal)
-	)
-
-	return (
-		plane_distance
-		<= get_expected_wall_plane_tolerance()
-	)
+	return true
 
 
 func constrain_velocity_against_normal(
@@ -610,6 +722,38 @@ func get_expected_wall_plane_tolerance() -> float:
 		PROBE_SAFE_MARGIN,
 		get_capsule_radius()
 		* EXPECTED_WALL_PLANE_TOLERANCE_RADIUS_RATIO
+	)
+
+
+func get_expected_top_plane_tolerance() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		get_capsule_radius()
+		* EXPECTED_TOP_PLANE_TOLERANCE_RADIUS_RATIO
+	)
+
+
+func get_expected_top_side_plane_tolerance() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		get_capsule_radius()
+		* EXPECTED_TOP_SIDE_PLANE_TOLERANCE_RADIUS_RATIO
+	)
+
+
+func get_expected_top_side_vertical_range() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		get_capsule_radius()
+		* EXPECTED_TOP_SIDE_VERTICAL_RANGE_RADIUS_RATIO
+	)
+
+
+func get_expected_top_contact_range() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		get_capsule_radius()
+		* EXPECTED_TOP_CONTACT_RANGE_RADIUS_RATIO
 	)
 
 
