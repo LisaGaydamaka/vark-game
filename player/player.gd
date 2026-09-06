@@ -29,6 +29,11 @@ const LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES: float = 15.0
 @export var jump_height: float = 0.75
 
 
+@export_category("Ledge Jump")
+@export var ledge_jump_horizontal_speed: float = 2.5
+@export var ledge_sprint_jump_horizontal_speed: float = 4.0
+
+
 @export_category("Air")
 @export var air_max_speed: float = 2.5
 @export var air_acceleration: float = 8.0
@@ -588,10 +593,20 @@ func update_ledge_hang(
 			released_candidate
 		)
 
+		var horizontal_launch_speed: float = (
+			ledge_jump_horizontal_speed
+		)
+
+		if player_input.is_sprint_pressed():
+			horizontal_launch_speed = (
+				ledge_sprint_jump_horizontal_speed
+			)
+
 		motor.apply_directional_jump(
 			self,
 			input_direction,
-			jump_height
+			jump_height,
+			horizontal_launch_speed
 		)
 		ledge_hang.cancel()
 		exit_ledge_view()
@@ -636,7 +651,8 @@ func update_ledge_corner(
 			motor.apply_directional_jump(
 				self,
 				input_direction,
-				jump_height
+				jump_height,
+				max_speed
 			)
 			ledge_corner.cancel()
 			exit_ledge_view()
@@ -771,7 +787,8 @@ func update_ledge_mantle(
 		motor.apply_directional_jump(
 			self,
 			input_direction,
-			jump_height
+			jump_height,
+			max_speed
 		)
 		ledge_mantle.cancel()
 		exit_ledge_view()

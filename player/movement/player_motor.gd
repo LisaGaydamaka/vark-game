@@ -119,7 +119,8 @@ func apply_jump(
 func apply_directional_jump(
 	player: CharacterBody3D,
 	input_direction: Vector3,
-	jump_height: float
+	jump_height: float,
+	horizontal_launch_speed: float
 ) -> void:
 	var horizontal_input: Vector3 = Vector3(
 		input_direction.x,
@@ -131,11 +132,15 @@ func apply_directional_jump(
 		1.0
 	)
 	var horizontal_velocity: Vector3 = Vector3.ZERO
+	var clamped_launch_speed: float = maxf(
+		horizontal_launch_speed,
+		0.0
+	)
 
 	if input_strength > 0.000001:
 		horizontal_velocity = (
 			horizontal_input.normalized()
-			* max_speed
+			* clamped_launch_speed
 			* input_strength
 		)
 
