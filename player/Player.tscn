@@ -3,11 +3,11 @@
 [ext_resource type="Script" uid="uid://bh0cjgtr0ub3k" path="res://player/player.gd" id="1_ulp21"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_ulp21"]
-radius = 0.249
+radius = 0.24
 height = 1.49
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_gpryg"]
-radius = 0.249
+radius = 0.24
 height = 1.49
 
 [node name="Player" type="CharacterBody3D" unique_id=911918640]
