@@ -6,6 +6,7 @@ enum LocomotionState {
 	LEDGE_CATCH,
 	LEDGE_HANG,
 	LEDGE_CORNER,
+	LEDGE_MANTLE,
 }
 
 
@@ -65,6 +66,10 @@ const LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES: float = 15.0
 @export var ledge_corner_turn_speed_degrees: float = 720.0
 
 
+@export_category("Mantle")
+@export var mantle_speed: float = 4.0
+
+
 @export_category("Look")
 @export var mouse_sensitivity: float = 0.007
 
@@ -78,6 +83,7 @@ var ledge_detector: PlayerLedgeDetector
 var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
+var ledge_mantle: PlayerMantle
 
 var locomotion_state: int = LocomotionState.NORMAL
 var ledge_view_center_yaw: float = 0.0
@@ -150,6 +156,11 @@ func _ready() -> void:
 		ledge_detector
 	)
 
+	ledge_mantle = PlayerMantle.new(
+		mantle_speed,
+		ledge_detector
+	)
+
 
 func _physics_process(
 	delta: float
@@ -175,6 +186,14 @@ func _physics_process(
 
 	if locomotion_state == LocomotionState.LEDGE_CORNER:
 		update_ledge_corner(
+			jump_pressed,
+			crouch_pressed,
+			delta
+		)
+		return
+
+	if locomotion_state == LocomotionState.LEDGE_MANTLE:
+		update_ledge_mantle(
 			jump_pressed,
 			crouch_pressed,
 			delta
@@ -372,11 +391,43 @@ func update_ledge_hang(
 		return
 
 	if action == PlayerLedgeHang.Action.MANTLE_REQUEST:
+		var mantle_source: PlayerLedgeDetector.LedgeCandidate = (
+			ledge_hang.get_candidate()
+		)
+		var mantle_candidate: PlayerMantle.MantleCandidate = (
+			ledge_mantle.find_candidate(
+				self,
+				support,
+				mantle_source
+			)
+		)
+
+		if (
+			mantle_candidate != null
+			and ledge_mantle.try_start(
+				self,
+				mantle_candidate
+			)
+		):
+			ledge_hang.cancel()
+			locomotion_state = LocomotionState.LEDGE_MANTLE
+			velocity = Vector3.ZERO
+
+			if ledge_debug_logging:
+				print("Ledge mantle entered")
+
+			return
+
+		perform_no_input_hang_jump(
+			mantle_source,
+			delta
+		)
+
 		if ledge_debug_logging:
 			print(
-				"Mantle requested; ",
-				"mantle traversal is not implemented yet"
+				"Mantle invalid; performed hang jump"
 			)
+
 		return
 
 	if action == PlayerLedgeHang.Action.SHIMMY_BLOCKED:
@@ -483,11 +534,32 @@ func update_ledge_corner(
 			support.update(self)
 			return
 
+		arm_jump_regrab_guard(
+			ledge_corner.get_release_candidates()
+		)
+		velocity = Vector3.ZERO
+		motor.apply_jump(
+			self,
+			jump_height
+		)
+		ledge_corner.cancel()
+		exit_ledge_view()
+		locomotion_state = LocomotionState.NORMAL
+		movement.move(
+			self,
+			support,
+			Vector3.ZERO,
+			false,
+			delta
+		)
+		support.update(self)
+
 		if ledge_debug_logging:
 			print(
-				"Mantle requested during ledge corner; ",
-				"mantle traversal is not implemented yet"
+				"Mantle unavailable during corner; ",
+				"performed hang jump"
 			)
+
 		return
 
 	if not ledge_corner.update(self, delta):
@@ -551,6 +623,140 @@ func update_ledge_corner(
 
 		if ledge_debug_logging:
 			print("Ledge corner completed")
+
+
+func update_ledge_mantle(
+	jump_pressed: bool,
+	crouch_pressed: bool,
+	delta: float
+) -> void:
+	var input_direction: Vector3 = (
+		player_input.get_movement_direction(
+			head.global_transform
+		)
+	)
+
+	if crouch_pressed:
+		release_mantle_to_air(
+			input_direction,
+			delta
+		)
+		return
+
+	if (
+		jump_pressed
+		and input_direction.length_squared()
+		> LOOK_DIRECTION_EPSILON_SQUARED
+	):
+		arm_jump_regrab_candidate(
+			ledge_mantle.get_release_candidate()
+		)
+		motor.apply_directional_jump(
+			self,
+			input_direction,
+			jump_height
+		)
+		ledge_mantle.cancel()
+		exit_ledge_view()
+		locomotion_state = LocomotionState.NORMAL
+		movement.move(
+			self,
+			support,
+			input_direction,
+			false,
+			delta
+		)
+		support.update(self)
+		return
+
+	if not ledge_mantle.update(self, delta):
+		release_mantle_to_air(
+			input_direction,
+			delta
+		)
+
+		if ledge_debug_logging:
+			print("Ledge mantle lost valid traversal")
+
+		return
+
+	if not ledge_mantle.has_completed():
+		return
+
+	velocity = Vector3.ZERO
+	support.update(self)
+
+	if not (
+		support.has_support
+		and support.walkable
+	):
+		release_mantle_to_air(
+			input_direction,
+			delta
+		)
+
+		if ledge_debug_logging:
+			print("Ledge mantle final support validation failed")
+
+		return
+
+	ledge_mantle.cancel()
+	exit_ledge_view()
+	locomotion_state = LocomotionState.NORMAL
+	velocity = Vector3.ZERO
+
+	if ledge_debug_logging:
+		print("Ledge mantle completed")
+
+
+func perform_no_input_hang_jump(
+	released_candidate: PlayerLedgeDetector.LedgeCandidate,
+	delta: float
+) -> void:
+	arm_jump_regrab_candidate(released_candidate)
+	velocity = Vector3.ZERO
+	motor.apply_jump(
+		self,
+		jump_height
+	)
+	ledge_hang.cancel()
+	exit_ledge_view()
+	locomotion_state = LocomotionState.NORMAL
+	movement.move(
+		self,
+		support,
+		Vector3.ZERO,
+		false,
+		delta
+	)
+	support.update(self)
+
+
+func release_mantle_to_air(
+	input_direction: Vector3,
+	delta: float
+) -> void:
+	var released_candidate: PlayerLedgeDetector.LedgeCandidate = (
+		ledge_mantle.get_release_candidate()
+	)
+
+	if released_candidate != null:
+		ledge_detector.suppress_candidate(
+			released_candidate
+		)
+
+	ledge_mantle.cancel()
+	exit_ledge_view()
+	locomotion_state = LocomotionState.NORMAL
+	velocity = Vector3.DOWN * gravity * delta
+	movement.move(
+		self,
+		support,
+		input_direction,
+		false,
+		delta
+	)
+	support.update(self)
 
 
 func release_ledge_to_air(
@@ -975,6 +1181,7 @@ func is_ledge_view_active() -> bool:
 		locomotion_state == LocomotionState.LEDGE_CATCH
 		or locomotion_state == LocomotionState.LEDGE_HANG
 		or locomotion_state == LocomotionState.LEDGE_CORNER
+		or locomotion_state == LocomotionState.LEDGE_MANTLE
 	)
 
 
