@@ -37,6 +37,8 @@ var ledge_sprint_jump_horizontal_speed: float
 var ledge_max_approach_angle_degrees: float
 var gravity: float
 var debug_logging: bool
+var minimum_air_mantle_alignment: float
+var minimum_local_ledge_alignment: float
 
 var state: int = State.NONE
 var jump_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
@@ -88,6 +90,18 @@ func _init(
 	ledge_max_approach_angle_degrees = configured_ledge_max_approach_angle_degrees
 	gravity = configured_gravity
 	debug_logging = configured_debug_logging
+
+	var maximum_approach_angle: float = clampf(
+		ledge_max_approach_angle_degrees,
+		0.0,
+		89.0
+	)
+	minimum_air_mantle_alignment = cos(
+		deg_to_rad(maximum_approach_angle)
+	)
+	minimum_local_ledge_alignment = cos(
+		deg_to_rad(LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES)
+	)
 
 
 func is_active() -> bool:
@@ -181,9 +195,7 @@ func _should_attempt_air_mantle(
 
 	horizontal_input = horizontal_input.normalized()
 	toward_wall = toward_wall.normalized()
-	var maximum_approach_angle := clampf(ledge_max_approach_angle_degrees, 0.0, 89.0)
-	var minimum_alignment := cos(deg_to_rad(maximum_approach_angle))
-	return horizontal_input.dot(toward_wall) >= minimum_alignment
+	return horizontal_input.dot(toward_wall) >= minimum_air_mantle_alignment
 
 
 func _update_ledge_catch(delta: float) -> void:
@@ -494,7 +506,8 @@ func _is_in_jump_regrab_region(candidate: PlayerLedgeDetector.LedgeCandidate) ->
 		return false
 	var edge_offset: Vector3 = candidate.edge_point - body.global_position
 	var horizontal_edge_offset := Vector3(edge_offset.x, 0.0, edge_offset.z)
-	if horizontal_edge_offset.length() > ledge_detector.get_max_horizontal_reach():
+	var max_reach: float = ledge_detector.get_max_horizontal_reach()
+	if horizontal_edge_offset.length_squared() > max_reach * max_reach:
 		return false
 	return edge_offset.y >= ledge_detector.get_min_edge_height() and edge_offset.y <= ledge_detector.get_max_catch_height()
 
@@ -538,7 +551,8 @@ func _should_keep_corner_release_suppression(
 	var edge_offset: Vector3 = candidate.edge_point - body.global_position
 	var horizontal_edge_offset := Vector3(edge_offset.x, 0.0, edge_offset.z)
 	var capsule_radius: float = ledge_detector.get_capsule_radius()
-	if horizontal_edge_offset.length() > ledge_detector.get_max_horizontal_reach() + capsule_radius:
+	var horizontal_limit: float = ledge_detector.get_max_horizontal_reach() + capsule_radius
+	if horizontal_edge_offset.length_squared() > horizontal_limit * horizontal_limit:
 		return false
 	return edge_offset.y >= ledge_detector.get_min_edge_height() - capsule_radius and edge_offset.y <= ledge_detector.get_max_catch_height() + capsule_radius
 
@@ -571,10 +585,11 @@ func _is_same_local_ledge(
 		return false
 	first_normal = first_normal.normalized()
 	second_normal = second_normal.normalized()
-	if first_normal.dot(second_normal) < cos(deg_to_rad(LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES)):
+	if first_normal.dot(second_normal) < minimum_local_ledge_alignment:
 		return false
 	if absf(first.edge_point.y - second.edge_point.y) > ledge_detector.get_shimmy_level_tolerance():
 		return false
 	var edge_delta: Vector3 = first.edge_point - second.edge_point
 	var horizontal_edge_delta := Vector3(edge_delta.x, 0.0, edge_delta.z)
-	return horizontal_edge_delta.length() <= ledge_detector.get_max_horizontal_reach()
+	var max_reach: float = ledge_detector.get_max_horizontal_reach()
+	return horizontal_edge_delta.length_squared() <= max_reach * max_reach
