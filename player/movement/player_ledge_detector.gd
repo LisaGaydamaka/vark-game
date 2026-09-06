@@ -79,6 +79,9 @@ var maximum_wall_normal_y: float
 var minimum_shimmy_wall_alignment: float
 var suppression_vertical_margin: float
 
+var ray_query: PhysicsRayQueryParameters3D = null
+var ray_query_player_rid: RID = RID()
+
 var current_candidate: LedgeCandidate = null
 var suppressed_candidate: LedgeCandidate = null
 
@@ -588,6 +591,9 @@ func find_hang_candidate_at_position(
 		return null
 
 	ledge_direction = ledge_direction.normalized()
+	var reference_ledge_direction: Vector3 = (
+		Vector3.UP.cross(fixed_wall_normal).normalized()
+	)
 
 	if not has_usable_ledge_span(
 		player,
@@ -595,7 +601,7 @@ func find_hang_candidate_at_position(
 		edge_point,
 		fixed_wall_normal,
 		top_hit.point.y,
-		Vector3.UP.cross(fixed_wall_normal).normalized()
+		reference_ledge_direction
 	):
 		return null
 
@@ -640,7 +646,7 @@ func find_wall(
 		return null
 
 	var best_push_strength: float = minimum_approach_alignment
-	var best_hit: WallHit = null
+	var best_collision_index: int = -1
 	var collision_count: int = collision.get_collision_count()
 
 	for collision_index: int in range(collision_count):
@@ -673,20 +679,28 @@ func find_wall(
 			continue
 
 		best_push_strength = push_strength
-		best_hit = WallHit.new()
-		best_hit.point = collision.get_position(
-			collision_index
-		)
-		best_hit.normal = horizontal_normal
-		best_hit.collider_rid = collision.get_collider_rid(
-			collision_index
-		)
-		best_hit.shape_index = (
-			collision.get_collider_shape_index(
-				collision_index
-			)
-		)
+		best_collision_index = collision_index
 
+	if best_collision_index < 0:
+		return null
+
+	var best_normal: Vector3 = collision.get_normal(
+		best_collision_index
+	)
+	best_normal.y = 0.0
+	best_normal = best_normal.normalized()
+
+	var best_hit: WallHit = WallHit.new()
+	best_hit.point = collision.get_position(
+		best_collision_index
+	)
+	best_hit.normal = best_normal
+	best_hit.collider_rid = collision.get_collider_rid(
+		best_collision_index
+	)
+	best_hit.shape_index = collision.get_collider_shape_index(
+		best_collision_index
+	)
 	return best_hit
 
 
@@ -715,20 +729,11 @@ func find_wall_near_edge(
 	)
 	ray_to.y = ray_from.y
 
-	var exclusions: Array[RID] = [player.get_rid()]
-	var query: PhysicsRayQueryParameters3D = (
-		PhysicsRayQueryParameters3D.create(
-			ray_from,
-			ray_to,
-			player.collision_mask,
-			exclusions
-		)
+	var query: PhysicsRayQueryParameters3D = _prepare_ray_query(
+		player,
+		ray_from,
+		ray_to
 	)
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	query.hit_back_faces = false
-	query.hit_from_inside = false
-
 	var space_state: PhysicsDirectSpaceState3D = (
 		player.get_world_3d().direct_space_state
 	)
@@ -845,20 +850,11 @@ func raycast_top(
 	ray_from: Vector3,
 	ray_to: Vector3
 ) -> TopHit:
-	var exclusions: Array[RID] = [player.get_rid()]
-	var query: PhysicsRayQueryParameters3D = (
-		PhysicsRayQueryParameters3D.create(
-			ray_from,
-			ray_to,
-			player.collision_mask,
-			exclusions
-		)
+	var query: PhysicsRayQueryParameters3D = _prepare_ray_query(
+		player,
+		ray_from,
+		ray_to
 	)
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	query.hit_back_faces = false
-	query.hit_from_inside = false
-
 	var space_state: PhysicsDirectSpaceState3D = (
 		player.get_world_3d().direct_space_state
 	)
@@ -895,6 +891,33 @@ func raycast_top(
 		top_hit.shape_index = shape_value
 
 	return top_hit
+
+
+func _prepare_ray_query(
+	player: CharacterBody3D,
+	ray_from: Vector3,
+	ray_to: Vector3
+) -> PhysicsRayQueryParameters3D:
+	var player_rid: RID = player.get_rid()
+
+	if ray_query == null or ray_query_player_rid != player_rid:
+		ray_query_player_rid = player_rid
+		ray_query = PhysicsRayQueryParameters3D.create(
+			ray_from,
+			ray_to,
+			player.collision_mask,
+			[player_rid]
+		)
+		ray_query.collide_with_areas = false
+		ray_query.collide_with_bodies = true
+		ray_query.hit_back_faces = false
+		ray_query.hit_from_inside = false
+		return ray_query
+
+	ray_query.from = ray_from
+	ray_query.to = ray_to
+	ray_query.collision_mask = player.collision_mask
+	return ray_query
 
 
 func has_catch_intent(
@@ -950,46 +973,76 @@ func has_usable_ledge_span(
 ) -> bool:
 	var half_width: float = get_ledge_span_half_width()
 
-	for direction_sign: float in [-1.0, 1.0]:
-		var sample_edge_point: Vector3 = (
-			edge_point
-			+ ledge_direction
-			* half_width
-			* direction_sign
-		)
-		var wall_hit: WallHit = find_wall_near_edge(
-			player,
+	if not _is_ledge_span_sample_valid(
+		player,
+		support,
+		edge_point,
+		wall_normal,
+		edge_height,
+		ledge_direction,
+		half_width,
+		-1.0
+	):
+		return false
+
+	return _is_ledge_span_sample_valid(
+		player,
+		support,
+		edge_point,
+		wall_normal,
+		edge_height,
+		ledge_direction,
+		half_width,
+		1.0
+	)
+
+
+func _is_ledge_span_sample_valid(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	edge_point: Vector3,
+	wall_normal: Vector3,
+	edge_height: float,
+	ledge_direction: Vector3,
+	half_width: float,
+	direction_sign: float
+) -> bool:
+	var sample_edge_point: Vector3 = (
+		edge_point
+		+ ledge_direction
+		* half_width
+		* direction_sign
+	)
+	var wall_hit: WallHit = find_wall_near_edge(
+		player,
+		wall_normal,
+		sample_edge_point
+	)
+
+	if (
+		wall_hit == null
+		or not is_wall_continuous(
+			wall_hit,
 			wall_normal,
 			sample_edge_point
 		)
+	):
+		return false
 
-		if (
-			wall_hit == null
-			or not is_wall_continuous(
-				wall_hit,
-				wall_normal,
-				sample_edge_point
-			)
-		):
-			return false
+	var top_hit: TopHit = find_top_for_hang(
+		player,
+		support,
+		wall_hit,
+		edge_height
+	)
 
-		var top_hit: TopHit = find_top_for_hang(
-			player,
-			support,
-			wall_hit,
-			edge_height
-		)
+	if top_hit == null:
+		return false
 
-		if top_hit == null:
-			return false
-
-		if (
-			absf(top_hit.point.y - edge_height)
-			> get_shimmy_level_tolerance()
-		):
-			return false
-
-	return true
+	return (
+		absf(top_hit.point.y - edge_height)
+		<= get_shimmy_level_tolerance()
+	)
 
 
 func is_wall_continuous(
@@ -1140,7 +1193,7 @@ func is_expected_hang_wall_contact(
 	var collision_normal: Vector3 = (
 		collision.get_normal(
 			collision_index
-	)
+		)
 	)
 
 	if (
