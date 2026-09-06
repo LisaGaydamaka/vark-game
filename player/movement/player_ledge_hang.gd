@@ -29,6 +29,8 @@ var segment_wall_normal: Vector3 = Vector3.ZERO
 var segment_ledge_direction: Vector3 = Vector3.ZERO
 var shimmy_velocity: float = 0.0
 var blocked_shimmy_direction: Vector3 = Vector3.ZERO
+var blocked_endpoint_direction: Vector3 = Vector3.ZERO
+var blocked_endpoint_input_released: bool = false
 
 
 func _init(
@@ -60,6 +62,7 @@ func start(
 	active_candidate = candidate
 	shimmy_velocity = 0.0
 	blocked_shimmy_direction = Vector3.ZERO
+	clear_blocked_endpoint()
 	segment_wall_normal = candidate.wall_normal.normalized()
 	segment_ledge_direction = (
 		Vector3.UP.cross(segment_wall_normal)
@@ -97,6 +100,10 @@ func update(
 		support
 	):
 		return Action.LOST_LEDGE
+
+	update_blocked_endpoint_input_state(
+		input_direction
+	)
 
 	if not update_shimmy(
 		player,
@@ -228,11 +235,12 @@ func update_shimmy(
 		):
 			return false
 
-		blocked_shimmy_direction = (
+		set_blocked_shimmy_direction(
 			shimmy_direction
 		)
 		return true
 
+	clear_blocked_endpoint()
 	active_candidate = next_candidate
 	return true
 
@@ -240,8 +248,55 @@ func update_shimmy(
 func set_blocked_shimmy_direction(
 	direction: Vector3
 ) -> void:
-	blocked_shimmy_direction = direction
 	shimmy_velocity = 0.0
+
+	if (
+		blocked_endpoint_direction.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		blocked_endpoint_direction = direction
+		blocked_endpoint_input_released = false
+		return
+
+	if direction.dot(blocked_endpoint_direction) <= 0.0:
+		blocked_endpoint_direction = direction
+		blocked_endpoint_input_released = false
+		return
+
+	if not blocked_endpoint_input_released:
+		return
+
+	blocked_shimmy_direction = direction
+	clear_blocked_endpoint()
+
+
+func update_blocked_endpoint_input_state(
+	input_direction: Vector3
+) -> void:
+	if (
+		blocked_endpoint_direction.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return
+
+	var endpoint_intent: float = input_direction.dot(
+		blocked_endpoint_direction
+	)
+
+	if endpoint_intent < -SHIMMY_INTENT_DEADZONE:
+		clear_blocked_endpoint()
+		return
+
+	if (
+		not blocked_endpoint_input_released
+		and endpoint_intent <= SHIMMY_INTENT_DEADZONE
+	):
+		blocked_endpoint_input_released = true
+
+
+func clear_blocked_endpoint() -> void:
+	blocked_endpoint_direction = Vector3.ZERO
+	blocked_endpoint_input_released = false
 
 
 func is_shimmy_path_clear(
@@ -514,3 +569,4 @@ func cancel() -> void:
 	segment_ledge_direction = Vector3.ZERO
 	shimmy_velocity = 0.0
 	blocked_shimmy_direction = Vector3.ZERO
+	clear_blocked_endpoint()
