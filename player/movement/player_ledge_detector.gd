@@ -57,6 +57,28 @@ var max_approach_angle_degrees: float
 var debug_logging: bool
 var collision_shape: CollisionShape3D
 
+var capsule_shape: CapsuleShape3D
+var capsule_radius: float
+var capsule_height: float
+var capsule_bottom_offset: float
+var capsule_top_offset: float
+var forward_probe_distance: float
+var max_horizontal_reach: float
+var min_edge_height: float
+var max_catch_height: float
+var hand_reach_height: float
+var hang_anchor_height: float
+var hang_wall_distance: float
+var top_probe_inset: float
+var shimmy_level_tolerance: float
+var shimmy_attachment_correction_limit: float
+var ledge_span_half_width: float
+var max_catch_fall_speed: float
+var minimum_approach_alignment: float
+var maximum_wall_normal_y: float
+var minimum_shimmy_wall_alignment: float
+var suppression_vertical_margin: float
+
 var current_candidate: LedgeCandidate = null
 var suppressed_candidate: LedgeCandidate = null
 
@@ -105,7 +127,96 @@ func _init(
 		"PlayerLedgeDetector requires max_approach_angle_degrees to be non-negative."
 	)
 
-	get_capsule_shape()
+	var shape: Shape3D = collision_shape.shape
+	assert(
+		shape is CapsuleShape3D,
+		"PlayerLedgeDetector requires the player collision shape to be CapsuleShape3D."
+	)
+	capsule_shape = shape as CapsuleShape3D
+
+	_cache_static_values()
+
+
+func _cache_static_values() -> void:
+	capsule_radius = capsule_shape.radius
+	capsule_height = capsule_shape.height
+	capsule_bottom_offset = (
+		collision_shape.position.y
+		- capsule_height * 0.5
+	)
+	capsule_top_offset = (
+		collision_shape.position.y
+		+ capsule_height * 0.5
+	)
+
+	forward_probe_distance = (
+		capsule_radius
+		* FORWARD_REACH_RADIUS_MULTIPLIER
+	)
+	max_horizontal_reach = (
+		capsule_radius
+		+ forward_probe_distance
+	)
+	hand_reach_height = (
+		capsule_height
+		* HAND_REACH_HEIGHT_RATIO
+	)
+	min_edge_height = (
+		capsule_bottom_offset
+		+ max_step_height
+	)
+	max_catch_height = (
+		capsule_top_offset
+		+ hand_reach_height
+	)
+	hang_anchor_height = (
+		eye_height
+		+ capsule_radius
+		* HANG_EDGE_ABOVE_EYE_RADIUS_RATIO
+	)
+	hang_wall_distance = capsule_radius + PROBE_SAFE_MARGIN
+	top_probe_inset = (
+		capsule_radius
+		* TOP_PROBE_INSET_RADIUS_RATIO
+	)
+	shimmy_level_tolerance = maxf(
+		PROBE_SAFE_MARGIN,
+		capsule_radius
+		* SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO
+	)
+	shimmy_attachment_correction_limit = maxf(
+		PROBE_SAFE_MARGIN,
+		capsule_radius
+		* SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO
+	)
+	ledge_span_half_width = (
+		capsule_radius
+		* LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO
+	)
+	suppression_vertical_margin = (
+		capsule_radius
+		* SUPPRESSION_VERTICAL_MARGIN_RADIUS_RATIO
+	)
+
+	var jump_speed: float = sqrt(
+		2.0
+		* gravity
+		* maxf(jump_height, 0.0)
+	)
+	max_catch_fall_speed = (
+		jump_speed
+		* MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER
+	)
+
+	minimum_approach_alignment = cos(
+		deg_to_rad(max_approach_angle_degrees)
+	)
+	maximum_wall_normal_y = sin(
+		deg_to_rad(max_wall_tilt_degrees)
+	)
+	minimum_shimmy_wall_alignment = cos(
+		deg_to_rad(SHIMMY_MAX_WALL_TURN_DEGREES)
+	)
 
 
 func update(
@@ -185,23 +296,23 @@ func update_suppression(
 		0.0,
 		edge_offset.z
 	)
-	var vertical_margin: float = (
-		get_capsule_radius()
-		* SUPPRESSION_VERTICAL_MARGIN_RADIUS_RATIO
+	var horizontal_limit: float = (
+		get_max_horizontal_reach()
+		+ get_capsule_radius()
 	)
 
 	if (
-		horizontal_edge_offset.length()
-		> get_max_horizontal_reach() + get_capsule_radius()
+		horizontal_edge_offset.length_squared()
+		> horizontal_limit * horizontal_limit
 	):
 		suppressed_candidate = null
 		return
 
 	if (
 		edge_offset.y
-		< get_min_edge_height() - vertical_margin
+		< get_min_edge_height() - suppression_vertical_margin
 		or edge_offset.y
-		> get_max_catch_height() + vertical_margin
+		> get_max_catch_height() + suppression_vertical_margin
 	):
 		suppressed_candidate = null
 
@@ -301,10 +412,14 @@ func find_candidate(
 		0.0,
 		edge_offset.z
 	)
+	var horizontal_reach_limit: float = (
+		get_max_horizontal_reach()
+		+ PROBE_SAFE_MARGIN
+	)
 
 	if (
-		horizontal_edge_offset.length()
-		> get_max_horizontal_reach() + PROBE_SAFE_MARGIN
+		horizontal_edge_offset.length_squared()
+		> horizontal_reach_limit * horizontal_reach_limit
 	):
 		return null
 
@@ -452,10 +567,13 @@ func find_hang_candidate_at_position(
 		0.0,
 		hang_position.z - proposed_hang_position.z
 	)
+	var correction_limit: float = (
+		get_shimmy_attachment_correction_limit()
+	)
 
 	if (
-		horizontal_correction.length()
-		> get_shimmy_attachment_correction_limit()
+		horizontal_correction.length_squared()
+		> correction_limit * correction_limit
 	):
 		return null
 
@@ -521,10 +639,7 @@ func find_wall(
 	if not blocked:
 		return null
 
-	var minimum_push_strength: float = cos(
-		deg_to_rad(max_approach_angle_degrees)
-	)
-	var best_push_strength: float = minimum_push_strength
+	var best_push_strength: float = minimum_approach_alignment
 	var best_hit: WallHit = null
 	var collision_count: int = collision.get_collision_count()
 
@@ -788,9 +903,6 @@ func has_catch_intent(
 	view_forward: Vector3
 ) -> bool:
 	var toward_wall: Vector3 = -wall_normal
-	var minimum_alignment: float = cos(
-		deg_to_rad(max_approach_angle_degrees)
-	)
 	var horizontal_intent: Vector3 = Vector3(
 		intent_direction.x,
 		0.0,
@@ -805,7 +917,7 @@ func has_catch_intent(
 
 		if (
 			horizontal_intent.dot(toward_wall)
-			>= minimum_alignment
+			>= minimum_approach_alignment
 		):
 			return true
 
@@ -824,7 +936,7 @@ func has_catch_intent(
 	horizontal_view = horizontal_view.normalized()
 	return (
 		horizontal_view.dot(toward_wall)
-		>= minimum_alignment
+		>= minimum_approach_alignment
 	)
 
 
@@ -885,13 +997,9 @@ func is_wall_continuous(
 	expected_wall_normal: Vector3,
 	expected_edge_point: Vector3
 ) -> bool:
-	var minimum_alignment: float = cos(
-		deg_to_rad(SHIMMY_MAX_WALL_TURN_DEGREES)
-	)
-
 	if (
 		wall_hit.normal.dot(expected_wall_normal)
-		< minimum_alignment
+		< minimum_shimmy_wall_alignment
 	):
 		return false
 
@@ -934,11 +1042,7 @@ func is_suppressed_wall(
 func is_wall_surface(
 	normal: Vector3
 ) -> bool:
-	var maximum_normal_y: float = sin(
-		deg_to_rad(max_wall_tilt_degrees)
-	)
-
-	return absf(normal.y) <= maximum_normal_y
+	return absf(normal.y) <= maximum_wall_normal_y
 
 
 func get_hang_position(
@@ -1036,7 +1140,7 @@ func is_expected_hang_wall_contact(
 	var collision_normal: Vector3 = (
 		collision.get_normal(
 			collision_index
-		)
+	)
 	)
 
 	if (
@@ -1070,125 +1174,71 @@ func is_expected_hang_wall_contact(
 
 
 func get_forward_probe_distance() -> float:
-	return (
-		get_capsule_radius()
-		* FORWARD_REACH_RADIUS_MULTIPLIER
-	)
+	return forward_probe_distance
 
 
 func get_max_horizontal_reach() -> float:
-	return (
-		get_capsule_radius()
-		+ get_forward_probe_distance()
-	)
+	return max_horizontal_reach
 
 
 func get_min_edge_height() -> float:
-	return (
-		get_capsule_bottom_offset()
-		+ max_step_height
-	)
+	return min_edge_height
 
 
 func get_max_catch_height() -> float:
-	return (
-		get_capsule_top_offset()
-		+ get_hand_reach_height()
-	)
+	return max_catch_height
 
 
 func get_hand_reach_height() -> float:
-	return (
-		get_capsule_height()
-		* HAND_REACH_HEIGHT_RATIO
-	)
+	return hand_reach_height
 
 
 func get_hang_anchor_height() -> float:
-	return (
-		eye_height
-		+ get_capsule_radius()
-		* HANG_EDGE_ABOVE_EYE_RADIUS_RATIO
-	)
+	return hang_anchor_height
 
 
 func get_hang_wall_distance() -> float:
-	return get_capsule_radius() + PROBE_SAFE_MARGIN
+	return hang_wall_distance
 
 
 func get_top_probe_inset() -> float:
-	return (
-		get_capsule_radius()
-		* TOP_PROBE_INSET_RADIUS_RATIO
-	)
+	return top_probe_inset
 
 
 func get_shimmy_level_tolerance() -> float:
-	return maxf(
-		PROBE_SAFE_MARGIN,
-		get_capsule_radius()
-		* SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO
-	)
+	return shimmy_level_tolerance
 
 
 func get_shimmy_attachment_correction_limit() -> float:
-	return maxf(
-		PROBE_SAFE_MARGIN,
-		get_capsule_radius()
-		* SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO
-	)
+	return shimmy_attachment_correction_limit
 
 
 func get_ledge_span_half_width() -> float:
-	return (
-		get_capsule_radius()
-		* LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO
-	)
+	return ledge_span_half_width
 
 
 func get_max_catch_fall_speed() -> float:
-	var jump_speed: float = sqrt(
-		2.0
-		* gravity
-		* maxf(jump_height, 0.0)
-	)
-
-	return (
-		jump_speed
-		* MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER
-	)
+	return max_catch_fall_speed
 
 
 func get_capsule_bottom_offset() -> float:
-	return (
-		collision_shape.position.y
-		- get_capsule_height() * 0.5
-	)
+	return capsule_bottom_offset
 
 
 func get_capsule_top_offset() -> float:
-	return (
-		collision_shape.position.y
-		+ get_capsule_height() * 0.5
-	)
+	return capsule_top_offset
 
 
 func get_capsule_radius() -> float:
-	return get_capsule_shape().radius
+	return capsule_radius
 
 
 func get_capsule_height() -> float:
-	return get_capsule_shape().height
+	return capsule_height
 
 
 func get_capsule_shape() -> CapsuleShape3D:
-	var shape: Shape3D = collision_shape.shape
-	assert(
-		shape is CapsuleShape3D,
-		"PlayerLedgeDetector requires the player collision shape to be CapsuleShape3D."
-	)
-
-	return shape as CapsuleShape3D
+	return capsule_shape
 
 
 func update_debug_logging(
