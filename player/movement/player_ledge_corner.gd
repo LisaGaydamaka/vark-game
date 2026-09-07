@@ -5,9 +5,11 @@ extends RefCounted
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
+const CORNER_ENDPOINT_SCAN_STEPS: int = 8
 const CORNER_ENDPOINT_SEARCH_STEPS: int = 8
 const MAX_RIGHT_ANGLE_ERROR_DEGREES: float = 15.0
 const MAX_ROUTE_SEGMENT_ANGLE_DEGREES: float = 5.0
+const EXPECTED_ROUTE_WALL_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.5
 
 
 class CornerCandidate:
@@ -433,51 +435,49 @@ func find_source_endpoint(
 	source_normal: Vector3,
 	travel_direction: Vector3
 ) -> Dictionary:
-	var start_wall: PlayerLedgeDetector.WallHit = (
-		detector.find_wall_near_edge(
-			player,
-			source_normal,
-			source_candidate.edge_point
-		)
-	)
-
-	if (
-		start_wall == null
-		or not detector.is_wall_continuous(
-			start_wall,
-			source_normal,
-			source_candidate.edge_point
-		)
+	if not source_wall_exists_at_distance(
+		player,
+		source_candidate,
+		source_normal,
+		travel_direction,
+		0.0
 	):
 		return {}
 
 	var search_distance: float = (
 		detector.get_max_horizontal_reach()
 	)
-	var far_point: Vector3 = (
-		source_candidate.edge_point
-		+ travel_direction * search_distance
-	)
-	var far_wall: PlayerLedgeDetector.WallHit = (
-		detector.find_wall_near_edge(
-			player,
-			source_normal,
-			far_point
-		)
-	)
-
-	if (
-		far_wall != null
-		and detector.is_wall_continuous(
-			far_wall,
-			source_normal,
-			far_point
-		)
-	):
-		return {}
-
 	var lower_distance: float = 0.0
-	var upper_distance: float = search_distance
+	var upper_distance: float = -1.0
+	var previous_distance: float = 0.0
+
+	for scan_index: int in range(
+		1,
+		CORNER_ENDPOINT_SCAN_STEPS + 1
+	):
+		var sample_distance: float = (
+			search_distance
+			* float(scan_index)
+			/ float(CORNER_ENDPOINT_SCAN_STEPS)
+		)
+		var source_exists: bool = source_wall_exists_at_distance(
+			player,
+			source_candidate,
+			source_normal,
+			travel_direction,
+			sample_distance
+		)
+
+		if source_exists:
+			previous_distance = sample_distance
+			continue
+
+		lower_distance = previous_distance
+		upper_distance = sample_distance
+		break
+
+	if upper_distance < 0.0:
+		return {}
 
 	for _iteration: int in range(
 		CORNER_ENDPOINT_SEARCH_STEPS
@@ -486,28 +486,14 @@ func find_source_endpoint(
 			(lower_distance + upper_distance)
 			* 0.5
 		)
-		var sample_point: Vector3 = (
-			source_candidate.edge_point
-			+ travel_direction
-			* middle_distance
-		)
-		var sample_wall: PlayerLedgeDetector.WallHit = (
-			detector.find_wall_near_edge(
-				player,
-				source_normal,
-				sample_point
-			)
-		)
-		var source_exists: bool = (
-			sample_wall != null
-			and detector.is_wall_continuous(
-				sample_wall,
-				source_normal,
-				sample_point
-			)
-		)
 
-		if source_exists:
+		if source_wall_exists_at_distance(
+			player,
+			source_candidate,
+			source_normal,
+			travel_direction,
+			middle_distance
+		):
 			lower_distance = middle_distance
 		else:
 			upper_distance = middle_distance
@@ -523,6 +509,35 @@ func find_source_endpoint(
 		"point": endpoint,
 		"resolution": upper_distance - lower_distance,
 	}
+
+
+func source_wall_exists_at_distance(
+	player: CharacterBody3D,
+	source_candidate: PlayerLedgeDetector.LedgeCandidate,
+	source_normal: Vector3,
+	travel_direction: Vector3,
+	distance: float
+) -> bool:
+	var sample_point: Vector3 = (
+		source_candidate.edge_point
+		+ travel_direction * distance
+	)
+	var sample_wall: PlayerLedgeDetector.WallHit = (
+		detector.find_wall_near_edge(
+			player,
+			source_normal,
+			sample_point
+		)
+	)
+
+	return (
+		sample_wall != null
+		and detector.is_wall_continuous(
+			sample_wall,
+			source_normal,
+			sample_point
+		)
+	)
 
 
 func find_wall_plane_corner_point(
@@ -929,9 +944,63 @@ func is_expected_corner_contact(
 
 	collision_normal = collision_normal.normalized()
 
-	return is_normal_in_corner_sector(
+	if not is_normal_in_corner_sector(
 		collision_normal
+	):
+		return false
+
+	var collision_point: Vector3 = collision.get_position(
+		collision_index
 	)
+	var tolerance: float = (
+		get_expected_route_wall_plane_tolerance()
+	)
+
+	if (
+		matches_source
+		and is_point_near_candidate_wall_plane(
+			collision_point,
+			active_corner.source_candidate,
+			tolerance
+		)
+	):
+		return true
+
+	return (
+		matches_target
+		and is_point_near_candidate_wall_plane(
+			collision_point,
+			active_corner.target_candidate,
+			tolerance
+		)
+	)
+
+
+func is_point_near_candidate_wall_plane(
+	point: Vector3,
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	tolerance: float
+) -> bool:
+	if candidate == null:
+		return false
+
+	var wall_normal: Vector3 = candidate.wall_normal
+
+	if (
+		wall_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	wall_normal = wall_normal.normalized()
+	var plane_distance: float = absf(
+		(
+			point
+			- candidate.edge_point
+		).dot(wall_normal)
+	)
+
+	return plane_distance <= tolerance
 
 
 func is_normal_in_corner_sector(
@@ -1201,6 +1270,14 @@ func get_maximum_segment_distance() -> float:
 
 func get_route_position_tolerance() -> float:
 	return PROBE_SAFE_MARGIN * 2.0
+
+
+func get_expected_route_wall_plane_tolerance() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		detector.get_capsule_radius()
+		* EXPECTED_ROUTE_WALL_PLANE_TOLERANCE_RADIUS_RATIO
+	)
 
 
 func is_active() -> bool:
