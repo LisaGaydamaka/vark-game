@@ -23,15 +23,15 @@ extends CharacterBody3D
 
 @export_category("Air")
 @export var air_max_speed: float = 2.5
-@export var air_acceleration: float = 8.0
-@export var air_deceleration: float = 6.0
+@export var air_acceleration: float = 20.0
+@export var air_deceleration: float = 15.0
 
 
 @export_category("Surface")
 @export var max_walkable_slope: float = 45.0
 @export var support_check_distance: float = 0.05
 @export var static_friction_coefficient: float = 1.0
-@export var kinetic_friction_coefficient: float = 0.8
+@export var kinetic_friction_coefficient: float = 0.4
 
 
 @export_category("Gravity")
@@ -45,8 +45,8 @@ extends CharacterBody3D
 @export_category("Step Up")
 @export var max_step_height: float = 0.5
 @export var max_riser_tilt_degrees: float = 5.0
-@export var step_up_acceleration: float = 80.0
-@export var max_step_up_speed: float = 5.0
+@export var step_up_acceleration: float = 200.0
+@export var max_step_up_speed: float = 20.0
 
 
 @export_category("Ledge Detection")
