@@ -219,7 +219,6 @@ func _finish_ledge_catch_if_ready() -> void:
 		var failed_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_catch.get_failed_candidate()
 		if failed_candidate != null:
 			_arm_failed_catch_regrab_candidate(failed_candidate)
-			ledge_detector.suppress_candidate(failed_candidate)
 		var failure_description: String = ledge_catch.take_failure_description()
 		active_catch_candidate = null
 		look.exit_ledge_view()
@@ -411,9 +410,6 @@ func _perform_no_input_hang_jump(
 
 
 func _release_mantle_to_air(input_direction: Vector3, delta: float) -> void:
-	var released_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_mantle.get_release_candidate()
-	if released_candidate != null:
-		ledge_detector.suppress_candidate(released_candidate)
 	ledge_mantle.cancel()
 	look.exit_ledge_view()
 	state = State.NONE
@@ -423,9 +419,6 @@ func _release_mantle_to_air(input_direction: Vector3, delta: float) -> void:
 
 
 func _release_ledge_to_air(input_direction: Vector3, delta: float) -> void:
-	var released_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_hang.get_candidate()
-	if released_candidate != null:
-		ledge_detector.suppress_candidate(released_candidate)
 	ledge_hang.cancel()
 	look.exit_ledge_view()
 	state = State.NONE
