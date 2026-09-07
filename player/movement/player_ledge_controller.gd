@@ -122,42 +122,45 @@ func update_transition_guards() -> void:
 
 
 func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
-	var candidate: PlayerLedgeDetector.LedgeCandidate = ledge_detector.get_candidate()
-	if candidate == null:
-		return false
-	if (
-		_is_jump_regrab_blocked(candidate)
-		or _is_drop_regrab_blocked(candidate)
-		or _is_failed_catch_regrab_blocked(candidate)
-		or _is_corner_release_suppressed(candidate)
-	):
-		return false
+	var candidates: Array[PlayerLedgeDetector.LedgeCandidate] = (
+		ledge_detector.get_candidates()
+	)
+	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
+		if candidate == null:
+			continue
+		if (
+			_is_jump_regrab_blocked(candidate)
+			or _is_drop_regrab_blocked(candidate)
+			or _is_failed_catch_regrab_blocked(candidate)
+			or _is_corner_release_suppressed(candidate)
+		):
+			continue
 
-	if candidate.hangable and ledge_catch.try_start(body, candidate):
-		active_catch_candidate = candidate
-		step_up.cancel_traversal()
-		ledge_detector.clear_candidate()
-		look.enter_ledge_view(candidate.wall_normal)
-		state = State.CATCHING
-		ledge_catch.update(body, delta)
-		_finish_ledge_catch_if_ready()
-		return true
-
-	if _should_attempt_air_mantle(candidate, input_direction):
-		var mantle_candidate: PlayerMantle.MantleCandidate = ledge_mantle.find_air_candidate(
-			body,
-			support,
-			candidate
-		)
-		if mantle_candidate != null and ledge_mantle.try_start(body, mantle_candidate):
+		if candidate.hangable and ledge_catch.try_start(body, candidate):
+			active_catch_candidate = candidate
 			step_up.cancel_traversal()
 			ledge_detector.clear_candidate()
 			look.enter_ledge_view(candidate.wall_normal)
-			state = State.MANTLING
-			body.velocity = Vector3.ZERO
-			if debug_logging:
-				print("Air mantle entered")
+			state = State.CATCHING
+			ledge_catch.update(body, delta)
+			_finish_ledge_catch_if_ready()
 			return true
+
+		if _should_attempt_air_mantle(candidate, input_direction):
+			var mantle_candidate: PlayerMantle.MantleCandidate = ledge_mantle.find_air_candidate(
+				body,
+				support,
+				candidate
+			)
+			if mantle_candidate != null and ledge_mantle.try_start(body, mantle_candidate):
+				step_up.cancel_traversal()
+				ledge_detector.clear_candidate()
+				look.enter_ledge_view(candidate.wall_normal)
+				state = State.MANTLING
+				body.velocity = Vector3.ZERO
+				if debug_logging:
+					print("Air mantle entered")
+				return true
 	return false
 
 
