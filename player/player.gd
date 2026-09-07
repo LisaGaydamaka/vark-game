@@ -219,36 +219,24 @@ func _update_normal_movement(
 
 	ledge_controller.update_transition_guards()
 
-	# A grounded mantle is a discrete Space request while movement input exists.
-	# Resolve it before normal jump so a successful mantle consumes the press;
-	# if no mantle starts, the same press immediately falls through to jumping.
+	# Ground mantle is a discrete request, but geometry alone may not consume it.
+	# The real grounded move must physically contact the obstacle first.
 	var ground_mantle_requested: bool = (
 		jump_pressed
 		and grounded
 		and not input_direction.is_zero_approx()
 		and not step_up.is_active()
 	)
-	if ground_mantle_requested:
-		ledge_detector.update(
-			self,
-			support,
-			true,
-			input_direction,
-			view_forward
-		)
-		if ledge_controller.try_enter_from_normal(input_direction, delta):
-			return
-
-	var jump_accepted: bool = (
+	var jump_accepted_before_move: bool = (
 		jump_pressed
 		and grounded
+		and not ground_mantle_requested
 	)
 
-	if jump_accepted:
+	if jump_accepted_before_move:
 		step_up.cancel_traversal()
 
 	var ground_target_speed: float = max_speed
-
 	if (
 		grounded
 		and not input_direction.is_zero_approx()
@@ -256,14 +244,10 @@ func _update_normal_movement(
 	):
 		ground_target_speed = sprint_speed
 
-	# A steep surface is still physical support even when it is not walkable.
-	# Keep it in the supported motor path so gravity projects into a natural
-	# slide and kinetic friction applies; reserve air control for no support.
 	var use_air_control: bool = (
 		not support.has_support
 		and not step_up.is_active()
 	)
-
 	motor.update(
 		self,
 		support,
@@ -273,14 +257,14 @@ func _update_normal_movement(
 		delta
 	)
 
-	if jump_accepted:
+	if jump_accepted_before_move:
 		motor.apply_jump(
 			self,
 			jump_height
 		)
 
-	# Free-flight ledge policy is separate from grounded mantle policy. Hangable
-	# candidates may catch normally; non-hangable candidates require Space held.
+	# Hang remains an anticipatory reach action. Airborne hangable geometry may
+	# magnetize into catch before the capsule physically hits the obstacle.
 	var airborne_detection_allowed: bool = (
 		not grounded
 		and not step_up.is_active()
@@ -292,19 +276,77 @@ func _update_normal_movement(
 		input_direction,
 		view_forward
 	)
-
 	if (
 		airborne_detection_allowed
-		and ledge_controller.try_enter_from_normal(input_direction, delta)
+		and ledge_controller.try_enter_hang_from_normal(delta)
 	):
 		return
 
-	movement.move(
+	var contact_intent_direction: Vector3 = input_direction
+	if contact_intent_direction.is_zero_approx():
+		var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
+		if horizontal_velocity.length_squared() > 0.000001:
+			contact_intent_direction = horizontal_velocity.normalized()
+
+	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		support,
 		input_direction,
-		not jump_accepted,
+		not jump_accepted_before_move,
 		delta
 	)
+
+	# A contact can expose a hang opportunity that was just outside the magnetic
+	# discovery volume before movement. Hang still gets priority over air mantle.
+	if not collisions.is_empty() and not grounded:
+		ledge_detector.update(
+			self,
+			support,
+			true,
+			contact_intent_direction,
+			view_forward
+		)
+		if ledge_controller.try_enter_hang_from_normal(delta):
+			return
+
+		if (
+			player_input.is_jump_pressed()
+			and ledge_controller.try_enter_mantle_from_contacts(
+				contact_intent_direction,
+				collisions,
+				false,
+				true
+			)
+		):
+			return
+
+	# Ground mantle is evaluated only after that same frame's real movement has
+	# produced contact. A probe-visible gap can therefore never start mantle.
+	if ground_mantle_requested and not collisions.is_empty():
+		ledge_detector.update(
+			self,
+			support,
+			true,
+			input_direction,
+			view_forward
+		)
+		if ledge_controller.try_enter_mantle_from_contacts(
+			input_direction,
+			collisions,
+			true,
+			false
+		):
+			return
+
+	# If the discrete ground mantle request was not consumed by a real contact,
+	# preserve the normal jump in the same physics frame. Horizontal/contact
+	# movement has already run, so execute only the takeoff's vertical component.
+	if ground_mantle_requested:
+		step_up.cancel_traversal()
+		motor.apply_jump(
+			self,
+			jump_height
+		)
+		movement.move_vertical_velocity(self, delta)
 
 	support.update(self)
