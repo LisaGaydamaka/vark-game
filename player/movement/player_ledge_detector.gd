@@ -396,27 +396,47 @@ func find_local_candidate(
 		return null
 	expected_normal = expected_normal.normalized()
 
+	# The target edge height is unknown here. Search the walkable top first at
+	# the known horizontal wall plane, then reconstruct the local edge height.
+	var top_probe_center: Vector3 = (
+		edge_hint
+		- expected_normal * get_top_probe_inset()
+	)
+	top_probe_center.y = edge_hint.y
+	var top_hit: TopHit = raycast_top(
+		player,
+		support,
+		top_probe_center + Vector3.UP * height_window,
+		top_probe_center - Vector3.UP * height_window
+	)
+	if top_hit == null:
+		return null
+
+	var expected_wall := WallHit.new()
+	expected_wall.point = edge_hint
+	expected_wall.normal = expected_normal
+	var provisional_geometry: LedgeGeometry = build_ledge_geometry(
+		expected_wall,
+		top_hit
+	)
+	if provisional_geometry == null:
+		return null
+
 	var wall_hit: WallHit = find_wall_near_edge(
 		player,
 		expected_normal,
-		edge_hint
+		provisional_geometry.edge_point
 	)
 	if wall_hit == null:
 		return null
 	if wall_hit.normal.dot(expected_normal) < minimum_shimmy_wall_alignment:
 		return null
 
-	var top_hit: TopHit = find_top_near_wall(
+	var candidate: LedgeCandidate = build_ledge_candidate(
 		player,
-		support,
 		wall_hit,
-		edge_hint.y,
-		height_window
+		top_hit
 	)
-	if top_hit == null:
-		return null
-
-	var candidate: LedgeCandidate = build_ledge_candidate(player, wall_hit, top_hit)
 	if candidate == null:
 		return null
 
