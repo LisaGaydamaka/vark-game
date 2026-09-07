@@ -233,8 +233,11 @@ func _update_normal_movement(
 	):
 		ground_target_speed = sprint_speed
 
+	# A steep surface is still physical support even when it is not walkable.
+	# Keep it in the supported motor path so gravity projects into a natural
+	# slide and kinetic friction applies; reserve air control for no support.
 	var use_air_control: bool = (
-		not grounded
+		not support.has_support
 		and not step_up.is_active()
 	)
 
