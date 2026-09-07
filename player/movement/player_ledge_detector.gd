@@ -21,6 +21,8 @@ const SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO: float = 0.1
 const LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO: float = 0.75
 const EXPECTED_HANG_WALL_MIN_ALIGNMENT: float = 0.9
 const EXPECTED_HANG_WALL_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
+const DISCOVERY_HEIGHT_SAMPLE_COUNT: int = 12
+const DISCOVERY_LOCAL_BAND_OVERLAP: float = 0.75
 
 
 class LedgeGeometry:
@@ -98,6 +100,7 @@ var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
 
 var current_candidate: LedgeCandidate = null
+var current_candidates: Array[LedgeCandidate] = []
 
 
 func _init(
@@ -174,12 +177,20 @@ func update(
 	view_forward: Vector3
 ) -> void:
 	var previously_had_candidate: bool = current_candidate != null
-	var next_candidate: LedgeCandidate = null
+	var next_candidates: Array[LedgeCandidate] = []
 
 	if detection_allowed and player.velocity.y >= -get_max_catch_fall_speed():
-		next_candidate = find_candidate(player, support, intent_direction, view_forward)
+		next_candidates = find_candidates(
+			player,
+			support,
+			intent_direction,
+			view_forward
+		)
 
-	current_candidate = next_candidate
+	current_candidates = next_candidates
+	current_candidate = null
+	if not current_candidates.is_empty():
+		current_candidate = current_candidates[0]
 	update_debug_logging(previously_had_candidate)
 
 
@@ -191,8 +202,13 @@ func get_candidate() -> LedgeCandidate:
 	return current_candidate
 
 
+func get_candidates() -> Array[LedgeCandidate]:
+	return current_candidates
+
+
 func clear_candidate() -> void:
 	current_candidate = null
+	current_candidates.clear()
 
 
 func find_candidate(
@@ -201,6 +217,24 @@ func find_candidate(
 	intent_direction: Vector3,
 	view_forward: Vector3
 ) -> LedgeCandidate:
+	var candidates: Array[LedgeCandidate] = find_candidates(
+		player,
+		support,
+		intent_direction,
+		view_forward
+	)
+	if candidates.is_empty():
+		return null
+	return candidates[0]
+
+
+func find_candidates(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	intent_direction: Vector3,
+	view_forward: Vector3
+) -> Array[LedgeCandidate]:
+	var results: Array[LedgeCandidate] = []
 	var horizontal_intent := Vector3(intent_direction.x, 0.0, intent_direction.z)
 	var approach_direction := Vector3.ZERO
 
@@ -213,17 +247,77 @@ func find_candidate(
 		else:
 			var horizontal_view := Vector3(view_forward.x, 0.0, view_forward.z)
 			if horizontal_view.length_squared() <= MOTION_EPSILON_SQUARED:
-				return null
+				return results
 			approach_direction = horizontal_view.normalized()
 
 	var wall_hit: WallHit = find_wall(player, approach_direction)
 	if wall_hit == null:
-		return null
+		return results
 	if not has_catch_intent(wall_hit.normal, intent_direction, view_forward):
-		return null
+		return results
 
-	var top_hit: TopHit = find_top(player, support, wall_hit)
-	if top_hit == null:
+	# Preserve the existing broad discovery as the first-ranked opportunity.
+	# Additional local height bands enumerate other exposed ledges on the same
+	# reachable wall region so rejecting one candidate never hides another.
+	var broad_top: TopHit = find_top(player, support, wall_hit)
+	if broad_top != null:
+		_add_unique_discovery_candidate(
+			results,
+			build_reachable_candidate(player, support, wall_hit, broad_top)
+		)
+
+	var minimum_edge_y: float = player.global_position.y + get_min_edge_height()
+	var maximum_edge_y: float = player.global_position.y + get_max_catch_height()
+	var height_range: float = maximum_edge_y - minimum_edge_y
+	if height_range <= PROBE_SAFE_MARGIN:
+		return results
+
+	var sample_step: float = height_range / float(DISCOVERY_HEIGHT_SAMPLE_COUNT)
+	var band_half_height: float = maxf(
+		PROBE_SAFE_MARGIN * 4.0,
+		sample_step * DISCOVERY_LOCAL_BAND_OVERLAP
+	)
+	for sample_index: int in range(DISCOVERY_HEIGHT_SAMPLE_COUNT + 1):
+		var expected_edge_y: float = maximum_edge_y - sample_step * float(sample_index)
+		var wall_seed := Vector3(
+			wall_hit.point.x,
+			expected_edge_y,
+			wall_hit.point.z
+		)
+		var local_wall: WallHit = find_wall_at_height(
+			player,
+			wall_hit.normal,
+			wall_seed
+		)
+		if local_wall == null:
+			continue
+
+		var local_top: TopHit = find_top_in_height_band(
+			player,
+			support,
+			local_wall,
+			expected_edge_y,
+			band_half_height
+		)
+		if local_top == null:
+			continue
+
+		_add_unique_discovery_candidate(
+			results,
+			build_reachable_candidate(player, support, local_wall, local_top)
+		)
+
+	_sort_discovery_candidates(results)
+	return results
+
+
+func build_reachable_candidate(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	wall_hit: WallHit,
+	top_hit: TopHit
+) -> LedgeCandidate:
+	if wall_hit == null or top_hit == null:
 		return null
 
 	var provisional_geometry: LedgeGeometry = build_ledge_geometry(wall_hit, top_hit)
@@ -272,6 +366,37 @@ func find_candidate(
 			candidate.hang_position
 		)
 	return candidate
+
+
+func _add_unique_discovery_candidate(
+	results: Array[LedgeCandidate],
+	candidate: LedgeCandidate
+) -> void:
+	if candidate == null:
+		return
+	for existing: LedgeCandidate in results:
+		if is_same_ledge_path(
+			candidate,
+			existing,
+			get_capsule_radius()
+		):
+			return
+	results.append(candidate)
+
+
+func _sort_discovery_candidates(results: Array[LedgeCandidate]) -> void:
+	# Preserve the old topmost-first behavior while allowing policy to skip a
+	# rejected candidate and continue to lower opportunities.
+	for candidate_index: int in range(1, results.size()):
+		var candidate: LedgeCandidate = results[candidate_index]
+		var insertion_index: int = candidate_index
+		while (
+			insertion_index > 0
+			and results[insertion_index - 1].edge_point.y < candidate.edge_point.y
+		):
+			results[insertion_index] = results[insertion_index - 1]
+			insertion_index -= 1
+		results[insertion_index] = candidate
 
 
 func find_attachment_candidate_at_position(
@@ -651,6 +776,64 @@ func find_wall(player: CharacterBody3D, approach_direction: Vector3) -> WallHit:
 	return best_hit
 
 
+func find_wall_at_height(
+	player: CharacterBody3D,
+	expected_wall_normal: Vector3,
+	edge_seed: Vector3
+) -> WallHit:
+	var expected_normal := Vector3(
+		expected_wall_normal.x,
+		0.0,
+		expected_wall_normal.z
+	)
+	if expected_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	expected_normal = expected_normal.normalized()
+
+	var probe_y: float = edge_seed.y - get_capsule_radius() * 0.5
+	var ray_from: Vector3 = (
+		edge_seed
+		+ expected_normal * (get_hang_wall_distance() + get_top_probe_inset())
+	)
+	ray_from.y = probe_y
+	var ray_to: Vector3 = edge_seed - expected_normal * get_max_horizontal_reach()
+	ray_to.y = probe_y
+	var query := _prepare_ray_query(player, ray_from, ray_to)
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return null
+
+	var position_value: Variant = hit.get("position")
+	var normal_value: Variant = hit.get("normal")
+	var rid_value: Variant = hit.get("rid")
+	var shape_value: Variant = hit.get("shape")
+	if not (position_value is Vector3) or not (normal_value is Vector3):
+		return null
+
+	var collision_normal: Vector3 = normal_value
+	if not is_wall_surface(collision_normal):
+		return null
+	var horizontal_normal := Vector3(
+		collision_normal.x,
+		0.0,
+		collision_normal.z
+	)
+	if horizontal_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	horizontal_normal = horizontal_normal.normalized()
+	if horizontal_normal.dot(expected_normal) < minimum_shimmy_wall_alignment:
+		return null
+
+	var wall_hit := WallHit.new()
+	wall_hit.point = position_value
+	wall_hit.normal = horizontal_normal
+	if rid_value is RID:
+		wall_hit.collider_rid = rid_value
+	if shape_value is int:
+		wall_hit.shape_index = shape_value
+	return wall_hit
+
+
 func find_wall_near_edge(
 	player: CharacterBody3D,
 	expected_wall_normal: Vector3,
@@ -707,6 +890,28 @@ func find_top(player: CharacterBody3D, support: PlayerSupport, wall_hit: WallHit
 		- PROBE_SAFE_MARGIN
 	)
 	return raycast_top(player, support, ray_from, ray_to)
+
+
+func find_top_in_height_band(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	wall_hit: WallHit,
+	expected_edge_y: float,
+	half_height: float
+) -> TopHit:
+	if wall_hit == null or half_height <= 0.0:
+		return null
+	var probe_center: Vector3 = (
+		wall_hit.point
+		- wall_hit.normal * get_edge_top_sample_inset()
+	)
+	probe_center.y = expected_edge_y
+	return raycast_top(
+		player,
+		support,
+		probe_center + Vector3.UP * half_height,
+		probe_center - Vector3.UP * half_height
+	)
 
 
 func find_top_for_hang(
@@ -1253,6 +1458,8 @@ func update_debug_logging(previously_had_candidate: bool) -> void:
 			current_candidate.hangable,
 			" hang_position=",
 			current_candidate.hang_position,
+			" candidates=",
+			current_candidates.size(),
 			" min_edge_height=",
 			get_min_edge_height(),
 			" max_catch_height=",
