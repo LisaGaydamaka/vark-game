@@ -51,6 +51,7 @@ extends CharacterBody3D
 
 @export_category("Ledge Detection")
 @export var ledge_max_wall_tilt_degrees: float = 15.0
+@export var ledge_max_line_tilt_degrees: float = 70.0
 @export var ledge_max_approach_angle_degrees: float = 65.0
 @export var ledge_debug_logging: bool = true
 
@@ -152,6 +153,7 @@ func _create_components() -> void:
 		max_step_height,
 		head.position.y,
 		ledge_max_wall_tilt_degrees,
+		ledge_max_line_tilt_degrees,
 		ledge_max_approach_angle_degrees,
 		ledge_debug_logging,
 		collision_shape
