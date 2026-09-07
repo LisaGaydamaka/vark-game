@@ -662,12 +662,7 @@ func _arm_drop_regrab_guard(candidates: Array[PlayerLedgeDetector.LedgeCandidate
 	drop_regrab_candidates.clear()
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate != null:
-			capture_candidate_for_drop_guard(candidate)
-
-
-func capture_candidate_for_drop_guard(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	if candidate != null:
-		drop_regrab_candidates.append(candidate)
+			drop_regrab_candidates.append(candidate)
 
 
 func _update_drop_regrab_guard() -> void:
@@ -676,7 +671,7 @@ func _update_drop_regrab_guard() -> void:
 	for candidate_index: int in range(drop_regrab_candidates.size() - 1, -1, -1):
 		var candidate: PlayerLedgeDetector.LedgeCandidate = drop_regrab_candidates[candidate_index]
 		if not _is_in_drop_regrab_region(candidate):
-			drop_regrab_candidates.remove_at(candidate_index)
+			return
 
 
 func _is_in_drop_regrab_region(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
