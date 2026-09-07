@@ -17,6 +17,7 @@ const SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO: float = 0.1
 const LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO: float = 0.75
 const SUPPRESSION_VERTICAL_MARGIN_RADIUS_RATIO: float = 1.0
 const EXPECTED_HANG_WALL_MIN_ALIGNMENT: float = 0.9
+const EXPECTED_HANG_WALL_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
 
 
 class LedgeCandidate:
@@ -347,11 +348,23 @@ func find_candidate(
 
 		if (
 			horizontal_velocity.length_squared()
-			<= MOTION_EPSILON_SQUARED
+		> MOTION_EPSILON_SQUARED
 		):
-			return null
+			approach_direction = horizontal_velocity.normalized()
+		else:
+			var horizontal_view: Vector3 = Vector3(
+				view_forward.x,
+				0.0,
+				view_forward.z
+			)
 
-		approach_direction = horizontal_velocity.normalized()
+			if (
+				horizontal_view.length_squared()
+				<= MOTION_EPSILON_SQUARED
+			):
+				return null
+
+			approach_direction = horizontal_view.normalized()
 
 	var wall_hit: WallHit = find_wall(
 		player,
@@ -491,7 +504,7 @@ func find_candidate(
 	return candidate
 
 
-func find_hang_candidate_at_position(
+func find_attachment_candidate_at_position(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	reference_candidate: LedgeCandidate,
@@ -592,19 +605,6 @@ func find_hang_candidate_at_position(
 		return null
 
 	ledge_direction = ledge_direction.normalized()
-	var reference_ledge_direction: Vector3 = (
-		Vector3.UP.cross(fixed_wall_normal).normalized()
-	)
-
-	if not has_usable_ledge_span(
-		player,
-		support,
-		edge_point,
-		fixed_wall_normal,
-		top_hit.point.y,
-		reference_ledge_direction
-	):
-		return null
 
 	var candidate: LedgeCandidate = LedgeCandidate.new()
 	candidate.wall_collider_rid = wall_hit.collider_rid
@@ -617,6 +617,13 @@ func find_hang_candidate_at_position(
 	candidate.top_normal = top_hit.normal
 	candidate.ledge_direction = ledge_direction
 	candidate.hang_position = hang_position
+
+	if not is_same_attachment_region(
+		candidate,
+		reference_candidate
+	):
+		return null
+
 	candidate.hangable = is_hang_pose_valid(
 		player,
 		candidate,
@@ -627,6 +634,88 @@ func find_hang_candidate_at_position(
 		return null
 
 	return candidate
+
+
+func find_hang_candidate_at_position(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	reference_candidate: LedgeCandidate,
+	segment_wall_normal: Vector3,
+	proposed_hang_position: Vector3
+) -> LedgeCandidate:
+	var candidate: LedgeCandidate = find_attachment_candidate_at_position(
+		player,
+		support,
+		reference_candidate,
+		segment_wall_normal,
+		proposed_hang_position
+	)
+
+	if candidate == null:
+		return null
+
+	if not has_usable_ledge_span(
+		player,
+		support,
+		candidate.edge_point,
+		candidate.wall_normal,
+		candidate.top_point.y,
+		candidate.ledge_direction
+	):
+		return null
+
+	return candidate
+
+
+func is_same_attachment_region(
+	candidate: LedgeCandidate,
+	reference_candidate: LedgeCandidate
+) -> bool:
+	if candidate == null or reference_candidate == null:
+		return false
+
+	var candidate_normal: Vector3 = candidate.wall_normal
+	candidate_normal.y = 0.0
+	var reference_normal: Vector3 = reference_candidate.wall_normal
+	reference_normal.y = 0.0
+
+	if (
+		candidate_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+		or reference_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	candidate_normal = candidate_normal.normalized()
+	reference_normal = reference_normal.normalized()
+
+	if (
+		candidate_normal.dot(reference_normal)
+		< minimum_shimmy_wall_alignment
+	):
+		return false
+
+	if (
+		absf(
+			candidate.edge_point.y
+			- reference_candidate.edge_point.y
+		)
+		> get_shimmy_level_tolerance()
+	):
+		return false
+
+	var edge_delta: Vector3 = (
+		candidate.edge_point
+		- reference_candidate.edge_point
+	)
+	edge_delta.y = 0.0
+	var local_limit: float = get_capsule_radius()
+
+	return (
+		edge_delta.length_squared()
+		<= local_limit * local_limit
+	)
 
 
 func find_wall(
@@ -1219,11 +1308,25 @@ func is_expected_hang_wall_contact(
 		expected_wall_normal.normalized()
 	)
 
+	if (
+		collision_normal.dot(expected_wall_normal)
+		< EXPECTED_HANG_WALL_MIN_ALIGNMENT
+	):
+		return false
+
+	var collision_point: Vector3 = collision.get_position(
+		collision_index
+	)
+	var plane_distance: float = absf(
+		(
+			collision_point
+			- candidate.edge_point
+		).dot(expected_wall_normal)
+	)
+
 	return (
-		collision_normal.dot(
-			expected_wall_normal
-		)
-		>= EXPECTED_HANG_WALL_MIN_ALIGNMENT
+		plane_distance
+		<= get_expected_hang_wall_plane_tolerance()
 	)
 
 
@@ -1273,6 +1376,14 @@ func get_ledge_span_half_width() -> float:
 
 func get_max_catch_fall_speed() -> float:
 	return max_catch_fall_speed
+
+
+func get_expected_hang_wall_plane_tolerance() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		get_capsule_radius()
+		* EXPECTED_HANG_WALL_PLANE_TOLERANCE_RADIUS_RATIO
+	)
 
 
 func get_capsule_bottom_offset() -> float:
