@@ -388,11 +388,6 @@ func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float
 		return
 	body.velocity = Vector3.ZERO
 	support.update(body)
-	if not support.is_grounded():
-		_release_mantle_to_air(input_direction, delta)
-		if debug_logging:
-			print("Ledge mantle final support validation failed")
-		return
 	ledge_mantle.cancel()
 	look.exit_ledge_view()
 	state = State.NONE
