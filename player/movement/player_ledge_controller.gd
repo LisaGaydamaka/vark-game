@@ -45,6 +45,7 @@ var active_catch_candidate: PlayerLedgeDetector.LedgeCandidate = null
 var jump_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 var drop_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 var failed_catch_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
+var failed_mantle_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 var corner_release_suppression_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 
 
@@ -118,6 +119,7 @@ func update_transition_guards() -> void:
 	_update_jump_regrab_guard()
 	_update_drop_regrab_guard()
 	_update_failed_catch_regrab_guard()
+	_update_failed_mantle_guard()
 	_update_corner_release_suppression()
 
 
@@ -136,6 +138,7 @@ func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
 			_is_jump_regrab_blocked(candidate)
 			or _is_drop_regrab_blocked(candidate)
 			or _is_failed_catch_regrab_blocked(candidate)
+			or _is_failed_mantle_blocked(candidate)
 			or _is_corner_release_suppressed(candidate)
 		):
 			continue
@@ -474,6 +477,7 @@ func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float
 		support.update(body)
 		return
 	if not ledge_mantle.update(body, delta):
+		_arm_failed_mantle_candidate(ledge_mantle.get_release_candidate())
 		_release_mantle_to_air(input_direction, delta)
 		if debug_logging:
 			print("Ledge mantle lost valid traversal")
@@ -645,6 +649,38 @@ func _is_failed_catch_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandida
 	if candidate == null:
 		return false
 	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in failed_catch_regrab_candidates:
+		if _is_same_local_ledge(candidate, guarded_candidate):
+			return true
+	return false
+
+
+func _arm_failed_mantle_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
+	failed_mantle_candidates.clear()
+	if candidate != null:
+		failed_mantle_candidates.append(candidate)
+
+
+func _update_failed_mantle_guard() -> void:
+	if failed_mantle_candidates.is_empty():
+		return
+
+	# A held Space is one persistent mantle intent. A runtime failure gets one
+	# attempt against this local ledge for that intent; releasing Space explicitly
+	# re-arms it. Leaving the local ledge region also makes it a new opportunity.
+	if not player_input.is_jump_pressed():
+		failed_mantle_candidates.clear()
+		return
+
+	for candidate_index: int in range(failed_mantle_candidates.size() - 1, -1, -1):
+		var candidate: PlayerLedgeDetector.LedgeCandidate = failed_mantle_candidates[candidate_index]
+		if not _is_in_drop_regrab_region(candidate):
+			failed_mantle_candidates.remove_at(candidate_index)
+
+
+func _is_failed_mantle_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
+	if candidate == null:
+		return false
+	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in failed_mantle_candidates:
 		if _is_same_local_ledge(candidate, guarded_candidate):
 			return true
 	return false
