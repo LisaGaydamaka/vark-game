@@ -107,3 +107,7 @@ func is_walkable_surface(
 		normal.y
 		>= minimum_normal_y - 0.00001
 	)
+
+
+func is_grounded() -> bool:
+	return has_support and walkable
