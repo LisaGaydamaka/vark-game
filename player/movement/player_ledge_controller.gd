@@ -41,7 +41,9 @@ var minimum_air_mantle_alignment: float
 var minimum_local_ledge_alignment: float
 
 var state: int = State.NONE
+var active_catch_candidate: PlayerLedgeDetector.LedgeCandidate = null
 var jump_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
+var drop_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 var corner_release_suppression_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 
 
@@ -115,7 +117,7 @@ func update(
 ) -> void:
 	match state:
 		State.CATCHING:
-			_update_ledge_catch(delta)
+			_update_ledge_catch(crouch_pressed, delta)
 		State.HANGING:
 			_update_ledge_hang(jump_pressed, crouch_pressed, delta)
 		State.CORNERING:
@@ -126,6 +128,7 @@ func update(
 
 func update_transition_guards() -> void:
 	_update_jump_regrab_guard()
+	_update_drop_regrab_guard()
 	_update_corner_release_suppression()
 
 
@@ -138,10 +141,15 @@ func try_enter_from_normal(
 	if candidate == null:
 		return false
 
-	if _is_jump_regrab_blocked(candidate) or _is_corner_release_suppressed(candidate):
+	if (
+		_is_jump_regrab_blocked(candidate)
+		or _is_drop_regrab_blocked(candidate)
+		or _is_corner_release_suppressed(candidate)
+	):
 		return false
 
 	if candidate.hangable and ledge_catch.try_start(body, candidate):
+		active_catch_candidate = candidate
 		step_up.cancel_traversal()
 		ledge_detector.clear_candidate()
 		look.enter_ledge_view(candidate.wall_normal)
@@ -198,7 +206,26 @@ func _should_attempt_air_mantle(
 	return horizontal_input.dot(toward_wall) >= minimum_air_mantle_alignment
 
 
-func _update_ledge_catch(delta: float) -> void:
+func _update_ledge_catch(
+	crouch_pressed: bool,
+	delta: float
+) -> void:
+	if crouch_pressed:
+		var input_direction: Vector3 = player_input.get_movement_direction(
+			head.global_transform
+		)
+		_arm_drop_regrab_candidate(active_catch_candidate)
+		ledge_catch.cancel()
+		active_catch_candidate = null
+		look.exit_ledge_view()
+		state = State.NONE
+		body.velocity = Vector3.DOWN * gravity * delta
+		movement.move(body, support, input_direction, false, delta)
+		support.update(body)
+		if debug_logging:
+			print("Ledge catch dropped")
+		return
+
 	ledge_catch.update(body, delta)
 	_finish_ledge_catch_if_ready()
 
@@ -206,6 +233,7 @@ func _update_ledge_catch(delta: float) -> void:
 func _finish_ledge_catch_if_ready() -> void:
 	if ledge_catch.has_completed():
 		var candidate: PlayerLedgeDetector.LedgeCandidate = ledge_catch.take_completed_candidate()
+		active_catch_candidate = null
 		if candidate != null:
 			ledge_hang.start(candidate)
 			state = State.HANGING
@@ -219,6 +247,7 @@ func _finish_ledge_catch_if_ready() -> void:
 		if failed_candidate != null:
 			ledge_detector.suppress_candidate(failed_candidate)
 		var failure_description: String = ledge_catch.take_failure_description()
+		active_catch_candidate = null
 		look.exit_ledge_view()
 		state = State.NONE
 		if debug_logging:
@@ -226,6 +255,7 @@ func _finish_ledge_catch_if_ready() -> void:
 		return
 
 	if not ledge_catch.is_active():
+		active_catch_candidate = null
 		look.exit_ledge_view()
 		state = State.NONE
 
@@ -246,6 +276,7 @@ func _update_ledge_hang(
 	)
 
 	if action == PlayerLedgeHang.Action.DROP:
+		_arm_drop_regrab_candidate(ledge_hang.get_candidate())
 		_release_ledge_to_air(input_direction, delta)
 		return
 
@@ -318,6 +349,7 @@ func _update_ledge_corner(
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 
 	if crouch_pressed:
+		_arm_drop_regrab_guard(ledge_corner.get_release_candidates())
 		_release_corner_to_air(input_direction, delta)
 		return
 
@@ -384,6 +416,7 @@ func _update_ledge_mantle(
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 
 	if crouch_pressed:
+		_arm_drop_regrab_candidate(ledge_mantle.get_release_candidate())
 		_release_mantle_to_air(input_direction, delta)
 		return
 
@@ -514,6 +547,84 @@ func _is_jump_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> b
 	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in jump_regrab_candidates:
 		if _is_same_local_ledge(candidate, guarded_candidate):
 			return true
+	return false
+
+
+func _arm_drop_regrab_candidate(
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> void:
+	drop_regrab_candidates.clear()
+	if candidate != null:
+		drop_regrab_candidates.append(candidate)
+
+
+func _arm_drop_regrab_guard(
+	candidates: Array[PlayerLedgeDetector.LedgeCandidate]
+) -> void:
+	drop_regrab_candidates.clear()
+	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
+		if candidate != null:
+			drop_regrab_candidates.append(candidate)
+
+
+func _update_drop_regrab_guard() -> void:
+	if drop_regrab_candidates.is_empty():
+		return
+
+	for candidate_index: int in range(
+		drop_regrab_candidates.size() - 1,
+		-1,
+		-1
+	):
+		var candidate: PlayerLedgeDetector.LedgeCandidate = (
+			drop_regrab_candidates[candidate_index]
+		)
+		if not _is_in_drop_regrab_region(candidate):
+			drop_regrab_candidates.remove_at(candidate_index)
+
+
+func _is_in_drop_regrab_region(
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> bool:
+	if candidate == null:
+		return false
+
+	var edge_offset: Vector3 = candidate.edge_point - body.global_position
+	var horizontal_edge_offset := Vector3(
+		edge_offset.x,
+		0.0,
+		edge_offset.z
+	)
+	var capsule_radius: float = ledge_detector.get_capsule_radius()
+	var horizontal_limit: float = (
+		ledge_detector.get_max_horizontal_reach()
+		+ capsule_radius
+	)
+
+	if (
+		horizontal_edge_offset.length_squared()
+		> horizontal_limit * horizontal_limit
+	):
+		return false
+
+	return (
+		edge_offset.y
+		>= ledge_detector.get_min_edge_height() - capsule_radius
+		and edge_offset.y
+		<= ledge_detector.get_max_catch_height() + capsule_radius
+	)
+
+
+func _is_drop_regrab_blocked(
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> bool:
+	if candidate == null:
+		return false
+
+	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in drop_regrab_candidates:
+		if _is_same_local_ledge(candidate, guarded_candidate):
+			return true
+
 	return false
 
 
