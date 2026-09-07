@@ -44,6 +44,7 @@ var state: int = State.NONE
 var active_catch_candidate: PlayerLedgeDetector.LedgeCandidate = null
 var jump_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 var drop_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
+var failed_catch_regrab_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 var corner_release_suppression_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = []
 
 
@@ -129,6 +130,7 @@ func update(
 func update_transition_guards() -> void:
 	_update_jump_regrab_guard()
 	_update_drop_regrab_guard()
+	_update_failed_catch_regrab_guard()
 	_update_corner_release_suppression()
 
 
@@ -144,6 +146,7 @@ func try_enter_from_normal(
 	if (
 		_is_jump_regrab_blocked(candidate)
 		or _is_drop_regrab_blocked(candidate)
+		or _is_failed_catch_regrab_blocked(candidate)
 		or _is_corner_release_suppressed(candidate)
 	):
 		return false
@@ -245,6 +248,7 @@ func _finish_ledge_catch_if_ready() -> void:
 	if ledge_catch.has_failed():
 		var failed_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_catch.get_failed_candidate()
 		if failed_candidate != null:
+			_arm_failed_catch_regrab_candidate(failed_candidate)
 			ledge_detector.suppress_candidate(failed_candidate)
 		var failure_description: String = ledge_catch.take_failure_description()
 		active_catch_candidate = null
@@ -628,6 +632,43 @@ func _is_drop_regrab_blocked(
 	return false
 
 
+func _arm_failed_catch_regrab_candidate(
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> void:
+	failed_catch_regrab_candidates.clear()
+	if candidate != null:
+		failed_catch_regrab_candidates.append(candidate)
+
+
+func _update_failed_catch_regrab_guard() -> void:
+	if failed_catch_regrab_candidates.is_empty():
+		return
+
+	for candidate_index: int in range(
+		failed_catch_regrab_candidates.size() - 1,
+		-1,
+		-1
+	):
+		var candidate: PlayerLedgeDetector.LedgeCandidate = (
+			failed_catch_regrab_candidates[candidate_index]
+		)
+		if not _is_in_drop_regrab_region(candidate):
+			failed_catch_regrab_candidates.remove_at(candidate_index)
+
+
+func _is_failed_catch_regrab_blocked(
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> bool:
+	if candidate == null:
+		return false
+
+	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in failed_catch_regrab_candidates:
+		if _is_same_local_ledge(candidate, guarded_candidate):
+			return true
+
+	return false
+
+
 func _arm_corner_release_suppression(
 	candidates: Array[PlayerLedgeDetector.LedgeCandidate]
 ) -> void:
@@ -679,10 +720,6 @@ func _is_same_local_ledge(
 ) -> bool:
 	if first == null or second == null:
 		return false
-	if first.wall_collider_rid != second.wall_collider_rid:
-		return false
-	if first.wall_shape_index >= 0 and second.wall_shape_index >= 0 and first.wall_shape_index != second.wall_shape_index:
-		return false
 
 	var first_normal: Vector3 = first.wall_normal
 	first_normal.y = 0.0
@@ -696,7 +733,16 @@ func _is_same_local_ledge(
 		return false
 	if absf(first.edge_point.y - second.edge_point.y) > ledge_detector.get_shimmy_level_tolerance():
 		return false
-	var edge_delta: Vector3 = first.edge_point - second.edge_point
-	var horizontal_edge_delta := Vector3(edge_delta.x, 0.0, edge_delta.z)
-	var max_reach: float = ledge_detector.get_max_horizontal_reach()
-	return horizontal_edge_delta.length_squared() <= max_reach * max_reach
+
+	var edge_delta: Vector3 = second.edge_point - first.edge_point
+	var plane_distance: float = absf(edge_delta.dot(first_normal))
+	if plane_distance > ledge_detector.get_expected_local_wall_plane_tolerance():
+		return false
+
+	var ledge_axis: Vector3 = Vector3.UP.cross(first_normal)
+	if ledge_axis.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+		return false
+	ledge_axis = ledge_axis.normalized()
+
+	var lateral_distance: float = absf(edge_delta.dot(ledge_axis))
+	return lateral_distance <= ledge_detector.get_max_horizontal_reach()
