@@ -215,6 +215,29 @@ func _update_normal_movement(
 
 	support.update(self)
 	var grounded: bool = support.is_grounded()
+	var view_forward: Vector3 = -head.global_transform.basis.z
+
+	ledge_controller.update_transition_guards()
+
+	# A grounded mantle is a discrete Space request while movement input exists.
+	# Resolve it before normal jump so a successful mantle consumes the press;
+	# if no mantle starts, the same press immediately falls through to jumping.
+	var ground_mantle_requested: bool = (
+		jump_pressed
+		and grounded
+		and not input_direction.is_zero_approx()
+		and not step_up.is_active()
+	)
+	if ground_mantle_requested:
+		ledge_detector.update(
+			self,
+			support,
+			true,
+			input_direction,
+			view_forward
+		)
+		if ledge_controller.try_enter_from_normal(input_direction, delta):
+			return
 
 	var jump_accepted: bool = (
 		jump_pressed
@@ -256,25 +279,23 @@ func _update_normal_movement(
 			jump_height
 		)
 
-	ledge_controller.update_transition_guards()
-
-	var ledge_detection_allowed: bool = (
+	# Free-flight ledge policy is separate from grounded mantle policy. Hangable
+	# candidates may catch normally; non-hangable candidates require Space held.
+	var airborne_detection_allowed: bool = (
 		not grounded
 		and not step_up.is_active()
 	)
-	var view_forward: Vector3 = -head.global_transform.basis.z
-
 	ledge_detector.update(
 		self,
 		support,
-		ledge_detection_allowed,
+		airborne_detection_allowed,
 		input_direction,
 		view_forward
 	)
 
-	if ledge_controller.try_enter_from_normal(
-		input_direction,
-		delta
+	if (
+		airborne_detection_allowed
+		and ledge_controller.try_enter_from_normal(input_direction, delta)
 	):
 		return
 
