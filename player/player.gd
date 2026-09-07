@@ -219,13 +219,16 @@ func _update_normal_movement(
 
 	ledge_controller.update_transition_guards()
 
+	# Explicit jump/mantle intent outranks the automatic step assist.
+	if jump_pressed and step_up.is_active():
+		step_up.cancel_traversal()
+
 	# Ground mantle is a discrete request, but geometry alone may not consume it.
 	# The real grounded move must physically contact the obstacle first.
 	var ground_mantle_requested: bool = (
 		jump_pressed
 		and grounded
 		and not input_direction.is_zero_approx()
-		and not step_up.is_active()
 	)
 	var jump_accepted_before_move: bool = (
 		jump_pressed
@@ -244,10 +247,9 @@ func _update_normal_movement(
 	):
 		ground_target_speed = sprint_speed
 
-	var use_air_control: bool = (
-		not support.has_support
-		and not step_up.is_active()
-	)
+	# Step-up is only a vertical overlay; it does not change whether locomotion
+	# uses supported or airborne horizontal control.
+	var use_air_control: bool = not support.has_support
 	motor.update(
 		self,
 		support,
@@ -263,12 +265,8 @@ func _update_normal_movement(
 			jump_height
 		)
 
-	# Hang remains an anticipatory reach action. Airborne hangable geometry may
-	# magnetize into catch before the capsule physically hits the obstacle.
-	var airborne_detection_allowed: bool = (
-		not grounded
-		and not step_up.is_active()
-	)
+	# Hang remains an anticipatory reach action and may preempt an active step.
+	var airborne_detection_allowed: bool = not grounded
 	ledge_detector.update(
 		self,
 		support,
@@ -288,11 +286,14 @@ func _update_normal_movement(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
+	# Held Space represents higher-priority jump/mantle intent, so a new
+	# automatic step may not consume that contact first.
+	var allow_step_up: bool = not player_input.is_jump_pressed()
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		support,
 		input_direction,
-		not jump_accepted_before_move,
+		allow_step_up,
 		delta
 	)
 
