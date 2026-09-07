@@ -7,7 +7,13 @@ const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const ANGLE_EPSILON: float = 0.00001
 const MAX_ROUTE_SEGMENT_ANGLE_DEGREES: float = 5.0
-const TARGET_SURFACE_INSET_RADIUS_RATIO: float = 0.5
+const TARGET_SURFACE_INSET_RADIUS_RATIOS: Array[float] = [
+	0.25,
+	0.5,
+	0.75,
+	1.0,
+]
+const EXPECTED_ROUTE_SURFACE_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.5
 
 
 class MantleCandidate:
@@ -138,11 +144,64 @@ func find_candidate_with_source_mode(
 			89.0
 		)
 	)
-	var target_surface_inset: float = maxf(
-		PROBE_SAFE_MARGIN,
-		detector.get_capsule_radius()
-		* TARGET_SURFACE_INSET_RADIUS_RATIO
+	var target_surface_insets: Array[float] = []
+
+	for inset_ratio: float in TARGET_SURFACE_INSET_RADIUS_RATIOS:
+		target_surface_insets.append(
+			maxf(
+				PROBE_SAFE_MARGIN,
+				detector.get_capsule_radius()
+				* inset_ratio
+			)
+		)
+
+	var preferred_surface_inset: float = (
+		clearance_radius
+		* (
+			1.0
+			+ sin(maximum_slope_radians)
+		)
 	)
+
+	if (
+		target_surface_insets.is_empty()
+		or preferred_surface_inset
+		> target_surface_insets.back() + PROBE_SAFE_MARGIN
+	):
+		target_surface_insets.append(
+			preferred_surface_inset
+		)
+
+	for target_surface_inset: float in target_surface_insets:
+		var candidate: MantleCandidate = (
+			find_candidate_at_surface_inset(
+				player,
+				support,
+				refreshed_source,
+				wall_normal,
+				ledge_axis,
+				target_surface_inset,
+				maximum_slope_radians,
+				clearance_radius
+			)
+		)
+
+		if candidate != null:
+			return candidate
+
+	return null
+
+
+func find_candidate_at_surface_inset(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	refreshed_source: PlayerLedgeDetector.LedgeCandidate,
+	wall_normal: Vector3,
+	ledge_axis: Vector3,
+	target_surface_inset: float,
+	maximum_slope_radians: float,
+	clearance_radius: float
+) -> MantleCandidate:
 	var target_probe_point: Vector3 = (
 		refreshed_source.edge_point
 		- wall_normal * target_surface_inset
@@ -675,6 +734,13 @@ func is_expected_mantle_contact(
 	):
 		return false
 
+	if not is_contact_near_expected_mantle_surface(
+		collision,
+		collision_index,
+		candidate
+	):
+		return false
+
 	var collision_normal: Vector3 = collision.get_normal(
 		collision_index
 	)
@@ -716,6 +782,91 @@ func is_expected_mantle_contact(
 		return false
 
 	return true
+
+
+func is_contact_near_expected_mantle_surface(
+	collision: KinematicCollision3D,
+	collision_index: int,
+	candidate: MantleCandidate
+) -> bool:
+	if candidate == null:
+		return false
+
+	var collision_point: Vector3 = collision.get_position(
+		collision_index
+	)
+	var tolerance: float = (
+		get_expected_route_surface_plane_tolerance()
+	)
+
+	if (
+		matches_candidate_wall(
+			collision,
+			collision_index,
+			candidate.source_candidate
+		)
+		and is_point_near_plane(
+			collision_point,
+			candidate.edge_point,
+			candidate.wall_normal,
+			tolerance
+		)
+	):
+		return true
+
+	if (
+		candidate.source_candidate != null
+		and matches_candidate_top(
+			collision,
+			collision_index,
+			candidate.source_candidate
+		)
+		and is_point_near_plane(
+			collision_point,
+			candidate.source_candidate.top_point,
+			candidate.source_candidate.top_normal,
+			tolerance
+		)
+	):
+		return true
+
+	return (
+		candidate.target_top != null
+		and matches_top_hit(
+			collision,
+			collision_index,
+			candidate.target_top
+		)
+		and is_point_near_plane(
+			collision_point,
+			candidate.target_top.point,
+			candidate.target_top.normal,
+			tolerance
+		)
+	)
+
+
+func is_point_near_plane(
+	point: Vector3,
+	plane_point: Vector3,
+	plane_normal: Vector3,
+	tolerance: float
+) -> bool:
+	if (
+		plane_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	var normalized_normal: Vector3 = plane_normal.normalized()
+	var plane_distance: float = absf(
+		(
+			point
+			- plane_point
+		).dot(normalized_normal)
+	)
+
+	return plane_distance <= tolerance
 
 
 func matches_mantle_geometry(
@@ -929,6 +1080,14 @@ func get_maximum_segment_distance() -> float:
 		* deg_to_rad(
 			MAX_ROUTE_SEGMENT_ANGLE_DEGREES
 		)
+	)
+
+
+func get_expected_route_surface_plane_tolerance() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN,
+		detector.get_capsule_radius()
+		* EXPECTED_ROUTE_SURFACE_PLANE_TOLERANCE_RADIUS_RATIO
 	)
 
 
