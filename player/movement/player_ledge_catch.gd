@@ -8,7 +8,6 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 const CATCH_ACCELERATION_GRAVITY_MULTIPLIER: float = 2.0
 const CATCH_COMPLETION_RADIUS_RATIO: float = 0.02
 const EXPECTED_WALL_CONTACT_MIN_ALIGNMENT: float = 0.9
-const EXPECTED_WALL_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
 
 
 enum State {
@@ -396,63 +395,11 @@ func is_expected_wall_contact(
 	collision_index: int,
 	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
-	if candidate == null:
-		return false
-
-	if (
-		collision.get_collider_rid(
-			collision_index
-		)
-		!= candidate.wall_collider_rid
-	):
-		return false
-
-	var collider_shape_index: int = (
-		collision.get_collider_shape_index(
-			collision_index
-		)
-	)
-
-	if (
-		candidate.wall_shape_index >= 0
-		and collider_shape_index >= 0
-		and collider_shape_index
-		!= candidate.wall_shape_index
-	):
-		return false
-
-	var collision_normal: Vector3 = (
-		collision.get_normal(
-			collision_index
-		)
-	)
-	var normal_alignment: float = (
-		collision_normal.dot(
-			candidate.wall_normal
-		)
-	)
-
-	if (
-		normal_alignment
-		< EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
-	):
-		return false
-
-	var collision_point: Vector3 = (
-		collision.get_position(
-			collision_index
-		)
-	)
-	var plane_distance: float = absf(
-		(
-			collision_point
-			- candidate.edge_point
-		).dot(candidate.wall_normal)
-	)
-
-	return (
-		plane_distance
-		<= get_expected_wall_plane_tolerance()
+	return detector.is_expected_local_wall_contact(
+		collision,
+		collision_index,
+		candidate,
+		EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
 	)
 
 
@@ -602,14 +549,6 @@ func get_completion_distance() -> float:
 		PROBE_SAFE_MARGIN,
 		get_capsule_radius()
 		* CATCH_COMPLETION_RADIUS_RATIO
-	)
-
-
-func get_expected_wall_plane_tolerance() -> float:
-	return maxf(
-		PROBE_SAFE_MARGIN,
-		get_capsule_radius()
-		* EXPECTED_WALL_PLANE_TOLERANCE_RADIUS_RATIO
 	)
 
 
