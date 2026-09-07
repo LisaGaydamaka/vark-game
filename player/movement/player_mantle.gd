@@ -7,7 +7,7 @@ const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const ANGLE_EPSILON: float = 0.00001
 const MAX_ROUTE_SEGMENT_ANGLE_DEGREES: float = 5.0
-const TARGET_SURFACE_INSET_RADIUS_RATIOS: Array[float] = [
+const TARGET_SURFACE_DISTANCE_RADIUS_RATIOS: Array[float] = [
 	0.25,
 	0.5,
 	0.75,
@@ -96,189 +96,124 @@ func find_candidate_with_source_mode(
 	if source_candidate == null:
 		return null
 
-	var refreshed_source: PlayerLedgeDetector.LedgeCandidate = (
-		source_candidate
-	)
-
+	var refreshed_source: PlayerLedgeDetector.LedgeCandidate = source_candidate
 	if refresh_source_as_hang:
-		refreshed_source = (
-			detector.find_hang_candidate_at_position(
-				player,
-				support,
-				source_candidate,
-				source_candidate.wall_normal,
-				player.global_position
-			)
+		refreshed_source = detector.find_hang_candidate_at_position(
+			player,
+			support,
+			source_candidate,
+			source_candidate.wall_normal,
+			player.global_position
 		)
-
 		if refreshed_source == null:
 			return null
 
 	var wall_normal: Vector3 = refreshed_source.wall_normal
 	wall_normal.y = 0.0
-
-	if (
-		wall_normal.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	if wall_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
-
 	wall_normal = wall_normal.normalized()
 
-	var ledge_axis: Vector3 = refreshed_source.ledge_direction
+	var source_top_normal: Vector3 = refreshed_source.top_normal
+	if source_top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	source_top_normal = source_top_normal.normalized()
+	if not detector.is_ledge_top_surface(source_top_normal):
+		return null
 
-	if (
-		ledge_axis.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	var ledge_axis: Vector3 = refreshed_source.ledge_direction
+	if ledge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
 		ledge_axis = detector.get_ledge_direction(
 			refreshed_source.wall_normal,
 			refreshed_source.top_normal
 		)
-
-	if (
-		ledge_axis.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	if ledge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
-
 	ledge_axis = ledge_axis.normalized()
 
-	var clearance_radius: float = get_clearance_radius()
-	var maximum_slope_radians: float = deg_to_rad(
-		clampf(
-			support.max_walkable_slope,
-			0.0,
-			89.0
-		)
+	var source_inward_direction: Vector3 = get_top_inward_direction(
+		wall_normal,
+		source_top_normal
 	)
-	var target_surface_insets: Array[float] = []
+	if source_inward_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
 
-	for inset_ratio: float in TARGET_SURFACE_INSET_RADIUS_RATIOS:
-		target_surface_insets.append(
+	var clearance_radius: float = get_clearance_radius()
+	var target_surface_distances: Array[float] = []
+	for distance_ratio: float in TARGET_SURFACE_DISTANCE_RADIUS_RATIOS:
+		target_surface_distances.append(
 			maxf(
 				PROBE_SAFE_MARGIN,
-				detector.get_capsule_radius()
-				* inset_ratio
+				detector.get_capsule_radius() * distance_ratio
 			)
 		)
-
-	var preferred_surface_inset: float = (
-		clearance_radius
-		* (
-			1.0
-			+ sin(maximum_slope_radians)
-		)
-	)
 
 	if (
-		target_surface_insets.is_empty()
-		or preferred_surface_inset
-		> target_surface_insets.back() + PROBE_SAFE_MARGIN
+		target_surface_distances.is_empty()
+		or clearance_radius
+		> target_surface_distances.back() + PROBE_SAFE_MARGIN
 	):
-		target_surface_insets.append(
-			preferred_surface_inset
-		)
+		target_surface_distances.append(clearance_radius)
 
-	for target_surface_inset: float in target_surface_insets:
-		var candidate: MantleCandidate = (
-			find_candidate_at_surface_inset(
-				player,
-				support,
-				refreshed_source,
-				wall_normal,
-				ledge_axis,
-				target_surface_inset,
-				maximum_slope_radians,
-				clearance_radius
-			)
+	for target_surface_distance: float in target_surface_distances:
+		var candidate: MantleCandidate = find_candidate_at_surface_distance(
+			player,
+			support,
+			refreshed_source,
+			wall_normal,
+			ledge_axis,
+			source_top_normal,
+			source_inward_direction,
+			target_surface_distance,
+			clearance_radius
 		)
-
 		if candidate != null:
 			return candidate
 
 	return null
 
 
-func find_candidate_at_surface_inset(
+func find_candidate_at_surface_distance(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	refreshed_source: PlayerLedgeDetector.LedgeCandidate,
 	wall_normal: Vector3,
 	ledge_axis: Vector3,
-	target_surface_inset: float,
-	maximum_slope_radians: float,
+	source_top_normal: Vector3,
+	source_inward_direction: Vector3,
+	target_surface_distance: float,
 	clearance_radius: float
 ) -> MantleCandidate:
-	var target_probe_point: Vector3 = (
+	var expected_surface_point: Vector3 = (
 		refreshed_source.edge_point
-		- wall_normal * target_surface_inset
+		+ source_inward_direction * target_surface_distance
 	)
-	var maximum_height_change: float = (
-		target_surface_inset
-		* tan(maximum_slope_radians)
-		+ clearance_radius
-	)
-	var ray_from: Vector3 = target_probe_point
-	ray_from.y = (
-		refreshed_source.edge_point.y
-		+ maximum_height_change
-	)
-	var ray_to: Vector3 = target_probe_point
-	ray_to.y = (
-		refreshed_source.edge_point.y
-		- maximum_height_change
-	)
+	var verification_tolerance: float = get_surface_verification_tolerance()
+	var ray_from: Vector3 = expected_surface_point + Vector3.UP * verification_tolerance
+	var ray_to: Vector3 = expected_surface_point - Vector3.UP * verification_tolerance
 
-	var target_top: PlayerLedgeDetector.TopHit = (
-		detector.raycast_top(
-			player,
-			support,
-			ray_from,
-			ray_to
-		)
+	var target_top: PlayerLedgeDetector.TopHit = detector.raycast_top(
+		player,
+		support,
+		ray_from,
+		ray_to
 	)
-
 	if target_top == null:
 		return null
 
 	var target_normal: Vector3 = target_top.normal
-
-	if (
-		target_normal.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	if target_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
-
 	target_normal = target_normal.normalized()
-
-	var allowed_height_change: float = (
-		target_surface_inset
-		* tan(maximum_slope_radians)
-		+ PROBE_SAFE_MARGIN
-	)
-
-	if (
-		absf(
-			target_top.point.y
-			- refreshed_source.edge_point.y
-		)
-		> allowed_height_change
-	):
+	if target_normal.dot(source_top_normal) < EXPECTED_ROUTE_SURFACE_MIN_ALIGNMENT:
+		return null
+	if target_top.point.distance_to(expected_surface_point) > verification_tolerance:
 		return null
 
-	var top_path_normal: Vector3 = (
-		target_normal.slide(ledge_axis)
-	)
-
-	if (
-		top_path_normal.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	var top_path_normal: Vector3 = target_normal.slide(ledge_axis)
+	if top_path_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
-
 	top_path_normal = top_path_normal.normalized()
-
 	if top_path_normal.dot(Vector3.UP) <= 0.0:
 		return null
 
@@ -288,58 +223,30 @@ func find_candidate_at_surface_inset(
 		1.0
 	)
 	var cross_axis: float = (
-		wall_normal.cross(top_path_normal).dot(
-			ledge_axis
-		)
+		wall_normal.cross(top_path_normal).dot(ledge_axis)
 	)
-	var signed_arc_angle: float = atan2(
-		cross_axis,
-		normal_dot
-	)
-	var absolute_arc_angle: float = absf(
-		signed_arc_angle
-	)
-	var minimum_arc_angle: float = (
-		PI * 0.5 - maximum_slope_radians
-	)
-	var maximum_arc_angle: float = (
-		PI * 0.5 + maximum_slope_radians
-	)
-
+	var signed_arc_angle: float = atan2(cross_axis, normal_dot)
+	var absolute_arc_angle: float = absf(signed_arc_angle)
 	if (
-		absolute_arc_angle
-		< minimum_arc_angle
-		or absolute_arc_angle
-		> maximum_arc_angle
+		absolute_arc_angle <= ANGLE_EPSILON
+		or absolute_arc_angle >= PI - ANGLE_EPSILON
 	):
 		return null
 
-	var top_inward_direction: Vector3 = (
-		(-wall_normal).slide(target_normal)
+	var target_inward_direction: Vector3 = get_top_inward_direction(
+		wall_normal,
+		target_normal
 	)
-
-	if (
-		top_inward_direction.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	if target_inward_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	if target_inward_direction.dot(source_inward_direction) <= 0.0:
 		return null
 
-	top_inward_direction = top_inward_direction.normalized()
-
-	var edge_plane_offset: float = (
-		(
-			refreshed_source.edge_point
-			- target_top.point
-		).dot(target_normal)
-	)
 	var landing_surface_point: Vector3 = (
-		refreshed_source.edge_point
-		- target_normal * edge_plane_offset
-		+ top_inward_direction * PROBE_SAFE_MARGIN
+		target_top.point
+		+ target_inward_direction * PROBE_SAFE_MARGIN
 	)
-	var bottom_cap_center_offset: float = (
-		get_bottom_cap_center_offset()
-	)
+	var bottom_cap_center_offset: float = get_bottom_cap_center_offset()
 	var source_arc_position: Vector3 = (
 		refreshed_source.edge_point
 		+ wall_normal * clearance_radius
@@ -356,7 +263,7 @@ func find_candidate_at_surface_inset(
 		- Vector3.UP * bottom_cap_center_offset
 	)
 
-	var candidate: MantleCandidate = MantleCandidate.new()
+	var candidate := MantleCandidate.new()
 	candidate.source_candidate = refreshed_source
 	candidate.target_top = target_top
 	candidate.edge_point = refreshed_source.edge_point
@@ -372,11 +279,41 @@ func find_candidate_at_surface_inset(
 		candidate,
 		target_position
 	)
-
 	if not candidate.valid:
 		return null
-
 	return candidate
+
+
+func get_top_inward_direction(
+	wall_normal: Vector3,
+	top_normal: Vector3
+) -> Vector3:
+	if (
+		wall_normal.length_squared() <= MOTION_EPSILON_SQUARED
+		or top_normal.length_squared() <= MOTION_EPSILON_SQUARED
+	):
+		return Vector3.ZERO
+	var inward_direction: Vector3 = (-wall_normal).slide(top_normal.normalized())
+	if inward_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	inward_direction = inward_direction.normalized()
+	var horizontal_inward := Vector3(
+		inward_direction.x,
+		0.0,
+		inward_direction.z
+	)
+	var expected_horizontal_inward := Vector3(
+		-wall_normal.x,
+		0.0,
+		-wall_normal.z
+	)
+	if (
+		horizontal_inward.length_squared() > MOTION_EPSILON_SQUARED
+		and expected_horizontal_inward.length_squared() > MOTION_EPSILON_SQUARED
+		and horizontal_inward.dot(expected_horizontal_inward) < 0.0
+	):
+		inward_direction = -inward_direction
+	return inward_direction
 
 
 func try_start(
@@ -692,9 +629,7 @@ func is_pose_valid(
 	var pose_transform: Transform3D = player.global_transform
 	pose_transform.origin = position
 
-	var collision: KinematicCollision3D = (
-		KinematicCollision3D.new()
-	)
+	var collision: KinematicCollision3D = KinematicCollision3D.new()
 	var has_contact: bool = player.test_move(
 		pose_transform,
 		Vector3.ZERO,
@@ -707,16 +642,11 @@ func is_pose_valid(
 	if not has_contact:
 		return true
 
-	var collision_count: int = (
-		collision.get_collision_count()
-	)
-
+	var collision_count: int = collision.get_collision_count()
 	if collision_count <= 0:
 		return false
 
-	for collision_index: int in range(
-		collision_count
-	):
+	for collision_index: int in range(collision_count):
 		if not is_expected_mantle_contact(
 			collision,
 			collision_index,
@@ -742,19 +672,10 @@ func is_expected_mantle_contact(
 	):
 		return false
 
-	var collision_normal: Vector3 = collision.get_normal(
-		collision_index
-	)
-	var planar_normal: Vector3 = collision_normal.slide(
-		candidate.ledge_axis
-	)
-
-	if (
-		planar_normal.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	var collision_normal: Vector3 = collision.get_normal(collision_index)
+	var planar_normal: Vector3 = collision_normal.slide(candidate.ledge_axis)
+	if planar_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
-
 	planar_normal = planar_normal.normalized()
 
 	var total_angle: float = candidate.signed_arc_angle
@@ -764,24 +685,17 @@ func is_expected_mantle_contact(
 		1.0
 	)
 	var contact_cross: float = (
-		candidate.wall_normal.cross(planar_normal).dot(
-			candidate.ledge_axis
-		)
+		candidate.wall_normal.cross(planar_normal).dot(candidate.ledge_axis)
 	)
-	var contact_angle: float = atan2(
-		contact_cross,
-		contact_dot
-	)
+	var contact_angle: float = atan2(contact_cross, contact_dot)
 
 	if absf(contact_angle) > absf(total_angle) + ANGLE_EPSILON:
 		return false
-
 	if (
 		absf(contact_angle) > ANGLE_EPSILON
 		and signf(contact_angle) != signf(total_angle)
 	):
 		return false
-
 	return true
 
 
@@ -793,10 +707,7 @@ func is_contact_near_expected_mantle_surface(
 	if candidate == null:
 		return false
 
-	var tolerance: float = (
-		get_expected_route_surface_plane_tolerance()
-	)
-
+	var tolerance: float = get_expected_route_surface_plane_tolerance()
 	if is_contact_near_expected_surface(
 		collision,
 		collision_index,
@@ -837,31 +748,17 @@ func is_contact_near_expected_surface(
 	plane_normal: Vector3,
 	tolerance: float
 ) -> bool:
-	if (
-		plane_normal.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	if plane_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
 
 	var expected_normal: Vector3 = plane_normal.normalized()
-	var collision_normal: Vector3 = collision.get_normal(
-		collision_index
-	)
-
-	if (
-		collision_normal.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	var collision_normal: Vector3 = collision.get_normal(collision_index)
+	if collision_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
-
 	collision_normal = collision_normal.normalized()
 
-	if (
-		collision_normal.dot(expected_normal)
-		< EXPECTED_ROUTE_SURFACE_MIN_ALIGNMENT
-	):
+	if collision_normal.dot(expected_normal) < EXPECTED_ROUTE_SURFACE_MIN_ALIGNMENT:
 		return false
-
 	return is_point_near_plane(
 		collision.get_position(collision_index),
 		plane_point,
@@ -876,20 +773,13 @@ func is_point_near_plane(
 	plane_normal: Vector3,
 	tolerance: float
 ) -> bool:
-	if (
-		plane_normal.length_squared()
-		<= MOTION_EPSILON_SQUARED
-	):
+	if plane_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
 
 	var normalized_normal: Vector3 = plane_normal.normalized()
 	var plane_distance: float = absf(
-		(
-			point
-			- plane_point
-		).dot(normalized_normal)
+		(point - plane_point).dot(normalized_normal)
 	)
-
 	return plane_distance <= tolerance
 
 
@@ -909,19 +799,13 @@ func get_route_position(
 		source_lead_length > 0.000001
 		and clamped_distance <= source_lead_length
 	):
-		var source_fraction: float = (
-			clamped_distance
-			/ source_lead_length
-		)
+		var source_fraction: float = clamped_distance / source_lead_length
 		return start_position.lerp(
 			active_candidate.source_arc_position,
 			source_fraction
 		)
 
-	var arc_distance: float = (
-		clamped_distance - source_lead_length
-	)
-
+	var arc_distance: float = clamped_distance - source_lead_length
 	if (
 		arc_length > 0.000001
 		and arc_distance <= arc_length
@@ -931,10 +815,7 @@ func get_route_position(
 			0.0,
 			1.0
 		)
-		var angle: float = (
-			active_candidate.signed_arc_angle
-			* arc_fraction
-		)
+		var angle: float = active_candidate.signed_arc_angle * arc_fraction
 		var radial_offset: Vector3 = (
 			active_candidate.wall_normal.rotated(
 				active_candidate.ledge_axis,
@@ -981,11 +862,15 @@ func has_reached_position(
 	)
 
 
-func get_clearance_radius() -> float:
-	return (
-		detector.get_capsule_radius()
-		+ PROBE_SAFE_MARGIN
+func get_surface_verification_tolerance() -> float:
+	return maxf(
+		PROBE_SAFE_MARGIN * 4.0,
+		detector.get_shimmy_attachment_correction_limit()
 	)
+
+
+func get_clearance_radius() -> float:
+	return detector.get_capsule_radius() + PROBE_SAFE_MARGIN
 
 
 func get_bottom_cap_center_offset() -> float:
@@ -999,9 +884,7 @@ func get_maximum_segment_distance() -> float:
 	return maxf(
 		PROBE_SAFE_MARGIN,
 		get_clearance_radius()
-		* deg_to_rad(
-			MAX_ROUTE_SEGMENT_ANGLE_DEGREES
-		)
+		* deg_to_rad(MAX_ROUTE_SEGMENT_ANGLE_DEGREES)
 	)
 
 
@@ -1024,14 +907,12 @@ func has_completed() -> bool:
 func get_release_candidate() -> PlayerLedgeDetector.LedgeCandidate:
 	if active_candidate == null:
 		return null
-
 	return active_candidate.source_candidate
 
 
 func get_target_position() -> Vector3:
 	if active_candidate == null:
 		return Vector3.ZERO
-
 	return active_candidate.target_position
 
 
