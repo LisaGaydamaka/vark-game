@@ -179,11 +179,23 @@ func find_candidate(
 	if target_continuation.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 
-	var target_top: PlayerLedgeDetector.TopHit = detector.find_top_for_hang(
+	var maximum_slope_radians: float = deg_to_rad(
+		clampf(support.max_walkable_slope, 0.0, 89.0)
+	)
+	var target_height_window: float = (
+		target_probe_inset * tan(maximum_slope_radians)
+		+ detector.get_shimmy_attachment_correction_limit()
+		+ PROBE_SAFE_MARGIN
+	)
+	var target_ray_from: Vector3 = target_probe_point
+	target_ray_from.y = corner_point.y + target_height_window
+	var target_ray_to: Vector3 = target_probe_point
+	target_ray_to.y = corner_point.y - target_height_window
+	var target_top: PlayerLedgeDetector.TopHit = detector.raycast_top(
 		player,
 		support,
-		target_wall,
-		corner_point.y
+		target_ray_from,
+		target_ray_to
 	)
 	if target_top == null:
 		return null
@@ -228,11 +240,14 @@ func find_candidate(
 	if target_horizontal_axis.dot(target_continuation) < minimum_target_alignment:
 		return null
 
-	var expected_target_height: float = (
-		corner_point.y
-		+ target_ledge_axis.y / target_horizontal_factor * target_progress
+	var target_axis_progress: float = target_from_corner.dot(target_horizontal_axis)
+	if target_axis_progress < target_probe_inset - endpoint_tolerance:
+		return null
+	var predicted_corner_height: float = (
+		target_top.point.y
+		- target_ledge_axis.y / target_horizontal_factor * target_axis_progress
 	)
-	if absf(target_top.point.y - expected_target_height) > detector.get_shimmy_level_tolerance():
+	if absf(predicted_corner_height - corner_point.y) > detector.get_shimmy_level_tolerance():
 		return null
 
 	if not detector.has_usable_ledge_span(
@@ -590,18 +605,6 @@ func is_expected_corner_contact(
 ) -> bool:
 	if active_corner == null:
 		return false
-	var matches_source: bool = matches_candidate_wall(
-		collision,
-		collision_index,
-		active_corner.source_candidate
-	)
-	var matches_target: bool = matches_candidate_wall(
-		collision,
-		collision_index,
-		active_corner.target_candidate
-	)
-	if not matches_source and not matches_target:
-		return false
 
 	var collision_normal: Vector3 = collision.get_normal(collision_index)
 	collision_normal.y = 0.0
@@ -613,18 +616,13 @@ func is_expected_corner_contact(
 
 	var collision_point: Vector3 = collision.get_position(collision_index)
 	var tolerance: float = get_expected_route_wall_plane_tolerance()
-	if (
-		matches_source
-		and is_point_near_candidate_wall_plane(
+	return (
+		is_point_near_candidate_wall_plane(
 			collision_point,
 			active_corner.source_candidate,
 			tolerance
 		)
-	):
-		return true
-	return (
-		matches_target
-		and is_point_near_candidate_wall_plane(
+		or is_point_near_candidate_wall_plane(
 			collision_point,
 			active_corner.target_candidate,
 			tolerance
@@ -656,25 +654,6 @@ func is_normal_in_corner_sector(normal: Vector3) -> bool:
 	if total_angle > 0.0:
 		return normal_angle >= -margin and normal_angle <= total_angle + margin
 	return normal_angle <= margin and normal_angle >= total_angle - margin
-
-
-func matches_candidate_wall(
-	collision: KinematicCollision3D,
-	collision_index: int,
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> bool:
-	if candidate == null:
-		return false
-	if collision.get_collider_rid(collision_index) != candidate.wall_collider_rid:
-		return false
-	var collider_shape_index: int = collision.get_collider_shape_index(collision_index)
-	if (
-		candidate.wall_shape_index >= 0
-		and collider_shape_index >= 0
-		and collider_shape_index != candidate.wall_shape_index
-	):
-		return false
-	return true
 
 
 func get_route_position(distance_along_route: float) -> Vector3:
