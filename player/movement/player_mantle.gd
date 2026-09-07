@@ -8,6 +8,7 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 const ANGLE_EPSILON: float = 0.00001
 const MAX_ROUTE_SEGMENT_ANGLE_DEGREES: float = 5.0
 const EXPECTED_ROUTE_SURFACE_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.5
+const OVER_LIP_TRAVEL_RADIUS_RATIO: float = 1.0
 
 
 class MantleCandidate:
@@ -16,7 +17,9 @@ class MantleCandidate:
 	var wall_normal: Vector3 = Vector3.ZERO
 	var ledge_axis: Vector3 = Vector3.ZERO
 	var top_path_normal: Vector3 = Vector3.UP
+	var top_inward_direction: Vector3 = Vector3.ZERO
 	var source_arc_position: Vector3 = Vector3.ZERO
+	var arc_target_position: Vector3 = Vector3.ZERO
 	var target_position: Vector3 = Vector3.ZERO
 	var signed_arc_angle: float = 0.0
 	var valid: bool = false
@@ -29,6 +32,7 @@ var active_candidate: MantleCandidate = null
 var start_position: Vector3 = Vector3.ZERO
 var source_lead_length: float = 0.0
 var arc_length: float = 0.0
+var over_lip_length: float = 0.0
 var total_route_length: float = 0.0
 var route_distance: float = 0.0
 var completed: bool = false
@@ -127,14 +131,25 @@ func find_candidate_with_source_mode(
 	if not detector.is_ledge_line_tilt_allowed(ledge_axis):
 		return null
 
-	# The top-side clearance direction is the local top normal with any tiny
-	# component along the ledge axis removed. No surface depth is sampled.
+	# This radial direction describes the top side of the edge-clearance arc.
+	# It does not imply that any platform depth exists behind the ledge.
 	var top_path_normal: Vector3 = top_normal.slide(ledge_axis)
 	if top_path_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 	top_path_normal = top_path_normal.normalized()
 	if top_path_normal.dot(Vector3.UP) <= 0.0:
 		return null
+
+	# The final traversal phase moves along the actual top plane only far enough
+	# to carry the capsule to the far side of the lip. No surface is searched for
+	# or required along this direction.
+	var top_inward_direction: Vector3 = detector.get_top_inward_direction(
+		wall_normal,
+		top_normal
+	)
+	if top_inward_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	top_inward_direction = top_inward_direction.normalized()
 
 	var normal_dot: float = clampf(
 		wall_normal.dot(top_path_normal),
@@ -160,15 +175,20 @@ func find_candidate_with_source_mode(
 	candidate.wall_normal = wall_normal
 	candidate.ledge_axis = ledge_axis
 	candidate.top_path_normal = top_path_normal
+	candidate.top_inward_direction = top_inward_direction
 	candidate.source_arc_position = (
 		candidate.edge_point
 		+ wall_normal * clearance_radius
 		- Vector3.UP * bottom_cap_center_offset
 	)
-	candidate.target_position = (
+	candidate.arc_target_position = (
 		candidate.edge_point
 		+ top_path_normal * clearance_radius
 		- Vector3.UP * bottom_cap_center_offset
+	)
+	candidate.target_position = (
+		candidate.arc_target_position
+		+ top_inward_direction * get_over_lip_distance()
 	)
 	candidate.signed_arc_angle = signed_arc_angle
 	candidate.valid = true
@@ -185,8 +205,6 @@ func try_start(
 	cancel()
 	active_candidate = candidate
 	start_position = player.global_position
-	# From a normal hang this lead is the vertical body-clearance lift at the
-	# existing wall distance. The arc then moves only far enough to clear the lip.
 	source_lead_length = start_position.distance_to(
 		candidate.source_arc_position
 	)
@@ -194,16 +212,24 @@ func try_start(
 		get_clearance_radius()
 		* absf(candidate.signed_arc_angle)
 	)
-	total_route_length = source_lead_length + arc_length
+	over_lip_length = candidate.arc_target_position.distance_to(
+		candidate.target_position
+	)
+	total_route_length = (
+		source_lead_length
+		+ arc_length
+		+ over_lip_length
+	)
 
 	if total_route_length <= 0.000001:
 		cancel()
 		return false
 
-	# This is the authoritative feasibility check: sweep the real capsule through
-	# the clearance route. There is deliberately no floor/depth probe behind the
-	# edge; unrelated geometry such as a ceiling still blocks the sweep.
-	if not is_route_clear(player):
+	# Mantle eligibility is deliberately limited to upward body clearance. The
+	# arc and over-lip travel are not prevalidated as a landing: once this pure
+	# vertical capsule sweep succeeds, mantle starts and live collision handling
+	# owns the rest of the traversal.
+	if not is_vertical_clearance_clear(player):
 		cancel()
 		return false
 
@@ -248,39 +274,34 @@ func update(
 	return true
 
 
-func is_route_clear(player: CharacterBody3D) -> bool:
+func is_vertical_clearance_clear(player: CharacterBody3D) -> bool:
 	if active_candidate == null:
 		return false
 
-	var simulated_transform: Transform3D = player.global_transform
-	var simulated_distance: float = 0.0
-	var maximum_segment_distance: float = get_maximum_segment_distance()
-	while total_route_length - simulated_distance > 0.000001:
-		var next_distance: float = minf(
-			simulated_distance + maximum_segment_distance,
-			total_route_length
-		)
-		var target_position: Vector3 = get_route_position(next_distance)
-		var motion: Vector3 = target_position - simulated_transform.origin
-		var result: Dictionary = simulate_mantle_motion(
-			player,
-			simulated_transform,
-			motion
-		)
-		if result.is_empty():
-			return false
+	var vertical_distance: float = (
+		active_candidate.source_arc_position.y
+		- start_position.y
+	)
+	if vertical_distance <= 0.000001:
+		return true
 
-		var transform_value: Variant = result.get("transform")
-		if not (transform_value is Transform3D):
-			return false
-		simulated_transform = transform_value
-		if not has_reached_position(
-			simulated_transform.origin,
-			target_position
-		):
-			return false
-		simulated_distance = next_distance
-	return true
+	var from_transform: Transform3D = player.global_transform
+	var vertical_motion: Vector3 = Vector3.UP * vertical_distance
+	var result: Dictionary = simulate_mantle_motion(
+		player,
+		from_transform,
+		vertical_motion
+	)
+	if result.is_empty():
+		return false
+
+	var transform_value: Variant = result.get("transform")
+	if not (transform_value is Transform3D):
+		return false
+	return has_reached_position(
+		transform_value.origin,
+		from_transform.origin + vertical_motion
+	)
 
 
 func simulate_mantle_motion(
@@ -520,26 +541,42 @@ func get_route_position(distance_along_route: float) -> Vector3:
 			clamped_distance / source_lead_length
 		)
 
-	if arc_length <= 0.000001:
+	var arc_end_distance: float = source_lead_length + arc_length
+	if (
+		arc_length > 0.000001
+		and clamped_distance <= arc_end_distance
+	):
+		var arc_distance: float = clamped_distance - source_lead_length
+		var arc_fraction: float = clampf(
+			arc_distance / arc_length,
+			0.0,
+			1.0
+		)
+		var angle: float = active_candidate.signed_arc_angle * arc_fraction
+		var radial_offset: Vector3 = (
+			active_candidate.wall_normal.rotated(
+				active_candidate.ledge_axis,
+				angle
+			)
+			* get_clearance_radius()
+		)
+		return (
+			active_candidate.edge_point
+			+ radial_offset
+			- Vector3.UP * get_bottom_cap_center_offset()
+		)
+
+	if over_lip_length <= 0.000001:
 		return active_candidate.target_position
-	var arc_distance: float = clamped_distance - source_lead_length
-	var arc_fraction: float = clampf(
-		arc_distance / arc_length,
+	var over_lip_distance: float = clamped_distance - arc_end_distance
+	var over_lip_fraction: float = clampf(
+		over_lip_distance / over_lip_length,
 		0.0,
 		1.0
 	)
-	var angle: float = active_candidate.signed_arc_angle * arc_fraction
-	var radial_offset: Vector3 = (
-		active_candidate.wall_normal.rotated(
-			active_candidate.ledge_axis,
-			angle
-		)
-		* get_clearance_radius()
-	)
-	return (
-		active_candidate.edge_point
-		+ radial_offset
-		- Vector3.UP * get_bottom_cap_center_offset()
+	return active_candidate.arc_target_position.lerp(
+		active_candidate.target_position,
+		over_lip_fraction
 	)
 
 
@@ -566,6 +603,10 @@ func get_bottom_cap_center_offset() -> float:
 		detector.get_capsule_bottom_offset()
 		+ detector.get_capsule_radius()
 	)
+
+
+func get_over_lip_distance() -> float:
+	return get_clearance_radius() * OVER_LIP_TRAVEL_RADIUS_RATIO
 
 
 func get_maximum_segment_distance() -> float:
@@ -616,6 +657,7 @@ func cancel() -> void:
 	start_position = Vector3.ZERO
 	source_lead_length = 0.0
 	arc_length = 0.0
+	over_lip_length = 0.0
 	total_route_length = 0.0
 	route_distance = 0.0
 	completed = false
