@@ -7,25 +7,16 @@ const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const ANGLE_EPSILON: float = 0.00001
 const MAX_ROUTE_SEGMENT_ANGLE_DEGREES: float = 5.0
-const TARGET_SURFACE_DISTANCE_RADIUS_RATIOS: Array[float] = [
-	0.25,
-	0.5,
-	0.75,
-	1.0,
-]
-const EXPECTED_ROUTE_SURFACE_MIN_ALIGNMENT: float = 0.9
 const EXPECTED_ROUTE_SURFACE_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.5
 
 
 class MantleCandidate:
 	var source_candidate: PlayerLedgeDetector.LedgeCandidate = null
-	var target_top: PlayerLedgeDetector.TopHit = null
 	var edge_point: Vector3 = Vector3.ZERO
 	var wall_normal: Vector3 = Vector3.ZERO
 	var ledge_axis: Vector3 = Vector3.ZERO
 	var top_path_normal: Vector3 = Vector3.UP
 	var source_arc_position: Vector3 = Vector3.ZERO
-	var target_arc_position: Vector3 = Vector3.ZERO
 	var target_position: Vector3 = Vector3.ZERO
 	var signed_arc_angle: float = 0.0
 	var valid: bool = false
@@ -38,7 +29,6 @@ var active_candidate: MantleCandidate = null
 var start_position: Vector3 = Vector3.ZERO
 var source_lead_length: float = 0.0
 var arc_length: float = 0.0
-var target_lead_length: float = 0.0
 var total_route_length: float = 0.0
 var route_distance: float = 0.0
 var completed: bool = false
@@ -50,7 +40,6 @@ func _init(
 ) -> void:
 	traversal_speed = p_traversal_speed
 	detector = p_detector
-
 	assert(
 		traversal_speed > 0.0,
 		"PlayerMantle requires traversal_speed to be greater than zero."
@@ -91,14 +80,16 @@ func find_candidate_with_source_mode(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	source_candidate: PlayerLedgeDetector.LedgeCandidate,
-	refresh_source_as_hang: bool
+	refresh_source_attachment: bool
 ) -> MantleCandidate:
 	if source_candidate == null:
 		return null
 
 	var refreshed_source: PlayerLedgeDetector.LedgeCandidate = source_candidate
-	if refresh_source_as_hang:
-		refreshed_source = detector.find_hang_candidate_at_position(
+	if refresh_source_attachment:
+		# Mantling only needs the current attachment to remain valid. A full
+		# shimmy span is unrelated to whether the body can clear the lip.
+		refreshed_source = detector.find_attachment_candidate_at_position(
 			player,
 			support,
 			source_candidate,
@@ -108,17 +99,20 @@ func find_candidate_with_source_mode(
 		if refreshed_source == null:
 			return null
 
-	var wall_normal: Vector3 = refreshed_source.wall_normal
-	wall_normal.y = 0.0
+	var wall_normal := Vector3(
+		refreshed_source.wall_normal.x,
+		0.0,
+		refreshed_source.wall_normal.z
+	)
 	if wall_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 	wall_normal = wall_normal.normalized()
 
-	var source_top_normal: Vector3 = refreshed_source.top_normal
-	if source_top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+	var top_normal: Vector3 = refreshed_source.top_normal
+	if top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
-	source_top_normal = source_top_normal.normalized()
-	if not detector.is_ledge_top_surface(source_top_normal):
+	top_normal = top_normal.normalized()
+	if not detector.is_ledge_top_surface(top_normal):
 		return null
 
 	var ledge_axis: Vector3 = refreshed_source.ledge_direction
@@ -130,87 +124,12 @@ func find_candidate_with_source_mode(
 	if ledge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 	ledge_axis = ledge_axis.normalized()
-
-	var source_inward_direction: Vector3 = get_top_inward_direction(
-		wall_normal,
-		source_top_normal
-	)
-	if source_inward_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+	if not detector.is_ledge_line_tilt_allowed(ledge_axis):
 		return null
 
-	var clearance_radius: float = get_clearance_radius()
-	var target_surface_distances: Array[float] = []
-	for distance_ratio: float in TARGET_SURFACE_DISTANCE_RADIUS_RATIOS:
-		target_surface_distances.append(
-			maxf(
-				PROBE_SAFE_MARGIN,
-				detector.get_capsule_radius() * distance_ratio
-			)
-		)
-
-	if (
-		target_surface_distances.is_empty()
-		or clearance_radius
-		> target_surface_distances.back() + PROBE_SAFE_MARGIN
-	):
-		target_surface_distances.append(clearance_radius)
-
-	for target_surface_distance: float in target_surface_distances:
-		var candidate: MantleCandidate = find_candidate_at_surface_distance(
-			player,
-			support,
-			refreshed_source,
-			wall_normal,
-			ledge_axis,
-			source_top_normal,
-			source_inward_direction,
-			target_surface_distance,
-			clearance_radius
-		)
-		if candidate != null:
-			return candidate
-
-	return null
-
-
-func find_candidate_at_surface_distance(
-	player: CharacterBody3D,
-	support: PlayerSupport,
-	refreshed_source: PlayerLedgeDetector.LedgeCandidate,
-	wall_normal: Vector3,
-	ledge_axis: Vector3,
-	source_top_normal: Vector3,
-	source_inward_direction: Vector3,
-	target_surface_distance: float,
-	clearance_radius: float
-) -> MantleCandidate:
-	var expected_surface_point: Vector3 = (
-		refreshed_source.edge_point
-		+ source_inward_direction * target_surface_distance
-	)
-	var verification_tolerance: float = get_surface_verification_tolerance()
-	var ray_from: Vector3 = expected_surface_point + Vector3.UP * verification_tolerance
-	var ray_to: Vector3 = expected_surface_point - Vector3.UP * verification_tolerance
-
-	var target_top: PlayerLedgeDetector.TopHit = detector.raycast_top(
-		player,
-		support,
-		ray_from,
-		ray_to
-	)
-	if target_top == null:
-		return null
-
-	var target_normal: Vector3 = target_top.normal
-	if target_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		return null
-	target_normal = target_normal.normalized()
-	if target_normal.dot(source_top_normal) < EXPECTED_ROUTE_SURFACE_MIN_ALIGNMENT:
-		return null
-	if target_top.point.distance_to(expected_surface_point) > verification_tolerance:
-		return null
-
-	var top_path_normal: Vector3 = target_normal.slide(ledge_axis)
+	# The top-side clearance direction is the local top normal with any tiny
+	# component along the ledge axis removed. No surface depth is sampled.
+	var top_path_normal: Vector3 = top_normal.slide(ledge_axis)
 	if top_path_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 	top_path_normal = top_path_normal.normalized()
@@ -233,87 +152,27 @@ func find_candidate_at_surface_distance(
 	):
 		return null
 
-	var target_inward_direction: Vector3 = get_top_inward_direction(
-		wall_normal,
-		target_normal
-	)
-	if target_inward_direction.length_squared() <= MOTION_EPSILON_SQUARED:
-		return null
-	if target_inward_direction.dot(source_inward_direction) <= 0.0:
-		return null
-
-	var landing_surface_point: Vector3 = (
-		target_top.point
-		+ target_inward_direction * PROBE_SAFE_MARGIN
-	)
+	var clearance_radius: float = get_clearance_radius()
 	var bottom_cap_center_offset: float = get_bottom_cap_center_offset()
-	var source_arc_position: Vector3 = (
-		refreshed_source.edge_point
-		+ wall_normal * clearance_radius
-		- Vector3.UP * bottom_cap_center_offset
-	)
-	var target_arc_position: Vector3 = (
-		refreshed_source.edge_point
-		+ top_path_normal * clearance_radius
-		- Vector3.UP * bottom_cap_center_offset
-	)
-	var target_position: Vector3 = (
-		landing_surface_point
-		+ target_normal * clearance_radius
-		- Vector3.UP * bottom_cap_center_offset
-	)
-
 	var candidate := MantleCandidate.new()
 	candidate.source_candidate = refreshed_source
-	candidate.target_top = target_top
 	candidate.edge_point = refreshed_source.edge_point
 	candidate.wall_normal = wall_normal
 	candidate.ledge_axis = ledge_axis
 	candidate.top_path_normal = top_path_normal
-	candidate.source_arc_position = source_arc_position
-	candidate.target_arc_position = target_arc_position
-	candidate.target_position = target_position
+	candidate.source_arc_position = (
+		candidate.edge_point
+		+ wall_normal * clearance_radius
+		- Vector3.UP * bottom_cap_center_offset
+	)
+	candidate.target_position = (
+		candidate.edge_point
+		+ top_path_normal * clearance_radius
+		- Vector3.UP * bottom_cap_center_offset
+	)
 	candidate.signed_arc_angle = signed_arc_angle
-	candidate.valid = is_pose_valid(
-		player,
-		candidate,
-		target_position
-	)
-	if not candidate.valid:
-		return null
+	candidate.valid = true
 	return candidate
-
-
-func get_top_inward_direction(
-	wall_normal: Vector3,
-	top_normal: Vector3
-) -> Vector3:
-	if (
-		wall_normal.length_squared() <= MOTION_EPSILON_SQUARED
-		or top_normal.length_squared() <= MOTION_EPSILON_SQUARED
-	):
-		return Vector3.ZERO
-	var inward_direction: Vector3 = (-wall_normal).slide(top_normal.normalized())
-	if inward_direction.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-	inward_direction = inward_direction.normalized()
-	var horizontal_inward := Vector3(
-		inward_direction.x,
-		0.0,
-		inward_direction.z
-	)
-	var expected_horizontal_inward := Vector3(
-		-wall_normal.x,
-		0.0,
-		-wall_normal.z
-	)
-	if (
-		horizontal_inward.length_squared() > MOTION_EPSILON_SQUARED
-		and expected_horizontal_inward.length_squared() > MOTION_EPSILON_SQUARED
-		and horizontal_inward.dot(expected_horizontal_inward) < 0.0
-	):
-		inward_direction = -inward_direction
-	return inward_direction
 
 
 func try_start(
@@ -326,6 +185,8 @@ func try_start(
 	cancel()
 	active_candidate = candidate
 	start_position = player.global_position
+	# From a normal hang this lead is the vertical body-clearance lift at the
+	# existing wall distance. The arc then moves only far enough to clear the lip.
 	source_lead_length = start_position.distance_to(
 		candidate.source_arc_position
 	)
@@ -333,21 +194,15 @@ func try_start(
 		get_clearance_radius()
 		* absf(candidate.signed_arc_angle)
 	)
-	target_lead_length = (
-		candidate.target_arc_position.distance_to(
-			candidate.target_position
-		)
-	)
-	total_route_length = (
-		source_lead_length
-		+ arc_length
-		+ target_lead_length
-	)
+	total_route_length = source_lead_length + arc_length
 
 	if total_route_length <= 0.000001:
 		cancel()
 		return false
 
+	# This is the authoritative feasibility check: sweep the real capsule through
+	# the clearance route. There is deliberately no floor/depth probe behind the
+	# edge; unrelated geometry such as a ceiling still blocks the sweep.
 	if not is_route_clear(player):
 		cancel()
 		return false
@@ -363,14 +218,11 @@ func update(
 		return false
 
 	player.velocity = Vector3.ZERO
-
 	var remaining_distance: float = minf(
 		traversal_speed * delta,
 		total_route_length - route_distance
 	)
-	var maximum_segment_distance: float = (
-		get_maximum_segment_distance()
-	)
+	var maximum_segment_distance: float = get_maximum_segment_distance()
 
 	while remaining_distance > 0.000001:
 		var segment_distance: float = minf(
@@ -381,95 +233,53 @@ func update(
 			route_distance + segment_distance,
 			total_route_length
 		)
-		var target_position: Vector3 = get_route_position(
-			next_route_distance
-		)
-		var motion: Vector3 = (
-			target_position
-			- player.global_position
-		)
-
-		if not move_mantle_motion(
-			player,
-			motion
-		):
+		var target_position: Vector3 = get_route_position(next_route_distance)
+		var motion: Vector3 = target_position - player.global_position
+		if not move_mantle_motion(player, motion):
 			return false
-
-		if not has_reached_position(
-			player.global_position,
-			target_position
-		):
+		if not has_reached_position(player.global_position, target_position):
 			return false
-
 		route_distance = next_route_distance
 		remaining_distance -= segment_distance
 
-	if (
-		total_route_length - route_distance
-		<= 0.000001
-	):
+	if total_route_length - route_distance <= 0.000001:
 		route_distance = total_route_length
 		completed = true
-
 	return true
 
 
-func is_route_clear(
-	player: CharacterBody3D
-) -> bool:
+func is_route_clear(player: CharacterBody3D) -> bool:
 	if active_candidate == null:
 		return false
 
-	var simulated_transform: Transform3D = (
-		player.global_transform
-	)
+	var simulated_transform: Transform3D = player.global_transform
 	var simulated_distance: float = 0.0
-	var maximum_segment_distance: float = (
-		get_maximum_segment_distance()
-	)
-
-	while (
-		total_route_length - simulated_distance
-		> 0.000001
-	):
+	var maximum_segment_distance: float = get_maximum_segment_distance()
+	while total_route_length - simulated_distance > 0.000001:
 		var next_distance: float = minf(
-			simulated_distance
-			+ maximum_segment_distance,
+			simulated_distance + maximum_segment_distance,
 			total_route_length
 		)
-		var target_position: Vector3 = get_route_position(
-			next_distance
-		)
-		var motion: Vector3 = (
-			target_position
-			- simulated_transform.origin
-		)
+		var target_position: Vector3 = get_route_position(next_distance)
+		var motion: Vector3 = target_position - simulated_transform.origin
 		var result: Dictionary = simulate_mantle_motion(
 			player,
 			simulated_transform,
 			motion
 		)
-
 		if result.is_empty():
 			return false
 
-		var transform_value: Variant = result.get(
-			"transform"
-		)
-
+		var transform_value: Variant = result.get("transform")
 		if not (transform_value is Transform3D):
 			return false
-
 		simulated_transform = transform_value
-
 		if not has_reached_position(
 			simulated_transform.origin,
 			target_position
 		):
 			return false
-
 		simulated_distance = next_distance
-
 	return true
 
 
@@ -481,20 +291,11 @@ func simulate_mantle_motion(
 	var simulated_transform: Transform3D = from_transform
 	var remaining_motion: Vector3 = motion
 
-	for _iteration: int in range(
-		PROBE_MAX_COLLISIONS
-	):
-		if (
-			remaining_motion.length_squared()
-			<= MOTION_EPSILON_SQUARED
-		):
-			return {
-				"transform": simulated_transform
-			}
+	for _iteration: int in range(PROBE_MAX_COLLISIONS):
+		if remaining_motion.length_squared() <= MOTION_EPSILON_SQUARED:
+			return {"transform": simulated_transform}
 
-		var collision: KinematicCollision3D = (
-			KinematicCollision3D.new()
-		)
+		var collision := KinematicCollision3D.new()
 		var blocked: bool = player.test_move(
 			simulated_transform,
 			remaining_motion,
@@ -503,51 +304,32 @@ func simulate_mantle_motion(
 			false,
 			PROBE_MAX_COLLISIONS
 		)
-
 		if not blocked:
 			simulated_transform.origin += remaining_motion
-			return {
-				"transform": simulated_transform
-			}
+			return {"transform": simulated_transform}
 
-		var previous_length_squared: float = (
-			remaining_motion.length_squared()
-		)
-		var next_motion: Vector3 = (
-			collision.get_remainder()
-		)
-		var collision_count: int = (
-			collision.get_collision_count()
-		)
-
-		for collision_index: int in range(
-			collision_count
-		):
+		var previous_length_squared: float = remaining_motion.length_squared()
+		var next_motion: Vector3 = collision.get_remainder()
+		var collision_count: int = collision.get_collision_count()
+		for collision_index: int in range(collision_count):
 			if not is_expected_mantle_contact(
 				collision,
 				collision_index,
 				active_candidate
 			):
 				return {}
-
 			next_motion = next_motion.slide(
-				collision.get_normal(
-					collision_index
-				)
+				collision.get_normal(collision_index)
 			)
 
 		var travel: Vector3 = collision.get_travel()
 		simulated_transform.origin += travel
-
 		if (
-			travel.length_squared()
-			<= MOTION_EPSILON_SQUARED
+			travel.length_squared() <= MOTION_EPSILON_SQUARED
 			and next_motion.length_squared()
-			>= previous_length_squared
-			- MOTION_EPSILON_SQUARED
+			>= previous_length_squared - MOTION_EPSILON_SQUARED
 		):
 			return {}
-
 		remaining_motion = next_motion
 
 	return {}
@@ -558,103 +340,43 @@ func move_mantle_motion(
 	motion: Vector3
 ) -> bool:
 	var remaining_motion: Vector3 = motion
-
-	for _iteration: int in range(
-		PROBE_MAX_COLLISIONS
-	):
-		if (
-			remaining_motion.length_squared()
-			<= MOTION_EPSILON_SQUARED
-		):
+	for _iteration: int in range(PROBE_MAX_COLLISIONS):
+		if remaining_motion.length_squared() <= MOTION_EPSILON_SQUARED:
 			return true
 
-		var collision: KinematicCollision3D = (
-			player.move_and_collide(
-				remaining_motion,
-				false,
-				PROBE_SAFE_MARGIN,
-				false,
-				PROBE_MAX_COLLISIONS
-			)
+		var collision: KinematicCollision3D = player.move_and_collide(
+			remaining_motion,
+			false,
+			PROBE_SAFE_MARGIN,
+			false,
+			PROBE_MAX_COLLISIONS
 		)
-
 		if collision == null:
 			return true
 
-		var previous_length_squared: float = (
-			remaining_motion.length_squared()
-		)
-		var next_motion: Vector3 = (
-			collision.get_remainder()
-		)
-		var collision_count: int = (
-			collision.get_collision_count()
-		)
-
-		for collision_index: int in range(
-			collision_count
-		):
+		var previous_length_squared: float = remaining_motion.length_squared()
+		var next_motion: Vector3 = collision.get_remainder()
+		var collision_count: int = collision.get_collision_count()
+		for collision_index: int in range(collision_count):
 			if not is_expected_mantle_contact(
 				collision,
 				collision_index,
 				active_candidate
 			):
 				return false
-
 			next_motion = next_motion.slide(
-				collision.get_normal(
-					collision_index
-				)
+				collision.get_normal(collision_index)
 			)
 
 		if (
 			collision.get_travel().length_squared()
 			<= MOTION_EPSILON_SQUARED
 			and next_motion.length_squared()
-			>= previous_length_squared
-			- MOTION_EPSILON_SQUARED
+			>= previous_length_squared - MOTION_EPSILON_SQUARED
 		):
 			return false
-
 		remaining_motion = next_motion
-
 	return false
-
-
-func is_pose_valid(
-	player: CharacterBody3D,
-	candidate: MantleCandidate,
-	position: Vector3
-) -> bool:
-	var pose_transform: Transform3D = player.global_transform
-	pose_transform.origin = position
-
-	var collision: KinematicCollision3D = KinematicCollision3D.new()
-	var has_contact: bool = player.test_move(
-		pose_transform,
-		Vector3.ZERO,
-		collision,
-		PROBE_SAFE_MARGIN,
-		true,
-		PROBE_MAX_COLLISIONS
-	)
-
-	if not has_contact:
-		return true
-
-	var collision_count: int = collision.get_collision_count()
-	if collision_count <= 0:
-		return false
-
-	for collision_index: int in range(collision_count):
-		if not is_expected_mantle_contact(
-			collision,
-			collision_index,
-			candidate
-		):
-			return false
-
-	return true
 
 
 func is_expected_mantle_contact(
@@ -665,20 +387,21 @@ func is_expected_mantle_contact(
 	if candidate == null:
 		return false
 
-	if not is_contact_near_expected_mantle_surface(
-		collision,
-		collision_index,
-		candidate
-	):
+	var collision_point: Vector3 = collision.get_position(collision_index)
+	if not is_contact_local_to_mantle_geometry(collision_point, candidate):
 		return false
 
 	var collision_normal: Vector3 = collision.get_normal(collision_index)
+	if collision_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
 	var planar_normal: Vector3 = collision_normal.slide(candidate.ledge_axis)
 	if planar_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
 	planar_normal = planar_normal.normalized()
 
-	var total_angle: float = candidate.signed_arc_angle
+	# Edge solvers can report any normal between the wall face and top face.
+	# Treat that whole local sector as expected instead of requiring the normal
+	# to match either neighboring face exactly.
 	var contact_dot: float = clampf(
 		candidate.wall_normal.dot(planar_normal),
 		-1.0,
@@ -688,29 +411,30 @@ func is_expected_mantle_contact(
 		candidate.wall_normal.cross(planar_normal).dot(candidate.ledge_axis)
 	)
 	var contact_angle: float = atan2(contact_cross, contact_dot)
+	var total_angle: float = candidate.signed_arc_angle
+	if total_angle > 0.0:
+		return (
+			contact_angle >= -ANGLE_EPSILON
+			and contact_angle <= total_angle + ANGLE_EPSILON
+		)
+	return (
+		contact_angle <= ANGLE_EPSILON
+		and contact_angle >= total_angle - ANGLE_EPSILON
+	)
 
-	if absf(contact_angle) > absf(total_angle) + ANGLE_EPSILON:
-		return false
-	if (
-		absf(contact_angle) > ANGLE_EPSILON
-		and signf(contact_angle) != signf(total_angle)
-	):
-		return false
-	return true
 
-
-func is_contact_near_expected_mantle_surface(
-	collision: KinematicCollision3D,
-	collision_index: int,
+func is_contact_local_to_mantle_geometry(
+	point: Vector3,
 	candidate: MantleCandidate
 ) -> bool:
 	if candidate == null:
 		return false
+	if not is_within_local_ledge_width(point, candidate):
+		return false
 
 	var tolerance: float = get_expected_route_surface_plane_tolerance()
-	if is_contact_near_expected_surface(
-		collision,
-		collision_index,
+	if is_point_near_plane(
+		point,
 		candidate.edge_point,
 		candidate.wall_normal,
 		tolerance
@@ -719,9 +443,8 @@ func is_contact_near_expected_mantle_surface(
 
 	if (
 		candidate.source_candidate != null
-		and is_contact_near_expected_surface(
-			collision,
-			collision_index,
+		and is_point_near_plane(
+			point,
 			candidate.source_candidate.top_point,
 			candidate.source_candidate.top_normal,
 			tolerance
@@ -729,42 +452,40 @@ func is_contact_near_expected_mantle_surface(
 	):
 		return true
 
-	return (
-		candidate.target_top != null
-		and is_contact_near_expected_surface(
-			collision,
-			collision_index,
-			candidate.target_top.point,
-			candidate.target_top.normal,
-			tolerance
-		)
-	)
+	# Intermediate edge normals need not belong closely to either face plane,
+	# but their contact point must remain local to the actual ledge line.
+	return distance_to_edge_line(point, candidate) <= tolerance
 
 
-func is_contact_near_expected_surface(
-	collision: KinematicCollision3D,
-	collision_index: int,
-	plane_point: Vector3,
-	plane_normal: Vector3,
-	tolerance: float
+func is_within_local_ledge_width(
+	point: Vector3,
+	candidate: MantleCandidate
 ) -> bool:
-	if plane_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		return false
-
-	var expected_normal: Vector3 = plane_normal.normalized()
-	var collision_normal: Vector3 = collision.get_normal(collision_index)
-	if collision_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		return false
-	collision_normal = collision_normal.normalized()
-
-	if collision_normal.dot(expected_normal) < EXPECTED_ROUTE_SURFACE_MIN_ALIGNMENT:
-		return false
-	return is_point_near_plane(
-		collision.get_position(collision_index),
-		plane_point,
-		expected_normal,
-		tolerance
+	var horizontal_axis := Vector3(
+		candidate.ledge_axis.x,
+		0.0,
+		candidate.ledge_axis.z
 	)
+	if horizontal_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	horizontal_axis = horizontal_axis.normalized()
+	var delta: Vector3 = point - candidate.edge_point
+	var horizontal_delta := Vector3(delta.x, 0.0, delta.z)
+	var lateral_distance: float = absf(horizontal_delta.dot(horizontal_axis))
+	return lateral_distance <= get_expected_route_lateral_tolerance()
+
+
+func distance_to_edge_line(
+	point: Vector3,
+	candidate: MantleCandidate
+) -> float:
+	var axis: Vector3 = candidate.ledge_axis
+	if axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return INF
+	axis = axis.normalized()
+	var delta: Vector3 = point - candidate.edge_point
+	var radial_delta: Vector3 = delta - axis * delta.dot(axis)
+	return radial_delta.length()
 
 
 func is_point_near_plane(
@@ -775,17 +496,13 @@ func is_point_near_plane(
 ) -> bool:
 	if plane_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
-
 	var normalized_normal: Vector3 = plane_normal.normalized()
-	var plane_distance: float = absf(
+	return absf(
 		(point - plane_point).dot(normalized_normal)
-	)
-	return plane_distance <= tolerance
+	) <= tolerance
 
 
-func get_route_position(
-	distance_along_route: float
-) -> Vector3:
+func get_route_position(distance_along_route: float) -> Vector3:
 	if active_candidate == null:
 		return start_position
 
@@ -794,57 +511,35 @@ func get_route_position(
 		0.0,
 		total_route_length
 	)
-
 	if (
 		source_lead_length > 0.000001
 		and clamped_distance <= source_lead_length
 	):
-		var source_fraction: float = clamped_distance / source_lead_length
 		return start_position.lerp(
 			active_candidate.source_arc_position,
-			source_fraction
+			clamped_distance / source_lead_length
 		)
 
-	var arc_distance: float = clamped_distance - source_lead_length
-	if (
-		arc_length > 0.000001
-		and arc_distance <= arc_length
-	):
-		var arc_fraction: float = clampf(
-			arc_distance / arc_length,
-			0.0,
-			1.0
-		)
-		var angle: float = active_candidate.signed_arc_angle * arc_fraction
-		var radial_offset: Vector3 = (
-			active_candidate.wall_normal.rotated(
-				active_candidate.ledge_axis,
-				angle
-			)
-			* get_clearance_radius()
-		)
-		return (
-			active_candidate.edge_point
-			+ radial_offset
-			- Vector3.UP * get_bottom_cap_center_offset()
-		)
-
-	if target_lead_length <= 0.000001:
+	if arc_length <= 0.000001:
 		return active_candidate.target_position
-
-	var target_distance: float = (
-		clamped_distance
-		- source_lead_length
-		- arc_length
-	)
-	var target_fraction: float = clampf(
-		target_distance / target_lead_length,
+	var arc_distance: float = clamped_distance - source_lead_length
+	var arc_fraction: float = clampf(
+		arc_distance / arc_length,
 		0.0,
 		1.0
 	)
-	return active_candidate.target_arc_position.lerp(
-		active_candidate.target_position,
-		target_fraction
+	var angle: float = active_candidate.signed_arc_angle * arc_fraction
+	var radial_offset: Vector3 = (
+		active_candidate.wall_normal.rotated(
+			active_candidate.ledge_axis,
+			angle
+		)
+		* get_clearance_radius()
+	)
+	return (
+		active_candidate.edge_point
+		+ radial_offset
+		- Vector3.UP * get_bottom_cap_center_offset()
 	)
 
 
@@ -859,13 +554,6 @@ func has_reached_position(
 	return (
 		position.distance_squared_to(target_position)
 		<= arrival_tolerance * arrival_tolerance
-	)
-
-
-func get_surface_verification_tolerance() -> float:
-	return maxf(
-		PROBE_SAFE_MARGIN * 4.0,
-		detector.get_shimmy_attachment_correction_limit()
 	)
 
 
@@ -896,6 +584,13 @@ func get_expected_route_surface_plane_tolerance() -> float:
 	)
 
 
+func get_expected_route_lateral_tolerance() -> float:
+	return (
+		detector.get_capsule_radius()
+		+ detector.get_shimmy_attachment_correction_limit()
+	)
+
+
 func is_active() -> bool:
 	return active_candidate != null
 
@@ -921,7 +616,6 @@ func cancel() -> void:
 	start_position = Vector3.ZERO
 	source_lead_length = 0.0
 	arc_length = 0.0
-	target_lead_length = 0.0
 	total_route_length = 0.0
 	route_distance = 0.0
 	completed = false
