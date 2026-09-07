@@ -25,11 +25,11 @@ func move(
 	delta: float
 ) -> Array[KinematicCollision3D]:
 	var collisions: Array[KinematicCollision3D] = []
-	var motion: Vector3 = player.velocity * delta
+	var base_motion: Vector3 = player.velocity * delta
 	var horizontal_motion: Vector3 = Vector3(
-		motion.x,
+		base_motion.x,
 		0.0,
-		motion.z
+		base_motion.z
 	)
 
 	if allow_step_up and not step_up.is_active():
@@ -44,39 +44,40 @@ func move(
 		step_up.update_traversal(
 			player,
 			input_direction,
-			support,
 			delta
 		)
 
-	motion = player.velocity * delta
+	var motion_velocity: Vector3 = step_up.get_motion_velocity(player.velocity)
+	var motion: Vector3 = motion_velocity * delta
 
-	for _iteration: int in range(
-		max_collision_iterations
-	):
+	for _iteration: int in range(max_collision_iterations):
 		if motion.length_squared() <= MOTION_EPSILON_SQUARED:
 			break
 
-		var collision: KinematicCollision3D = (
-			player.move_and_collide(motion)
-		)
-
+		var collision: KinematicCollision3D = player.move_and_collide(motion)
 		if collision == null:
+			step_up.refresh_after_move(player)
 			break
+
 		collisions.append(collision)
+		var preserve_velocity: bool = step_up.should_preserve_velocity(collision)
+		var assist_blocked: bool = step_up.is_vertical_assist_blocked(
+			collision,
+			player.velocity
+		)
+		if assist_blocked:
+			step_up.cancel_traversal()
 
 		var normal: Vector3 = collision.get_normal()
 		var remainder: Vector3 = collision.get_remainder()
-		var normal_velocity: float = (
-			player.velocity.dot(normal)
-		)
+		var normal_velocity: float = player.velocity.dot(normal)
 
-		if (
-			normal_velocity < 0.0
-			and not step_up.should_preserve_velocity(
-				collision
-			)
-		):
+		if normal_velocity < 0.0 and not preserve_velocity:
 			player.velocity -= normal * normal_velocity
+
+		step_up.refresh_after_move(player)
+		if assist_blocked:
+			break
 
 		motion = remainder.slide(normal)
 
