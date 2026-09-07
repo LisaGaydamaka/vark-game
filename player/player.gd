@@ -212,11 +212,11 @@ func _update_normal_movement(
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
 
 	support.update(self)
+	var grounded: bool = support.is_grounded()
 
 	var jump_accepted: bool = (
 		jump_pressed
-		and support.has_support
-		and support.walkable
+		and grounded
 	)
 
 	if jump_accepted:
@@ -225,18 +225,14 @@ func _update_normal_movement(
 	var ground_target_speed: float = max_speed
 
 	if (
-		support.has_support
-		and support.walkable
+		grounded
 		and not input_direction.is_zero_approx()
 		and player_input.is_sprint_pressed()
 	):
 		ground_target_speed = sprint_speed
 
 	var use_air_control: bool = (
-		not (
-			support.has_support
-			and support.walkable
-		)
+		not grounded
 		and not step_up.is_active()
 	)
 
@@ -258,7 +254,7 @@ func _update_normal_movement(
 	ledge_controller.update_transition_guards()
 
 	var ledge_detection_allowed: bool = (
-		not support.has_support
+		not grounded
 		and not step_up.is_active()
 	)
 	var view_forward: Vector3 = -head.global_transform.basis.z
