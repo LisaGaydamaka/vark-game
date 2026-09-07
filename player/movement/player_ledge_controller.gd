@@ -84,7 +84,6 @@ func _init(
 	ledge_corner = corner_action
 	ledge_mantle = mantle_action
 	look = player_look
-
 	jump_height = configured_jump_height
 	max_step_height = configured_max_step_height
 	max_speed = configured_max_speed
@@ -94,28 +93,16 @@ func _init(
 	gravity = configured_gravity
 	debug_logging = configured_debug_logging
 
-	var maximum_approach_angle: float = clampf(
-		ledge_max_approach_angle_degrees,
-		0.0,
-		89.0
-	)
-	minimum_air_mantle_alignment = cos(
-		deg_to_rad(maximum_approach_angle)
-	)
-	minimum_local_ledge_alignment = cos(
-		deg_to_rad(LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES)
-	)
+	var maximum_approach_angle: float = clampf(ledge_max_approach_angle_degrees, 0.0, 89.0)
+	minimum_air_mantle_alignment = cos(deg_to_rad(maximum_approach_angle))
+	minimum_local_ledge_alignment = cos(deg_to_rad(LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES))
 
 
 func is_active() -> bool:
 	return state != State.NONE
 
 
-func update(
-	jump_pressed: bool,
-	crouch_pressed: bool,
-	delta: float
-) -> void:
+func update(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 	match state:
 		State.CATCHING:
 			_update_ledge_catch(crouch_pressed, delta)
@@ -134,15 +121,10 @@ func update_transition_guards() -> void:
 	_update_corner_release_suppression()
 
 
-func try_enter_from_normal(
-	input_direction: Vector3,
-	delta: float
-) -> bool:
+func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
 	var candidate: PlayerLedgeDetector.LedgeCandidate = ledge_detector.get_candidate()
-
 	if candidate == null:
 		return false
-
 	if (
 		_is_jump_regrab_blocked(candidate)
 		or _is_drop_regrab_blocked(candidate)
@@ -167,7 +149,6 @@ func try_enter_from_normal(
 			support,
 			candidate
 		)
-
 		if mantle_candidate != null and ledge_mantle.try_start(body, mantle_candidate):
 			step_up.cancel_traversal()
 			ledge_detector.clear_candidate()
@@ -177,7 +158,6 @@ func try_enter_from_normal(
 			if debug_logging:
 				print("Air mantle entered")
 			return true
-
 	return false
 
 
@@ -189,34 +169,25 @@ func _should_attempt_air_mantle(
 		return false
 	if support.is_grounded() or step_up.is_active():
 		return false
-
 	var feet_height: float = body.global_position.y + ledge_detector.get_capsule_bottom_offset()
 	var obstacle_height: float = candidate.edge_point.y - feet_height
 	if obstacle_height <= max_step_height:
 		return false
-
 	var horizontal_input := Vector3(input_direction.x, 0.0, input_direction.z)
 	if horizontal_input.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
 		return false
-
 	var toward_wall: Vector3 = -candidate.wall_normal
 	toward_wall.y = 0.0
 	if toward_wall.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
 		return false
-
 	horizontal_input = horizontal_input.normalized()
 	toward_wall = toward_wall.normalized()
 	return horizontal_input.dot(toward_wall) >= minimum_air_mantle_alignment
 
 
-func _update_ledge_catch(
-	crouch_pressed: bool,
-	delta: float
-) -> void:
+func _update_ledge_catch(crouch_pressed: bool, delta: float) -> void:
 	if crouch_pressed:
-		var input_direction: Vector3 = player_input.get_movement_direction(
-			head.global_transform
-		)
+		var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 		_arm_drop_regrab_candidate(active_catch_candidate)
 		ledge_catch.cancel()
 		active_catch_candidate = null
@@ -228,7 +199,6 @@ func _update_ledge_catch(
 		if debug_logging:
 			print("Ledge catch dropped")
 		return
-
 	ledge_catch.update(body, delta)
 	_finish_ledge_catch_if_ready()
 
@@ -264,11 +234,7 @@ func _finish_ledge_catch_if_ready() -> void:
 		state = State.NONE
 
 
-func _update_ledge_hang(
-	jump_pressed: bool,
-	crouch_pressed: bool,
-	delta: float
-) -> void:
+func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 	var action: int = ledge_hang.update(
 		body,
@@ -278,18 +244,15 @@ func _update_ledge_hang(
 		crouch_pressed,
 		delta
 	)
-
 	if action == PlayerLedgeHang.Action.DROP:
 		_arm_drop_regrab_candidate(ledge_hang.get_candidate())
 		_release_ledge_to_air(input_direction, delta)
 		return
-
 	if action == PlayerLedgeHang.Action.LOST_LEDGE:
 		_release_ledge_to_air(input_direction, delta)
 		if debug_logging:
 			print("Ledge hang lost valid geometry")
 		return
-
 	if action == PlayerLedgeHang.Action.MANTLE_REQUEST:
 		var mantle_source: PlayerLedgeDetector.LedgeCandidate = ledge_hang.get_candidate()
 		var mantle_candidate: PlayerMantle.MantleCandidate = ledge_mantle.find_candidate(
@@ -308,7 +271,6 @@ func _update_ledge_hang(
 		if debug_logging:
 			print("Mantle invalid; performed hang jump")
 		return
-
 	if action == PlayerLedgeHang.Action.SHIMMY_BLOCKED:
 		var shimmy_direction: Vector3 = ledge_hang.take_blocked_shimmy_direction()
 		var corner_candidate: PlayerLedgeCorner.CornerCandidate = ledge_corner.find_candidate(
@@ -325,7 +287,6 @@ func _update_ledge_hang(
 			if debug_logging:
 				print("Ledge corner entered")
 		return
-
 	if action == PlayerLedgeHang.Action.DIRECTIONAL_JUMP:
 		var released_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_hang.get_candidate()
 		_arm_jump_regrab_candidate(released_candidate)
@@ -345,18 +306,12 @@ func _update_ledge_hang(
 		support.update(body)
 
 
-func _update_ledge_corner(
-	jump_pressed: bool,
-	crouch_pressed: bool,
-	delta: float
-) -> void:
+func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
-
 	if crouch_pressed:
 		_arm_drop_regrab_guard(ledge_corner.get_release_candidates())
 		_release_corner_to_air(input_direction, delta)
 		return
-
 	if jump_pressed:
 		_arm_jump_regrab_guard(ledge_corner.get_release_candidates())
 		if input_direction.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED:
@@ -367,7 +322,6 @@ func _update_ledge_corner(
 			movement.move(body, support, input_direction, false, delta)
 			support.update(body)
 			return
-
 		body.velocity = Vector3.ZERO
 		motor.apply_jump(body, jump_height)
 		ledge_corner.cancel()
@@ -384,7 +338,6 @@ func _update_ledge_corner(
 		if debug_logging:
 			print("Ledge corner lost valid traversal")
 		return
-
 	look.update_ledge_view_center(ledge_corner.get_current_wall_normal())
 
 	if ledge_corner.has_completed():
@@ -402,7 +355,6 @@ func _update_ledge_corner(
 			if debug_logging:
 				print("Ledge corner final hang validation failed")
 			return
-
 		ledge_corner.cancel()
 		ledge_hang.start(completed_candidate)
 		body.velocity = Vector3.ZERO
@@ -412,18 +364,12 @@ func _update_ledge_corner(
 			print("Ledge corner completed")
 
 
-func _update_ledge_mantle(
-	jump_pressed: bool,
-	crouch_pressed: bool,
-	delta: float
-) -> void:
+func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
-
 	if crouch_pressed:
 		_arm_drop_regrab_candidate(ledge_mantle.get_release_candidate())
 		_release_mantle_to_air(input_direction, delta)
 		return
-
 	if jump_pressed and input_direction.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED:
 		_arm_jump_regrab_candidate(ledge_mantle.get_release_candidate())
 		motor.apply_directional_jump(body, input_direction, jump_height, max_speed)
@@ -433,16 +379,13 @@ func _update_ledge_mantle(
 		movement.move(body, support, input_direction, false, delta)
 		support.update(body)
 		return
-
 	if not ledge_mantle.update(body, delta):
 		_release_mantle_to_air(input_direction, delta)
 		if debug_logging:
 			print("Ledge mantle lost valid traversal")
 		return
-
 	if not ledge_mantle.has_completed():
 		return
-
 	body.velocity = Vector3.ZERO
 	support.update(body)
 	if not support.is_grounded():
@@ -450,7 +393,6 @@ func _update_ledge_mantle(
 		if debug_logging:
 			print("Ledge mantle final support validation failed")
 		return
-
 	ledge_mantle.cancel()
 	look.exit_ledge_view()
 	state = State.NONE
@@ -513,9 +455,7 @@ func _arm_jump_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -
 		jump_regrab_candidates.append(candidate)
 
 
-func _arm_jump_regrab_guard(
-	candidates: Array[PlayerLedgeDetector.LedgeCandidate]
-) -> void:
+func _arm_jump_regrab_guard(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
 	jump_regrab_candidates.clear()
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate != null:
@@ -542,7 +482,10 @@ func _is_in_jump_regrab_region(candidate: PlayerLedgeDetector.LedgeCandidate) ->
 	var max_reach: float = ledge_detector.get_max_horizontal_reach()
 	if horizontal_edge_offset.length_squared() > max_reach * max_reach:
 		return false
-	return edge_offset.y >= ledge_detector.get_min_edge_height() and edge_offset.y <= ledge_detector.get_max_catch_height()
+	return (
+		edge_offset.y >= ledge_detector.get_min_edge_height()
+		and edge_offset.y <= ledge_detector.get_max_catch_height()
+	)
 
 
 func _is_jump_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
@@ -554,17 +497,13 @@ func _is_jump_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> b
 	return false
 
 
-func _arm_drop_regrab_candidate(
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> void:
+func _arm_drop_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
 	drop_regrab_candidates.clear()
 	if candidate != null:
 		drop_regrab_candidates.append(candidate)
 
 
-func _arm_drop_regrab_guard(
-	candidates: Array[PlayerLedgeDetector.LedgeCandidate]
-) -> void:
+func _arm_drop_regrab_guard(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
 	drop_regrab_candidates.clear()
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate != null:
@@ -574,67 +513,37 @@ func _arm_drop_regrab_guard(
 func _update_drop_regrab_guard() -> void:
 	if drop_regrab_candidates.is_empty():
 		return
-
-	for candidate_index: int in range(
-		drop_regrab_candidates.size() - 1,
-		-1,
-		-1
-	):
-		var candidate: PlayerLedgeDetector.LedgeCandidate = (
-			drop_regrab_candidates[candidate_index]
-		)
+	for candidate_index: int in range(drop_regrab_candidates.size() - 1, -1, -1):
+		var candidate: PlayerLedgeDetector.LedgeCandidate = drop_regrab_candidates[candidate_index]
 		if not _is_in_drop_regrab_region(candidate):
 			drop_regrab_candidates.remove_at(candidate_index)
 
 
-func _is_in_drop_regrab_region(
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> bool:
+func _is_in_drop_regrab_region(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
 	if candidate == null:
 		return false
-
 	var edge_offset: Vector3 = candidate.edge_point - body.global_position
-	var horizontal_edge_offset := Vector3(
-		edge_offset.x,
-		0.0,
-		edge_offset.z
-	)
+	var horizontal_edge_offset := Vector3(edge_offset.x, 0.0, edge_offset.z)
 	var capsule_radius: float = ledge_detector.get_capsule_radius()
-	var horizontal_limit: float = (
-		ledge_detector.get_max_horizontal_reach()
-		+ capsule_radius
-	)
-
-	if (
-		horizontal_edge_offset.length_squared()
-		> horizontal_limit * horizontal_limit
-	):
+	var horizontal_limit: float = ledge_detector.get_max_horizontal_reach() + capsule_radius
+	if horizontal_edge_offset.length_squared() > horizontal_limit * horizontal_limit:
 		return false
-
 	return (
-		edge_offset.y
-		>= ledge_detector.get_min_edge_height() - capsule_radius
-		and edge_offset.y
-		<= ledge_detector.get_max_catch_height() + capsule_radius
+		edge_offset.y >= ledge_detector.get_min_edge_height() - capsule_radius
+		and edge_offset.y <= ledge_detector.get_max_catch_height() + capsule_radius
 	)
 
 
-func _is_drop_regrab_blocked(
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> bool:
+func _is_drop_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
 	if candidate == null:
 		return false
-
 	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in drop_regrab_candidates:
 		if _is_same_local_ledge(candidate, guarded_candidate):
 			return true
-
 	return false
 
 
-func _arm_failed_catch_regrab_candidate(
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> void:
+func _arm_failed_catch_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
 	failed_catch_regrab_candidates.clear()
 	if candidate != null:
 		failed_catch_regrab_candidates.append(candidate)
@@ -643,35 +552,22 @@ func _arm_failed_catch_regrab_candidate(
 func _update_failed_catch_regrab_guard() -> void:
 	if failed_catch_regrab_candidates.is_empty():
 		return
-
-	for candidate_index: int in range(
-		failed_catch_regrab_candidates.size() - 1,
-		-1,
-		-1
-	):
-		var candidate: PlayerLedgeDetector.LedgeCandidate = (
-			failed_catch_regrab_candidates[candidate_index]
-		)
+	for candidate_index: int in range(failed_catch_regrab_candidates.size() - 1, -1, -1):
+		var candidate: PlayerLedgeDetector.LedgeCandidate = failed_catch_regrab_candidates[candidate_index]
 		if not _is_in_drop_regrab_region(candidate):
 			failed_catch_regrab_candidates.remove_at(candidate_index)
 
 
-func _is_failed_catch_regrab_blocked(
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> bool:
+func _is_failed_catch_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
 	if candidate == null:
 		return false
-
 	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in failed_catch_regrab_candidates:
 		if _is_same_local_ledge(candidate, guarded_candidate):
 			return true
-
 	return false
 
 
-func _arm_corner_release_suppression(
-	candidates: Array[PlayerLedgeDetector.LedgeCandidate]
-) -> void:
+func _arm_corner_release_suppression(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
 	corner_release_suppression_candidates.clear()
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate != null:
@@ -702,7 +598,10 @@ func _should_keep_corner_release_suppression(
 	var horizontal_limit: float = ledge_detector.get_max_horizontal_reach() + capsule_radius
 	if horizontal_edge_offset.length_squared() > horizontal_limit * horizontal_limit:
 		return false
-	return edge_offset.y >= ledge_detector.get_min_edge_height() - capsule_radius and edge_offset.y <= ledge_detector.get_max_catch_height() + capsule_radius
+	return (
+		edge_offset.y >= ledge_detector.get_min_edge_height() - capsule_radius
+		and edge_offset.y <= ledge_detector.get_max_catch_height() + capsule_radius
+	)
 
 
 func _is_corner_release_suppressed(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
@@ -720,29 +619,19 @@ func _is_same_local_ledge(
 ) -> bool:
 	if first == null or second == null:
 		return false
-
-	var first_normal: Vector3 = first.wall_normal
-	first_normal.y = 0.0
-	var second_normal: Vector3 = second.wall_normal
-	second_normal.y = 0.0
-	if first_normal.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED or second_normal.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+	var first_normal := Vector3(first.wall_normal.x, 0.0, first.wall_normal.z)
+	var second_normal := Vector3(second.wall_normal.x, 0.0, second.wall_normal.z)
+	if (
+		first_normal.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED
+		or second_normal.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED
+	):
 		return false
 	first_normal = first_normal.normalized()
 	second_normal = second_normal.normalized()
 	if first_normal.dot(second_normal) < minimum_local_ledge_alignment:
 		return false
-	if absf(first.edge_point.y - second.edge_point.y) > ledge_detector.get_shimmy_level_tolerance():
-		return false
-
-	var edge_delta: Vector3 = second.edge_point - first.edge_point
-	var plane_distance: float = absf(edge_delta.dot(first_normal))
-	if plane_distance > ledge_detector.get_expected_local_wall_plane_tolerance():
-		return false
-
-	var ledge_axis: Vector3 = Vector3.UP.cross(first_normal)
-	if ledge_axis.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
-		return false
-	ledge_axis = ledge_axis.normalized()
-
-	var lateral_distance: float = absf(edge_delta.dot(ledge_axis))
-	return lateral_distance <= ledge_detector.get_max_horizontal_reach()
+	return ledge_detector.is_same_ledge_path(
+		first,
+		second,
+		ledge_detector.get_max_horizontal_reach()
+	)
