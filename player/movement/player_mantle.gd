@@ -13,6 +13,7 @@ const TARGET_SURFACE_INSET_RADIUS_RATIOS: Array[float] = [
 	0.75,
 	1.0,
 ]
+const EXPECTED_ROUTE_SURFACE_MIN_ALIGNMENT: float = 0.9
 const EXPECTED_ROUTE_SURFACE_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.5
 
 
@@ -124,9 +125,16 @@ func find_candidate_with_source_mode(
 
 	wall_normal = wall_normal.normalized()
 
-	var ledge_axis: Vector3 = (
-		Vector3.UP.cross(wall_normal)
-	)
+	var ledge_axis: Vector3 = refreshed_source.ledge_direction
+
+	if (
+		ledge_axis.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		ledge_axis = detector.get_ledge_direction(
+			refreshed_source.wall_normal,
+			refreshed_source.top_normal
+		)
 
 	if (
 		ledge_axis.length_squared()
@@ -727,13 +735,6 @@ func is_expected_mantle_contact(
 	if candidate == null:
 		return false
 
-	if not matches_mantle_geometry(
-		collision,
-		collision_index,
-		candidate
-	):
-		return false
-
 	if not is_contact_near_expected_mantle_surface(
 		collision,
 		collision_index,
@@ -792,37 +793,24 @@ func is_contact_near_expected_mantle_surface(
 	if candidate == null:
 		return false
 
-	var collision_point: Vector3 = collision.get_position(
-		collision_index
-	)
 	var tolerance: float = (
 		get_expected_route_surface_plane_tolerance()
 	)
 
-	if (
-		matches_candidate_wall(
-			collision,
-			collision_index,
-			candidate.source_candidate
-		)
-		and is_point_near_plane(
-			collision_point,
-			candidate.edge_point,
-			candidate.wall_normal,
-			tolerance
-		)
+	if is_contact_near_expected_surface(
+		collision,
+		collision_index,
+		candidate.edge_point,
+		candidate.wall_normal,
+		tolerance
 	):
 		return true
 
 	if (
 		candidate.source_candidate != null
-		and matches_candidate_top(
+		and is_contact_near_expected_surface(
 			collision,
 			collision_index,
-			candidate.source_candidate
-		)
-		and is_point_near_plane(
-			collision_point,
 			candidate.source_candidate.top_point,
 			candidate.source_candidate.top_normal,
 			tolerance
@@ -832,17 +820,53 @@ func is_contact_near_expected_mantle_surface(
 
 	return (
 		candidate.target_top != null
-		and matches_top_hit(
+		and is_contact_near_expected_surface(
 			collision,
 			collision_index,
-			candidate.target_top
-		)
-		and is_point_near_plane(
-			collision_point,
 			candidate.target_top.point,
 			candidate.target_top.normal,
 			tolerance
 		)
+	)
+
+
+func is_contact_near_expected_surface(
+	collision: KinematicCollision3D,
+	collision_index: int,
+	plane_point: Vector3,
+	plane_normal: Vector3,
+	tolerance: float
+) -> bool:
+	if (
+		plane_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	var expected_normal: Vector3 = plane_normal.normalized()
+	var collision_normal: Vector3 = collision.get_normal(
+		collision_index
+	)
+
+	if (
+		collision_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	collision_normal = collision_normal.normalized()
+
+	if (
+		collision_normal.dot(expected_normal)
+		< EXPECTED_ROUTE_SURFACE_MIN_ALIGNMENT
+	):
+		return false
+
+	return is_point_near_plane(
+		collision.get_position(collision_index),
+		plane_point,
+		expected_normal,
+		tolerance
 	)
 
 
@@ -867,108 +891,6 @@ func is_point_near_plane(
 	)
 
 	return plane_distance <= tolerance
-
-
-func matches_mantle_geometry(
-	collision: KinematicCollision3D,
-	collision_index: int,
-	candidate: MantleCandidate
-) -> bool:
-	return (
-		matches_candidate_wall(
-			collision,
-			collision_index,
-			candidate.source_candidate
-		)
-		or matches_candidate_top(
-			collision,
-			collision_index,
-			candidate.source_candidate
-		)
-		or matches_top_hit(
-			collision,
-			collision_index,
-			candidate.target_top
-		)
-	)
-
-
-func matches_candidate_wall(
-	collision: KinematicCollision3D,
-	collision_index: int,
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> bool:
-	if candidate == null:
-		return false
-
-	return matches_geometry_identity(
-		collision,
-		collision_index,
-		candidate.wall_collider_rid,
-		candidate.wall_shape_index
-	)
-
-
-func matches_candidate_top(
-	collision: KinematicCollision3D,
-	collision_index: int,
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> bool:
-	if candidate == null:
-		return false
-
-	return matches_geometry_identity(
-		collision,
-		collision_index,
-		candidate.top_collider_rid,
-		candidate.top_shape_index
-	)
-
-
-func matches_top_hit(
-	collision: KinematicCollision3D,
-	collision_index: int,
-	top_hit: PlayerLedgeDetector.TopHit
-) -> bool:
-	if top_hit == null:
-		return false
-
-	return matches_geometry_identity(
-		collision,
-		collision_index,
-		top_hit.collider_rid,
-		top_hit.shape_index
-	)
-
-
-func matches_geometry_identity(
-	collision: KinematicCollision3D,
-	collision_index: int,
-	collider_rid: RID,
-	shape_index: int
-) -> bool:
-	if (
-		collision.get_collider_rid(
-			collision_index
-		)
-		!= collider_rid
-	):
-		return false
-
-	var collider_shape_index: int = (
-		collision.get_collider_shape_index(
-			collision_index
-		)
-	)
-
-	if (
-		shape_index >= 0
-		and collider_shape_index >= 0
-		and collider_shape_index != shape_index
-	):
-		return false
-
-	return true
 
 
 func get_route_position(
