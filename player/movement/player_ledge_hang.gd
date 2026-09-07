@@ -61,15 +61,11 @@ func _init(
 func start(
 	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> void:
-	active_candidate = candidate
+	set_active_candidate(candidate)
 	shimmy_velocity = 0.0
 	blocked_shimmy_direction = Vector3.ZERO
 	attachment_revalidation_elapsed = 0.0
 	clear_blocked_endpoint()
-	segment_wall_normal = candidate.wall_normal.normalized()
-	segment_ledge_direction = (
-		Vector3.UP.cross(segment_wall_normal)
-	).normalized()
 
 
 func update(
@@ -139,7 +135,7 @@ func revalidate_attachment(
 		return false
 
 	var refreshed_candidate: PlayerLedgeDetector.LedgeCandidate = (
-		detector.find_hang_candidate_at_position(
+		detector.find_attachment_candidate_at_position(
 			player,
 			support,
 			active_candidate,
@@ -151,7 +147,7 @@ func revalidate_attachment(
 	if refreshed_candidate == null:
 		return false
 
-	active_candidate = refreshed_candidate
+	set_active_candidate(refreshed_candidate)
 	attachment_revalidation_elapsed = 0.0
 	return true
 
@@ -219,7 +215,7 @@ func update_shimmy(
 	)
 
 	if motion.length_squared() <= MOTION_EPSILON_SQUARED:
-		active_candidate = next_candidate
+		set_active_candidate(next_candidate)
 		return true
 
 	if not is_shimmy_path_clear(
@@ -251,8 +247,35 @@ func update_shimmy(
 		return true
 
 	clear_blocked_endpoint()
-	active_candidate = next_candidate
+	set_active_candidate(next_candidate)
 	return true
+
+
+func set_active_candidate(
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> void:
+	active_candidate = candidate
+
+	if candidate == null:
+		segment_wall_normal = Vector3.ZERO
+		segment_ledge_direction = Vector3.ZERO
+		return
+
+	segment_wall_normal = candidate.wall_normal
+	segment_wall_normal.y = 0.0
+
+	if (
+		segment_wall_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		segment_wall_normal = Vector3.ZERO
+		segment_ledge_direction = Vector3.ZERO
+		return
+
+	segment_wall_normal = segment_wall_normal.normalized()
+	segment_ledge_direction = (
+		Vector3.UP.cross(segment_wall_normal)
+	).normalized()
 
 
 func set_blocked_shimmy_direction(
@@ -509,7 +532,6 @@ func matches_candidate_wall(
 	var collider_shape_index: int = (
 		collision.get_collider_shape_index(
 			collision_index
-		)
 	)
 
 	if (
