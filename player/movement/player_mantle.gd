@@ -3,6 +3,7 @@ extends RefCounted
 
 
 const PROBE_SAFE_MARGIN: float = 0.001
+const ROUTE_CLEARANCE_SLACK: float = 0.002
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const ANGLE_EPSILON: float = 0.00001
@@ -263,13 +264,19 @@ func update(
 		var motion: Vector3 = target_position - player.global_position
 		if not move_mantle_motion(player, motion):
 			return false
-		if not has_reached_position(player.global_position, target_position):
-			return false
+
+		# The route is a clearance corridor, not an exact waypoint contract.
+		# Expected wall/top contacts may slide the capsule a small amount away
+		# from the sampled point; successful motion still advances the traversal.
 		route_distance = next_route_distance
 		remaining_distance -= segment_distance
 
 	if total_route_length - route_distance <= 0.000001:
 		route_distance = total_route_length
+		# Completion is geometric: the capsule must actually cross to the far side
+		# of the ledge. Reaching a numerically exact target point is irrelevant.
+		if not has_crossed_ledge_boundary(player.global_position):
+			return false
 		completed = true
 	return true
 
@@ -298,10 +305,12 @@ func is_vertical_clearance_clear(player: CharacterBody3D) -> bool:
 	var transform_value: Variant = result.get("transform")
 	if not (transform_value is Transform3D):
 		return false
-	return has_reached_position(
-		transform_value.origin,
-		from_transform.origin + vertical_motion
+	var required_height: float = (
+		from_transform.origin.y
+		+ vertical_distance
+		- get_route_progress_tolerance()
 	)
+	return transform_value.origin.y >= required_height
 
 
 func simulate_mantle_motion(
@@ -580,22 +589,40 @@ func get_route_position(distance_along_route: float) -> Vector3:
 	)
 
 
-func has_reached_position(
-	position: Vector3,
-	target_position: Vector3
-) -> bool:
-	var arrival_tolerance: float = (
-		PROBE_SAFE_MARGIN
-		+ sqrt(MOTION_EPSILON_SQUARED)
+func has_crossed_ledge_boundary(position: Vector3) -> bool:
+	if active_candidate == null:
+		return false
+	var required_progress: float = (
+		(active_candidate.target_position - active_candidate.edge_point).dot(
+			active_candidate.top_inward_direction
+		)
+		- get_route_progress_tolerance()
 	)
-	return (
-		position.distance_squared_to(target_position)
-		<= arrival_tolerance * arrival_tolerance
+	var current_progress: float = (
+		(position - active_candidate.edge_point).dot(
+			active_candidate.top_inward_direction
+		)
 	)
+	return current_progress >= required_progress
+
+
+func get_route_progress_tolerance() -> float:
+	return PROBE_SAFE_MARGIN + ROUTE_CLEARANCE_SLACK
 
 
 func get_clearance_radius() -> float:
-	return detector.get_capsule_radius() + PROBE_SAFE_MARGIN
+	# The route owns a clearance envelope outside the physics solver margin.
+	# Inflate it further for the chord error introduced by straight segments
+	# approximating the circular edge arc.
+	var collision_envelope_radius: float = (
+		detector.get_capsule_radius()
+		+ PROBE_SAFE_MARGIN
+		+ ROUTE_CLEARANCE_SLACK
+	)
+	var half_segment_angle: float = deg_to_rad(
+		MAX_ROUTE_SEGMENT_ANGLE_DEGREES * 0.5
+	)
+	return collision_envelope_radius / maxf(cos(half_segment_angle), 0.0001)
 
 
 func get_bottom_cap_center_offset() -> float:
