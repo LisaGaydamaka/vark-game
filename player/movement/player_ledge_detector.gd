@@ -21,6 +21,13 @@ const EXPECTED_HANG_WALL_MIN_ALIGNMENT: float = 0.9
 const EXPECTED_HANG_WALL_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
 
 
+class LedgeGeometry:
+	var edge_point: Vector3 = Vector3.ZERO
+	var wall_normal: Vector3 = Vector3.ZERO
+	var top_normal: Vector3 = Vector3.UP
+	var ledge_direction: Vector3 = Vector3.ZERO
+
+
 class LedgeCandidate:
 	var wall_collider_rid: RID = RID()
 	var wall_shape_index: int = -1
@@ -29,6 +36,7 @@ class LedgeCandidate:
 
 	var edge_point: Vector3 = Vector3.ZERO
 	var wall_normal: Vector3 = Vector3.ZERO
+	# This is the inward top probe sample, not the physical wall/top edge.
 	var top_point: Vector3 = Vector3.ZERO
 	var top_normal: Vector3 = Vector3.UP
 	var ledge_direction: Vector3 = Vector3.ZERO
@@ -236,54 +244,59 @@ func find_candidate(
 	if top_hit == null:
 		return null
 
-	var edge_point := Vector3(wall_hit.point.x, top_hit.point.y, wall_hit.point.z)
-	var near_edge_wall: WallHit = find_wall_near_edge(player, wall_hit.normal, edge_point)
-	if near_edge_wall == null or not is_wall_continuous(near_edge_wall, wall_hit.normal, edge_point):
+	var provisional_geometry: LedgeGeometry = build_ledge_geometry(wall_hit, top_hit)
+	if provisional_geometry == null:
 		return null
 
-	edge_point = Vector3(near_edge_wall.point.x, top_hit.point.y, near_edge_wall.point.z)
-	if not is_edge_exposed(player, edge_point, near_edge_wall.normal):
+	var near_edge_wall: WallHit = find_wall_near_edge(
+		player,
+		wall_hit.normal,
+		provisional_geometry.edge_point
+	)
+	if (
+		near_edge_wall == null
+		or not is_wall_continuous(
+			near_edge_wall,
+			wall_hit.normal,
+			provisional_geometry.edge_point
+		)
+	):
 		return null
 
-	var edge_offset: Vector3 = edge_point - player.global_position
+	var candidate: LedgeCandidate = build_ledge_candidate(
+		player,
+		near_edge_wall,
+		top_hit
+	)
+	if candidate == null:
+		return null
+
+	var edge_offset: Vector3 = candidate.edge_point - player.global_position
 	var horizontal_edge_offset := Vector3(edge_offset.x, 0.0, edge_offset.z)
 	var horizontal_reach_limit: float = get_max_horizontal_reach() + PROBE_SAFE_MARGIN
 	if horizontal_edge_offset.length_squared() > horizontal_reach_limit * horizontal_reach_limit:
 		return null
 
-	var relative_height: float = top_hit.point.y - player.global_position.y
+	var relative_height: float = candidate.edge_point.y - player.global_position.y
 	if relative_height < get_min_edge_height() - PROBE_SAFE_MARGIN:
 		return null
 	if relative_height > get_max_catch_height() + PROBE_SAFE_MARGIN:
 		return null
 
-	var ledge_direction: Vector3 = get_ledge_direction(near_edge_wall.normal, top_hit.normal)
-	if ledge_direction.length_squared() <= MOTION_EPSILON_SQUARED:
-		return null
-
 	var hang_span_valid: bool = has_usable_ledge_span(
 		player,
 		support,
-		edge_point,
-		near_edge_wall.normal,
-		top_hit.point.y,
-		ledge_direction
+		candidate.edge_point,
+		candidate.wall_normal,
+		candidate.edge_point.y,
+		candidate.ledge_direction
 	)
-	var hang_position: Vector3 = get_hang_position(edge_point, near_edge_wall.normal)
-	var candidate := LedgeCandidate.new()
-	candidate.wall_collider_rid = near_edge_wall.collider_rid
-	candidate.wall_shape_index = near_edge_wall.shape_index
-	candidate.top_collider_rid = top_hit.collider_rid
-	candidate.top_shape_index = top_hit.shape_index
-	candidate.edge_point = edge_point
-	candidate.wall_normal = near_edge_wall.normal
-	candidate.top_point = top_hit.point
-	candidate.top_normal = top_hit.normal
-	candidate.ledge_direction = ledge_direction
-	candidate.hang_position = hang_position
-
 	if hang_span_valid:
-		candidate.hangable = is_hang_pose_valid(player, candidate, hang_position)
+		candidate.hangable = is_hang_pose_valid(
+			player,
+			candidate,
+			candidate.hang_position
+		)
 	return candidate
 
 
@@ -313,35 +326,22 @@ func find_attachment_candidate_at_position(
 	if top_hit == null:
 		return null
 
-	var edge_point := Vector3(wall_hit.point.x, top_hit.point.y, wall_hit.point.z)
-	if not is_edge_exposed(player, edge_point, wall_hit.normal):
+	var candidate: LedgeCandidate = build_ledge_candidate(player, wall_hit, top_hit)
+	if candidate == null:
 		return null
 
-	var hang_position: Vector3 = get_hang_position(edge_point, wall_hit.normal)
-	var attachment_correction: Vector3 = hang_position - proposed_hang_position
+	var attachment_correction: Vector3 = candidate.hang_position - proposed_hang_position
 	var correction_limit: float = get_shimmy_attachment_correction_limit()
 	if attachment_correction.length_squared() > correction_limit * correction_limit:
 		return null
 
-	var ledge_direction: Vector3 = get_ledge_direction(wall_hit.normal, top_hit.normal)
-	if ledge_direction.length_squared() <= MOTION_EPSILON_SQUARED:
-		return null
-
-	var candidate := LedgeCandidate.new()
-	candidate.wall_collider_rid = wall_hit.collider_rid
-	candidate.wall_shape_index = wall_hit.shape_index
-	candidate.top_collider_rid = top_hit.collider_rid
-	candidate.top_shape_index = top_hit.shape_index
-	candidate.edge_point = edge_point
-	candidate.wall_normal = wall_hit.normal
-	candidate.top_point = top_hit.point
-	candidate.top_normal = top_hit.normal
-	candidate.ledge_direction = ledge_direction
-	candidate.hang_position = hang_position
-
 	if not is_same_attachment_region(candidate, reference_candidate):
 		return null
-	candidate.hangable = is_hang_pose_valid(player, candidate, hang_position)
+	candidate.hangable = is_hang_pose_valid(
+		player,
+		candidate,
+		candidate.hang_position
+	)
 	if not candidate.hangable:
 		return null
 	return candidate
@@ -368,10 +368,76 @@ func find_hang_candidate_at_position(
 		support,
 		candidate.edge_point,
 		candidate.wall_normal,
-		candidate.top_point.y,
+		candidate.edge_point.y,
 		candidate.ledge_direction
 	):
 		return null
+	return candidate
+
+
+func find_local_candidate(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	expected_wall_normal: Vector3,
+	edge_hint: Vector3,
+	height_window: float,
+	require_span: bool,
+	require_hang_pose: bool
+) -> LedgeCandidate:
+	if height_window <= 0.0:
+		return null
+
+	var expected_normal := Vector3(
+		expected_wall_normal.x,
+		0.0,
+		expected_wall_normal.z
+	)
+	if expected_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	expected_normal = expected_normal.normalized()
+
+	var wall_hit: WallHit = find_wall_near_edge(
+		player,
+		expected_normal,
+		edge_hint
+	)
+	if wall_hit == null:
+		return null
+	if wall_hit.normal.dot(expected_normal) < minimum_shimmy_wall_alignment:
+		return null
+
+	var top_hit: TopHit = find_top_near_wall(
+		player,
+		support,
+		wall_hit,
+		edge_hint.y,
+		height_window
+	)
+	if top_hit == null:
+		return null
+
+	var candidate: LedgeCandidate = build_ledge_candidate(player, wall_hit, top_hit)
+	if candidate == null:
+		return null
+
+	if require_span and not has_usable_ledge_span(
+		player,
+		support,
+		candidate.edge_point,
+		candidate.wall_normal,
+		candidate.edge_point.y,
+		candidate.ledge_direction
+	):
+		return null
+
+	if require_hang_pose:
+		candidate.hangable = is_hang_pose_valid(
+			player,
+			candidate,
+			candidate.hang_position
+		)
+		if not candidate.hangable:
+			return null
 	return candidate
 
 
@@ -547,6 +613,25 @@ func find_top_for_hang(
 	return raycast_top(player, support, ray_from, ray_to)
 
 
+func find_top_near_wall(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	wall_hit: WallHit,
+	center_height: float,
+	height_window: float
+) -> TopHit:
+	if wall_hit == null or height_window <= 0.0:
+		return null
+	var probe_center: Vector3 = wall_hit.point - wall_hit.normal * get_top_probe_inset()
+	probe_center.y = center_height
+	return raycast_top(
+		player,
+		support,
+		probe_center + Vector3.UP * height_window,
+		probe_center - Vector3.UP * height_window
+	)
+
+
 func raycast_top(
 	player: CharacterBody3D,
 	support: PlayerSupport,
@@ -579,6 +664,93 @@ func raycast_top(
 	if shape_value is int:
 		top_hit.shape_index = shape_value
 	return top_hit
+
+
+func build_ledge_geometry(
+	wall_hit: WallHit,
+	top_hit: TopHit
+) -> LedgeGeometry:
+	if wall_hit == null or top_hit == null:
+		return null
+
+	var wall_normal := Vector3(
+		wall_hit.normal.x,
+		0.0,
+		wall_hit.normal.z
+	)
+	if wall_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	wall_normal = wall_normal.normalized()
+
+	var top_normal: Vector3 = top_hit.normal
+	if top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	top_normal = top_normal.normalized()
+	if top_normal.y <= 0.000001:
+		return null
+
+	# The top ray is intentionally inset from the wall. Project that sample
+	# horizontally onto the wall plane, then add the vertical correction needed
+	# to stay on the same local top plane. The result lies on both planes.
+	var wall_plane_distance: float = (
+		(top_hit.point - wall_hit.point).dot(wall_normal)
+	)
+	var horizontal_correction: Vector3 = -wall_normal * wall_plane_distance
+	var vertical_correction: float = (
+		-top_normal.dot(horizontal_correction) / top_normal.y
+	)
+	var edge_point: Vector3 = (
+		top_hit.point
+		+ horizontal_correction
+		+ Vector3.UP * vertical_correction
+	)
+
+	var ledge_direction: Vector3 = get_ledge_direction(
+		wall_normal,
+		top_normal
+	)
+	if ledge_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+
+	var geometry := LedgeGeometry.new()
+	geometry.edge_point = edge_point
+	geometry.wall_normal = wall_normal
+	geometry.top_normal = top_normal
+	geometry.ledge_direction = ledge_direction
+	return geometry
+
+
+func build_ledge_candidate(
+	player: CharacterBody3D,
+	wall_hit: WallHit,
+	top_hit: TopHit,
+	require_exposed: bool = true
+) -> LedgeCandidate:
+	var geometry: LedgeGeometry = build_ledge_geometry(wall_hit, top_hit)
+	if geometry == null:
+		return null
+	if require_exposed and not is_edge_exposed(
+		player,
+		geometry.edge_point,
+		geometry.wall_normal
+	):
+		return null
+
+	var candidate := LedgeCandidate.new()
+	candidate.wall_collider_rid = wall_hit.collider_rid
+	candidate.wall_shape_index = wall_hit.shape_index
+	candidate.top_collider_rid = top_hit.collider_rid
+	candidate.top_shape_index = top_hit.shape_index
+	candidate.edge_point = geometry.edge_point
+	candidate.wall_normal = geometry.wall_normal
+	candidate.top_point = top_hit.point
+	candidate.top_normal = geometry.top_normal
+	candidate.ledge_direction = geometry.ledge_direction
+	candidate.hang_position = get_hang_position(
+		geometry.edge_point,
+		geometry.wall_normal
+	)
+	return candidate
 
 
 func is_edge_exposed(
@@ -712,17 +884,19 @@ func _is_ledge_span_sample_valid(
 	var top_hit: TopHit = find_top_for_hang(player, support, wall_hit, sample_edge_point.y)
 	if top_hit == null:
 		return false
-	if absf(top_hit.point.y - sample_edge_point.y) > get_shimmy_level_tolerance():
-		return false
 
-	var sample_direction: Vector3 = get_ledge_direction(wall_hit.normal, top_hit.normal)
-	if sample_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+	var sample_geometry: LedgeGeometry = build_ledge_geometry(wall_hit, top_hit)
+	if sample_geometry == null:
 		return false
-	if sample_direction.normalized().dot(direction) < minimum_shimmy_wall_alignment:
+	if absf(sample_geometry.edge_point.y - sample_edge_point.y) > get_shimmy_level_tolerance():
 		return false
-
-	var detected_edge_point := Vector3(wall_hit.point.x, top_hit.point.y, wall_hit.point.z)
-	return is_edge_exposed(player, detected_edge_point, wall_hit.normal)
+	if sample_geometry.ledge_direction.normalized().dot(direction) < minimum_shimmy_wall_alignment:
+		return false
+	return is_edge_exposed(
+		player,
+		sample_geometry.edge_point,
+		sample_geometry.wall_normal
+	)
 
 
 func is_wall_continuous(
