@@ -19,7 +19,6 @@ const SHIMMY_MAX_WALL_TURN_DEGREES: float = 15.0
 const SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO: float = 0.05
 const SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO: float = 0.1
 const LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO: float = 0.75
-const SUPPRESSION_VERTICAL_MARGIN_RADIUS_RATIO: float = 1.0
 const EXPECTED_HANG_WALL_MIN_ALIGNMENT: float = 0.9
 const EXPECTED_HANG_WALL_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
 
@@ -94,13 +93,11 @@ var minimum_approach_alignment: float
 var maximum_wall_normal_y: float
 var minimum_ledge_line_horizontal_factor: float
 var minimum_shimmy_wall_alignment: float
-var suppression_vertical_margin: float
 
 var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
 
 var current_candidate: LedgeCandidate = null
-var suppressed_candidate: LedgeCandidate = null
 
 
 func _init(
@@ -131,7 +128,7 @@ func _init(
 	assert(max_wall_tilt_degrees >= 0.0, "PlayerLedgeDetector requires max_wall_tilt_degrees to be non-negative.")
 	assert(max_ledge_line_tilt_degrees >= 0.0, "PlayerLedgeDetector requires max_ledge_line_tilt_degrees to be non-negative.")
 	assert(max_ledge_line_tilt_degrees < 90.0, "PlayerLedgeDetector requires max_ledge_line_tilt_degrees to be less than 90 degrees.")
-	assert(max_approach_angle_degrees >= 0.0, "PlayerLgeDetector requires max_approach_angle_degrees to be non-negative.")
+	assert(max_approach_angle_degrees >= 0.0, "PlayerLedgeDetector requires max_approach_angle_degrees to be non-negative.")
 
 	var shape: Shape3D = collision_shape.shape
 	assert(shape is CapsuleShape3D, "PlayerLedgeDetector requires the player collision shape to be CapsuleShape3D.")
@@ -160,7 +157,6 @@ func _cache_static_values() -> void:
 	shimmy_level_tolerance = maxf(PROBE_SAFE_MARGIN, capsule_radius * SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO)
 	shimmy_attachment_correction_limit = maxf(PROBE_SAFE_MARGIN, capsule_radius * SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO)
 	ledge_span_half_width = capsule_radius * LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO
-	suppression_vertical_margin = capsule_radius * SUPPRESSION_VERTICAL_MARGIN_RADIUS_RATIO
 
 	var jump_speed: float = sqrt(2.0 * gravity * maxf(jump_height, 0.0))
 	max_catch_fall_speed = jump_speed * MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER
@@ -179,7 +175,6 @@ func update(
 ) -> void:
 	var previously_had_candidate: bool = current_candidate != null
 	var next_candidate: LedgeCandidate = null
-	update_suppression(player)
 
 	if detection_allowed and player.velocity.y >= -get_max_catch_fall_speed():
 		next_candidate = find_candidate(player, support, intent_direction, view_forward)
@@ -198,36 +193,6 @@ func get_candidate() -> LedgeCandidate:
 
 func clear_candidate() -> void:
 	current_candidate = null
-
-
-func suppress_candidate(candidate: LedgeCandidate) -> void:
-	suppressed_candidate = candidate
-	current_candidate = null
-
-
-func update_suppression(player: CharacterBody3D) -> void:
-	if suppressed_candidate == null:
-		return
-
-	var horizontal_velocity := Vector3(player.velocity.x, 0.0, player.velocity.z)
-	var toward_wall: Vector3 = -suppressed_candidate.wall_normal
-	var approach_speed: float = horizontal_velocity.dot(toward_wall)
-	if approach_speed <= 0.0:
-		suppressed_candidate = null
-		return
-
-	var edge_offset: Vector3 = suppressed_candidate.edge_point - player.global_position
-	var horizontal_edge_offset := Vector3(edge_offset.x, 0.0, edge_offset.z)
-	var horizontal_limit: float = get_max_horizontal_reach() + get_capsule_radius()
-	if horizontal_edge_offset.length_squared() > horizontal_limit * horizontal_limit:
-		suppressed_candidate = null
-		return
-
-	if (
-		edge_offset.y < get_min_edge_height() - suppression_vertical_margin
-		or edge_offset.y > get_max_catch_height() + suppression_vertical_margin
-	):
-		suppressed_candidate = null
 
 
 func find_candidate(
@@ -252,7 +217,7 @@ func find_candidate(
 			approach_direction = horizontal_view.normalized()
 
 	var wall_hit: WallHit = find_wall(player, approach_direction)
-	if wall_hit == null or is_suppressed_wall(wall_hit):
+	if wall_hit == null:
 		return null
 	if not has_catch_intent(wall_hit.normal, intent_direction, view_forward):
 		return null
@@ -1114,20 +1079,6 @@ func is_wall_continuous(
 		return false
 	var plane_distance: float = absf((wall_hit.point - expected_edge_point).dot(expected_wall_normal))
 	return plane_distance <= get_top_probe_inset() + PROBE_SAFE_MARGIN
-
-
-func is_suppressed_wall(wall_hit: WallHit) -> bool:
-	if suppressed_candidate == null:
-		return false
-	if wall_hit.collider_rid != suppressed_candidate.wall_collider_rid:
-		return false
-	if (
-		suppressed_candidate.wall_shape_index >= 0
-		and wall_hit.shape_index >= 0
-		and wall_hit.shape_index != suppressed_candidate.wall_shape_index
-	):
-		return false
-	return true
 
 
 func is_wall_surface(normal: Vector3) -> bool:
