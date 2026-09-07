@@ -487,63 +487,20 @@ func is_expected_wall_contact(
 	collision_index: int,
 	next_candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
-	var collision_normal: Vector3 = (
-		collision.get_normal(
-			collision_index
-		)
-	)
-
-	if (
-		collision_normal.dot(segment_wall_normal)
-		< EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
-	):
-		return false
-
 	return (
-		matches_candidate_wall(
+		detector.is_expected_local_wall_contact(
 			collision,
 			collision_index,
-			active_candidate
+			active_candidate,
+			EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
 		)
-		or matches_candidate_wall(
+		or detector.is_expected_local_wall_contact(
 			collision,
 			collision_index,
-			next_candidate
+			next_candidate,
+			EXPECTED_WALL_CONTACT_MIN_ALIGNMENT
 		)
 	)
-
-
-func matches_candidate_wall(
-	collision: KinematicCollision3D,
-	collision_index: int,
-	candidate: PlayerLedgeDetector.LedgeCandidate
-) -> bool:
-	if candidate == null:
-		return false
-
-	if (
-		collision.get_collider_rid(
-			collision_index
-		)
-		!= candidate.wall_collider_rid
-	):
-		return false
-
-	var collider_shape_index: int = (
-		collision.get_collider_shape_index(
-			collision_index
-		)
-	)
-
-	if (
-		candidate.wall_shape_index >= 0
-		and collider_shape_index >= 0
-		and collider_shape_index
-		!= candidate.wall_shape_index
-	):
-		return false
-
-	return true
 
 
 func update_shimmy_velocity(
