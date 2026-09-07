@@ -246,7 +246,7 @@ func update(
 					remaining_distance,
 					maxf(0.0, outward_distance)
 				)
-				if forward_distance <= get_route_progress_tolerance():
+				if forward_distance <= 0.0:
 					completed = true
 					break
 
@@ -358,10 +358,7 @@ func has_reached_lift_height(position: Vector3) -> bool:
 
 
 func has_reached_forward_limit(position: Vector3) -> bool:
-	return (
-		get_outward_distance(position)
-		<= get_route_progress_tolerance()
-	)
+	return get_outward_distance(position) <= 0.0
 
 
 func get_outward_distance(position: Vector3) -> float:
