@@ -25,6 +25,7 @@ class MantleCandidate:
 	var edge_point: Vector3 = Vector3.ZERO
 	var wall_normal: Vector3 = Vector3.ZERO
 	var ledge_axis: Vector3 = Vector3.ZERO
+	var traversal_axis: Vector3 = Vector3.ZERO
 	var top_path_normal: Vector3 = Vector3.UP
 	var top_inward_direction: Vector3 = Vector3.ZERO
 	var source_arc_position: Vector3 = Vector3.ZERO
@@ -137,25 +138,45 @@ func find_candidate_with_source_mode(
 	if not detector.is_ledge_line_tilt_allowed(ledge_axis):
 		return null
 
-	# This radial direction describes the top side of the edge-clearance arc.
-	# It does not imply that any platform depth exists behind the ledge.
-	var top_path_normal: Vector3 = top_normal.slide(ledge_axis)
+	# Mantle traversal freezes the player's horizontal along-ledge coordinate.
+	# The real 3D ledge axis still determines the local edge height, but its
+	# vertical component must not create sideways mantle movement.
+	var traversal_axis := Vector3(
+		ledge_axis.x,
+		0.0,
+		ledge_axis.z
+	)
+	if traversal_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	traversal_axis = traversal_axis.normalized()
+
+	# Project the top normal into the local cross-edge plane. On a top surface
+	# that only slopes along the ledge, this correctly becomes world-up instead
+	# of tilting the player's mantle arc sideways with the ledge line.
+	var top_path_normal: Vector3 = top_normal.slide(traversal_axis)
 	if top_path_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 	top_path_normal = top_path_normal.normalized()
 	if top_path_normal.dot(Vector3.UP) <= 0.0:
 		return null
 
-	# The final traversal phase moves along the actual top plane only far enough
-	# to carry the capsule to the far side of the lip. No surface is searched for
-	# or required along this direction.
-	var top_inward_direction: Vector3 = detector.get_top_inward_direction(
-		wall_normal,
-		top_normal
-	)
+	# Cross the top surface while remaining in the same frozen traversal plane.
+	# This is the intersection direction between the top plane and that plane;
+	# orient it toward the inward side of the wall.
+	var top_inward_direction: Vector3 = top_normal.cross(traversal_axis)
 	if top_inward_direction.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 	top_inward_direction = top_inward_direction.normalized()
+	var horizontal_inward := Vector3(
+		top_inward_direction.x,
+		0.0,
+		top_inward_direction.z
+	)
+	if (
+		horizontal_inward.length_squared() > MOTION_EPSILON_SQUARED
+		and horizontal_inward.dot(-wall_normal) < 0.0
+	):
+		top_inward_direction = -top_inward_direction
 
 	var normal_dot: float = clampf(
 		wall_normal.dot(top_path_normal),
@@ -163,7 +184,7 @@ func find_candidate_with_source_mode(
 		1.0
 	)
 	var cross_axis: float = (
-		wall_normal.cross(top_path_normal).dot(ledge_axis)
+		wall_normal.cross(top_path_normal).dot(traversal_axis)
 	)
 	var signed_arc_angle: float = atan2(cross_axis, normal_dot)
 	var absolute_arc_angle: float = absf(signed_arc_angle)
@@ -180,6 +201,7 @@ func find_candidate_with_source_mode(
 	candidate.edge_point = refreshed_source.edge_point
 	candidate.wall_normal = wall_normal
 	candidate.ledge_axis = ledge_axis
+	candidate.traversal_axis = traversal_axis
 	candidate.top_path_normal = top_path_normal
 	candidate.top_inward_direction = top_inward_direction
 	candidate.source_arc_position = (
@@ -210,10 +232,29 @@ func try_start(
 
 	cancel()
 	active_candidate = candidate
-	route_edge_point = get_nearest_edge_point(player.global_position)
+	route_edge_point = get_crossing_edge_point(player.global_position)
 	lift_target_height = (
 		route_edge_point.y
 		- get_bottom_cap_center_offset()
+	)
+
+	# Keep the public/debug route targets aligned with the local crossing point,
+	# not the detector's arbitrary sample point elsewhere along a diagonal edge.
+	var clearance_radius: float = get_clearance_radius()
+	var bottom_cap_center_offset: float = get_bottom_cap_center_offset()
+	active_candidate.source_arc_position = (
+		route_edge_point
+		+ active_candidate.wall_normal * clearance_radius
+		- Vector3.UP * bottom_cap_center_offset
+	)
+	active_candidate.arc_target_position = (
+		route_edge_point
+		+ active_candidate.top_path_normal * clearance_radius
+		- Vector3.UP * bottom_cap_center_offset
+	)
+	active_candidate.target_position = (
+		active_candidate.arc_target_position
+		+ active_candidate.top_inward_direction * get_over_lip_distance()
 	)
 
 	# Eligibility and the first live phase are deliberately the same motion:
@@ -377,6 +418,12 @@ func move_mantle_motion(
 				collision.get_normal(collision_index)
 			)
 
+		# A sloped top normal can inject an along-ledge component when a remainder
+		# is slid in 3D. Mantle traversal owns one frozen cross-edge plane, so strip
+		# that component back out after resolving expected contacts.
+		if active_candidate.traversal_axis.length_squared() > MOTION_EPSILON_SQUARED:
+			next_motion = next_motion.slide(active_candidate.traversal_axis)
+
 		if (
 			collision.get_travel().length_squared()
 			<= MOTION_EPSILON_SQUARED
@@ -413,7 +460,7 @@ func get_arc_motion(
 	var target_bottom_cap_center: Vector3 = (
 		route_edge_point
 		+ active_candidate.wall_normal.rotated(
-			active_candidate.ledge_axis,
+			active_candidate.traversal_axis,
 			next_angle
 		) * get_clearance_radius()
 	)
@@ -452,18 +499,14 @@ func get_current_arc_angle(position: Vector3) -> float:
 
 	var bottom_cap_center: Vector3 = get_bottom_cap_center_position(position)
 	var delta: Vector3 = bottom_cap_center - route_edge_point
-	var radial_delta: Vector3 = (
-		delta
-		- active_candidate.ledge_axis
-		* delta.dot(active_candidate.ledge_axis)
-	)
+	var radial_delta: Vector3 = delta.slide(active_candidate.traversal_axis)
 	if radial_delta.length_squared() <= MOTION_EPSILON_SQUARED:
 		return 0.0
 	radial_delta = radial_delta.normalized()
 
 	var current_angle: float = atan2(
 		active_candidate.wall_normal.cross(radial_delta).dot(
-			active_candidate.ledge_axis
+			active_candidate.traversal_axis
 		),
 		clampf(
 			active_candidate.wall_normal.dot(radial_delta),
@@ -527,14 +570,38 @@ func get_required_cross_progress() -> float:
 	return get_over_lip_distance()
 
 
-func get_nearest_edge_point(position: Vector3) -> Vector3:
+func get_crossing_edge_point(position: Vector3) -> Vector3:
 	if active_candidate == null:
 		return Vector3.ZERO
+
+	# Match the player's horizontal along-ledge coordinate to the true 3D ledge
+	# line. Vertical player motion therefore cannot change the chosen crossing
+	# point or pull the capsule sideways along a diagonal ledge.
 	var bottom_cap_center: Vector3 = get_bottom_cap_center_position(position)
-	var axis: Vector3 = active_candidate.ledge_axis
+	var ledge_axis: Vector3 = active_candidate.ledge_axis
+	var horizontal_ledge := Vector3(
+		ledge_axis.x,
+		0.0,
+		ledge_axis.z
+	)
+	var horizontal_factor: float = horizontal_ledge.length()
+	if horizontal_factor <= sqrt(MOTION_EPSILON_SQUARED):
+		return active_candidate.edge_point
+
+	var horizontal_delta := Vector3(
+		bottom_cap_center.x - active_candidate.edge_point.x,
+		0.0,
+		bottom_cap_center.z - active_candidate.edge_point.z
+	)
+	var horizontal_along_distance: float = horizontal_delta.dot(
+		active_candidate.traversal_axis
+	)
+	var distance_along_3d_axis: float = (
+		horizontal_along_distance / horizontal_factor
+	)
 	return (
 		active_candidate.edge_point
-		+ axis * (bottom_cap_center - active_candidate.edge_point).dot(axis)
+		+ ledge_axis * distance_along_3d_axis
 	)
 
 
@@ -564,21 +631,21 @@ func is_expected_mantle_contact(
 	var collision_normal: Vector3 = collision.get_normal(collision_index)
 	if collision_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
-	var planar_normal: Vector3 = collision_normal.slide(candidate.ledge_axis)
+	var planar_normal: Vector3 = collision_normal.slide(candidate.traversal_axis)
 	if planar_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
 	planar_normal = planar_normal.normalized()
 
 	# Edge solvers can report any normal between the wall face and top face.
-	# Treat that whole local sector as expected instead of requiring the normal
-	# to match either neighboring face exactly.
+	# Treat that whole local cross-edge sector as expected instead of requiring
+	# the normal to match either neighboring face exactly.
 	var contact_dot: float = clampf(
 		candidate.wall_normal.dot(planar_normal),
 		-1.0,
 		1.0
 	)
 	var contact_cross: float = (
-		candidate.wall_normal.cross(planar_normal).dot(candidate.ledge_axis)
+		candidate.wall_normal.cross(planar_normal).dot(candidate.traversal_axis)
 	)
 	var contact_angle: float = atan2(contact_cross, contact_dot)
 	var total_angle: float = candidate.signed_arc_angle
@@ -631,11 +698,7 @@ func is_within_local_ledge_width(
 	point: Vector3,
 	candidate: MantleCandidate
 ) -> bool:
-	var horizontal_axis := Vector3(
-		candidate.ledge_axis.x,
-		0.0,
-		candidate.ledge_axis.z
-	)
+	var horizontal_axis: Vector3 = candidate.traversal_axis
 	if horizontal_axis.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
 	horizontal_axis = horizontal_axis.normalized()
