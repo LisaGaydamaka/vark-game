@@ -138,7 +138,6 @@ func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
 			_is_jump_regrab_blocked(candidate)
 			or _is_drop_regrab_blocked(candidate)
 			or _is_failed_catch_regrab_blocked(candidate)
-			or _is_failed_mantle_blocked(candidate)
 			or _is_corner_release_suppressed(candidate)
 		):
 			continue
@@ -148,6 +147,7 @@ func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
 		if grounded:
 			if (
 				jump_just_pressed
+				and not _is_failed_mantle_blocked(candidate)
 				and _should_attempt_ground_mantle(candidate, input_direction)
 				and _try_start_free_mantle(candidate, "Ground mantle entered")
 			):
@@ -171,6 +171,7 @@ func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
 		# Non-hangable airborne opportunities mantle only while Space remains held.
 		if (
 			jump_held
+			and not _is_failed_mantle_blocked(candidate)
 			and _should_attempt_air_mantle(candidate, input_direction)
 			and _try_start_free_mantle(candidate, "Air mantle entered")
 		):
