@@ -532,6 +532,7 @@ func matches_candidate_wall(
 	var collider_shape_index: int = (
 		collision.get_collider_shape_index(
 			collision_index
+		)
 	)
 
 	if (
