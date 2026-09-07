@@ -3,6 +3,7 @@ extends RefCounted
 
 
 const PROBE_SAFE_MARGIN: float = 0.001
+const STEP_VALIDATION_CROSS_MARGIN: float = 0.002
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const MAX_CLEARANCE_ITERATIONS: int = 8
@@ -331,8 +332,11 @@ func build_step_plan(
 	riser_collider_rid: RID,
 	riser_shape_index: int
 ) -> StepPlan:
-	var across_motion: Vector3 = get_across_motion(
+	var across_motion: Vector3 = get_validation_across_motion(
+		player.global_position,
 		horizontal_direction,
+		riser_point,
+		riser_normal,
 		push_strength
 	)
 	var landing: LandingResult = find_landing_from_above(
@@ -395,7 +399,7 @@ func build_step_plan(
 		raised.transform,
 		across_motion
 	)
-	if not has_transform_crossed_riser(
+	if not has_transform_cleared_riser_for_validation(
 		crossed.transform,
 		riser_point,
 		riser_normal
@@ -445,7 +449,7 @@ func find_landing_from_above(
 			raised_transform,
 			across_motion
 		)
-		if not has_transform_crossed_riser(
+		if not has_transform_cleared_riser_for_validation(
 			across.transform,
 			riser_point,
 			riser_normal
@@ -611,18 +615,18 @@ func has_crossed_riser(
 ) -> bool:
 	return (
 		(position - plan.riser_point).dot(plan.riser_normal)
-		<= -PROBE_SAFE_MARGIN
+		<= 0.0
 	)
 
 
-func has_transform_crossed_riser(
+func has_transform_cleared_riser_for_validation(
 	transform: Transform3D,
 	riser_point: Vector3,
 	riser_normal: Vector3
 ) -> bool:
 	return (
 		(transform.origin - riser_point).dot(riser_normal)
-		<= -PROBE_SAFE_MARGIN
+		<= -STEP_VALIDATION_CROSS_MARGIN
 	)
 
 
@@ -631,17 +635,32 @@ func cancel_traversal() -> void:
 	vertical_assist_speed = 0.0
 
 
-func get_across_motion(
+func get_validation_across_motion(
+	start_position: Vector3,
 	horizontal_direction: Vector3,
+	riser_point: Vector3,
+	riser_normal: Vector3,
 	push_strength: float
 ) -> Vector3:
 	var safe_push_strength: float = maxf(
 		push_strength,
 		MIN_STEP_APPROACH_DOT
 	)
+	var plane_distance: float = (
+		(start_position - riser_point).dot(riser_normal)
+	)
+	var required_normal_distance: float = maxf(
+		0.0,
+		plane_distance + STEP_VALIDATION_CROSS_MARGIN
+	)
 	var across_distance: float = (
-		get_capsule_radius() + PROBE_SAFE_MARGIN
-	) / safe_push_strength
+		required_normal_distance / safe_push_strength
+	)
+	_debug(
+		"VALIDATION across plane_distance=", plane_distance,
+		" required_normal=", required_normal_distance,
+		" across_distance=", across_distance
+	)
 	return horizontal_direction * across_distance
 
 
