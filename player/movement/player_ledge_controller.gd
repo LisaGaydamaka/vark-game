@@ -13,6 +13,7 @@ enum State {
 
 const LOOK_DIRECTION_EPSILON_SQUARED: float = 0.000001
 const LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES: float = 15.0
+const MANTLE_CONTACT_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
 
 
 var body: CharacterBody3D
@@ -123,16 +124,13 @@ func update_transition_guards() -> void:
 	_update_corner_release_suppression()
 
 
-func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
-	var grounded: bool = support.is_grounded()
-	var jump_just_pressed: bool = player_input.is_jump_just_pressed()
-	var jump_held: bool = player_input.is_jump_pressed()
+func try_enter_hang_from_normal(delta: float) -> bool:
 	var candidates: Array[PlayerLedgeDetector.LedgeCandidate] = (
 		ledge_detector.get_candidates()
 	)
 
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-		if candidate == null:
+		if candidate == null or not candidate.hangable:
 			continue
 		if (
 			_is_jump_regrab_blocked(candidate)
@@ -142,41 +140,133 @@ func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
 		):
 			continue
 
-		# Walkable ground uses a discrete mantle request. The same Space press is
-		# allowed to fall through to normal jump if no candidate can mantle.
-		if grounded:
+		if ledge_catch.try_start(body, candidate):
+			active_catch_candidate = candidate
+			step_up.cancel_traversal()
+			ledge_detector.clear_candidate()
+			look.enter_ledge_view(candidate.wall_normal)
+			state = State.CATCHING
+			ledge_catch.update(body, delta)
+			_finish_ledge_catch_if_ready()
+			return true
+	return false
+
+
+func try_enter_mantle_from_contacts(
+	input_direction: Vector3,
+	collisions: Array[KinematicCollision3D],
+	ground_request: bool,
+	air_request: bool
+) -> bool:
+	if collisions.is_empty() or (not ground_request and not air_request):
+		return false
+
+	var candidates: Array[PlayerLedgeDetector.LedgeCandidate] = (
+		ledge_detector.get_candidates()
+	)
+	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
+		if candidate == null:
+			continue
+		if (
+			_is_jump_regrab_blocked(candidate)
+			or _is_drop_regrab_blocked(candidate)
+			or _is_failed_catch_regrab_blocked(candidate)
+			or _is_corner_release_suppressed(candidate)
+			or _is_failed_mantle_blocked(candidate)
+		):
+			continue
+		if not _candidate_matches_any_contact(candidate, collisions):
+			continue
+
+		if ground_request:
 			if (
-				jump_just_pressed
-				and not _is_failed_mantle_blocked(candidate)
-				and _should_attempt_ground_mantle(candidate, input_direction)
+				_should_attempt_ground_mantle_contact(candidate, input_direction)
 				and _try_start_free_mantle(candidate, "Ground mantle entered")
 			):
 				return true
 			continue
 
-		# In air (and on non-walkable support), a physically hangable ledge owns
-		# the candidate. A failed catch attempt must not silently become a mantle.
+		# Hangable airborne geometry remains owned by catch/hang. Even if catch
+		# could not start, persistent Space may not silently convert it to mantle.
 		if candidate.hangable:
-			if ledge_catch.try_start(body, candidate):
-				active_catch_candidate = candidate
-				step_up.cancel_traversal()
-				ledge_detector.clear_candidate()
-				look.enter_ledge_view(candidate.wall_normal)
-				state = State.CATCHING
-				ledge_catch.update(body, delta)
-				_finish_ledge_catch_if_ready()
-				return true
 			continue
-
-		# Non-hangable airborne opportunities mantle only while Space remains held.
 		if (
-			jump_held
-			and not _is_failed_mantle_blocked(candidate)
-			and _should_attempt_air_mantle(candidate, input_direction)
+			air_request
+			and _should_attempt_air_mantle_contact(candidate)
 			and _try_start_free_mantle(candidate, "Air mantle entered")
 		):
 			return true
 	return false
+
+
+func _candidate_matches_any_contact(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	collisions: Array[KinematicCollision3D]
+) -> bool:
+	for collision: KinematicCollision3D in collisions:
+		if collision == null:
+			continue
+		for collision_index: int in range(collision.get_collision_count()):
+			if _candidate_matches_contact(
+				candidate,
+				collision,
+				collision_index
+			):
+				return true
+	return false
+
+
+func _candidate_matches_contact(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	collision: KinematicCollision3D,
+	collision_index: int
+) -> bool:
+	if candidate == null or collision == null:
+		return false
+
+	var contact_normal: Vector3 = collision.get_normal(collision_index)
+	var horizontal_normal := Vector3(
+		contact_normal.x,
+		0.0,
+		contact_normal.z
+	)
+	if horizontal_normal.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+		return false
+	horizontal_normal = horizontal_normal.normalized()
+	if horizontal_normal.dot(candidate.wall_normal) < minimum_local_ledge_alignment:
+		return false
+
+	var candidate_rid: RID = candidate.wall_collider_rid
+	var contact_rid: RID = collision.get_collider_rid(collision_index)
+	if (
+		candidate_rid.is_valid()
+		and contact_rid.is_valid()
+		and candidate_rid != contact_rid
+	):
+		return false
+
+	var contact_point: Vector3 = collision.get_position(collision_index)
+	var plane_tolerance: float = maxf(
+		0.01,
+		ledge_detector.get_capsule_radius()
+		* MANTLE_CONTACT_PLANE_TOLERANCE_RADIUS_RATIO
+	)
+	if absf(
+		(contact_point - candidate.edge_point).dot(candidate.wall_normal)
+	) > plane_tolerance:
+		return false
+
+	var horizontal_delta := Vector3(
+		contact_point.x - candidate.edge_point.x,
+		0.0,
+		contact_point.z - candidate.edge_point.z
+	)
+	var lateral_delta: Vector3 = horizontal_delta.slide(candidate.wall_normal)
+	var lateral_limit: float = (
+		ledge_detector.get_max_horizontal_reach()
+		+ ledge_detector.get_capsule_radius()
+	)
+	return lateral_delta.length_squared() <= lateral_limit * lateral_limit
 
 
 func _try_start_free_mantle(
@@ -203,24 +293,21 @@ func _try_start_free_mantle(
 	return true
 
 
-func _should_attempt_ground_mantle(
+func _should_attempt_ground_mantle_contact(
 	candidate: PlayerLedgeDetector.LedgeCandidate,
 	input_direction: Vector3
 ) -> bool:
-	if candidate == null or not support.is_grounded() or step_up.is_active():
+	if candidate == null or step_up.is_active():
 		return false
 	if not _is_input_toward_candidate(candidate, input_direction):
 		return false
 	return _is_above_step_height(candidate)
 
 
-func _should_attempt_air_mantle(
-	candidate: PlayerLedgeDetector.LedgeCandidate,
-	input_direction: Vector3
+func _should_attempt_air_mantle_contact(
+	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
-	if candidate == null or support.is_grounded() or step_up.is_active():
-		return false
-	if not _is_air_approach_toward_candidate(candidate, input_direction):
+	if candidate == null or step_up.is_active():
 		return false
 	return _is_above_step_height(candidate)
 
@@ -245,26 +332,6 @@ func _is_input_toward_candidate(
 	return _is_direction_toward_candidate(
 		candidate,
 		horizontal_input.normalized()
-	)
-
-
-func _is_air_approach_toward_candidate(
-	candidate: PlayerLedgeDetector.LedgeCandidate,
-	input_direction: Vector3
-) -> bool:
-	var horizontal_input := Vector3(input_direction.x, 0.0, input_direction.z)
-	if horizontal_input.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED:
-		return _is_direction_toward_candidate(
-			candidate,
-			horizontal_input.normalized()
-		)
-
-	var horizontal_velocity := Vector3(body.velocity.x, 0.0, body.velocity.z)
-	if horizontal_velocity.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
-		return false
-	return _is_direction_toward_candidate(
-		candidate,
-		horizontal_velocity.normalized()
 	)
 
 
@@ -595,7 +662,12 @@ func _arm_drop_regrab_guard(candidates: Array[PlayerLedgeDetector.LedgeCandidate
 	drop_regrab_candidates.clear()
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate != null:
-			drop_regrab_candidates.append(candidate)
+			capture_candidate_for_drop_guard(candidate)
+
+
+func capture_candidate_for_drop_guard(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
+	if candidate != null:
+		drop_regrab_candidates.append(candidate)
 
 
 func _update_drop_regrab_guard() -> void:
