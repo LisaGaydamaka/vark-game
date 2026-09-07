@@ -10,6 +10,7 @@ const FORWARD_REACH_RADIUS_MULTIPLIER: float = 2.0
 const HAND_REACH_HEIGHT_RATIO: float = 0.25
 const HANG_EDGE_ABOVE_EYE_RADIUS_RATIO: float = 0.25
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.32
+const EDGE_EXPOSURE_HEIGHT_RADIUS_RATIO: float = 0.03
 const MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER: float = 2.0
 const SHIMMY_MAX_WALL_TURN_DEGREES: float = 15.0
 const SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO: float = 0.05
@@ -420,6 +421,13 @@ func find_candidate(
 		near_edge_wall.point.z
 	)
 
+	if not is_edge_exposed(
+		player,
+		edge_point,
+		near_edge_wall.normal
+	):
+		return null
+
 	var edge_offset: Vector3 = (
 		edge_point - player.global_position
 	)
@@ -565,6 +573,14 @@ func find_attachment_candidate_at_position(
 		top_hit.point.y,
 		wall_hit.point.z
 	)
+
+	if not is_edge_exposed(
+		player,
+		edge_point,
+		wall_hit.normal
+	):
+		return null
+
 	var hang_position: Vector3 = get_hang_position(
 		edge_point,
 		wall_hit.normal
@@ -983,6 +999,45 @@ func raycast_top(
 	return top_hit
 
 
+func is_edge_exposed(
+	player: CharacterBody3D,
+	edge_point: Vector3,
+	wall_normal: Vector3
+) -> bool:
+	if (
+		wall_normal.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	var outward_normal: Vector3 = wall_normal.normalized()
+	var exposure_height: float = maxf(
+		PROBE_SAFE_MARGIN * 4.0,
+		get_capsule_radius()
+		* EDGE_EXPOSURE_HEIGHT_RADIUS_RATIO
+	)
+	var probe_from: Vector3 = (
+		edge_point
+		+ outward_normal * get_top_probe_inset()
+		+ Vector3.UP * exposure_height
+	)
+	var probe_to: Vector3 = (
+		edge_point
+		- outward_normal * (PROBE_SAFE_MARGIN * 2.0)
+		+ Vector3.UP * exposure_height
+	)
+	var query: PhysicsRayQueryParameters3D = _prepare_ray_query(
+		player,
+		probe_from,
+		probe_to
+	)
+	var space_state: PhysicsDirectSpaceState3D = (
+		player.get_world_3d().direct_space_state
+	)
+	var hit: Dictionary = space_state.intersect_ray(query)
+	return hit.is_empty()
+
+
 func _prepare_ray_query(
 	player: CharacterBody3D,
 	ray_from: Vector3,
@@ -1129,9 +1184,21 @@ func _is_ledge_span_sample_valid(
 	if top_hit == null:
 		return false
 
-	return (
+	if (
 		absf(top_hit.point.y - edge_height)
-		<= get_shimmy_level_tolerance()
+		> get_shimmy_level_tolerance()
+	):
+		return false
+
+	var detected_edge_point: Vector3 = Vector3(
+		wall_hit.point.x,
+		top_hit.point.y,
+		wall_hit.point.z
+	)
+	return is_edge_exposed(
+		player,
+		detected_edge_point,
+		wall_hit.normal
 	)
 
 
