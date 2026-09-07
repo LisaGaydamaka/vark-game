@@ -4,6 +4,7 @@ extends RefCounted
 
 const PROBE_SAFE_MARGIN: float = 0.001
 const STEP_VALIDATION_CROSS_MARGIN: float = 0.002
+const STEP_VALIDATION_PROGRESS_EPSILON: float = 0.00001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const MAX_CLEARANCE_ITERATIONS: int = 8
@@ -644,7 +645,7 @@ func has_transform_cleared_riser_for_validation(
 ) -> bool:
 	return (
 		(transform.origin - riser_point).dot(riser_normal)
-		<= -STEP_VALIDATION_CROSS_MARGIN
+		<= -STEP_VALIDATION_CROSS_MARGIN + STEP_VALIDATION_PROGRESS_EPSILON
 	)
 
 
