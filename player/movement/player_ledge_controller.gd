@@ -22,7 +22,6 @@ var player_input: PlayerInput
 var support: PlayerSupport
 var motor: PlayerMotor
 var movement: PlayerMovement
-var step_up: PlayerStepUp
 var ledge_detector: PlayerLedgeDetector
 var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
@@ -31,7 +30,6 @@ var ledge_mantle: PlayerMantle
 var look: PlayerLook
 
 var jump_height: float
-var max_step_height: float
 var max_speed: float
 var ledge_jump_horizontal_speed: float
 var ledge_sprint_jump_horizontal_speed: float
@@ -57,7 +55,6 @@ func _init(
 	player_support: PlayerSupport,
 	player_motor: PlayerMotor,
 	player_movement: PlayerMovement,
-	player_step_up: PlayerStepUp,
 	detector: PlayerLedgeDetector,
 	catch_action: PlayerLedgeCatch,
 	hang_action: PlayerLedgeHang,
@@ -65,7 +62,6 @@ func _init(
 	mantle_action: PlayerMantle,
 	player_look: PlayerLook,
 	configured_jump_height: float,
-	configured_max_step_height: float,
 	configured_max_speed: float,
 	configured_ledge_jump_horizontal_speed: float,
 	configured_ledge_sprint_jump_horizontal_speed: float,
@@ -79,7 +75,6 @@ func _init(
 	support = player_support
 	motor = player_motor
 	movement = player_movement
-	step_up = player_step_up
 	ledge_detector = detector
 	ledge_catch = catch_action
 	ledge_hang = hang_action
@@ -87,7 +82,6 @@ func _init(
 	ledge_mantle = mantle_action
 	look = player_look
 	jump_height = configured_jump_height
-	max_step_height = configured_max_step_height
 	max_speed = configured_max_speed
 	ledge_jump_horizontal_speed = configured_ledge_jump_horizontal_speed
 	ledge_sprint_jump_horizontal_speed = configured_ledge_sprint_jump_horizontal_speed
@@ -142,7 +136,6 @@ func try_enter_hang_from_normal(delta: float) -> bool:
 
 		if ledge_catch.try_start(body, candidate):
 			active_catch_candidate = candidate
-			step_up.cancel_traversal()
 			ledge_detector.clear_candidate()
 			look.enter_ledge_view(candidate.wall_normal)
 			state = State.CATCHING
@@ -283,7 +276,6 @@ func _try_start_free_mantle(
 	if mantle_candidate == null or not ledge_mantle.try_start(body, mantle_candidate):
 		return false
 
-	step_up.cancel_traversal()
 	ledge_detector.clear_candidate()
 	look.enter_ledge_view(candidate.wall_normal)
 	state = State.MANTLING
@@ -297,27 +289,15 @@ func _should_attempt_ground_mantle_contact(
 	candidate: PlayerLedgeDetector.LedgeCandidate,
 	input_direction: Vector3
 ) -> bool:
-	if candidate == null or step_up.is_active():
+	if candidate == null:
 		return false
-	if not _is_input_toward_candidate(candidate, input_direction):
-		return false
-	return _is_above_step_height(candidate)
+	return _is_input_toward_candidate(candidate, input_direction)
 
 
 func _should_attempt_air_mantle_contact(
 	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
-	if candidate == null or step_up.is_active():
-		return false
-	return _is_above_step_height(candidate)
-
-
-func _is_above_step_height(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	var feet_height: float = (
-		body.global_position.y
-		+ ledge_detector.get_capsule_bottom_offset()
-	)
-	return candidate.edge_point.y - feet_height > max_step_height
+	return candidate != null
 
 
 func _is_input_toward_candidate(
@@ -353,14 +333,13 @@ func _is_direction_toward_candidate(
 
 func _update_ledge_catch(crouch_pressed: bool, delta: float) -> void:
 	if crouch_pressed:
-		var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 		_arm_drop_regrab_candidate(active_catch_candidate)
 		ledge_catch.cancel()
 		active_catch_candidate = null
 		look.exit_ledge_view()
 		state = State.NONE
 		body.velocity = Vector3.DOWN * gravity * delta
-		movement.move(body, support, input_direction, false, delta)
+		movement.move(body, delta)
 		support.update(body)
 		if debug_logging:
 			print("Ledge catch dropped")
@@ -467,7 +446,7 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 		ledge_hang.cancel()
 		look.exit_ledge_view()
 		state = State.NONE
-		movement.move(body, support, input_direction, false, delta)
+		movement.move(body, delta)
 		support.update(body)
 
 
@@ -484,7 +463,7 @@ func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float
 			ledge_corner.cancel()
 			look.exit_ledge_view()
 			state = State.NONE
-			movement.move(body, support, input_direction, false, delta)
+			movement.move(body, delta)
 			support.update(body)
 			return
 		body.velocity = Vector3.ZERO
@@ -492,7 +471,7 @@ func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float
 		ledge_corner.cancel()
 		look.exit_ledge_view()
 		state = State.NONE
-		movement.move(body, support, Vector3.ZERO, false, delta)
+		movement.move(body, delta)
 		support.update(body)
 		if debug_logging:
 			print("Mantle unavailable during corner; performed hang jump")
@@ -541,7 +520,7 @@ func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float
 		ledge_mantle.cancel()
 		look.exit_ledge_view()
 		state = State.NONE
-		movement.move(body, support, input_direction, false, delta)
+		movement.move(body, delta)
 		support.update(body)
 		return
 	if not ledge_mantle.update(body, delta):
@@ -572,35 +551,35 @@ func _perform_no_input_hang_jump(
 	ledge_hang.cancel()
 	look.exit_ledge_view()
 	state = State.NONE
-	movement.move(body, support, Vector3.ZERO, false, delta)
+	movement.move(body, delta)
 	support.update(body)
 
 
-func _release_mantle_to_air(input_direction: Vector3, delta: float) -> void:
+func _release_mantle_to_air(_input_direction: Vector3, delta: float) -> void:
 	ledge_mantle.cancel()
 	look.exit_ledge_view()
 	state = State.NONE
 	body.velocity = Vector3.DOWN * gravity * delta
-	movement.move(body, support, input_direction, false, delta)
+	movement.move(body, delta)
 	support.update(body)
 
 
-func _release_ledge_to_air(input_direction: Vector3, delta: float) -> void:
+func _release_ledge_to_air(_input_direction: Vector3, delta: float) -> void:
 	ledge_hang.cancel()
 	look.exit_ledge_view()
 	state = State.NONE
 	body.velocity = Vector3.DOWN * gravity * delta
-	movement.move(body, support, input_direction, false, delta)
+	movement.move(body, delta)
 	support.update(body)
 
 
-func _release_corner_to_air(input_direction: Vector3, delta: float) -> void:
+func _release_corner_to_air(_input_direction: Vector3, delta: float) -> void:
 	_arm_corner_release_suppression(ledge_corner.get_release_candidates())
 	ledge_corner.cancel()
 	look.exit_ledge_view()
 	state = State.NONE
 	body.velocity = Vector3.DOWN * gravity * delta
-	movement.move(body, support, input_direction, false, delta)
+	movement.move(body, delta)
 	support.update(body)
 
 

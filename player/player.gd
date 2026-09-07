@@ -42,13 +42,6 @@ extends CharacterBody3D
 @export var max_collision_iterations: int = 8
 
 
-@export_category("Step Up")
-@export var max_step_height: float = 0.5
-@export var max_riser_tilt_degrees: float = 5.0
-@export var step_up_acceleration: float = 200.0
-@export var max_step_up_speed: float = 20.0
-
-
 @export_category("Ledge Detection")
 @export var ledge_max_wall_tilt_degrees: float = 15.0
 @export var ledge_max_line_tilt_degrees: float = 70.0
@@ -72,7 +65,6 @@ var player_input: PlayerInput
 var player_look: PlayerLook
 var support: PlayerSupport
 var motor: PlayerMotor
-var step_up: PlayerStepUp
 var movement: PlayerMovement
 var ledge_detector: PlayerLedgeDetector
 var ledge_catch: PlayerLedgeCatch
@@ -134,23 +126,11 @@ func _create_components() -> void:
 		air_deceleration
 	)
 
-	step_up = PlayerStepUp.new(
-		max_step_height,
-		max_riser_tilt_degrees,
-		step_up_acceleration,
-		max_step_up_speed,
-		collision_shape
-	)
-
-	movement = PlayerMovement.new(
-		max_collision_iterations,
-		step_up
-	)
+	movement = PlayerMovement.new(max_collision_iterations)
 
 	ledge_detector = PlayerLedgeDetector.new(
 		jump_height,
 		gravity,
-		max_step_height,
 		head.position.y,
 		ledge_max_wall_tilt_degrees,
 		ledge_max_line_tilt_degrees,
@@ -189,7 +169,6 @@ func _create_components() -> void:
 		support,
 		motor,
 		movement,
-		step_up,
 		ledge_detector,
 		ledge_catch,
 		ledge_hang,
@@ -197,7 +176,6 @@ func _create_components() -> void:
 		ledge_mantle,
 		player_look,
 		jump_height,
-		max_step_height,
 		max_speed,
 		ledge_jump_horizontal_speed,
 		ledge_sprint_jump_horizontal_speed,
@@ -219,10 +197,6 @@ func _update_normal_movement(
 
 	ledge_controller.update_transition_guards()
 
-	# Explicit jump/mantle intent outranks the automatic step assist.
-	if jump_pressed and step_up.is_active():
-		step_up.cancel_traversal()
-
 	# Ground mantle is a discrete request, but geometry alone may not consume it.
 	# The real grounded move must physically contact the obstacle first.
 	var ground_mantle_requested: bool = (
@@ -236,9 +210,6 @@ func _update_normal_movement(
 		and not ground_mantle_requested
 	)
 
-	if jump_accepted_before_move:
-		step_up.cancel_traversal()
-
 	var ground_target_speed: float = max_speed
 	if (
 		grounded
@@ -247,8 +218,6 @@ func _update_normal_movement(
 	):
 		ground_target_speed = sprint_speed
 
-	# Step-up is only a vertical overlay; it does not change whether locomotion
-	# uses supported or airborne horizontal control.
 	var use_air_control: bool = not support.has_support
 	motor.update(
 		self,
@@ -265,7 +234,6 @@ func _update_normal_movement(
 			jump_height
 		)
 
-	# Hang remains an anticipatory reach action and may preempt an active step.
 	var airborne_detection_allowed: bool = not grounded
 	ledge_detector.update(
 		self,
@@ -286,16 +254,7 @@ func _update_normal_movement(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
-	# Held Space represents higher-priority jump/mantle intent, so a new
-	# automatic step may not consume that contact first.
-	var allow_step_up: bool = not player_input.is_jump_pressed()
-	var collisions: Array[KinematicCollision3D] = movement.move(
-		self,
-		support,
-		input_direction,
-		allow_step_up,
-		delta
-	)
+	var collisions: Array[KinematicCollision3D] = movement.move(self, delta)
 
 	# A contact can expose a hang opportunity that was just outside the magnetic
 	# discovery volume before movement. Hang still gets priority over air mantle.
@@ -343,7 +302,6 @@ func _update_normal_movement(
 	# preserve the normal jump in the same physics frame. Horizontal/contact
 	# movement has already run, so execute only the takeoff's vertical component.
 	if ground_mantle_requested:
-		step_up.cancel_traversal()
 		motor.apply_jump(
 			self,
 			jump_height

@@ -64,7 +64,6 @@ class TopHit:
 
 var jump_height: float
 var gravity: float
-var max_step_height: float
 var eye_height: float
 var max_wall_tilt_degrees: float
 var max_ledge_line_tilt_degrees: float
@@ -106,7 +105,6 @@ var current_candidates: Array[LedgeCandidate] = []
 func _init(
 	p_jump_height: float,
 	p_gravity: float,
-	p_max_step_height: float,
 	p_eye_height: float,
 	p_max_wall_tilt_degrees: float,
 	p_max_ledge_line_tilt_degrees: float,
@@ -116,7 +114,6 @@ func _init(
 ) -> void:
 	jump_height = p_jump_height
 	gravity = p_gravity
-	max_step_height = p_max_step_height
 	eye_height = p_eye_height
 	max_wall_tilt_degrees = p_max_wall_tilt_degrees
 	max_ledge_line_tilt_degrees = p_max_ledge_line_tilt_degrees
@@ -126,7 +123,6 @@ func _init(
 
 	assert(jump_height >= 0.0, "PlayerLedgeDetector requires jump_height to be non-negative.")
 	assert(gravity > 0.0, "PlayerLedgeDetector requires gravity to be greater than zero.")
-	assert(max_step_height >= 0.0, "PlayerLedgeDetector requires max_step_height to be non-negative.")
 	assert(eye_height >= 0.0, "PlayerLedgeDetector requires eye_height to be non-negative.")
 	assert(max_wall_tilt_degrees >= 0.0, "PlayerLedgeDetector requires max_wall_tilt_degrees to be non-negative.")
 	assert(max_ledge_line_tilt_degrees >= 0.0, "PlayerLedgeDetector requires max_ledge_line_tilt_degrees to be non-negative.")
@@ -147,7 +143,7 @@ func _cache_static_values() -> void:
 	forward_probe_distance = capsule_radius * FORWARD_REACH_RADIUS_MULTIPLIER
 	max_horizontal_reach = capsule_radius + forward_probe_distance
 	hand_reach_height = capsule_height * HAND_REACH_HEIGHT_RATIO
-	min_edge_height = capsule_bottom_offset + max_step_height
+	min_edge_height = capsule_bottom_offset
 	max_catch_height = capsule_top_offset + hand_reach_height
 	hang_anchor_height = eye_height + capsule_radius * HANG_EDGE_ABOVE_EYE_RADIUS_RATIO
 	hang_wall_distance = capsule_radius + PROBE_SAFE_MARGIN
