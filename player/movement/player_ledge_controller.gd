@@ -122,9 +122,13 @@ func update_transition_guards() -> void:
 
 
 func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
+	var grounded: bool = support.is_grounded()
+	var jump_just_pressed: bool = player_input.is_jump_just_pressed()
+	var jump_held: bool = player_input.is_jump_pressed()
 	var candidates: Array[PlayerLedgeDetector.LedgeCandidate] = (
 		ledge_detector.get_candidates()
 	)
+
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate == null:
 			continue
@@ -136,56 +140,144 @@ func try_enter_from_normal(input_direction: Vector3, delta: float) -> bool:
 		):
 			continue
 
-		if candidate.hangable and ledge_catch.try_start(body, candidate):
-			active_catch_candidate = candidate
-			step_up.cancel_traversal()
-			ledge_detector.clear_candidate()
-			look.enter_ledge_view(candidate.wall_normal)
-			state = State.CATCHING
-			ledge_catch.update(body, delta)
-			_finish_ledge_catch_if_ready()
-			return true
+		# Walkable ground uses a discrete mantle request. The same Space press is
+		# allowed to fall through to normal jump if no candidate can mantle.
+		if grounded:
+			if (
+				jump_just_pressed
+				and _should_attempt_ground_mantle(candidate, input_direction)
+				and _try_start_free_mantle(candidate, "Ground mantle entered")
+			):
+				return true
+			continue
 
-		if _should_attempt_air_mantle(candidate, input_direction):
-			var mantle_candidate: PlayerMantle.MantleCandidate = ledge_mantle.find_air_candidate(
-				body,
-				support,
-				candidate
-			)
-			if mantle_candidate != null and ledge_mantle.try_start(body, mantle_candidate):
+		# In air (and on non-walkable support), a physically hangable ledge owns
+		# the candidate. A failed catch attempt must not silently become a mantle.
+		if candidate.hangable:
+			if ledge_catch.try_start(body, candidate):
+				active_catch_candidate = candidate
 				step_up.cancel_traversal()
 				ledge_detector.clear_candidate()
 				look.enter_ledge_view(candidate.wall_normal)
-				state = State.MANTLING
-				body.velocity = Vector3.ZERO
-				if debug_logging:
-					print("Air mantle entered")
+				state = State.CATCHING
+				ledge_catch.update(body, delta)
+				_finish_ledge_catch_if_ready()
 				return true
+			continue
+
+		# Non-hangable airborne opportunities mantle only while Space remains held.
+		if (
+			jump_held
+			and _should_attempt_air_mantle(candidate, input_direction)
+			and _try_start_free_mantle(candidate, "Air mantle entered")
+		):
+			return true
 	return false
+
+
+func _try_start_free_mantle(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	debug_message: String
+) -> bool:
+	var mantle_candidate: PlayerMantle.MantleCandidate = (
+		ledge_mantle.find_air_candidate(
+			body,
+			support,
+			candidate
+		)
+	)
+	if mantle_candidate == null or not ledge_mantle.try_start(body, mantle_candidate):
+		return false
+
+	step_up.cancel_traversal()
+	ledge_detector.clear_candidate()
+	look.enter_ledge_view(candidate.wall_normal)
+	state = State.MANTLING
+	body.velocity = Vector3.ZERO
+	if debug_logging:
+		print(debug_message)
+	return true
+
+
+func _should_attempt_ground_mantle(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	input_direction: Vector3
+) -> bool:
+	if candidate == null or not support.is_grounded() or step_up.is_active():
+		return false
+	if not _is_input_toward_candidate(candidate, input_direction):
+		return false
+	return _is_above_step_height(candidate)
 
 
 func _should_attempt_air_mantle(
 	candidate: PlayerLedgeDetector.LedgeCandidate,
 	input_direction: Vector3
 ) -> bool:
+	if candidate == null or support.is_grounded() or step_up.is_active():
+		return false
+	if not _is_air_approach_toward_candidate(candidate, input_direction):
+		return false
+	return _is_above_step_height(candidate)
+
+
+func _is_above_step_height(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
+	var feet_height: float = (
+		body.global_position.y
+		+ ledge_detector.get_capsule_bottom_offset()
+	)
+	return candidate.edge_point.y - feet_height > max_step_height
+
+
+func _is_input_toward_candidate(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	input_direction: Vector3
+) -> bool:
 	if candidate == null:
-		return false
-	if support.is_grounded() or step_up.is_active():
-		return false
-	var feet_height: float = body.global_position.y + ledge_detector.get_capsule_bottom_offset()
-	var obstacle_height: float = candidate.edge_point.y - feet_height
-	if obstacle_height <= max_step_height:
 		return false
 	var horizontal_input := Vector3(input_direction.x, 0.0, input_direction.z)
 	if horizontal_input.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+		return false
+	return _is_direction_toward_candidate(
+		candidate,
+		horizontal_input.normalized()
+	)
+
+
+func _is_air_approach_toward_candidate(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	input_direction: Vector3
+) -> bool:
+	var horizontal_input := Vector3(input_direction.x, 0.0, input_direction.z)
+	if horizontal_input.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED:
+		return _is_direction_toward_candidate(
+			candidate,
+			horizontal_input.normalized()
+		)
+
+	var horizontal_velocity := Vector3(body.velocity.x, 0.0, body.velocity.z)
+	if horizontal_velocity.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+		return false
+	return _is_direction_toward_candidate(
+		candidate,
+		horizontal_velocity.normalized()
+	)
+
+
+func _is_direction_toward_candidate(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	direction: Vector3
+) -> bool:
+	if candidate == null or direction.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
 		return false
 	var toward_wall: Vector3 = -candidate.wall_normal
 	toward_wall.y = 0.0
 	if toward_wall.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
 		return false
-	horizontal_input = horizontal_input.normalized()
-	toward_wall = toward_wall.normalized()
-	return horizontal_input.dot(toward_wall) >= minimum_air_mantle_alignment
+	return (
+		direction.normalized().dot(toward_wall.normalized())
+		>= minimum_air_mantle_alignment
+	)
 
 
 func _update_ledge_catch(crouch_pressed: bool, delta: float) -> void:
