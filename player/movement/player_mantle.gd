@@ -12,6 +12,14 @@ const EXPECTED_ROUTE_SURFACE_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.5
 const OVER_LIP_TRAVEL_RADIUS_RATIO: float = 1.0
 
 
+enum Phase {
+	NONE,
+	LIFT,
+	ARC,
+	CROSS,
+}
+
+
 class MantleCandidate:
 	var source_candidate: PlayerLedgeDetector.LedgeCandidate = null
 	var edge_point: Vector3 = Vector3.ZERO
@@ -30,12 +38,9 @@ var traversal_speed: float
 var detector: PlayerLedgeDetector
 
 var active_candidate: MantleCandidate = null
-var start_position: Vector3 = Vector3.ZERO
-var source_lead_length: float = 0.0
-var arc_length: float = 0.0
-var over_lip_length: float = 0.0
-var total_route_length: float = 0.0
-var route_distance: float = 0.0
+var route_edge_point: Vector3 = Vector3.ZERO
+var lift_target_height: float = 0.0
+var phase: int = Phase.NONE
 var completed: bool = false
 
 
@@ -205,35 +210,21 @@ func try_start(
 
 	cancel()
 	active_candidate = candidate
-	start_position = player.global_position
-	source_lead_length = start_position.distance_to(
-		candidate.source_arc_position
-	)
-	arc_length = (
-		get_clearance_radius()
-		* absf(candidate.signed_arc_angle)
-	)
-	over_lip_length = candidate.arc_target_position.distance_to(
-		candidate.target_position
-	)
-	total_route_length = (
-		source_lead_length
-		+ arc_length
-		+ over_lip_length
+	route_edge_point = get_nearest_edge_point(player.global_position)
+	lift_target_height = (
+		route_edge_point.y
+		- get_bottom_cap_center_offset()
 	)
 
-	if total_route_length <= 0.000001:
-		cancel()
-		return false
-
-	# Mantle eligibility is deliberately limited to upward body clearance. The
-	# arc and over-lip travel are not prevalidated as a landing: once this pure
-	# vertical capsule sweep succeeds, mantle starts and live collision handling
-	# owns the rest of the traversal.
+	# Eligibility and the first live phase are deliberately the same motion:
+	# pure vertical capsule clearance at the player's current horizontal pose.
 	if not is_vertical_clearance_clear(player):
 		cancel()
 		return false
 
+	phase = Phase.LIFT
+	if has_reached_lift_height(player.global_position):
+		phase = Phase.ARC
 	return true
 
 
@@ -241,43 +232,84 @@ func update(
 	player: CharacterBody3D,
 	delta: float
 ) -> bool:
-	if active_candidate == null:
+	if active_candidate == null or phase == Phase.NONE:
 		return false
 
 	player.velocity = Vector3.ZERO
-	var remaining_distance: float = minf(
-		traversal_speed * delta,
-		total_route_length - route_distance
-	)
-	var maximum_segment_distance: float = get_maximum_segment_distance()
+	var remaining_distance: float = traversal_speed * delta
 
-	while remaining_distance > 0.000001:
-		var segment_distance: float = minf(
-			remaining_distance,
-			maximum_segment_distance
-		)
-		var next_route_distance: float = minf(
-			route_distance + segment_distance,
-			total_route_length
-		)
-		var target_position: Vector3 = get_route_position(next_route_distance)
-		var motion: Vector3 = target_position - player.global_position
-		if not move_mantle_motion(player, motion):
-			return false
+	# At most three phase transitions can occur in one frame. Motion state is
+	# always derived from the capsule's actual pose after collision resolution.
+	for _phase_iteration: int in range(Phase.CROSS + 1):
+		if completed or remaining_distance <= 0.000001:
+			break
 
-		# The route is a clearance corridor, not an exact waypoint contract.
-		# Expected wall/top contacts may slide the capsule a small amount away
-		# from the sampled point; successful motion still advances the traversal.
-		route_distance = next_route_distance
-		remaining_distance -= segment_distance
+		match phase:
+			Phase.LIFT:
+				if has_reached_lift_height(player.global_position):
+					phase = Phase.ARC
+					continue
 
-	if total_route_length - route_distance <= 0.000001:
-		route_distance = total_route_length
-		# Completion is geometric: the capsule must actually cross to the far side
-		# of the ledge. Reaching a numerically exact target point is irrelevant.
-		if not has_crossed_ledge_boundary(player.global_position):
-			return false
-		completed = true
+				var lift_distance: float = minf(
+					remaining_distance,
+					maxf(0.0, lift_target_height - player.global_position.y)
+				)
+				var lift_motion: Vector3 = Vector3.UP * lift_distance
+				var lift_travel: float = move_mantle_motion(player, lift_motion)
+				if lift_travel < 0.0:
+					return false
+				remaining_distance = maxf(0.0, remaining_distance - lift_travel)
+				if has_reached_lift_height(player.global_position):
+					phase = Phase.ARC
+					continue
+				if lift_travel <= sqrt(MOTION_EPSILON_SQUARED):
+					return false
+				break
+
+			Phase.ARC:
+				if has_completed_arc(player.global_position):
+					phase = Phase.CROSS
+					continue
+
+				var arc_motion: Vector3 = get_arc_motion(
+					player.global_position,
+					remaining_distance
+				)
+				if arc_motion.length_squared() <= MOTION_EPSILON_SQUARED:
+					return false
+				var arc_travel: float = move_mantle_motion(player, arc_motion)
+				if arc_travel < 0.0:
+					return false
+				remaining_distance = maxf(0.0, remaining_distance - arc_travel)
+				if has_completed_arc(player.global_position):
+					phase = Phase.CROSS
+					continue
+				if arc_travel <= sqrt(MOTION_EPSILON_SQUARED):
+					return false
+				break
+
+			Phase.CROSS:
+				if has_crossed_ledge_boundary(player.global_position):
+					completed = true
+					break
+
+				var cross_motion: Vector3 = get_cross_motion(
+					player.global_position,
+					remaining_distance
+				)
+				if cross_motion.length_squared() <= MOTION_EPSILON_SQUARED:
+					return false
+				var cross_travel: float = move_mantle_motion(player, cross_motion)
+				if cross_travel < 0.0:
+					return false
+				remaining_distance = maxf(0.0, remaining_distance - cross_travel)
+				if has_crossed_ledge_boundary(player.global_position):
+					completed = true
+					break
+				if cross_travel <= sqrt(MOTION_EPSILON_SQUARED):
+					return false
+				break
+
 	return true
 
 
@@ -285,94 +317,41 @@ func is_vertical_clearance_clear(player: CharacterBody3D) -> bool:
 	if active_candidate == null:
 		return false
 
-	var vertical_distance: float = (
-		active_candidate.source_arc_position.y
-		- start_position.y
-	)
-	if vertical_distance <= 0.000001:
+	var vertical_distance: float = lift_target_height - player.global_position.y
+	if vertical_distance <= get_route_progress_tolerance():
 		return true
 
-	var from_transform: Transform3D = player.global_transform
-	var vertical_motion: Vector3 = Vector3.UP * vertical_distance
-	var result: Dictionary = simulate_mantle_motion(
-		player,
-		from_transform,
-		vertical_motion
+	# This is intentionally a pure vertical sweep. Do not slide along the wall or
+	# top here: mantle eligibility means that this vertical body space actually
+	# exists at the current horizontal pose.
+	var collision := KinematicCollision3D.new()
+	var blocked: bool = player.test_move(
+		player.global_transform,
+		Vector3.UP * vertical_distance,
+		collision,
+		PROBE_SAFE_MARGIN,
+		false,
+		PROBE_MAX_COLLISIONS
 	)
-	if result.is_empty():
-		return false
+	if not blocked:
+		return true
 
-	var transform_value: Variant = result.get("transform")
-	if not (transform_value is Transform3D):
-		return false
-	var required_height: float = (
-		from_transform.origin.y
-		+ vertical_distance
-		- get_route_progress_tolerance()
+	return (
+		collision.get_travel().y
+		>= vertical_distance - get_route_progress_tolerance()
 	)
-	return transform_value.origin.y >= required_height
-
-
-func simulate_mantle_motion(
-	player: CharacterBody3D,
-	from_transform: Transform3D,
-	motion: Vector3
-) -> Dictionary:
-	var simulated_transform: Transform3D = from_transform
-	var remaining_motion: Vector3 = motion
-
-	for _iteration: int in range(PROBE_MAX_COLLISIONS):
-		if remaining_motion.length_squared() <= MOTION_EPSILON_SQUARED:
-			return {"transform": simulated_transform}
-
-		var collision := KinematicCollision3D.new()
-		var blocked: bool = player.test_move(
-			simulated_transform,
-			remaining_motion,
-			collision,
-			PROBE_SAFE_MARGIN,
-			false,
-			PROBE_MAX_COLLISIONS
-		)
-		if not blocked:
-			simulated_transform.origin += remaining_motion
-			return {"transform": simulated_transform}
-
-		var previous_length_squared: float = remaining_motion.length_squared()
-		var next_motion: Vector3 = collision.get_remainder()
-		var collision_count: int = collision.get_collision_count()
-		for collision_index: int in range(collision_count):
-			if not is_expected_mantle_contact(
-				collision,
-				collision_index,
-				active_candidate
-			):
-				return {}
-			next_motion = next_motion.slide(
-				collision.get_normal(collision_index)
-			)
-
-		var travel: Vector3 = collision.get_travel()
-		simulated_transform.origin += travel
-		if (
-			travel.length_squared() <= MOTION_EPSILON_SQUARED
-			and next_motion.length_squared()
-			>= previous_length_squared - MOTION_EPSILON_SQUARED
-		):
-			return {}
-		remaining_motion = next_motion
-
-	return {}
 
 
 func move_mantle_motion(
 	player: CharacterBody3D,
 	motion: Vector3
-) -> bool:
+) -> float:
+	var start_position: Vector3 = player.global_position
 	var remaining_motion: Vector3 = motion
+
 	for _iteration: int in range(PROBE_MAX_COLLISIONS):
 		if remaining_motion.length_squared() <= MOTION_EPSILON_SQUARED:
-			return true
+			return player.global_position.distance_to(start_position)
 
 		var collision: KinematicCollision3D = player.move_and_collide(
 			remaining_motion,
@@ -382,7 +361,7 @@ func move_mantle_motion(
 			PROBE_MAX_COLLISIONS
 		)
 		if collision == null:
-			return true
+			return player.global_position.distance_to(start_position)
 
 		var previous_length_squared: float = remaining_motion.length_squared()
 		var next_motion: Vector3 = collision.get_remainder()
@@ -393,7 +372,7 @@ func move_mantle_motion(
 				collision_index,
 				active_candidate
 			):
-				return false
+				return -1.0
 			next_motion = next_motion.slide(
 				collision.get_normal(collision_index)
 			)
@@ -404,9 +383,170 @@ func move_mantle_motion(
 			and next_motion.length_squared()
 			>= previous_length_squared - MOTION_EPSILON_SQUARED
 		):
-			return false
+			return -1.0
 		remaining_motion = next_motion
-	return false
+
+	return -1.0
+
+
+func get_arc_motion(
+	position: Vector3,
+	maximum_distance: float
+) -> Vector3:
+	if active_candidate == null or maximum_distance <= 0.0:
+		return Vector3.ZERO
+
+	var current_angle: float = get_current_arc_angle(position)
+	var target_angle: float = active_candidate.signed_arc_angle
+	var remaining_angle: float = target_angle - current_angle
+	if absf(remaining_angle) <= get_arc_angle_tolerance():
+		return Vector3.ZERO
+
+	var maximum_angle_step: float = minf(
+		deg_to_rad(MAX_ROUTE_SEGMENT_ANGLE_DEGREES),
+		maximum_distance / get_clearance_radius()
+	)
+	var angle_step: float = minf(absf(remaining_angle), maximum_angle_step)
+	angle_step *= signf(remaining_angle)
+	var next_angle: float = current_angle + angle_step
+
+	var target_bottom_cap_center: Vector3 = (
+		route_edge_point
+		+ active_candidate.wall_normal.rotated(
+			active_candidate.ledge_axis,
+			next_angle
+		) * get_clearance_radius()
+	)
+	var target_position: Vector3 = (
+		target_bottom_cap_center
+		- Vector3.UP * get_bottom_cap_center_offset()
+	)
+	var motion: Vector3 = target_position - position
+	if motion.length() > maximum_distance:
+		motion = motion.normalized() * maximum_distance
+	return motion
+
+
+func get_cross_motion(
+	position: Vector3,
+	maximum_distance: float
+) -> Vector3:
+	if active_candidate == null or maximum_distance <= 0.0:
+		return Vector3.ZERO
+
+	var remaining_progress: float = (
+		get_required_cross_progress()
+		- get_cross_progress(position)
+	)
+	if remaining_progress <= get_route_progress_tolerance():
+		return Vector3.ZERO
+	return (
+		active_candidate.top_inward_direction
+		* minf(maximum_distance, remaining_progress)
+	)
+
+
+func get_current_arc_angle(position: Vector3) -> float:
+	if active_candidate == null:
+		return 0.0
+
+	var bottom_cap_center: Vector3 = get_bottom_cap_center_position(position)
+	var delta: Vector3 = bottom_cap_center - route_edge_point
+	var radial_delta: Vector3 = (
+		delta
+		- active_candidate.ledge_axis
+		* delta.dot(active_candidate.ledge_axis)
+	)
+	if radial_delta.length_squared() <= MOTION_EPSILON_SQUARED:
+		return 0.0
+	radial_delta = radial_delta.normalized()
+
+	var current_angle: float = atan2(
+		active_candidate.wall_normal.cross(radial_delta).dot(
+			active_candidate.ledge_axis
+		),
+		clampf(
+			active_candidate.wall_normal.dot(radial_delta),
+			-1.0,
+			1.0
+		)
+	)
+	if active_candidate.signed_arc_angle > 0.0:
+		return clampf(
+			current_angle,
+			0.0,
+			active_candidate.signed_arc_angle
+		)
+	return clampf(
+		current_angle,
+		active_candidate.signed_arc_angle,
+		0.0
+	)
+
+
+func has_completed_arc(position: Vector3) -> bool:
+	if active_candidate == null:
+		return false
+	return (
+		absf(
+			active_candidate.signed_arc_angle
+			- get_current_arc_angle(position)
+		)
+		<= get_arc_angle_tolerance()
+	)
+
+
+func has_reached_lift_height(position: Vector3) -> bool:
+	return (
+		position.y
+		>= lift_target_height - get_route_progress_tolerance()
+	)
+
+
+func has_crossed_ledge_boundary(position: Vector3) -> bool:
+	if active_candidate == null:
+		return false
+	return (
+		get_cross_progress(position)
+		>= get_required_cross_progress() - get_route_progress_tolerance()
+	)
+
+
+func get_cross_progress(position: Vector3) -> float:
+	if active_candidate == null:
+		return -INF
+	var bottom_cap_center: Vector3 = get_bottom_cap_center_position(position)
+	return (
+		(bottom_cap_center - route_edge_point).dot(
+			active_candidate.top_inward_direction
+		)
+	)
+
+
+func get_required_cross_progress() -> float:
+	return get_over_lip_distance()
+
+
+func get_nearest_edge_point(position: Vector3) -> Vector3:
+	if active_candidate == null:
+		return Vector3.ZERO
+	var bottom_cap_center: Vector3 = get_bottom_cap_center_position(position)
+	var axis: Vector3 = active_candidate.ledge_axis
+	return (
+		active_candidate.edge_point
+		+ axis * (bottom_cap_center - active_candidate.edge_point).dot(axis)
+	)
+
+
+func get_bottom_cap_center_position(position: Vector3) -> Vector3:
+	return position + Vector3.UP * get_bottom_cap_center_offset()
+
+
+func get_arc_angle_tolerance() -> float:
+	return maxf(
+		ANGLE_EPSILON,
+		get_route_progress_tolerance() / get_clearance_radius()
+	)
 
 
 func is_expected_mantle_contact(
@@ -499,7 +639,11 @@ func is_within_local_ledge_width(
 	if horizontal_axis.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
 	horizontal_axis = horizontal_axis.normalized()
-	var delta: Vector3 = point - candidate.edge_point
+
+	var local_edge_point: Vector3 = candidate.edge_point
+	if candidate == active_candidate and phase != Phase.NONE:
+		local_edge_point = route_edge_point
+	var delta: Vector3 = point - local_edge_point
 	var horizontal_delta := Vector3(delta.x, 0.0, delta.z)
 	var lateral_distance: float = absf(horizontal_delta.dot(horizontal_axis))
 	return lateral_distance <= get_expected_route_lateral_tolerance()
@@ -532,80 +676,6 @@ func is_point_near_plane(
 	) <= tolerance
 
 
-func get_route_position(distance_along_route: float) -> Vector3:
-	if active_candidate == null:
-		return start_position
-
-	var clamped_distance: float = clampf(
-		distance_along_route,
-		0.0,
-		total_route_length
-	)
-	if (
-		source_lead_length > 0.000001
-		and clamped_distance <= source_lead_length
-	):
-		return start_position.lerp(
-			active_candidate.source_arc_position,
-			clamped_distance / source_lead_length
-		)
-
-	var arc_end_distance: float = source_lead_length + arc_length
-	if (
-		arc_length > 0.000001
-		and clamped_distance <= arc_end_distance
-	):
-		var arc_distance: float = clamped_distance - source_lead_length
-		var arc_fraction: float = clampf(
-			arc_distance / arc_length,
-			0.0,
-			1.0
-		)
-		var angle: float = active_candidate.signed_arc_angle * arc_fraction
-		var radial_offset: Vector3 = (
-			active_candidate.wall_normal.rotated(
-				active_candidate.ledge_axis,
-				angle
-			)
-			* get_clearance_radius()
-		)
-		return (
-			active_candidate.edge_point
-			+ radial_offset
-			- Vector3.UP * get_bottom_cap_center_offset()
-		)
-
-	if over_lip_length <= 0.000001:
-		return active_candidate.target_position
-	var over_lip_distance: float = clamped_distance - arc_end_distance
-	var over_lip_fraction: float = clampf(
-		over_lip_distance / over_lip_length,
-		0.0,
-		1.0
-	)
-	return active_candidate.arc_target_position.lerp(
-		active_candidate.target_position,
-		over_lip_fraction
-	)
-
-
-func has_crossed_ledge_boundary(position: Vector3) -> bool:
-	if active_candidate == null:
-		return false
-	var required_progress: float = (
-		(active_candidate.target_position - active_candidate.edge_point).dot(
-			active_candidate.top_inward_direction
-		)
-		- get_route_progress_tolerance()
-	)
-	var current_progress: float = (
-		(position - active_candidate.edge_point).dot(
-			active_candidate.top_inward_direction
-		)
-	)
-	return current_progress >= required_progress
-
-
 func get_route_progress_tolerance() -> float:
 	return PROBE_SAFE_MARGIN + ROUTE_CLEARANCE_SLACK
 
@@ -634,14 +704,6 @@ func get_bottom_cap_center_offset() -> float:
 
 func get_over_lip_distance() -> float:
 	return get_clearance_radius() * OVER_LIP_TRAVEL_RADIUS_RATIO
-
-
-func get_maximum_segment_distance() -> float:
-	return maxf(
-		PROBE_SAFE_MARGIN,
-		get_clearance_radius()
-		* deg_to_rad(MAX_ROUTE_SEGMENT_ANGLE_DEGREES)
-	)
 
 
 func get_expected_route_surface_plane_tolerance() -> float:
@@ -681,10 +743,7 @@ func get_target_position() -> Vector3:
 
 func cancel() -> void:
 	active_candidate = null
-	start_position = Vector3.ZERO
-	source_lead_length = 0.0
-	arc_length = 0.0
-	over_lip_length = 0.0
-	total_route_length = 0.0
-	route_distance = 0.0
+	route_edge_point = Vector3.ZERO
+	lift_target_height = 0.0
+	phase = Phase.NONE
 	completed = false
