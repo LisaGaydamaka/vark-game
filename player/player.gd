@@ -53,7 +53,7 @@ extends CharacterBody3D
 @export var ledge_max_wall_tilt_degrees: float = 15.0
 @export var ledge_max_line_tilt_degrees: float = 70.0
 @export var ledge_max_approach_angle_degrees: float = 65.0
-@export var ledge_debug_logging: bool = true
+@export var ledge_debug_logging: bool = false
 
 
 @export_category("Ledge Corner")
@@ -155,7 +155,7 @@ func _create_components() -> void:
 		ledge_max_wall_tilt_degrees,
 		ledge_max_line_tilt_degrees,
 		ledge_max_approach_angle_degrees,
-		ledge_debug_logging,
+		false,
 		collision_shape
 	)
 
@@ -203,7 +203,7 @@ func _create_components() -> void:
 		ledge_sprint_jump_horizontal_speed,
 		ledge_max_approach_angle_degrees,
 		gravity,
-		ledge_debug_logging
+		false
 	)
 
 
