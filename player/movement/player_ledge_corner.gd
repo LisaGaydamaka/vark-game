@@ -218,25 +218,47 @@ func find_wall_turn_connection(
 	var expected_target_normal: Vector3 = source_travel
 	var expected_target_continuation: Vector3 = -source_normal
 	var target_probe_distance: float = get_target_probe_distance()
-
-	var preliminary_hint: Vector3 = endpoint + expected_target_continuation * target_probe_distance
-	var preliminary_wall: PlayerLedgeDetector.WallHit = detector.find_wall_near_edge(
-		player,
-		expected_target_normal,
-		preliminary_hint
+	var target_height_window: float = get_slope_aware_height_window(
+		support,
+		target_probe_distance
 	)
-	if preliminary_wall == null:
+
+	# Discover a real target ledge first. Its height comes from the walkable top
+	# search, not from a horizontal wall ray cast at the source endpoint height.
+	var preliminary_hint: Vector3 = (
+		endpoint
+		+ expected_target_continuation * target_probe_distance
+	)
+	var preliminary_candidate: PlayerLedgeDetector.LedgeCandidate = (
+		find_local_ledge_candidate(
+			player,
+			support,
+			expected_target_normal,
+			preliminary_hint,
+			target_height_window,
+			true,
+			true
+		)
+	)
+	if preliminary_candidate == null:
 		return null
 
-	var target_normal: Vector3 = _horizontal_normal(preliminary_wall.normal)
+	var target_normal: Vector3 = _horizontal_normal(
+		preliminary_candidate.wall_normal
+	)
 	if target_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 
-	var minimum_target_alignment: float = cos(deg_to_rad(MAX_RIGHT_ANGLE_ERROR_DEGREES))
+	var minimum_target_alignment: float = cos(
+		deg_to_rad(MAX_RIGHT_ANGLE_ERROR_DEGREES)
+	)
 	if target_normal.dot(expected_target_normal) < minimum_target_alignment:
 		return null
 
-	var signed_turn_angle: float = get_signed_horizontal_angle(source_normal, target_normal)
+	var signed_turn_angle: float = get_signed_horizontal_angle(
+		source_normal,
+		target_normal
+	)
 	var absolute_turn_degrees: float = rad_to_deg(absf(signed_turn_angle))
 	if (
 		absolute_turn_degrees < 90.0 - MAX_RIGHT_ANGLE_ERROR_DEGREES
@@ -251,12 +273,12 @@ func find_wall_turn_connection(
 	if target_continuation.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 
-	# Wall-plane intersection is only a horizontal discovery hint. The final
-	# connection point is solved from the two detector-built 3D ledge lines.
+	# Use the actual discovered target wall plane only to refine the horizontal
+	# corner location. The final 3D connection still comes from ledge geometry.
 	var horizontal_corner_result: Dictionary = find_wall_plane_corner_point(
 		source_candidate.edge_point,
 		source_normal,
-		preliminary_wall.point,
+		preliminary_candidate.edge_point,
 		target_normal,
 		endpoint.y
 	)
@@ -280,16 +302,21 @@ func find_wall_turn_connection(
 	if endpoint_horizontal_delta.length() > discovery_tolerance:
 		return null
 
-	var target_hint: Vector3 = horizontal_corner + target_continuation * target_probe_distance
+	var target_hint: Vector3 = (
+		horizontal_corner
+		+ target_continuation * target_probe_distance
+	)
 	target_hint.y = endpoint.y
-	var target_candidate: PlayerLedgeDetector.LedgeCandidate = find_local_ledge_candidate(
-		player,
-		support,
-		target_normal,
-		target_hint,
-		get_slope_aware_height_window(support, target_probe_distance),
-		true,
-		true
+	var target_candidate: PlayerLedgeDetector.LedgeCandidate = (
+		find_local_ledge_candidate(
+			player,
+			support,
+			target_normal,
+			target_hint,
+			target_height_window,
+			true,
+			true
+		)
 	)
 	if target_candidate == null:
 		return null
