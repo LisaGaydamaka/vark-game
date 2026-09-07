@@ -141,7 +141,16 @@ func try_enter_from_normal(
 	if _is_jump_regrab_blocked(candidate) or _is_corner_release_suppressed(candidate):
 		return false
 
-	if not candidate.hangable and _should_attempt_air_mantle(candidate, input_direction):
+	if candidate.hangable and ledge_catch.try_start(body, candidate):
+		step_up.cancel_traversal()
+		ledge_detector.clear_candidate()
+		look.enter_ledge_view(candidate.wall_normal)
+		state = State.CATCHING
+		ledge_catch.update(body, delta)
+		_finish_ledge_catch_if_ready()
+		return true
+
+	if _should_attempt_air_mantle(candidate, input_direction):
 		var mantle_candidate: PlayerMantle.MantleCandidate = ledge_mantle.find_air_candidate(
 			body,
 			support,
@@ -158,15 +167,6 @@ func try_enter_from_normal(
 				print("Air mantle entered")
 			return true
 
-	if candidate.hangable and ledge_catch.try_start(body, candidate):
-		step_up.cancel_traversal()
-		ledge_detector.clear_candidate()
-		look.enter_ledge_view(candidate.wall_normal)
-		state = State.CATCHING
-		ledge_catch.update(body, delta)
-		_finish_ledge_catch_if_ready()
-		return true
-
 	return false
 
 
@@ -174,9 +174,9 @@ func _should_attempt_air_mantle(
 	candidate: PlayerLedgeDetector.LedgeCandidate,
 	input_direction: Vector3
 ) -> bool:
-	if candidate == null or candidate.hangable:
+	if candidate == null:
 		return false
-	if support.has_support or step_up.is_active():
+	if support.is_grounded() or step_up.is_active():
 		return false
 
 	var feet_height: float = body.global_position.y + ledge_detector.get_capsule_bottom_offset()
@@ -408,7 +408,7 @@ func _update_ledge_mantle(
 
 	body.velocity = Vector3.ZERO
 	support.update(body)
-	if not support.has_support or not support.walkable:
+	if not support.is_grounded():
 		_release_mantle_to_air(input_direction, delta)
 		if debug_logging:
 			print("Ledge mantle final support validation failed")
