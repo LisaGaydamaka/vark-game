@@ -5,6 +5,9 @@ extends RefCounted
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
+const MIN_LEDGE_TOP_UP_DOT: float = 0.001
+const PLANE_INTERSECTION_MIN_SINE_SQUARED: float = 0.00000001
+const EDGE_TOP_SAMPLE_INSET_MARGIN_MULTIPLIER: float = 1.0
 
 const FORWARD_REACH_RADIUS_MULTIPLIER: float = 2.0
 const HAND_REACH_HEIGHT_RATIO: float = 0.25
@@ -63,6 +66,7 @@ var gravity: float
 var max_step_height: float
 var eye_height: float
 var max_wall_tilt_degrees: float
+var max_ledge_line_tilt_degrees: float
 var max_approach_angle_degrees: float
 var debug_logging: bool
 var collision_shape: CollisionShape3D
@@ -80,12 +84,15 @@ var hand_reach_height: float
 var hang_anchor_height: float
 var hang_wall_distance: float
 var top_probe_inset: float
+var edge_top_sample_inset: float
+var max_top_sample_height_offset: float
 var shimmy_level_tolerance: float
 var shimmy_attachment_correction_limit: float
 var ledge_span_half_width: float
 var max_catch_fall_speed: float
 var minimum_approach_alignment: float
 var maximum_wall_normal_y: float
+var minimum_ledge_line_horizontal_factor: float
 var minimum_shimmy_wall_alignment: float
 var suppression_vertical_margin: float
 
@@ -102,6 +109,7 @@ func _init(
 	p_max_step_height: float,
 	p_eye_height: float,
 	p_max_wall_tilt_degrees: float,
+	p_max_ledge_line_tilt_degrees: float,
 	p_max_approach_angle_degrees: float,
 	p_debug_logging: bool,
 	p_collision_shape: CollisionShape3D
@@ -111,6 +119,7 @@ func _init(
 	max_step_height = p_max_step_height
 	eye_height = p_eye_height
 	max_wall_tilt_degrees = p_max_wall_tilt_degrees
+	max_ledge_line_tilt_degrees = p_max_ledge_line_tilt_degrees
 	max_approach_angle_degrees = p_max_approach_angle_degrees
 	debug_logging = p_debug_logging
 	collision_shape = p_collision_shape
@@ -120,6 +129,8 @@ func _init(
 	assert(max_step_height >= 0.0, "PlayerLedgeDetector requires max_step_height to be non-negative.")
 	assert(eye_height >= 0.0, "PlayerLedgeDetector requires eye_height to be non-negative.")
 	assert(max_wall_tilt_degrees >= 0.0, "PlayerLedgeDetector requires max_wall_tilt_degrees to be non-negative.")
+	assert(max_ledge_line_tilt_degrees >= 0.0, "PlayerLedgeDetector requires max_ledge_line_tilt_degrees to be non-negative.")
+	assert(max_ledge_line_tilt_degrees < 90.0, "PlayerLedgeDetector requires max_ledge_line_tilt_degrees to be less than 90 degrees.")
 	assert(max_approach_angle_degrees >= 0.0, "PlayerLedgeDetector requires max_approach_angle_degrees to be non-negative.")
 
 	var shape: Shape3D = collision_shape.shape
@@ -141,6 +152,11 @@ func _cache_static_values() -> void:
 	hang_anchor_height = eye_height + capsule_radius * HANG_EDGE_ABOVE_EYE_RADIUS_RATIO
 	hang_wall_distance = capsule_radius + PROBE_SAFE_MARGIN
 	top_probe_inset = capsule_radius * TOP_PROBE_INSET_RADIUS_RATIO
+	edge_top_sample_inset = PROBE_SAFE_MARGIN * EDGE_TOP_SAMPLE_INSET_MARGIN_MULTIPLIER
+	var maximum_top_horizontal_ratio: float = sqrt(
+		maxf(0.0, 1.0 - MIN_LEDGE_TOP_UP_DOT * MIN_LEDGE_TOP_UP_DOT)
+	) / MIN_LEDGE_TOP_UP_DOT
+	max_top_sample_height_offset = edge_top_sample_inset * maximum_top_horizontal_ratio
 	shimmy_level_tolerance = maxf(PROBE_SAFE_MARGIN, capsule_radius * SHIMMY_LEVEL_HEIGHT_RADIUS_RATIO)
 	shimmy_attachment_correction_limit = maxf(PROBE_SAFE_MARGIN, capsule_radius * SHIMMY_ATTACHMENT_CORRECTION_RADIUS_RATIO)
 	ledge_span_half_width = capsule_radius * LEDGE_SPAN_HALF_WIDTH_RADIUS_RATIO
@@ -150,6 +166,7 @@ func _cache_static_values() -> void:
 	max_catch_fall_speed = jump_speed * MAX_CATCH_FALL_SPEED_JUMP_SPEED_MULTIPLIER
 	minimum_approach_alignment = cos(deg_to_rad(max_approach_angle_degrees))
 	maximum_wall_normal_y = sin(deg_to_rad(max_wall_tilt_degrees))
+	minimum_ledge_line_horizontal_factor = cos(deg_to_rad(max_ledge_line_tilt_degrees))
 	minimum_shimmy_wall_alignment = cos(deg_to_rad(SHIMMY_MAX_WALL_TURN_DEGREES))
 
 
@@ -396,18 +413,21 @@ func find_local_candidate(
 		return null
 	expected_normal = expected_normal.normalized()
 
-	# The target edge height is unknown here. Search the walkable top first at
-	# the known horizontal wall plane, then reconstruct the local edge height.
+	# The target edge height is unknown here. Search a valid upward-facing top
+	# first, then reconstruct the local wall/top intersection exactly.
 	var top_probe_center: Vector3 = (
 		edge_hint
-		- expected_normal * get_top_probe_inset()
+		- expected_normal * get_edge_top_sample_inset()
 	)
 	top_probe_center.y = edge_hint.y
+	var top_search_half_height: float = (
+		height_window + get_max_top_sample_height_offset()
+	)
 	var top_hit: TopHit = raycast_top(
 		player,
 		support,
-		top_probe_center + Vector3.UP * height_window,
-		top_probe_center - Vector3.UP * height_window
+		top_probe_center + Vector3.UP * top_search_half_height,
+		top_probe_center - Vector3.UP * top_search_half_height
 	)
 	if top_hit == null:
 		return null
@@ -613,10 +633,20 @@ func find_wall_near_edge(
 
 
 func find_top(player: CharacterBody3D, support: PlayerSupport, wall_hit: WallHit) -> TopHit:
-	var ray_from: Vector3 = wall_hit.point - wall_hit.normal * get_top_probe_inset()
-	ray_from.y = player.global_position.y + get_max_catch_height() + PROBE_SAFE_MARGIN
+	var ray_from: Vector3 = wall_hit.point - wall_hit.normal * get_edge_top_sample_inset()
+	ray_from.y = (
+		player.global_position.y
+		+ get_max_catch_height()
+		+ get_max_top_sample_height_offset()
+		+ PROBE_SAFE_MARGIN
+	)
 	var ray_to: Vector3 = ray_from
-	ray_to.y = player.global_position.y + get_min_edge_height() - PROBE_SAFE_MARGIN
+	ray_to.y = (
+		player.global_position.y
+		+ get_min_edge_height()
+		- get_max_top_sample_height_offset()
+		- PROBE_SAFE_MARGIN
+	)
 	return raycast_top(player, support, ray_from, ray_to)
 
 
@@ -626,10 +656,11 @@ func find_top_for_hang(
 	wall_hit: WallHit,
 	expected_edge_height: float
 ) -> TopHit:
-	var probe_center: Vector3 = wall_hit.point - wall_hit.normal * get_top_probe_inset()
+	var probe_center: Vector3 = wall_hit.point - wall_hit.normal * get_edge_top_sample_inset()
 	probe_center.y = expected_edge_height
-	var ray_from: Vector3 = probe_center + Vector3.UP * get_capsule_radius()
-	var ray_to: Vector3 = probe_center - Vector3.UP * get_capsule_radius()
+	var half_height: float = get_capsule_radius() + get_max_top_sample_height_offset()
+	var ray_from: Vector3 = probe_center + Vector3.UP * half_height
+	var ray_to: Vector3 = probe_center - Vector3.UP * half_height
 	return raycast_top(player, support, ray_from, ray_to)
 
 
@@ -642,19 +673,20 @@ func find_top_near_wall(
 ) -> TopHit:
 	if wall_hit == null or height_window <= 0.0:
 		return null
-	var probe_center: Vector3 = wall_hit.point - wall_hit.normal * get_top_probe_inset()
+	var probe_center: Vector3 = wall_hit.point - wall_hit.normal * get_edge_top_sample_inset()
 	probe_center.y = center_height
+	var half_height: float = height_window + get_max_top_sample_height_offset()
 	return raycast_top(
 		player,
 		support,
-		probe_center + Vector3.UP * height_window,
-		probe_center - Vector3.UP * height_window
+		probe_center + Vector3.UP * half_height,
+		probe_center - Vector3.UP * half_height
 	)
 
 
 func raycast_top(
 	player: CharacterBody3D,
-	support: PlayerSupport,
+	_support: PlayerSupport,
 	ray_from: Vector3,
 	ray_to: Vector3
 ) -> TopHit:
@@ -673,8 +705,9 @@ func raycast_top(
 
 	var point: Vector3 = position_value
 	var normal: Vector3 = normal_value
-	if not support.is_walkable_surface(normal):
+	if not is_ledge_top_surface(normal):
 		return null
+	normal = normal.normalized()
 
 	var top_hit := TopHit.new()
 	top_hit.point = point
@@ -706,23 +739,24 @@ func build_ledge_geometry(
 	if top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return null
 	top_normal = top_normal.normalized()
-	if top_normal.y <= 0.000001:
+	if not is_ledge_top_surface(top_normal):
 		return null
 
-	# The top ray is intentionally inset from the wall. Project that sample
-	# horizontally onto the wall plane, then add the vertical correction needed
-	# to stay on the same local top plane. The result lies on both planes.
+	# Solve the local wall/top plane intersection without assuming the top has a
+	# useful Y component. The correction stays in the span of the two normals,
+	# so the reconstructed point remains on the sampled top plane while moving
+	# onto the wall plane.
+	var normal_dot: float = clampf(wall_normal.dot(top_normal), -1.0, 1.0)
+	var intersection_sine_squared: float = 1.0 - normal_dot * normal_dot
+	if intersection_sine_squared <= PLANE_INTERSECTION_MIN_SINE_SQUARED:
+		return null
 	var wall_plane_distance: float = (
 		(top_hit.point - wall_hit.point).dot(wall_normal)
 	)
-	var horizontal_correction: Vector3 = -wall_normal * wall_plane_distance
-	var vertical_correction: float = (
-		-top_normal.dot(horizontal_correction) / top_normal.y
-	)
 	var edge_point: Vector3 = (
 		top_hit.point
-		+ horizontal_correction
-		+ Vector3.UP * vertical_correction
+		- (wall_plane_distance / intersection_sine_squared)
+		* (wall_normal - top_normal * normal_dot)
 	)
 
 	var ledge_direction: Vector3 = get_ledge_direction(
@@ -730,6 +764,8 @@ func build_ledge_geometry(
 		top_normal
 	)
 	if ledge_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return null
+	if not is_ledge_line_tilt_allowed(ledge_direction):
 		return null
 
 	var geometry := LedgeGeometry.new()
@@ -752,7 +788,8 @@ func build_ledge_candidate(
 	if require_exposed and not is_edge_exposed(
 		player,
 		geometry.edge_point,
-		geometry.wall_normal
+		geometry.wall_normal,
+		geometry.top_normal
 	):
 		return null
 
@@ -776,14 +813,32 @@ func build_ledge_candidate(
 func is_edge_exposed(
 	player: CharacterBody3D,
 	edge_point: Vector3,
-	wall_normal: Vector3
+	wall_normal: Vector3,
+	top_normal: Vector3 = Vector3.UP
 ) -> bool:
 	if wall_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return false
 	var outward_normal: Vector3 = wall_normal.normalized()
-	var exposure_height: float = maxf(PROBE_SAFE_MARGIN * 4.0, get_capsule_radius() * EDGE_EXPOSURE_HEIGHT_RADIUS_RATIO)
-	var probe_from: Vector3 = edge_point + outward_normal * get_top_probe_inset() + Vector3.UP * exposure_height
-	var probe_to: Vector3 = edge_point - outward_normal * (PROBE_SAFE_MARGIN * 2.0) + Vector3.UP * exposure_height
+	var exposure_distance: float = maxf(
+		PROBE_SAFE_MARGIN * 4.0,
+		get_capsule_radius() * EDGE_EXPOSURE_HEIGHT_RADIUS_RATIO
+	)
+	var surface_normal: Vector3 = top_normal
+	if surface_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		surface_normal = Vector3.UP
+	else:
+		surface_normal = surface_normal.normalized()
+	var exposure_offset: Vector3 = surface_normal * exposure_distance
+	var probe_from: Vector3 = (
+		edge_point
+		+ outward_normal * get_top_probe_inset()
+		+ exposure_offset
+	)
+	var probe_to: Vector3 = (
+		edge_point
+		- outward_normal * (PROBE_SAFE_MARGIN * 2.0)
+		+ exposure_offset
+	)
 	var query := _prepare_ray_query(player, probe_from, probe_to)
 	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
 	return hit.is_empty()
@@ -858,6 +913,27 @@ func get_ledge_direction(wall_normal: Vector3, top_normal: Vector3) -> Vector3:
 	return direction
 
 
+func is_ledge_top_surface(normal: Vector3) -> bool:
+	if normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	return normal.normalized().dot(Vector3.UP) >= MIN_LEDGE_TOP_UP_DOT
+
+
+func is_ledge_line_tilt_allowed(direction: Vector3) -> bool:
+	if direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	var normalized_direction: Vector3 = direction.normalized()
+	var horizontal_factor: float = Vector3(
+		normalized_direction.x,
+		0.0,
+		normalized_direction.z
+	).length()
+	return (
+		horizontal_factor
+		>= minimum_ledge_line_horizontal_factor - 0.00001
+	)
+
+
 func has_usable_ledge_span(
 	player: CharacterBody3D,
 	support: PlayerSupport,
@@ -915,7 +991,8 @@ func _is_ledge_span_sample_valid(
 	return is_edge_exposed(
 		player,
 		sample_geometry.edge_point,
-		sample_geometry.wall_normal
+		sample_geometry.wall_normal,
+		sample_geometry.top_normal
 	)
 
 
@@ -1055,6 +1132,15 @@ func get_hang_wall_distance() -> float:
 
 func get_top_probe_inset() -> float:
 	return top_probe_inset
+
+func get_edge_top_sample_inset() -> float:
+	return edge_top_sample_inset
+
+func get_max_top_sample_height_offset() -> float:
+	return max_top_sample_height_offset
+
+func get_max_ledge_line_tilt_degrees() -> float:
+	return max_ledge_line_tilt_degrees
 
 func get_shimmy_level_tolerance() -> float:
 	return shimmy_level_tolerance
