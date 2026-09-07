@@ -348,7 +348,7 @@ func find_candidate(
 
 		if (
 			horizontal_velocity.length_squared()
-		> MOTION_EPSILON_SQUARED
+			> MOTION_EPSILON_SQUARED
 		):
 			approach_direction = horizontal_velocity.normalized()
 		else:
@@ -1255,35 +1255,25 @@ func is_expected_hang_wall_contact(
 	collision_index: int,
 	candidate: LedgeCandidate
 ) -> bool:
+	return is_expected_local_wall_contact(
+		collision,
+		collision_index,
+		candidate,
+		EXPECTED_HANG_WALL_MIN_ALIGNMENT
+	)
+
+
+func is_expected_local_wall_contact(
+	collision: KinematicCollision3D,
+	collision_index: int,
+	candidate: LedgeCandidate,
+	minimum_alignment: float = EXPECTED_HANG_WALL_MIN_ALIGNMENT
+) -> bool:
 	if candidate == null:
 		return false
 
-	if (
-		collision.get_collider_rid(
-			collision_index
-		)
-		!= candidate.wall_collider_rid
-	):
-		return false
-
-	var collider_shape_index: int = (
-		collision.get_collider_shape_index(
-			collision_index
-		)
-	)
-
-	if (
-		candidate.wall_shape_index >= 0
-		and collider_shape_index >= 0
-		and collider_shape_index
-		!= candidate.wall_shape_index
-	):
-		return false
-
-	var collision_normal: Vector3 = (
-		collision.get_normal(
-			collision_index
-		)
+	var collision_normal: Vector3 = collision.get_normal(
+		collision_index
 	)
 
 	if (
@@ -1294,9 +1284,7 @@ func is_expected_hang_wall_contact(
 
 	collision_normal = collision_normal.normalized()
 
-	var expected_wall_normal: Vector3 = (
-		candidate.wall_normal
-	)
+	var expected_wall_normal: Vector3 = candidate.wall_normal
 
 	if (
 		expected_wall_normal.length_squared()
@@ -1304,13 +1292,11 @@ func is_expected_hang_wall_contact(
 	):
 		return false
 
-	expected_wall_normal = (
-		expected_wall_normal.normalized()
-	)
+	expected_wall_normal = expected_wall_normal.normalized()
 
 	if (
 		collision_normal.dot(expected_wall_normal)
-		< EXPECTED_HANG_WALL_MIN_ALIGNMENT
+		< minimum_alignment
 	):
 		return false
 
@@ -1324,9 +1310,39 @@ func is_expected_hang_wall_contact(
 		).dot(expected_wall_normal)
 	)
 
-	return (
+	if (
 		plane_distance
-		<= get_expected_hang_wall_plane_tolerance()
+		> get_expected_local_wall_plane_tolerance()
+	):
+		return false
+
+	var ledge_direction: Vector3 = candidate.ledge_direction
+
+	if (
+		ledge_direction.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		ledge_direction = Vector3.UP.cross(
+			expected_wall_normal
+		)
+
+	if (
+		ledge_direction.length_squared()
+		<= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	ledge_direction = ledge_direction.normalized()
+	var lateral_distance: float = absf(
+		(
+			collision_point
+			- candidate.edge_point
+		).dot(ledge_direction)
+	)
+
+	return (
+		lateral_distance
+		<= get_expected_local_wall_lateral_tolerance()
 	)
 
 
@@ -1378,12 +1394,23 @@ func get_max_catch_fall_speed() -> float:
 	return max_catch_fall_speed
 
 
-func get_expected_hang_wall_plane_tolerance() -> float:
+func get_expected_local_wall_plane_tolerance() -> float:
 	return maxf(
 		PROBE_SAFE_MARGIN,
 		get_capsule_radius()
 		* EXPECTED_HANG_WALL_PLANE_TOLERANCE_RADIUS_RATIO
 	)
+
+
+func get_expected_local_wall_lateral_tolerance() -> float:
+	return (
+		get_capsule_radius()
+		+ get_shimmy_attachment_correction_limit()
+	)
+
+
+func get_expected_hang_wall_plane_tolerance() -> float:
+	return get_expected_local_wall_plane_tolerance()
 
 
 func get_capsule_bottom_offset() -> float:
