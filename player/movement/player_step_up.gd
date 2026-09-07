@@ -8,6 +8,7 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 const MAX_CLEARANCE_ITERATIONS: int = 8
 const LANDING_HEIGHT_SAMPLE_COUNT: int = 12
 const MIN_STEP_APPROACH_DOT: float = 0.1
+const DEBUG_STEP_UP: bool = true
 
 
 class StepPlan:
@@ -90,6 +91,12 @@ func try_start_step(
 
 	active_plan = plan
 	vertical_assist_speed = 0.0
+	_debug(
+		"START riser=", plan.riser_point,
+		" normal=", plan.riser_normal,
+		" landing=", plan.landing_position,
+		" player=", player.global_position
+	)
 	return true
 
 
@@ -102,10 +109,12 @@ func update_traversal(
 		return
 
 	if has_crossed_riser(player.global_position, active_plan):
+		_debug("COMPLETE crossed riser player=", player.global_position)
 		cancel_traversal()
 		return
 
 	if input_direction.is_zero_approx():
+		_debug("CANCEL input released")
 		cancel_traversal()
 		return
 
@@ -113,6 +122,7 @@ func update_traversal(
 		active_plan.riser_normal
 	)
 	if input_push <= 0.0:
+		_debug("CANCEL input no longer pushes into riser push=", input_push)
 		cancel_traversal()
 		return
 
@@ -157,6 +167,7 @@ func refresh_after_move(player: CharacterBody3D) -> void:
 	if active_plan == null:
 		return
 	if has_crossed_riser(player.global_position, active_plan):
+		_debug("COMPLETE crossed riser after move player=", player.global_position)
 		cancel_traversal()
 
 
@@ -196,6 +207,11 @@ func is_vertical_assist_blocked(
 	for collision_index: int in range(collision.get_collision_count()):
 		var normal: Vector3 = collision.get_normal(collision_index)
 		if normal.y < -0.05:
+			_debug(
+				"CANCEL live vertical assist blocked normal=", normal,
+				" assist=", vertical_assist_speed,
+				" base_y=", base_velocity.y
+			)
 			return true
 	return false
 
@@ -219,6 +235,12 @@ func find_best_step_plan(
 	if not blocked:
 		return null
 
+	_debug(
+		"OBSTRUCTION motion=", horizontal_motion,
+		" player=", player.global_position,
+		" contacts=", collision.get_collision_count()
+	)
+
 	var best_plan: StepPlan = null
 	var best_push_strength: float = 0.0
 	var best_rise: float = INF
@@ -226,9 +248,17 @@ func find_best_step_plan(
 
 	for collision_index: int in range(collision_count):
 		var collision_normal: Vector3 = collision.get_normal(collision_index)
+		var collision_point: Vector3 = collision.get_position(collision_index)
+		_debug(
+			"CONTACT index=", collision_index,
+			" point=", collision_point,
+			" normal=", collision_normal
+		)
 		if support.is_walkable_surface(collision_normal):
+			_debug("REJECT contact walkable")
 			continue
 		if not is_step_riser(collision_normal):
+			_debug("REJECT contact not riser")
 			continue
 
 		var horizontal_normal := Vector3(
@@ -237,29 +267,43 @@ func find_best_step_plan(
 			collision_normal.z
 		)
 		if horizontal_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+			_debug("REJECT contact has no horizontal normal")
 			continue
 		horizontal_normal = horizontal_normal.normalized()
 
 		var push_strength: float = -horizontal_direction.dot(horizontal_normal)
 		if push_strength < MIN_STEP_APPROACH_DOT:
+			_debug(
+				"REJECT shallow approach push=", push_strength,
+				" minimum=", MIN_STEP_APPROACH_DOT
+			)
 			continue
-		if -input_direction.dot(horizontal_normal) <= 0.0:
+		var input_push: float = -input_direction.dot(horizontal_normal)
+		if input_push <= 0.0:
+			_debug("REJECT input not into riser input_push=", input_push)
 			continue
 
+		_debug(
+			"RISER candidate point=", collision_point,
+			" normal=", horizontal_normal,
+			" push=", push_strength
+		)
 		var plan: StepPlan = build_step_plan(
 			player,
 			support,
 			horizontal_direction,
 			push_strength,
-			collision.get_position(collision_index),
+			collision_point,
 			horizontal_normal,
 			collision.get_collider_rid(collision_index),
 			collision.get_collider_shape_index(collision_index)
 		)
 		if plan == null:
+			_debug("REJECT riser plan validation failed")
 			continue
 
 		var rise: float = get_capsule_bottom_y_from_position(plan.landing_position.y) - get_capsule_bottom_y(player.global_transform)
+		_debug("VALID riser rise=", rise, " landing=", plan.landing_position)
 		if (
 			best_plan == null
 			or push_strength > best_push_strength + 0.000001
@@ -272,6 +316,8 @@ func find_best_step_plan(
 			best_push_strength = push_strength
 			best_rise = rise
 
+	if best_plan == null:
+		_debug("NO VALID STEP PLAN")
 	return best_plan
 
 
@@ -297,14 +343,30 @@ func build_step_plan(
 		across_motion
 	)
 	if landing == null:
+		_debug(
+			"FAIL landing search riser=", riser_point,
+			" across=", across_motion
+		)
 		return null
 
 	var current_bottom_y: float = get_capsule_bottom_y(player.global_transform)
 	var landing_bottom_y: float = get_capsule_bottom_y(landing.transform)
 	var rise: float = landing_bottom_y - current_bottom_y
+	_debug(
+		"LANDING found contact=", landing.contact_point,
+		" pose=", landing.transform.origin,
+		" current_bottom=", current_bottom_y,
+		" landing_bottom=", landing_bottom_y,
+		" rise=", rise
+	)
 	if rise <= PROBE_SAFE_MARGIN:
+		_debug("FAIL landing not above capsule rise=", rise)
 		return null
 	if rise > max_step_height + PROBE_SAFE_MARGIN:
+		_debug(
+			"FAIL landing too high rise=", rise,
+			" max=", max_step_height
+		)
 		return null
 
 	# The search ceiling only discovers the landing. The live route is validated
@@ -320,6 +382,12 @@ func build_step_plan(
 		Vector3.UP * required_up_distance
 	)
 	if raised.transform.origin.y < target_y - PROBE_SAFE_MARGIN:
+		_debug(
+			"FAIL UP clearance required=", required_up_distance,
+			" target_y=", target_y,
+			" reached_y=", raised.transform.origin.y,
+			" start_y=", player.global_position.y
+		)
 		return null
 
 	var crossed: MotionResolution = resolve_motion(
@@ -332,6 +400,13 @@ func build_step_plan(
 		riser_point,
 		riser_normal
 	):
+		_debug(
+			"FAIL ACROSS clearance requested=", across_motion,
+			" raised=", raised.transform.origin,
+			" reached=", crossed.transform.origin,
+			" plane_distance=",
+			(crossed.transform.origin - riser_point).dot(riser_normal)
+		)
 		return null
 
 	var plan := StepPlan.new()
@@ -393,6 +468,12 @@ func find_landing_from_above(
 			continue
 		if rise > max_step_height + PROBE_SAFE_MARGIN:
 			continue
+		_debug(
+			"LANDING sample=", sample_index,
+			" sample_height=", sample_height,
+			" rise=", rise,
+			" contact=", landing.contact_point
+		)
 		return landing
 
 	return null
@@ -597,3 +678,9 @@ func get_capsule_radius() -> float:
 	)
 	var capsule_shape: CapsuleShape3D = shape as CapsuleShape3D
 	return capsule_shape.radius
+
+
+func _debug(...args: Array) -> void:
+	if not DEBUG_STEP_UP:
+		return
+	print("[StepUp] ", "".join(args.map(func(value: Variant) -> String: return str(value))))
