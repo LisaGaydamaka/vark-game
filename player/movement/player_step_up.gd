@@ -505,7 +505,7 @@ func raycast_landing_surface(
 		contact_point,
 		surface_normal
 	)
-	if not is_finite(target_root_y):
+	if target_root_y == INF:
 		return null
 	var rise: float = target_root_y - player.global_position.y
 	if rise <= PROBE_SAFE_MARGIN or rise > max_step_height + PROBE_SAFE_MARGIN:
@@ -516,13 +516,14 @@ func raycast_landing_surface(
 		)
 		return null
 
-	var landing := LandingResult.new()
-	landing.transform = player.global_transform
-	landing.transform.origin = Vector3(
+	var landing_transform: Transform3D = player.global_transform
+	landing_transform.origin = Vector3(
 		probe_position.x,
 		target_root_y,
 		probe_position.z
 	)
+	var landing := LandingResult.new()
+	landing.transform = landing_transform
 	landing.contact_point = contact_point
 	landing.surface_normal = surface_normal
 	return landing
