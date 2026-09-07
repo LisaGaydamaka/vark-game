@@ -223,7 +223,7 @@ func find_wall_turn_connection(
 		target_probe_distance
 	)
 
-	# Discover a real target ledge first. Its height comes from the walkable top
+	# Discover a real target ledge first. Its height comes from the ledge-top
 	# search, not from a horizontal wall ray cast at the source endpoint height.
 	var preliminary_hint: Vector3 = (
 		endpoint
@@ -1209,14 +1209,14 @@ func get_target_probe_distance() -> float:
 
 
 func get_slope_aware_height_window(
-	support: PlayerSupport,
+	_support: PlayerSupport,
 	horizontal_distance: float
 ) -> float:
-	var maximum_slope_radians: float = deg_to_rad(
-		clampf(support.max_walkable_slope, 0.0, 89.0)
+	var maximum_line_tilt_radians: float = deg_to_rad(
+		clampf(detector.get_max_ledge_line_tilt_degrees(), 0.0, 89.0)
 	)
 	return (
-		absf(horizontal_distance) * tan(maximum_slope_radians)
+		absf(horizontal_distance) * tan(maximum_line_tilt_radians)
 		+ detector.get_shimmy_attachment_correction_limit()
 		+ PROBE_SAFE_MARGIN
 	)
