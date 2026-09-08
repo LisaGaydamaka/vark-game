@@ -4,8 +4,6 @@ extends PlayerLedgeDetector
 
 const DISCOVERY_DIRECTION_EPSILON_SQUARED: float = 0.000001
 const DISCOVERY_PROBE_SAFE_MARGIN: float = 0.001
-const DISCOVERY_HEIGHT_SAMPLE_COUNT: int = 12
-const DISCOVERY_LOCAL_BAND_OVERLAP: float = 0.75
 
 
 var discovery_player: CharacterBody3D = null
