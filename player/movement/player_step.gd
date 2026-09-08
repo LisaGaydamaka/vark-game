@@ -98,6 +98,7 @@ func _init(
 func update_before_move(
 	player: CharacterBody3D,
 	input_direction: Vector3,
+	locomotion_speed_budget: float,
 	delta: float
 ) -> bool:
 	if active_candidate == null:
@@ -156,24 +157,27 @@ func update_before_move(
 		cancel()
 		return false
 
-	var control_strength: float = (
-		input_strength
-		* clampf(approach_alignment, 0.0, 1.0)
+	var alignment_strength: float = clampf(approach_alignment, 0.0, 1.0)
+	var control_strength: float = input_strength * alignment_strength
+
+	# The step's horizontal budget comes from locomotion INTENT, not from current
+	# collision-resolved velocity. A stair riser is expected to remove the actual
+	# inward velocity; using that damaged value here creates a feedback loop that
+	# makes step-up arbitrarily slow no matter how high the step tuning is.
+	var intended_inward_speed: float = (
+		maxf(0.0, locomotion_speed_budget)
+		* input_strength
+		* alignment_strength
 	)
 
-	# The ordinary motor has already run this frame. Its horizontal velocity is
-	# the locomotion budget and step-up is never allowed to increase it. Only the
-	# portion pushing into the riser is redirected around the wall/edge path.
+	# Preserve only the actual along-edge component. Step-up may redirect the
+	# intended into-riser movement vertically, but it does not manufacture lateral
+	# velocity parallel to the stair edge.
 	var horizontal_velocity := Vector3(
 		player.velocity.x,
 		0.0,
 		player.velocity.z
 	)
-	var normal_inward_speed: float = maxf(
-		0.0,
-		horizontal_velocity.dot(inward_direction)
-	)
-
 	var ledge_axis: Vector3 = get_horizontal_ledge_axis()
 	var lateral_velocity := Vector3.ZERO
 	if ledge_axis.length_squared() > MOTION_EPSILON_SQUARED:
@@ -191,15 +195,15 @@ func update_before_move(
 	)
 	var tangent_horizontal_factor: float = tangent_horizontal.length()
 
-	# Near the vertical riser the tangent is almost purely upward, so the step
-	# speed can be as large as configured. As the tangent rotates toward the top,
-	# its horizontal component is hard-limited to the normal motor's inward speed.
-	# Therefore high step speed can only make vertical clearance faster; it can
-	# never turn into extra forward speed at the end of the step.
+	# Near the vertical riser the tangent is almost purely upward, so the full
+	# configured step speed is available. As it rotates toward horizontal, cap the
+	# horizontal component against the MOTOR INTENT budget. This prevents a fast
+	# climb from becoming a forward launch without letting the collision itself
+	# throttle vertical clearance.
 	if tangent_horizontal_factor > sqrt(MOTION_EPSILON_SQUARED):
 		maximum_path_speed = minf(
 			maximum_path_speed,
-			normal_inward_speed / tangent_horizontal_factor
+			intended_inward_speed / tangent_horizontal_factor
 		)
 
 	# Even extreme tuning must not move the capsule bottom above the detected top
@@ -229,9 +233,8 @@ func update_before_move(
 		step_acceleration * control_strength * delta
 	)
 
-	# Horizontal locomotion is a hard constraint, not merely a target. If the
-	# tangent rotates quickly between frames, discard any stale path speed that
-	# would exceed this frame's normal horizontal budget.
+	# The cap is a hard invariant. If the tangent rotates sharply between frames,
+	# stale vertical path speed cannot become excess horizontal speed.
 	controlled_path_speed = minf(
 		maxf(0.0, controlled_path_speed),
 		maximum_path_speed
