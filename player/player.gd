@@ -120,7 +120,8 @@ func _create_components() -> void:
 
 	support = PlayerSupport.new(
 		max_walkable_slope,
-		support_check_distance
+		support_check_distance,
+		collision_shape
 	)
 
 	motor = PlayerMotor.new(
@@ -213,11 +214,9 @@ func _update_normal_movement(
 	if player_input.is_jump_pressed():
 		step.cancel()
 
-	# While step-up is active, a steep diagonal support contact matching its riser
-	# is the rounded capsule touching the stair edge, not useful locomotion support.
-	# Ignore only that contact so it cannot rotate horizontal speed into vertical.
-	var support_step_wall_normal: Vector3 = _get_active_step_wall_normal()
-	support.update(self, support_step_wall_normal)
+	# Support is a pure foot sensor. It reports only legitimate walkable floor and
+	# never mutates velocity or interprets rounded capsule edge contacts as slopes.
+	support.update(self)
 	var grounded: bool = support.is_grounded()
 	var view_forward: Vector3 = -head.global_transform.basis.z
 
@@ -285,26 +284,17 @@ func _update_normal_movement(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
-	# Keep the normal motor's horizontal speed budget from immediately before the
-	# collision. If this contact becomes a valid step, only the component that the
-	# step riser removed will be restored after candidate creation.
+	# Snapshot only for diagnostics. Collision resolution can clip this frame's
+	# displacement, but it no longer owns or rewrites persistent horizontal speed.
 	var horizontal_velocity_before_move := Vector3(
 		velocity.x,
 		0.0,
 		velocity.z
 	)
-	var step_wall_normal: Vector3 = _get_active_step_wall_normal()
-
-	# Keep the active riser normal through the final support check even if
-	# update_after_move() completes the step this frame. That prevents the same
-	# rounded edge from deleting speed during the step-to-tread transition.
-	var support_wall_normal_after_move: Vector3 = step_wall_normal
-
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		delta,
-		step_assist_velocity,
-		step_wall_normal
+		step_assist_velocity
 	)
 
 	if not collisions.is_empty() and not grounded:
@@ -363,67 +353,16 @@ func _update_normal_movement(
 			input_direction,
 			collisions
 		):
-			_restore_step_approach_velocity(horizontal_velocity_before_move)
-
-			# The first riser collision can manufacture a positive persistent Y while
-			# projecting velocity along the rounded edge. A newly active step owns Y,
-			# so discard that artifact immediately and let only assist velocity climb.
+			# A step owns vertical traversal from the instant it is classified. X/Z
+			# requires no restoration because collision resolution never erased it.
 			step.constrain_persistent_vertical_velocity(self)
-			support_wall_normal_after_move = _get_active_step_wall_normal()
 
-	support.update(self, support_wall_normal_after_move)
+	support.update(self)
 	_update_step_speed_debug(
 		horizontal_velocity_before_move,
 		step_assist_velocity,
 		delta
 	)
-
-
-func _get_active_step_wall_normal() -> Vector3:
-	if step == null or not step.is_active() or step.active_candidate == null:
-		return Vector3.ZERO
-	return step.active_candidate.wall_normal
-
-
-func _restore_step_approach_velocity(
-	previous_horizontal_velocity: Vector3
-) -> void:
-	var wall_normal: Vector3 = _get_active_step_wall_normal()
-	var horizontal_wall_normal := Vector3(
-		wall_normal.x,
-		0.0,
-		wall_normal.z
-	)
-	if horizontal_wall_normal.length_squared() <= 0.000001:
-		return
-	horizontal_wall_normal = horizontal_wall_normal.normalized()
-
-	var previous_into_step: float = previous_horizontal_velocity.dot(
-		horizontal_wall_normal
-	)
-	if previous_into_step >= 0.0:
-		return
-
-	var current_horizontal_velocity := Vector3(
-		velocity.x,
-		0.0,
-		velocity.z
-	)
-	var current_into_step: float = current_horizontal_velocity.dot(
-		horizontal_wall_normal
-	)
-
-	# Restore only velocity that this step face removed. Lateral collision response
-	# and any velocity changes caused by unrelated geometry remain untouched.
-	if current_into_step <= previous_into_step:
-		return
-
-	current_horizontal_velocity += (
-		horizontal_wall_normal
-		* (previous_into_step - current_into_step)
-	)
-	velocity.x = current_horizontal_velocity.x
-	velocity.z = current_horizontal_velocity.z
 
 
 func _update_step_speed_debug(
