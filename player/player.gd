@@ -213,7 +213,11 @@ func _update_normal_movement(
 	if player_input.is_jump_pressed():
 		step.cancel()
 
-	support.update(self)
+	# While step-up is active, a steep diagonal support contact matching its riser
+	# is the rounded capsule touching the stair edge, not useful locomotion support.
+	# Ignore only that contact so it cannot rotate horizontal speed into vertical.
+	var support_step_wall_normal: Vector3 = _get_active_step_wall_normal()
+	support.update(self, support_step_wall_normal)
 	var grounded: bool = support.is_grounded()
 	var view_forward: Vector3 = -head.global_transform.basis.z
 
@@ -290,6 +294,12 @@ func _update_normal_movement(
 		velocity.z
 	)
 	var step_wall_normal: Vector3 = _get_active_step_wall_normal()
+
+	# Keep the active riser normal through the final support check even if
+	# update_after_move() completes the step this frame. That prevents the same
+	# rounded edge from deleting speed during the step-to-tread transition.
+	var support_wall_normal_after_move: Vector3 = step_wall_normal
+
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		delta,
@@ -355,7 +365,13 @@ func _update_normal_movement(
 		):
 			_restore_step_approach_velocity(horizontal_velocity_before_move)
 
-	support.update(self)
+			# The first riser collision can manufacture a positive persistent Y while
+			# projecting velocity along the rounded edge. A newly active step owns Y,
+			# so discard that artifact immediately and let only assist velocity climb.
+			step.constrain_persistent_vertical_velocity(self)
+			support_wall_normal_after_move = _get_active_step_wall_normal()
+
+	support.update(self, support_wall_normal_after_move)
 	_update_step_speed_debug(
 		horizontal_velocity_before_move,
 		step_assist_velocity,
