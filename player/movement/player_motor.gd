@@ -50,8 +50,10 @@ func update(
 		apply_air_horizontal_velocity(player, input_direction, delta)
 		return
 
-	# The motor is the sole owner of persistent velocity. Support only reports a
-	# validated floor plane; the motor decides how that plane constrains velocity.
+	# The motor is the sole owner of persistent velocity. Support reports the
+	# current floor-like contact plane, including steep non-walkable support. The
+	# motor constrains penetration into that plane, while grounded-only behavior
+	# such as static friction still requires support.walkable.
 	_constrain_velocity_to_support(player, support)
 
 	var external_acceleration: Vector3 = Vector3.DOWN * gravity
@@ -91,7 +93,7 @@ func _constrain_velocity_to_support(
 	player: CharacterBody3D,
 	support: PlayerSupport
 ) -> void:
-	if not support.has_support or not support.walkable:
+	if not support.has_support:
 		return
 
 	var normal_velocity: float = player.velocity.dot(support.support_normal)
