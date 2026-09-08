@@ -16,6 +16,8 @@ var walkable: bool = false
 
 var max_walkable_slope: float
 var maximum_support_slope: float
+var minimum_walkable_normal_y: float
+var minimum_support_normal_y: float
 var support_check_distance: float
 var capsule_bottom_offset: float
 var capsule_radius: float
@@ -37,6 +39,8 @@ func _init(
 		0.0,
 		89.0
 	)
+	minimum_walkable_normal_y = cos(deg_to_rad(max_walkable_slope))
+	minimum_support_normal_y = cos(deg_to_rad(maximum_support_slope))
 	support_check_distance = p_support_check_distance
 
 	assert(
@@ -56,7 +60,7 @@ func _init(
 		- capsule_shape.height * 0.5
 	)
 	maximum_slope_contact_allowance = _get_slope_contact_allowance(
-		cos(deg_to_rad(maximum_support_slope))
+		minimum_support_normal_y
 	)
 
 	var probe_radius: float = (
@@ -185,23 +189,11 @@ func _prepare_ray_query(
 
 
 func is_support_surface(normal: Vector3) -> bool:
-	var minimum_normal_y: float = cos(
-		deg_to_rad(maximum_support_slope)
-	)
-	return normal.y >= minimum_normal_y - 0.00001
+	return normal.y >= minimum_support_normal_y - 0.00001
 
 
 func is_walkable_surface(normal: Vector3) -> bool:
-	var minimum_normal_y: float = cos(
-		deg_to_rad(
-			max_walkable_slope
-		)
-	)
-
-	return (
-		normal.y
-		>= minimum_normal_y - 0.00001
-	)
+	return normal.y >= minimum_walkable_normal_y - 0.00001
 
 
 func is_grounded() -> bool:
