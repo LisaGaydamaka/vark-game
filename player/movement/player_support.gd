@@ -5,6 +5,7 @@ extends RefCounted
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const PROBE_START_MARGIN: float = 0.01
 const FOOT_PROBE_RADIUS_RATIO: float = 0.55
+const MINIMUM_NORMAL_Y: float = 0.0001
 
 
 var has_support: bool = false
@@ -15,6 +16,8 @@ var walkable: bool = false
 var max_walkable_slope: float
 var support_check_distance: float
 var capsule_bottom_offset: float
+var capsule_radius: float
+var maximum_slope_contact_allowance: float
 var probe_offsets: Array[Vector3] = []
 
 var ray_query: PhysicsRayQueryParameters3D = null
@@ -40,13 +43,17 @@ func _init(
 	)
 
 	var capsule_shape := shape as CapsuleShape3D
+	capsule_radius = capsule_shape.radius
 	capsule_bottom_offset = (
 		collision_shape.position.y
 		- capsule_shape.height * 0.5
 	)
+	maximum_slope_contact_allowance = _get_slope_contact_allowance(
+		cos(deg_to_rad(clampf(max_walkable_slope, 0.0, 89.9)))
+	)
 
 	var probe_radius: float = (
-		capsule_shape.radius
+		capsule_radius
 		* FOOT_PROBE_RADIUS_RATIO
 	)
 	probe_offsets = [
@@ -64,9 +71,11 @@ func update(player: CharacterBody3D) -> void:
 	support_point = player.global_position
 	walkable = false
 
-	# Support is a floor sensor, not capsule collision recovery. Vertical foot
-	# probes sample the actual world surface underneath the capsule footprint, so
-	# a rounded capsule touching a stair edge cannot manufacture a fake slope.
+	# A capsule can be touching a slope while its lowest vertical point is still
+	# above the supporting plane. Rays search deep enough for the steepest
+	# walkable slope, then each hit is validated against the allowance implied by
+	# its own normal. Flat floors therefore keep the original support distance and
+	# do not become sticky across ledges or stair drops.
 	var capsule_bottom_y: float = (
 		player.global_position.y
 		+ capsule_bottom_offset
@@ -74,12 +83,16 @@ func update(player: CharacterBody3D) -> void:
 	var best_gap: float = INF
 	var best_point: Vector3 = Vector3.ZERO
 	var best_normal: Vector3 = Vector3.UP
+	var maximum_probe_distance: float = (
+		support_check_distance
+		+ maximum_slope_contact_allowance
+	)
 
 	for offset: Vector3 in probe_offsets:
 		var ray_from: Vector3 = player.global_position + offset
 		ray_from.y = capsule_bottom_y + PROBE_START_MARGIN
 		var ray_to: Vector3 = ray_from
-		ray_to.y = capsule_bottom_y - support_check_distance
+		ray_to.y = capsule_bottom_y - maximum_probe_distance
 
 		var query: PhysicsRayQueryParameters3D = _prepare_ray_query(
 			player,
@@ -105,7 +118,13 @@ func update(player: CharacterBody3D) -> void:
 			continue
 
 		var point: Vector3 = point_value
-		var gap: float = maxf(0.0, ray_from.y - point.y)
+		var gap: float = maxf(0.0, capsule_bottom_y - point.y)
+		var allowed_gap: float = (
+			support_check_distance
+			+ _get_slope_contact_allowance(normal.y)
+		)
+		if gap > allowed_gap + 0.00001:
+			continue
 		if gap >= best_gap:
 			continue
 
@@ -120,6 +139,11 @@ func update(player: CharacterBody3D) -> void:
 	walkable = true
 	support_point = best_point
 	support_normal = best_normal
+
+
+func _get_slope_contact_allowance(normal_y: float) -> float:
+	var safe_normal_y: float = clampf(normal_y, MINIMUM_NORMAL_Y, 1.0)
+	return capsule_radius * (1.0 / safe_normal_y - 1.0)
 
 
 func _prepare_ray_query(
