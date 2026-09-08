@@ -5,9 +5,11 @@ extends RefCounted
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
-const MIN_HORIZONTAL_CONTACT_COMPONENT: float = 0.05
+const MIN_RISER_HORIZONTAL_COMPONENT: float = 0.05
 const MIN_START_ALIGNMENT: float = 0.25
 const MIN_CONTINUE_ALIGNMENT: float = 0.05
+const RISER_PROBE_HEIGHT_MARGIN_MULTIPLIER: float = 4.0
+const RISER_PROBE_FORWARD_MARGIN_MULTIPLIER: float = 4.0
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.05
 const TOP_PROBE_VERTICAL_MARGIN_RADIUS_RATIO: float = 0.1
 const CROSSING_CLEARANCE_MARGIN_MULTIPLIER: float = 4.0
@@ -26,6 +28,9 @@ var step_acceleration: float
 var max_step_speed: float
 
 var capsule_bottom_offset: float
+var capsule_radius: float
+var riser_probe_height: float
+var riser_probe_distance: float
 var top_probe_inset: float
 var top_probe_vertical_margin: float
 var crossing_clearance_margin: float
@@ -70,9 +75,16 @@ func _init(
 	)
 
 	var capsule_shape := shape as CapsuleShape3D
-	var capsule_radius: float = capsule_shape.radius
+	capsule_radius = capsule_shape.radius
 	var capsule_height: float = capsule_shape.height
 	capsule_bottom_offset = collision_shape.position.y - capsule_height * 0.5
+	riser_probe_height = (
+		PROBE_SAFE_MARGIN * RISER_PROBE_HEIGHT_MARGIN_MULTIPLIER
+	)
+	riser_probe_distance = (
+		capsule_radius
+		+ PROBE_SAFE_MARGIN * RISER_PROBE_FORWARD_MARGIN_MULTIPLIER
+	)
 	top_probe_inset = maxf(
 		PROBE_SAFE_MARGIN * 4.0,
 		capsule_radius * TOP_PROBE_INSET_RADIUS_RATIO
@@ -223,30 +235,35 @@ func build_candidate_from_contact(
 	collision: KinematicCollision3D,
 	collision_index: int
 ) -> StepCandidate:
-	var contact_normal: Vector3 = collision.get_normal(collision_index)
-	if contact_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		return null
-	contact_normal = contact_normal.normalized()
-
-	var horizontal_normal := Vector3(
-		contact_normal.x,
-		0.0,
-		contact_normal.z
+	# The capsule contact is only evidence that locomotion was blocked. It is not
+	# used as the stair face because the rounded capsule can report a diagonal
+	# normal on both real risers and ordinary ramps. Prove a separate low blocker.
+	var expected_collider_rid: RID = collision.get_collider_rid(collision_index)
+	var riser_hit: Dictionary = find_riser(
+		player,
+		support,
+		approach_direction,
+		expected_collider_rid
 	)
-	if horizontal_normal.length() < MIN_HORIZONTAL_CONTACT_COMPONENT:
+	if riser_hit.is_empty():
 		return null
 
-	var wall_normal: Vector3 = horizontal_normal.normalized()
+	var riser_point_value: Variant = riser_hit.get("point")
+	var wall_normal_value: Variant = riser_hit.get("wall_normal")
+	if not (riser_point_value is Vector3) or not (wall_normal_value is Vector3):
+		return null
+
+	var riser_point: Vector3 = riser_point_value
+	var wall_normal: Vector3 = wall_normal_value
 	var approach_alignment: float = approach_direction.dot(-wall_normal)
 	if approach_alignment < MIN_START_ALIGNMENT:
 		return null
 
-	var contact_point: Vector3 = collision.get_position(collision_index)
 	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
 	var top_hit: Dictionary = find_top(
 		player,
 		support,
-		contact_point,
+		riser_point,
 		wall_normal,
 		capsule_bottom_y
 	)
@@ -265,8 +282,10 @@ func build_candidate_from_contact(
 	if intersection_sine_squared <= PLANE_INTERSECTION_MIN_SINE_SQUARED:
 		return null
 
+	# Reconstruct the actual riser/tread edge from their two planes. The riser
+	# point now comes from the dedicated blocker probe, not the rounded capsule.
 	var wall_plane_distance: float = (
-		(top_point - contact_point).dot(wall_normal)
+		(top_point - riser_point).dot(wall_normal)
 	)
 	var edge_point: Vector3 = (
 		top_point
@@ -297,14 +316,80 @@ func build_candidate_from_contact(
 	return candidate
 
 
+func find_riser(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	approach_direction: Vector3,
+	expected_collider_rid: RID
+) -> Dictionary:
+	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
+	var ray_from: Vector3 = player.global_position
+	ray_from.y = capsule_bottom_y + riser_probe_height
+	var ray_to: Vector3 = (
+		ray_from + approach_direction * riser_probe_distance
+	)
+
+	var query: PhysicsRayQueryParameters3D = prepare_ray_query(
+		player,
+		ray_from,
+		ray_to
+	)
+	var hit: Dictionary = (
+		player.get_world_3d().direct_space_state.intersect_ray(query)
+	)
+	if hit.is_empty():
+		return {}
+
+	var position_value: Variant = hit.get("position")
+	var normal_value: Variant = hit.get("normal")
+	if not (position_value is Vector3) or not (normal_value is Vector3):
+		return {}
+
+	var hit_rid_value: Variant = hit.get("rid")
+	if expected_collider_rid.is_valid() and hit_rid_value is RID:
+		var hit_rid: RID = hit_rid_value
+		if hit_rid.is_valid() and hit_rid != expected_collider_rid:
+			return {}
+
+	var riser_normal: Vector3 = normal_value
+	if riser_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return {}
+	riser_normal = riser_normal.normalized()
+
+	# A walkable face is a ramp/floor, not a stair riser. This is the fundamental
+	# distinction that the rounded capsule contact could not provide reliably.
+	if support.is_walkable_surface(riser_normal):
+		return {}
+
+	var horizontal_normal := Vector3(
+		riser_normal.x,
+		0.0,
+		riser_normal.z
+	)
+	if horizontal_normal.length() < MIN_RISER_HORIZONTAL_COMPONENT:
+		return {}
+
+	var wall_normal: Vector3 = horizontal_normal.normalized()
+	if approach_direction.dot(-wall_normal) < MIN_START_ALIGNMENT:
+		return {}
+
+	return {
+		"point": position_value,
+		"normal": riser_normal,
+		"wall_normal": wall_normal,
+	}
+
+
 func find_top(
 	player: CharacterBody3D,
 	support: PlayerSupport,
-	contact_point: Vector3,
+	riser_point: Vector3,
 	wall_normal: Vector3,
 	capsule_bottom_y: float
 ) -> Dictionary:
-	var probe_center: Vector3 = contact_point - wall_normal * top_probe_inset
+	# Probe behind a proven blocking riser. A continuous ramp cannot reach this
+	# stage because its low face is walkable and is rejected by find_riser().
+	var probe_center: Vector3 = riser_point - wall_normal * top_probe_inset
 	var ray_from: Vector3 = probe_center
 	ray_from.y = (
 		capsule_bottom_y + max_step_height + top_probe_vertical_margin
