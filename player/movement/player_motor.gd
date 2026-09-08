@@ -48,6 +48,7 @@ func update(
 	if use_air_control:
 		player.velocity.y -= gravity * delta
 		apply_air_horizontal_velocity(player, input_direction, delta)
+		constrain_horizontal_speed(player, ground_target_speed)
 		return
 
 	# The motor is the sole owner of persistent velocity. Support reports the
@@ -87,6 +88,7 @@ func update(
 		apply_kinetic_friction(player, support, delta)
 
 	_constrain_velocity_to_support(player, support)
+	constrain_horizontal_speed(player, ground_target_speed)
 
 
 func _constrain_velocity_to_support(
@@ -99,6 +101,25 @@ func _constrain_velocity_to_support(
 	var normal_velocity: float = player.velocity.dot(support.support_normal)
 	if normal_velocity < 0.0:
 		player.velocity -= support.support_normal * normal_velocity
+
+
+func constrain_horizontal_speed(
+	player: CharacterBody3D,
+	target_speed: float
+) -> void:
+	var horizontal_velocity := Vector3(
+		player.velocity.x,
+		0.0,
+		player.velocity.z
+	)
+	var speed_limit: float = maxf(target_speed, 0.0)
+	var horizontal_speed: float = horizontal_velocity.length()
+	if horizontal_speed <= speed_limit or horizontal_speed <= 0.000001:
+		return
+
+	horizontal_velocity = horizontal_velocity.normalized() * speed_limit
+	player.velocity.x = horizontal_velocity.x
+	player.velocity.z = horizontal_velocity.z
 
 
 func apply_jump(
