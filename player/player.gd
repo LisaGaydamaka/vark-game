@@ -68,6 +68,11 @@ extends CharacterBody3D
 @export var mouse_sensitivity: float = 0.007
 
 
+@export_category("Debug")
+@export var slope_debug: bool = true
+@export var slope_debug_interval: float = 0.1
+
+
 var player_input: PlayerInput
 var player_look: PlayerLook
 var support: PlayerSupport
@@ -83,6 +88,7 @@ var ledge_controller: PlayerLedgeController
 
 var step_debug_speed_elapsed: float = 0.0
 var step_debug_speed_was_active: bool = false
+var slope_debug_elapsed: float = 0.0
 
 
 func _ready() -> void:
@@ -206,6 +212,7 @@ func _update_normal_movement(
 	delta: float
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
+	var position_before_update: Vector3 = global_position
 
 	# Step-up owns persistent Y while active. Clear that temporary vertical state
 	# before cancelling so Space hands control back to normal jump/mantle physics
@@ -218,6 +225,11 @@ func _update_normal_movement(
 	# never mutates velocity or interprets rounded capsule edge contacts as slopes.
 	support.update(self)
 	var grounded: bool = support.is_grounded()
+	var support_before_move: bool = support.has_support
+	var walkable_before_move: bool = support.walkable
+	var support_normal_before_move: Vector3 = support.support_normal
+	var support_point_before_move: Vector3 = support.support_point
+	var velocity_before_motor: Vector3 = velocity
 	var view_forward: Vector3 = -head.global_transform.basis.z
 
 	ledge_controller.update_transition_guards()
@@ -250,6 +262,7 @@ func _update_normal_movement(
 		use_air_control,
 		delta
 	)
+	var velocity_after_motor: Vector3 = velocity
 
 	if jump_accepted_before_move:
 		motor.apply_jump(self, jump_height)
@@ -291,11 +304,13 @@ func _update_normal_movement(
 		0.0,
 		velocity.z
 	)
+	var position_before_move: Vector3 = global_position
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		delta,
 		step_assist_velocity
 	)
+	var position_after_move: Vector3 = global_position
 
 	if not collisions.is_empty() and not grounded:
 		ledge_detector.update(
@@ -358,10 +373,89 @@ func _update_normal_movement(
 			step.constrain_persistent_vertical_velocity(self)
 
 	support.update(self)
+	_update_slope_debug(
+		input_direction,
+		position_before_update,
+		position_before_move,
+		position_after_move,
+		support_before_move,
+		walkable_before_move,
+		support_normal_before_move,
+		support_point_before_move,
+		velocity_before_motor,
+		velocity_after_motor,
+		collisions,
+		delta
+	)
 	_update_step_speed_debug(
 		horizontal_velocity_before_move,
 		step_assist_velocity,
 		delta
+	)
+
+
+func _update_slope_debug(
+	input_direction: Vector3,
+	position_before_update: Vector3,
+	position_before_move: Vector3,
+	position_after_move: Vector3,
+	support_before_move: bool,
+	walkable_before_move: bool,
+	support_normal_before_move: Vector3,
+	support_point_before_move: Vector3,
+	velocity_before_motor: Vector3,
+	velocity_after_motor: Vector3,
+	collisions: Array[KinematicCollision3D],
+	delta: float
+) -> void:
+	if not slope_debug or not input_direction.is_zero_approx():
+		slope_debug_elapsed = 0.0
+		return
+
+	slope_debug_elapsed += delta
+	var interval: float = maxf(slope_debug_interval, 0.0)
+	if interval > 0.0 and slope_debug_elapsed < interval:
+		return
+	slope_debug_elapsed = 0.0
+
+	var pre_slope_angle: float = rad_to_deg(
+		acos(clampf(support_normal_before_move.dot(Vector3.UP), -1.0, 1.0))
+	)
+	var post_slope_angle: float = rad_to_deg(
+		acos(clampf(support.support_normal.dot(Vector3.UP), -1.0, 1.0))
+	)
+	var move_displacement: Vector3 = position_after_move - position_before_move
+	var total_displacement: Vector3 = global_position - position_before_update
+	var safe_delta: float = maxf(delta, 0.000001)
+	var actual_move_speed: float = move_displacement.length() / safe_delta
+	var actual_horizontal_speed: float = Vector3(
+		move_displacement.x,
+		0.0,
+		move_displacement.z
+	).length() / safe_delta
+	var collision_normals: Array[Vector3] = []
+	for collision: KinematicCollision3D in collisions:
+		collision_normals.append(collision.get_normal())
+
+	print(
+		"[SlopeDebug] pre_support=", support_before_move,
+		" pre_walkable=", walkable_before_move,
+		" pre_normal=", support_normal_before_move,
+		" pre_angle=", pre_slope_angle,
+		" pre_point=", support_point_before_move,
+		" post_support=", support.has_support,
+		" post_walkable=", support.walkable,
+		" post_normal=", support.support_normal,
+		" post_angle=", post_slope_angle,
+		" v_before_motor=", velocity_before_motor,
+		" v_after_motor=", velocity_after_motor,
+		" v_after_move=", velocity,
+		" move_delta=", move_displacement,
+		" total_delta=", total_displacement,
+		" actual_speed=", actual_move_speed,
+		" actual_horizontal_speed=", actual_horizontal_speed,
+		" collisions=", collisions.size(),
+		" collision_normals=", collision_normals
 	)
 
 
