@@ -19,7 +19,6 @@ class StepCandidate:
 	var top_point: Vector3 = Vector3.ZERO
 	var top_normal: Vector3 = Vector3.UP
 	var wall_normal: Vector3 = Vector3.ZERO
-	var approach_direction: Vector3 = Vector3.ZERO
 	var step_height: float = 0.0
 	var approach_alignment: float = 0.0
 
@@ -39,6 +38,7 @@ var crossing_clearance_margin: float
 var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
 var active_candidate: StepCandidate = null
+var current_assist_speed: float = 0.0
 
 
 func _init(
@@ -98,11 +98,11 @@ func _init(
 func update_before_move(
 	player: CharacterBody3D,
 	input_direction: Vector3,
-	locomotion_speed_budget: float,
 	delta: float
-) -> bool:
+) -> Vector3:
 	if active_candidate == null:
-		return false
+		current_assist_speed = 0.0
+		return Vector3.ZERO
 
 	var horizontal_input := Vector3(
 		input_direction.x,
@@ -111,147 +111,87 @@ func update_before_move(
 	)
 	var input_strength: float = minf(horizontal_input.length(), 1.0)
 	if input_strength <= sqrt(MOTION_EPSILON_SQUARED):
-		# Releasing WASD immediately returns ownership to normal physics. Step-up
-		# does not restore, clear, or otherwise rewrite velocity on this path.
 		cancel()
-		return false
+		return Vector3.ZERO
 
 	var approach_direction: Vector3 = horizontal_input.normalized()
 	var inward_direction: Vector3 = -active_candidate.wall_normal
 	var approach_alignment: float = approach_direction.dot(inward_direction)
 	if approach_alignment <= MIN_CONTINUE_ALIGNMENT:
 		cancel()
-		return false
+		return Vector3.ZERO
 
-	active_candidate.approach_direction = approach_direction
 	active_candidate.approach_alignment = approach_alignment
 
-	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
-	var remaining_height: float = active_candidate.edge_point.y - capsule_bottom_y
-
-	# Reaching the detected tread height completes the only job step-up owns:
-	# vertical clearance. The normal motor has already run this frame, so release
-	# immediately and leave its X/Z velocity untouched. Waiting for horizontal
-	# edge-plane crossing can deadlock because the old step frame may suppress the
-	# very forward component needed to cross that plane.
+	var remaining_height: float = get_remaining_height(player.global_position)
 	if remaining_height <= PROBE_SAFE_MARGIN:
 		cancel()
-		return false
+		return Vector3.ZERO
 
 	if has_crossed_edge(player.global_position):
-		finish_on_top(player)
 		cancel()
-		return false
+		return Vector3.ZERO
 
 	if remaining_height > max_step_height + crossing_clearance_margin:
 		cancel()
-		return false
+		return Vector3.ZERO
 
-	var traversal_normal: Vector3 = get_traversal_normal(player.global_position)
-	if traversal_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		cancel()
-		return false
-
-	var traversal_tangent: Vector3 = get_traversal_tangent(traversal_normal)
-	if traversal_tangent.length_squared() <= MOTION_EPSILON_SQUARED:
-		cancel()
-		return false
-
-	var alignment_strength: float = clampf(approach_alignment, 0.0, 1.0)
-	var control_strength: float = input_strength * alignment_strength
-
-	# The step's horizontal budget comes from locomotion INTENT, not from current
-	# collision-resolved velocity. A stair riser is expected to remove the actual
-	# inward velocity; using that damaged value here creates a feedback loop that
-	# makes step-up arbitrarily slow no matter how high the step tuning is.
-	var intended_inward_speed: float = (
-		maxf(0.0, locomotion_speed_budget)
-		* input_strength
-		* alignment_strength
+	var control_strength: float = (
+		input_strength
+		* clampf(approach_alignment, 0.0, 1.0)
+	)
+	var target_assist_speed: float = (
+		max_step_speed
+		* control_strength
 	)
 
-	# Preserve only the actual along-edge component. Step-up may redirect the
-	# intended into-riser movement vertically, but it does not manufacture lateral
-	# velocity parallel to the stair edge.
-	var horizontal_velocity := Vector3(
-		player.velocity.x,
-		0.0,
-		player.velocity.z
-	)
-	var ledge_axis: Vector3 = get_horizontal_ledge_axis()
-	var lateral_velocity := Vector3.ZERO
-	if ledge_axis.length_squared() > MOTION_EPSILON_SQUARED:
-		lateral_velocity = (
-			ledge_axis
-			* horizontal_velocity.dot(ledge_axis)
-		)
-
-	var configured_path_speed: float = max_step_speed * control_strength
-	var maximum_path_speed: float = configured_path_speed
-	var tangent_horizontal := Vector3(
-		traversal_tangent.x,
-		0.0,
-		traversal_tangent.z
-	)
-	var tangent_horizontal_factor: float = tangent_horizontal.length()
-
-	# Near the vertical riser the tangent is almost purely upward, so the full
-	# configured step speed is available. As it rotates toward horizontal, cap the
-	# horizontal component against the MOTOR INTENT budget. This prevents a fast
-	# climb from becoming a forward launch without letting the collision itself
-	# throttle vertical clearance.
-	if tangent_horizontal_factor > sqrt(MOTION_EPSILON_SQUARED):
-		maximum_path_speed = minf(
-			maximum_path_speed,
-			intended_inward_speed / tangent_horizontal_factor
-		)
-
-	# Even extreme tuning must not move the capsule bottom above the detected top
-	# in one physics frame. This bounds vertical clearance without moving or
-	# snapping the body directly.
-	if (
-		delta > sqrt(MOTION_EPSILON_SQUARED)
-		and traversal_tangent.y > sqrt(MOTION_EPSILON_SQUARED)
-	):
-		var maximum_vertical_speed: float = (
+	# Step-up owns only a disposable upward correction. Normal WASD, gravity,
+	# jumping, and collision response remain in player.velocity. The assist is
+	# added only to this frame's displacement by PlayerMovement and never stored
+	# as persistent momentum.
+	if delta > sqrt(MOTION_EPSILON_SQUARED):
+		var maximum_total_upward_speed: float = (
 			maxf(0.0, remaining_height + PROBE_SAFE_MARGIN)
 			/ delta
 		)
-		maximum_path_speed = minf(
-			maximum_path_speed,
-			maximum_vertical_speed / traversal_tangent.y
+
+		# If normal physics already has upward velocity, step-up supplies only the
+		# additional amount needed. If normal physics is falling, assist may first
+		# cancel that downward motion and then provide the requested climb speed.
+		var maximum_assist_speed: float = maxf(
+			0.0,
+			maximum_total_upward_speed - player.velocity.y
+		)
+		target_assist_speed = minf(
+			target_assist_speed,
+			maximum_assist_speed
 		)
 
-	maximum_path_speed = maxf(0.0, maximum_path_speed)
-	var current_path_speed: float = maxf(
-		0.0,
-		player.velocity.dot(traversal_tangent)
-	)
-	var controlled_path_speed: float = move_toward(
-		current_path_speed,
-		maximum_path_speed,
+	current_assist_speed = move_toward(
+		current_assist_speed,
+		target_assist_speed,
 		step_acceleration * control_strength * delta
 	)
 
-	# The cap is a hard invariant. If the tangent rotates sharply between frames,
-	# stale vertical path speed cannot become excess horizontal speed.
-	controlled_path_speed = minf(
-		maxf(0.0, controlled_path_speed),
-		maximum_path_speed
+	# The remaining-height limit is hard. A high previous assist value cannot
+	# survive into a frame where less vertical clearance remains.
+	current_assist_speed = minf(
+		maxf(0.0, current_assist_speed),
+		maxf(0.0, target_assist_speed)
 	)
 
-	player.velocity = (
-		lateral_velocity
-		+ traversal_tangent * controlled_path_speed
-	)
-	return true
+	return Vector3.UP * current_assist_speed
 
 
 func update_after_move(player: CharacterBody3D) -> void:
 	if active_candidate == null:
 		return
+
+	if get_remaining_height(player.global_position) <= PROBE_SAFE_MARGIN:
+		cancel()
+		return
+
 	if has_crossed_edge(player.global_position):
-		finish_on_top(player)
 		cancel()
 
 
@@ -297,6 +237,7 @@ func try_start_from_contacts(
 		return false
 
 	active_candidate = best_candidate
+	current_assist_speed = 0.0
 	return true
 
 
@@ -377,7 +318,6 @@ func build_candidate_from_contact(
 	candidate.top_point = top_point
 	candidate.top_normal = top_normal
 	candidate.wall_normal = wall_normal
-	candidate.approach_direction = approach_direction
 	candidate.step_height = step_height
 	candidate.approach_alignment = approach_alignment
 
@@ -491,122 +431,6 @@ func has_crossing_clearance(
 	)
 
 
-func get_traversal_normal(position: Vector3) -> Vector3:
-	if active_candidate == null:
-		return Vector3.ZERO
-
-	var bottom_cap_center: Vector3 = get_bottom_cap_center_position(position)
-	var edge_axis: Vector3 = get_edge_axis()
-	if edge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
-		return active_candidate.wall_normal
-
-	var local_edge_point: Vector3 = (
-		active_candidate.edge_point
-		+ edge_axis
-		* (bottom_cap_center - active_candidate.edge_point).dot(edge_axis)
-	)
-	var radial: Vector3 = bottom_cap_center - local_edge_point
-	if radial.length_squared() <= MOTION_EPSILON_SQUARED:
-		return active_candidate.wall_normal
-
-	# Below the edge the closest feature is the vertical riser. Once the lower
-	# cap center reaches the top side, the closest feature becomes the edge and
-	# the normal rotates around it toward the top surface normal.
-	var top_side_distance: float = radial.dot(active_candidate.top_normal)
-	if top_side_distance < 0.0:
-		return active_candidate.wall_normal
-
-	return radial.normalized()
-
-
-func get_traversal_tangent(
-	traversal_normal: Vector3
-) -> Vector3:
-	if active_candidate == null:
-		return Vector3.ZERO
-	if traversal_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-
-	var ledge_axis: Vector3 = get_horizontal_ledge_axis()
-	if ledge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-
-	var plane_normal: Vector3 = (
-		traversal_normal
-		- ledge_axis * traversal_normal.dot(ledge_axis)
-	)
-	if plane_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-	plane_normal = plane_normal.normalized()
-
-	var tangent: Vector3 = plane_normal.cross(ledge_axis)
-	if tangent.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-	tangent = tangent.normalized()
-
-	var inward_direction: Vector3 = -active_candidate.wall_normal
-	var orientation_score: float = (
-		tangent.dot(inward_direction)
-		+ tangent.dot(Vector3.UP)
-	)
-	if orientation_score < 0.0:
-		tangent = -tangent
-	return tangent
-
-
-func get_edge_axis() -> Vector3:
-	if active_candidate == null:
-		return Vector3.ZERO
-	var edge_axis: Vector3 = (
-		active_candidate.top_normal.cross(active_candidate.wall_normal)
-	)
-	if edge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-	return edge_axis.normalized()
-
-
-func get_horizontal_ledge_axis() -> Vector3:
-	if active_candidate == null:
-		return Vector3.ZERO
-	var inward_direction: Vector3 = -active_candidate.wall_normal
-	var ledge_axis: Vector3 = inward_direction.cross(Vector3.UP)
-	if ledge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-	return ledge_axis.normalized()
-
-
-func finish_on_top(player: CharacterBody3D) -> void:
-	if active_candidate == null:
-		return
-
-	# Completion must never convert step-generated vertical speed into horizontal
-	# speed. Preserve X/Z exactly as produced by the normal locomotion budget and
-	# only choose the Y component needed to follow the detected top plane.
-	var horizontal_velocity := Vector3(
-		player.velocity.x,
-		0.0,
-		player.velocity.z
-	)
-	var top_normal: Vector3 = active_candidate.top_normal
-	if top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		player.velocity = horizontal_velocity
-		return
-	top_normal = top_normal.normalized()
-
-	var surface_follow_y: float = 0.0
-	if absf(top_normal.y) > sqrt(MOTION_EPSILON_SQUARED):
-		surface_follow_y = -(
-			horizontal_velocity.x * top_normal.x
-			+ horizontal_velocity.z * top_normal.z
-		) / top_normal.y
-
-	player.velocity = Vector3(
-		horizontal_velocity.x,
-		surface_follow_y,
-		horizontal_velocity.z
-	)
-
-
 func has_crossed_edge(position: Vector3) -> bool:
 	if active_candidate == null:
 		return false
@@ -618,16 +442,18 @@ func has_crossed_edge(position: Vector3) -> bool:
 	)
 
 
-func get_bottom_cap_center_position(position: Vector3) -> Vector3:
-	return (
-		position
-		+ Vector3.UP
-		* (capsule_bottom_offset + capsule_radius)
-	)
+func get_remaining_height(position: Vector3) -> float:
+	if active_candidate == null:
+		return 0.0
+	return active_candidate.edge_point.y - get_capsule_bottom_y(position)
 
 
 func get_capsule_bottom_y(position: Vector3) -> float:
 	return position.y + capsule_bottom_offset
+
+
+func get_assist_velocity() -> Vector3:
+	return Vector3.UP * current_assist_speed
 
 
 func is_active() -> bool:
@@ -636,3 +462,4 @@ func is_active() -> bool:
 
 func cancel() -> void:
 	active_candidate = null
+	current_assist_speed = 0.0
