@@ -270,8 +270,7 @@ func _try_start_free_mantle(
 
 	ledge_detector.clear_candidate()
 	look.enter_ledge_view(candidate.wall_normal)
-	state = State.MANTLING
-	body.velocity = Vector3.ZERO
+	_enter_active_state(State.MANTLING)
 	return true
 
 
@@ -338,8 +337,7 @@ func _finish_ledge_catch_if_ready() -> void:
 		active_catch_candidate = null
 		if candidate != null:
 			ledge_hang.start(candidate)
-			state = State.HANGING
-			body.velocity = Vector3.ZERO
+			_enter_active_state(State.HANGING)
 			return
 
 	if ledge_catch.has_failed():
@@ -347,14 +345,12 @@ func _finish_ledge_catch_if_ready() -> void:
 		if failed_candidate != null:
 			_arm_failed_catch_regrab_candidate(failed_candidate)
 		active_catch_candidate = null
-		look.exit_ledge_view()
-		state = State.NONE
+		_exit_traversal_state()
 		return
 
 	if not ledge_catch.is_active():
 		active_catch_candidate = null
-		look.exit_ledge_view()
-		state = State.NONE
+		_exit_traversal_state()
 
 
 func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
@@ -383,8 +379,7 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 		)
 		if mantle_candidate != null and ledge_mantle.try_start(body, mantle_candidate):
 			ledge_hang.cancel()
-			state = State.MANTLING
-			body.velocity = Vector3.ZERO
+			_enter_active_state(State.MANTLING)
 			return
 		_perform_no_input_hang_jump(mantle_source, delta)
 		return
@@ -457,8 +452,7 @@ func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float
 			return
 		ledge_corner.cancel()
 		ledge_hang.start(completed_candidate)
-		body.velocity = Vector3.ZERO
-		state = State.HANGING
+		_enter_active_state(State.HANGING)
 		look.update_ledge_view_center(completed_candidate.wall_normal)
 
 
@@ -483,8 +477,7 @@ func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float
 	body.velocity = Vector3.ZERO
 	support.update(body)
 	ledge_mantle.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
+	_exit_traversal_state()
 	body.velocity = Vector3.ZERO
 
 
@@ -516,12 +509,21 @@ func _release_corner_to_air(delta: float) -> void:
 
 
 func _finish_release_to_air(delta: float, apply_fall_velocity: bool) -> void:
-	look.exit_ledge_view()
-	state = State.NONE
+	_exit_traversal_state()
 	if apply_fall_velocity:
 		body.velocity = Vector3.DOWN * gravity * delta
 	movement.move(body, delta)
 	support.update(body)
+
+
+func _enter_active_state(next_state: int) -> void:
+	state = next_state
+	body.velocity = Vector3.ZERO
+
+
+func _exit_traversal_state() -> void:
+	look.exit_ledge_view()
+	state = State.NONE
 
 
 func _arm_jump_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
