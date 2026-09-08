@@ -276,10 +276,20 @@ func _update_normal_movement(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
+	# Keep the normal motor's horizontal speed budget from immediately before the
+	# collision. If this contact becomes a valid step, only the component that the
+	# step riser removed will be restored after candidate creation.
+	var horizontal_velocity_before_move := Vector3(
+		velocity.x,
+		0.0,
+		velocity.z
+	)
+	var step_wall_normal: Vector3 = _get_active_step_wall_normal()
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		delta,
-		step_assist_velocity
+		step_assist_velocity,
+		step_wall_normal
 	)
 
 	if not collisions.is_empty() and not grounded:
@@ -332,11 +342,59 @@ func _update_normal_movement(
 		not step.is_active()
 		and not player_input.is_jump_pressed()
 	):
-		step.try_start_from_contacts(
+		if step.try_start_from_contacts(
 			self,
 			support,
 			input_direction,
 			collisions
-		)
+		):
+			_restore_step_approach_velocity(horizontal_velocity_before_move)
 
 	support.update(self)
+
+
+func _get_active_step_wall_normal() -> Vector3:
+	if step == null or not step.is_active() or step.active_candidate == null:
+		return Vector3.ZERO
+	return step.active_candidate.wall_normal
+
+
+func _restore_step_approach_velocity(
+	previous_horizontal_velocity: Vector3
+) -> void:
+	var wall_normal: Vector3 = _get_active_step_wall_normal()
+	var horizontal_wall_normal := Vector3(
+		wall_normal.x,
+		0.0,
+		wall_normal.z
+	)
+	if horizontal_wall_normal.length_squared() <= 0.000001:
+		return
+	horizontal_wall_normal = horizontal_wall_normal.normalized()
+
+	var previous_into_step: float = previous_horizontal_velocity.dot(
+		horizontal_wall_normal
+	)
+	if previous_into_step >= 0.0:
+		return
+
+	var current_horizontal_velocity := Vector3(
+		velocity.x,
+		0.0,
+		velocity.z
+	)
+	var current_into_step: float = current_horizontal_velocity.dot(
+		horizontal_wall_normal
+	)
+
+	# Restore only velocity that this step face removed. Lateral collision response
+	# and any velocity changes caused by unrelated geometry remain untouched.
+	if current_into_step <= previous_into_step:
+		return
+
+	current_horizontal_velocity += (
+		horizontal_wall_normal
+		* (previous_into_step - current_into_step)
+	)
+	velocity.x = current_horizontal_velocity.x
+	velocity.z = current_horizontal_velocity.z
