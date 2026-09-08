@@ -293,9 +293,13 @@ func _update_normal_movement(
 			contact_intent_direction = horizontal_velocity.normalized()
 
 	var horizontal_velocity_before_move: Vector3 = motor.get_horizontal_velocity()
-	var floor_normal: Vector3 = Vector3.ZERO
-	if support.has_support and support.walkable:
-		floor_normal = support.support_normal
+	# Only an established floor or a predictive center-foot floor transition may
+	# authorize surface-following Y. Raw collision normals never authorize climbing.
+	var floor_normal: Vector3 = support.get_motion_floor_normal(
+		self,
+		horizontal_velocity_before_move,
+		delta
+	)
 
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
