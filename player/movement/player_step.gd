@@ -11,7 +11,6 @@ const MIN_CONTINUE_ALIGNMENT: float = 0.05
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.05
 const TOP_PROBE_VERTICAL_MARGIN_RADIUS_RATIO: float = 0.1
 const CROSSING_CLEARANCE_MARGIN_MULTIPLIER: float = 4.0
-const EDGE_ARC_MARGIN_RADIUS_RATIO: float = 0.05
 const PLANE_INTERSECTION_MIN_SINE_SQUARED: float = 0.00000001
 
 
@@ -36,7 +35,6 @@ var capsule_bottom_offset: float
 var top_probe_inset: float
 var top_probe_vertical_margin: float
 var crossing_clearance_margin: float
-var edge_arc_margin: float
 
 var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
@@ -94,10 +92,6 @@ func _init(
 	crossing_clearance_margin = (
 		PROBE_SAFE_MARGIN
 		* CROSSING_CLEARANCE_MARGIN_MULTIPLIER
-	)
-	edge_arc_margin = maxf(
-		PROBE_SAFE_MARGIN * 2.0,
-		capsule_radius * EDGE_ARC_MARGIN_RADIUS_RATIO
 	)
 
 
@@ -515,12 +509,12 @@ func get_traversal_normal(position: Vector3) -> Vector3:
 
 	# Below the stair edge the capsule is constrained by the vertical riser, so
 	# its traversal tangent is straight up. Once the lower cap center reaches the
-	# edge level, the closest convex feature becomes the edge itself and the
-	# radial normal rotates continuously toward the top normal.
+	# top side of the edge, the closest convex feature becomes the edge itself and
+	# the radial normal rotates continuously toward the top normal.
 	var top_side_distance: float = radial.dot(
 		active_candidate.top_normal
 	)
-	if top_side_distance < -edge_arc_margin:
+	if top_side_distance < 0.0:
 		return active_candidate.wall_normal
 
 	return radial.normalized()
