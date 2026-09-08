@@ -11,6 +11,7 @@ const MIN_CONTINUE_ALIGNMENT: float = 0.05
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.05
 const TOP_PROBE_VERTICAL_MARGIN_RADIUS_RATIO: float = 0.1
 const CROSSING_CLEARANCE_MARGIN_MULTIPLIER: float = 4.0
+const EDGE_ARC_MARGIN_RADIUS_RATIO: float = 0.05
 const PLANE_INTERSECTION_MIN_SINE_SQUARED: float = 0.00000001
 
 
@@ -19,13 +20,14 @@ class StepCandidate:
 	var top_point: Vector3 = Vector3.ZERO
 	var top_normal: Vector3 = Vector3.UP
 	var wall_normal: Vector3 = Vector3.ZERO
+	var approach_direction: Vector3 = Vector3.ZERO
 	var step_height: float = 0.0
 	var approach_alignment: float = 0.0
 
 
 var max_step_height: float
-var upward_acceleration: float
-var max_upward_speed: float
+var step_acceleration: float
+var max_step_speed: float
 var collision_shape: CollisionShape3D
 
 var capsule_radius: float
@@ -34,6 +36,7 @@ var capsule_bottom_offset: float
 var top_probe_inset: float
 var top_probe_vertical_margin: float
 var crossing_clearance_margin: float
+var edge_arc_margin: float
 
 var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
@@ -42,13 +45,13 @@ var active_candidate: StepCandidate = null
 
 func _init(
 	p_max_step_height: float,
-	p_upward_acceleration: float,
-	p_max_upward_speed: float,
+	p_step_acceleration: float,
+	p_max_step_speed: float,
 	p_collision_shape: CollisionShape3D
 ) -> void:
 	max_step_height = p_max_step_height
-	upward_acceleration = p_upward_acceleration
-	max_upward_speed = p_max_upward_speed
+	step_acceleration = p_step_acceleration
+	max_step_speed = p_max_step_speed
 	collision_shape = p_collision_shape
 
 	assert(
@@ -56,12 +59,12 @@ func _init(
 		"PlayerStep requires max_step_height to be non-negative."
 	)
 	assert(
-		upward_acceleration >= 0.0,
-		"PlayerStep requires upward_acceleration to be non-negative."
+		step_acceleration >= 0.0,
+		"PlayerStep requires step_acceleration to be non-negative."
 	)
 	assert(
-		max_upward_speed >= 0.0,
-		"PlayerStep requires max_upward_speed to be non-negative."
+		max_step_speed >= 0.0,
+		"PlayerStep requires max_step_speed to be non-negative."
 	)
 	assert(
 		collision_shape != null,
@@ -92,6 +95,10 @@ func _init(
 		PROBE_SAFE_MARGIN
 		* CROSSING_CLEARANCE_MARGIN_MULTIPLIER
 	)
+	edge_arc_margin = maxf(
+		PROBE_SAFE_MARGIN * 2.0,
+		capsule_radius * EDGE_ARC_MARGIN_RADIUS_RATIO
+	)
 
 
 func update_before_move(
@@ -112,6 +119,8 @@ func update_before_move(
 		1.0
 	)
 	if input_strength <= sqrt(MOTION_EPSILON_SQUARED):
+		# Releasing WASD immediately returns ownership to normal physics. Do not
+		# restore, clear, or otherwise rewrite velocity on this path.
 		cancel()
 		return false
 
@@ -129,7 +138,11 @@ func update_before_move(
 		cancel()
 		return false
 
+	active_candidate.approach_direction = approach_direction
+	active_candidate.approach_alignment = approach_alignment
+
 	if has_crossed_edge(player.global_position):
+		finish_on_top(player)
 		cancel()
 		return false
 
@@ -144,28 +157,55 @@ func update_before_move(
 		cancel()
 		return false
 
-	# The step motor never moves the body directly. It only contributes upward
-	# acceleration while ordinary WASD supplies horizontal motion. The existing
-	# collision solver therefore projects the combined velocity onto the real
-	# capsule/edge tangent, including rounded-bottom contacts.
-	if remaining_height > PROBE_SAFE_MARGIN:
-		var control_strength: float = (
-			input_strength
-			* clampf(approach_alignment, 0.0, 1.0)
-		)
-		var target_upward_speed: float = (
-			max_upward_speed
-			* control_strength
-		)
-		if player.velocity.y < target_upward_speed:
-			player.velocity.y = minf(
-				target_upward_speed,
-				player.velocity.y
-				+ upward_acceleration
-				* control_strength
-				* delta
-			)
+	var traversal_normal: Vector3 = get_traversal_normal(
+		player.global_position
+	)
+	if traversal_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		cancel()
+		return false
 
+	var traversal_tangent: Vector3 = get_traversal_tangent(
+		traversal_normal
+	)
+	if traversal_tangent.length_squared() <= MOTION_EPSILON_SQUARED:
+		cancel()
+		return false
+
+	# Step-up is a contact constraint, not an independent vertical motor. Only
+	# the component pushing into the riser is redirected along the local
+	# wall/edge tangent. On the vertical face that tangent is up; around the
+	# rounded capsule contact it continuously rotates; at the top it is forward.
+	# Consequently the requested vertical velocity naturally reaches zero at
+	# the edge instead of surviving as a ballistic launch.
+	var control_strength: float = (
+		input_strength
+		* clampf(approach_alignment, 0.0, 1.0)
+	)
+	var target_traversal_speed: float = (
+		max_step_speed
+		* control_strength
+	)
+	var current_traversal_speed: float = (
+		player.velocity.dot(traversal_tangent)
+	)
+	var controlled_traversal_speed: float = move_toward(
+		current_traversal_speed,
+		target_traversal_speed,
+		step_acceleration * control_strength * delta
+	)
+
+	var ledge_axis: Vector3 = get_horizontal_ledge_axis()
+	var lateral_velocity := Vector3.ZERO
+	if ledge_axis.length_squared() > MOTION_EPSILON_SQUARED:
+		lateral_velocity = (
+			ledge_axis
+			* player.velocity.dot(ledge_axis)
+		)
+
+	player.velocity = (
+		lateral_velocity
+		+ traversal_tangent * controlled_traversal_speed
+	)
 	return true
 
 
@@ -173,6 +213,11 @@ func update_after_move(player: CharacterBody3D) -> void:
 	if active_candidate == null:
 		return
 	if has_crossed_edge(player.global_position):
+		# Physics frames are discrete, so the centerline can move a few millimeters
+		# past the mathematical crossing. Project the remaining traversal velocity
+		# onto the actual top tangent before releasing the step constraint. This is
+		# the continuous endpoint of the same tangent path, not a position snap.
+		finish_on_top(player)
 		cancel()
 
 
@@ -328,6 +373,7 @@ func build_candidate_from_contact(
 	candidate.top_point = top_point
 	candidate.top_normal = top_normal
 	candidate.wall_normal = wall_normal
+	candidate.approach_direction = approach_direction
 	candidate.step_height = step_height
 	candidate.approach_alignment = approach_alignment
 
@@ -447,6 +493,128 @@ func has_crossing_clearance(
 	)
 
 
+func get_traversal_normal(position: Vector3) -> Vector3:
+	if active_candidate == null:
+		return Vector3.ZERO
+
+	var bottom_cap_center: Vector3 = get_bottom_cap_center_position(
+		position
+	)
+	var edge_axis: Vector3 = get_edge_axis()
+	if edge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return active_candidate.wall_normal
+
+	var local_edge_point: Vector3 = (
+		active_candidate.edge_point
+		+ edge_axis
+		* (bottom_cap_center - active_candidate.edge_point).dot(edge_axis)
+	)
+	var radial: Vector3 = bottom_cap_center - local_edge_point
+	if radial.length_squared() <= MOTION_EPSILON_SQUARED:
+		return active_candidate.wall_normal
+
+	# Below the stair edge the capsule is constrained by the vertical riser, so
+	# its traversal tangent is straight up. Once the lower cap center reaches the
+	# edge level, the closest convex feature becomes the edge itself and the
+	# radial normal rotates continuously toward the top normal.
+	var top_side_distance: float = radial.dot(
+		active_candidate.top_normal
+	)
+	if top_side_distance < -edge_arc_margin:
+		return active_candidate.wall_normal
+
+	return radial.normalized()
+
+
+func get_traversal_tangent(
+	traversal_normal: Vector3
+) -> Vector3:
+	if active_candidate == null:
+		return Vector3.ZERO
+	if traversal_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+
+	var ledge_axis: Vector3 = get_horizontal_ledge_axis()
+	if ledge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+
+	# Remove any along-edge component from the normal so the redirection happens
+	# strictly in the cross-step plane. normal x ledge_axis gives the tangent that
+	# is UP on the riser and INWARD on the top.
+	var plane_normal: Vector3 = (
+		traversal_normal
+		- ledge_axis * traversal_normal.dot(ledge_axis)
+	)
+	if plane_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	plane_normal = plane_normal.normalized()
+
+	var tangent: Vector3 = plane_normal.cross(ledge_axis)
+	if tangent.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	tangent = tangent.normalized()
+
+	var inward_direction: Vector3 = -active_candidate.wall_normal
+	var orientation_score: float = (
+		tangent.dot(inward_direction)
+		+ tangent.dot(Vector3.UP)
+	)
+	if orientation_score < 0.0:
+		tangent = -tangent
+	return tangent
+
+
+func get_edge_axis() -> Vector3:
+	if active_candidate == null:
+		return Vector3.ZERO
+	var edge_axis: Vector3 = (
+		active_candidate.top_normal.cross(
+			active_candidate.wall_normal
+		)
+	)
+	if edge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	return edge_axis.normalized()
+
+
+func get_horizontal_ledge_axis() -> Vector3:
+	if active_candidate == null:
+		return Vector3.ZERO
+	var inward_direction: Vector3 = -active_candidate.wall_normal
+	var ledge_axis: Vector3 = inward_direction.cross(Vector3.UP)
+	if ledge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	return ledge_axis.normalized()
+
+
+func finish_on_top(player: CharacterBody3D) -> void:
+	if active_candidate == null:
+		return
+
+	var top_tangent: Vector3 = get_traversal_tangent(
+		active_candidate.top_normal
+	)
+	if top_tangent.length_squared() <= MOTION_EPSILON_SQUARED:
+		return
+
+	var ledge_axis: Vector3 = get_horizontal_ledge_axis()
+	var lateral_velocity := Vector3.ZERO
+	if ledge_axis.length_squared() > MOTION_EPSILON_SQUARED:
+		lateral_velocity = (
+			ledge_axis
+			* player.velocity.dot(ledge_axis)
+		)
+
+	var traversal_speed: float = maxf(
+		0.0,
+		player.velocity.dot(top_tangent)
+	)
+	player.velocity = (
+		lateral_velocity
+		+ top_tangent * traversal_speed
+	)
+
+
 func has_crossed_edge(position: Vector3) -> bool:
 	if active_candidate == null:
 		return false
@@ -455,6 +623,14 @@ func has_crossed_edge(position: Vector3) -> bool:
 			active_candidate.wall_normal
 		)
 		<= 0.0
+	)
+
+
+func get_bottom_cap_center_position(position: Vector3) -> Vector3:
+	return (
+		position
+		+ Vector3.UP
+		* (capsule_bottom_offset + capsule_radius)
 	)
 
 
