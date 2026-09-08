@@ -46,6 +46,8 @@ extends CharacterBody3D
 @export var step_max_height: float = 0.5
 @export var step_up_acceleration: float = 100.0
 @export var step_up_max_speed: float = 30.0
+@export var step_debug_speed: bool = true
+@export var step_debug_speed_interval: float = 0.25
 
 
 @export_category("Ledge Detection")
@@ -78,6 +80,9 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
+
+var step_debug_speed_elapsed: float = 0.0
+var step_debug_speed_was_active: bool = false
 
 
 func _ready() -> void:
@@ -351,6 +356,11 @@ func _update_normal_movement(
 			_restore_step_approach_velocity(horizontal_velocity_before_move)
 
 	support.update(self)
+	_update_step_speed_debug(
+		horizontal_velocity_before_move,
+		step_assist_velocity,
+		delta
+	)
 
 
 func _get_active_step_wall_normal() -> Vector3:
@@ -398,3 +408,69 @@ func _restore_step_approach_velocity(
 	)
 	velocity.x = current_horizontal_velocity.x
 	velocity.z = current_horizontal_velocity.z
+
+
+func _update_step_speed_debug(
+	horizontal_velocity_before_move: Vector3,
+	step_assist_velocity: Vector3,
+	delta: float
+) -> void:
+	if not step_debug_speed:
+		step_debug_speed_elapsed = 0.0
+		step_debug_speed_was_active = false
+		return
+
+	var active: bool = step.is_active()
+	var horizontal_velocity_after_move := Vector3(
+		velocity.x,
+		0.0,
+		velocity.z
+	)
+	var before_speed: float = horizontal_velocity_before_move.length()
+	var after_speed: float = horizontal_velocity_after_move.length()
+
+	if active and not step_debug_speed_was_active:
+		step_debug_speed_elapsed = 0.0
+		_print_step_speed_debug(
+			"START",
+			before_speed,
+			after_speed,
+			step_assist_velocity.y
+		)
+	elif active:
+		step_debug_speed_elapsed += delta
+		var interval: float = maxf(step_debug_speed_interval, 0.0)
+		if interval <= 0.0 or step_debug_speed_elapsed >= interval:
+			step_debug_speed_elapsed = 0.0
+			_print_step_speed_debug(
+				"ACTIVE",
+				before_speed,
+				after_speed,
+				step_assist_velocity.y
+			)
+	elif step_debug_speed_was_active:
+		step_debug_speed_elapsed = 0.0
+		_print_step_speed_debug(
+			"END",
+			before_speed,
+			after_speed,
+			step_assist_velocity.y
+		)
+
+	step_debug_speed_was_active = active
+
+
+func _print_step_speed_debug(
+	phase: String,
+	before_speed: float,
+	after_speed: float,
+	assist_y: float
+) -> void:
+	print(
+		"[StepSpeed] ",
+		phase,
+		" before=", before_speed,
+		" after=", after_speed,
+		" assist_y=", assist_y,
+		" velocity=", velocity
+	)
