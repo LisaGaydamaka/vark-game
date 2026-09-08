@@ -78,15 +78,19 @@ func update(
 		return Action.MANTLE_REQUEST
 
 	attachment_revalidation_elapsed += delta
+	update_blocked_endpoint_input_state(input_direction)
+	if not update_shimmy(player, support, input_direction, delta):
+		return Action.LOST_LEDGE
+
+	# A successful shimmy already refreshed the tracked ledge candidate at the
+	# player's new position. Only run the periodic stationary/blocked attachment
+	# check when that movement path did not satisfy the revalidation interval.
 	if (
 		attachment_revalidation_elapsed >= ATTACHMENT_REVALIDATION_INTERVAL_SECONDS
 		and not revalidate_attachment(player, support)
 	):
 		return Action.LOST_LEDGE
 
-	update_blocked_endpoint_input_state(input_direction)
-	if not update_shimmy(player, support, input_direction, delta):
-		return Action.LOST_LEDGE
 	if blocked_shimmy_direction.length_squared() > MOTION_EPSILON_SQUARED:
 		return Action.SHIMMY_BLOCKED
 	return Action.NONE
@@ -173,6 +177,7 @@ func update_shimmy(
 	var motion: Vector3 = next_candidate.hang_position - player.global_position
 	if motion.length_squared() <= MOTION_EPSILON_SQUARED:
 		set_active_candidate(next_candidate)
+		attachment_revalidation_elapsed = 0.0
 		return true
 
 	if not is_shimmy_path_clear(player, motion, next_candidate):
@@ -188,6 +193,7 @@ func update_shimmy(
 
 	clear_blocked_endpoint()
 	set_active_candidate(next_candidate)
+	attachment_revalidation_elapsed = 0.0
 	return true
 
 
