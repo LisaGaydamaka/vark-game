@@ -257,10 +257,17 @@ func _update_normal_movement(
 		)
 
 	var airborne_detection_allowed: bool = not grounded
+	var ledge_detection_allowed: bool = (
+		airborne_detection_allowed
+		or ground_mantle_requested
+	)
+	# Discover once from the pre-move pose. Post-move collision handling reuses
+	# these candidates and only filters/expands them against the actual contacts,
+	# avoiding a second full wall/top discovery pass in the same physics frame.
 	ledge_detector.update(
 		self,
 		support,
-		airborne_detection_allowed,
+		ledge_detection_allowed,
 		input_direction,
 		view_forward
 	)
@@ -288,13 +295,6 @@ func _update_normal_movement(
 	)
 
 	if not collisions.is_empty() and not grounded:
-		ledge_detector.update(
-			self,
-			support,
-			true,
-			contact_intent_direction,
-			view_forward
-		)
 		if player_input.is_jump_pressed():
 			if ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
@@ -327,13 +327,6 @@ func _update_normal_movement(
 			return
 
 	if ground_mantle_requested and not collisions.is_empty():
-		ledge_detector.update(
-			self,
-			support,
-			true,
-			input_direction,
-			view_forward
-		)
 		if ledge_controller.try_enter_mantle_from_contacts(
 			input_direction,
 			collisions,
