@@ -42,6 +42,12 @@ extends CharacterBody3D
 @export var max_collision_iterations: int = 8
 
 
+@export_category("Step Up")
+@export var step_max_height: float = 0.5
+@export var step_up_acceleration: float = 32.0
+@export var step_up_max_speed: float = 4.0
+
+
 @export_category("Ledge Detection")
 @export var ledge_max_wall_tilt_degrees: float = 15.0
 @export var ledge_max_line_tilt_degrees: float = 70.0
@@ -66,6 +72,7 @@ var player_look: PlayerLook
 var support: PlayerSupport
 var motor: PlayerMotor
 var movement: PlayerMovement
+var step: PlayerStep
 var ledge_detector: PlayerLedgeDetector
 var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
@@ -84,6 +91,7 @@ func _physics_process(delta: float) -> void:
 	var crouch_pressed: bool = player_input.is_crouch_just_pressed()
 
 	if ledge_controller.is_active():
+		step.cancel()
 		ledge_controller.update(
 			jump_pressed,
 			crouch_pressed,
@@ -127,6 +135,13 @@ func _create_components() -> void:
 	)
 
 	movement = PlayerMovement.new(max_collision_iterations)
+
+	step = PlayerStep.new(
+		step_max_height,
+		step_up_acceleration,
+		step_up_max_speed,
+		collision_shape
+	)
 
 	ledge_detector = PlayerLedgeDetector.new(
 		jump_height,
@@ -191,6 +206,11 @@ func _update_normal_movement(
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
 
+	# Step-up is the lowest-priority traversal behavior. Holding Space gives the
+	# existing jump/mantle/ledge logic complete control instead.
+	if player_input.is_jump_pressed():
+		step.cancel()
+
 	support.update(self)
 	var grounded: bool = support.is_grounded()
 	var view_forward: Vector3 = -head.global_transform.basis.z
@@ -234,6 +254,13 @@ func _update_normal_movement(
 			jump_height
 		)
 
+	if not player_input.is_jump_pressed():
+		step.update_before_move(
+			self,
+			input_direction,
+			delta
+		)
+
 	var airborne_detection_allowed: bool = not grounded
 	ledge_detector.update(
 		self,
@@ -247,6 +274,7 @@ func _update_normal_movement(
 		and not player_input.is_jump_pressed()
 		and ledge_controller.try_enter_hang_from_normal(delta)
 	):
+		step.cancel()
 		return
 
 	var contact_intent_direction: Vector3 = input_direction
@@ -277,9 +305,11 @@ func _update_normal_movement(
 				true
 			)
 		):
+			step.cancel()
 			return
 
 		if ledge_controller.try_enter_hang_from_normal(delta):
+			step.cancel()
 			return
 
 	# Ground mantle is evaluated only after that same frame's real movement has
@@ -298,6 +328,7 @@ func _update_normal_movement(
 			true,
 			false
 		):
+			step.cancel()
 			return
 
 	# If the discrete ground mantle request was not consumed by a real contact,
@@ -309,5 +340,20 @@ func _update_normal_movement(
 			jump_height
 		)
 		movement.move_vertical_velocity(self, delta)
+
+	# Step-up runs only after every higher-priority traversal path has had a
+	# chance to consume the frame. It starts only from a real collision contact,
+	# but once active it is allowed both on the ground and in the air.
+	step.update_after_move(self)
+	if (
+		not step.is_active()
+		and not player_input.is_jump_pressed()
+	):
+		step.try_start_from_contacts(
+			self,
+			support,
+			input_direction,
+			collisions
+		)
 
 	support.update(self)
