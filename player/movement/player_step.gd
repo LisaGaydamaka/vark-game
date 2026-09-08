@@ -95,6 +95,18 @@ func _init(
 	)
 
 
+func constrain_persistent_vertical_velocity(
+	player: CharacterBody3D
+) -> void:
+	if active_candidate == null:
+		return
+
+	# Step-up owns the vertical axis while active. Clear any vertical momentum
+	# carried from the previous physics frame before the normal motor runs. If the
+	# step cancels this frame, gravity can then resume from zero immediately.
+	player.velocity.y = 0.0
+
+
 func update_before_move(
 	player: CharacterBody3D,
 	input_direction: Vector3,
@@ -136,6 +148,11 @@ func update_before_move(
 		cancel()
 		return Vector3.ZERO
 
+	# The normal motor has already run this frame. Continuing step-up means the
+	# step constraint owns Y, so discard gravity/vertical physics generated during
+	# the motor update instead of allowing it to accumulate behind the assist.
+	player.velocity.y = 0.0
+
 	var control_strength: float = (
 		input_strength
 		* clampf(approach_alignment, 0.0, 1.0)
@@ -145,26 +162,17 @@ func update_before_move(
 		* control_strength
 	)
 
-	# Step-up owns only a disposable upward correction. Normal WASD, gravity,
-	# jumping, and collision response remain in player.velocity. The assist is
-	# added only to this frame's displacement by PlayerMovement and never stored
-	# as persistent momentum.
+	# Step-up owns only a disposable upward correction. Normal WASD and collision
+	# response remain in player.velocity; the assist is added only to this frame's
+	# displacement by PlayerMovement and never becomes persistent momentum.
 	if delta > sqrt(MOTION_EPSILON_SQUARED):
-		var maximum_total_upward_speed: float = (
+		var maximum_upward_speed: float = (
 			maxf(0.0, remaining_height + PROBE_SAFE_MARGIN)
 			/ delta
 		)
-
-		# If normal physics already has upward velocity, step-up supplies only the
-		# additional amount needed. If normal physics is falling, assist may first
-		# cancel that downward motion and then provide the requested climb speed.
-		var maximum_assist_speed: float = maxf(
-			0.0,
-			maximum_total_upward_speed - player.velocity.y
-		)
 		target_assist_speed = minf(
 			target_assist_speed,
-			maximum_assist_speed
+			maximum_upward_speed
 		)
 
 	current_assist_speed = move_toward(
