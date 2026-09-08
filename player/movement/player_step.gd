@@ -125,13 +125,23 @@ func update_before_move(
 	active_candidate.approach_direction = approach_direction
 	active_candidate.approach_alignment = approach_alignment
 
+	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
+	var remaining_height: float = active_candidate.edge_point.y - capsule_bottom_y
+
+	# Reaching the detected tread height completes the only job step-up owns:
+	# vertical clearance. The normal motor has already run this frame, so release
+	# immediately and leave its X/Z velocity untouched. Waiting for horizontal
+	# edge-plane crossing can deadlock because the old step frame may suppress the
+	# very forward component needed to cross that plane.
+	if remaining_height <= PROBE_SAFE_MARGIN:
+		cancel()
+		return false
+
 	if has_crossed_edge(player.global_position):
 		finish_on_top(player)
 		cancel()
 		return false
 
-	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
-	var remaining_height: float = active_candidate.edge_point.y - capsule_bottom_y
 	if remaining_height > max_step_height + crossing_clearance_margin:
 		cancel()
 		return false
