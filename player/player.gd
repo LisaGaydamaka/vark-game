@@ -343,5 +343,3 @@ func _update_normal_movement(
 			# A step owns vertical traversal from the instant it is classified. X/Z
 			# requires no restoration because collision resolution never erased it.
 			step.constrain_persistent_vertical_velocity(self)
-
-	support.update(self)
