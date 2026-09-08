@@ -214,11 +214,6 @@ func _update_normal_movement(
 		global_transform
 	)
 
-	# Step traversal owns normal vertical physics while active. The motor remains
-	# authoritative; PlayerStep contributes only its separate traversal velocity.
-	if step.is_active():
-		motor.set_vertical_velocity(0.0)
-		motor.write_to_player(self)
 	if player_input.is_jump_pressed():
 		step.cancel()
 
@@ -238,6 +233,21 @@ func _update_normal_movement(
 		and grounded
 		and not ground_mantle_requested
 	)
+
+	# Existing step traversal is evaluated before the motor chooses its physics
+	# mode. If input/alignment cancels the step, gravity/air control resumes in this
+	# same frame. If it remains active, it owns Y and emits traversal separately.
+	var step_assist_velocity: Vector3 = Vector3.ZERO
+	if not player_input.is_jump_pressed():
+		step_assist_velocity = step.update_before_move(
+			self,
+			input_direction,
+			delta
+		)
+
+	if step.is_active():
+		motor.set_vertical_velocity(0.0)
+		motor.write_to_player(self)
 
 	var locomotion_supported: bool = grounded or step.is_active()
 	var ground_target_speed: float = max_speed
@@ -263,14 +273,6 @@ func _update_normal_movement(
 
 	if jump_accepted_before_move:
 		motor.apply_jump(self, jump_height)
-
-	var step_assist_velocity: Vector3 = Vector3.ZERO
-	if not player_input.is_jump_pressed():
-		step_assist_velocity = step.update_before_move(
-			self,
-			input_direction,
-			delta
-		)
 
 	var airborne_detection_allowed: bool = not grounded
 	ledge_detector.update(
