@@ -2,6 +2,10 @@ class_name PlayerSupport
 extends RefCounted
 
 
+const MOTION_EPSILON_SQUARED: float = 0.000001
+const STEP_RISER_NORMAL_ALIGNMENT: float = 0.8
+
+
 var has_support: bool = false
 var support_normal: Vector3 = Vector3.UP
 var support_point: Vector3 = Vector3.ZERO
@@ -21,7 +25,8 @@ func _init(
 
 
 func update(
-	player: CharacterBody3D
+	player: CharacterBody3D,
+	ignored_step_wall_normal: Vector3 = Vector3.ZERO
 ) -> void:
 	has_support = false
 	support_normal = Vector3.UP
@@ -59,6 +64,22 @@ func update(
 	if normal.dot(Vector3.UP) <= 0.0:
 		return
 
+	var candidate_walkable: bool = is_walkable_surface(normal)
+
+	# A rounded capsule touching the active stair edge can make the downward
+	# support probe report a steep diagonal normal from the riser. Treating that
+	# as support projects persistent velocity against the edge and destroys the
+	# horizontal speed that step-up is supposed to preserve. Ignore only a
+	# non-walkable contact whose horizontal normal matches the active step face.
+	if (
+		not candidate_walkable
+		and _matches_ignored_step_riser(
+			normal,
+			ignored_step_wall_normal
+		)
+	):
+		return
+
 	has_support = true
 	support_normal = normal
 
@@ -66,12 +87,39 @@ func update(
 		result.get_collision_point()
 	)
 
-	walkable = is_walkable_surface(
-		normal
-	)
+	walkable = candidate_walkable
 
 	constrain_supported_velocity(
 		player
+	)
+
+
+func _matches_ignored_step_riser(
+	contact_normal: Vector3,
+	step_wall_normal: Vector3
+) -> bool:
+	var horizontal_contact_normal := Vector3(
+		contact_normal.x,
+		0.0,
+		contact_normal.z
+	)
+	var horizontal_step_normal := Vector3(
+		step_wall_normal.x,
+		0.0,
+		step_wall_normal.z
+	)
+
+	if (
+		horizontal_contact_normal.length_squared() <= MOTION_EPSILON_SQUARED
+		or horizontal_step_normal.length_squared() <= MOTION_EPSILON_SQUARED
+	):
+		return false
+
+	return (
+		horizontal_contact_normal.normalized().dot(
+			horizontal_step_normal.normalized()
+		)
+		>= STEP_RISER_NORMAL_ALIGNMENT
 	)
 
 
