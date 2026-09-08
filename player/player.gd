@@ -244,10 +244,6 @@ func _update_normal_movement(
 		ground_target_speed = sprint_speed
 
 	var use_air_control: bool = not support.has_support
-	var locomotion_speed_budget: float = ground_target_speed
-	if use_air_control:
-		locomotion_speed_budget = air_max_speed
-
 	motor.update(
 		self,
 		support,
@@ -263,11 +259,13 @@ func _update_normal_movement(
 			jump_height
 		)
 
+	# Normal velocity is persistent. Step-up contributes only a disposable assist
+	# used by PlayerMovement for this frame's displacement.
+	var step_assist_velocity: Vector3 = Vector3.ZERO
 	if not player_input.is_jump_pressed():
-		step.update_before_move(
+		step_assist_velocity = step.update_before_move(
 			self,
 			input_direction,
-			locomotion_speed_budget,
 			delta
 		)
 
@@ -293,7 +291,11 @@ func _update_normal_movement(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
-	var collisions: Array[KinematicCollision3D] = movement.move(self, delta)
+	var collisions: Array[KinematicCollision3D] = movement.move(
+		self,
+		delta,
+		step_assist_velocity
+	)
 
 	# A contact can expose a ledge opportunity that was just outside the magnetic
 	# discovery volume before movement. Held Space gives mantle first refusal on
@@ -369,7 +371,7 @@ func _update_normal_movement(
 	_update_step_debug(
 		input_direction,
 		grounded,
-		locomotion_speed_budget,
+		step_assist_velocity,
 		delta
 	)
 	support.update(self)
@@ -378,7 +380,7 @@ func _update_normal_movement(
 func _update_step_debug(
 	input_direction: Vector3,
 	grounded: bool,
-	locomotion_speed_budget: float,
+	step_assist_velocity: Vector3,
 	delta: float
 ) -> void:
 	if not step_debug_logging:
@@ -399,10 +401,10 @@ func _update_step_debug(
 		print(
 			"[StepUp] START pos=", global_position,
 			" input=", input_direction,
-			" vel=", velocity,
+			" normal_vel=", velocity,
+			" assist=", step_assist_velocity,
 			" hspeed=", horizontal_speed,
 			" grounded=", grounded,
-			" locomotion_budget=", locomotion_speed_budget,
 			" accel=", step_up_acceleration,
 			" max_step_speed=", step_up_max_speed
 		)
@@ -411,10 +413,10 @@ func _update_step_debug(
 		print(
 			"[StepUp] END pos=", global_position,
 			" input=", input_direction,
-			" vel=", velocity,
+			" normal_vel=", velocity,
+			" discarded_assist=", step_assist_velocity,
 			" hspeed=", horizontal_speed,
-			" grounded=", grounded,
-			" locomotion_budget=", locomotion_speed_budget
+			" grounded=", grounded
 		)
 		step_debug_elapsed = 0.0
 	elif active_now:
@@ -424,11 +426,11 @@ func _update_step_debug(
 			print(
 				"[StepUp] ACTIVE pos=", global_position,
 				" input=", input_direction,
-				" vel=", velocity,
+				" normal_vel=", velocity,
+				" assist=", step_assist_velocity,
 				" hspeed=", horizontal_speed,
-				" vspeed=", velocity.y,
+				" normal_vspeed=", velocity.y,
 				" grounded=", grounded,
-				" locomotion_budget=", locomotion_speed_budget,
 				" accel=", step_up_acceleration,
 				" max_step_speed=", step_up_max_speed
 			)
