@@ -179,10 +179,6 @@ func try_enter_mantle_from_contacts(
 				return true
 			continue
 
-		# Hangable airborne geometry remains owned by catch/hang. Even if catch
-		# could not start, persistent Space may not silently convert it to mantle.
-		if candidate.hangable:
-			continue
 		if (
 			air_request
 			and _should_attempt_air_mantle_contact(candidate)
