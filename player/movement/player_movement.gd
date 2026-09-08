@@ -14,10 +14,17 @@ func _init(p_max_collision_iterations: int) -> void:
 
 func move(
 	player: CharacterBody3D,
-	delta: float
+	delta: float,
+	assist_velocity: Vector3 = Vector3.ZERO
 ) -> Array[KinematicCollision3D]:
 	var collisions: Array[KinematicCollision3D] = []
-	var motion: Vector3 = player.velocity * delta
+
+	# Assist velocity affects displacement only. player.velocity is the persistent
+	# normal-physics velocity and is the only velocity collision response retains.
+	# This prevents traversal assistance from becoming momentum on the next frame.
+	var motion: Vector3 = (
+		player.velocity + assist_velocity
+	) * delta
 
 	for _iteration: int in range(max_collision_iterations):
 		if motion.length_squared() <= MOTION_EPSILON_SQUARED:
@@ -29,6 +36,9 @@ func move(
 
 		collisions.append(collision)
 		var normal: Vector3 = collision.get_normal()
+
+		# Resolve only persistent velocity. The temporary assist participates in
+		# this frame's motion/remainder below, then disappears automatically.
 		var normal_velocity: float = player.velocity.dot(normal)
 		if normal_velocity < 0.0:
 			player.velocity -= normal * normal_velocity
