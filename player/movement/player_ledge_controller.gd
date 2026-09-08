@@ -326,11 +326,7 @@ func _update_ledge_catch(crouch_pressed: bool, delta: float) -> void:
 		_arm_drop_regrab_candidate(active_catch_candidate)
 		ledge_catch.cancel()
 		active_catch_candidate = null
-		look.exit_ledge_view()
-		state = State.NONE
-		body.velocity = Vector3.DOWN * gravity * delta
-		movement.move(body, delta)
-		support.update(body)
+		_finish_release_to_air(delta, true)
 		return
 	ledge_catch.update(body, delta)
 	_finish_ledge_catch_if_ready()
@@ -373,10 +369,10 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 	)
 	if action == PlayerLedgeHang.Action.DROP:
 		_arm_drop_regrab_candidate(ledge_hang.get_candidate())
-		_release_ledge_to_air(input_direction, delta)
+		_release_ledge_to_air(delta)
 		return
 	if action == PlayerLedgeHang.Action.LOST_LEDGE:
-		_release_ledge_to_air(input_direction, delta)
+		_release_ledge_to_air(delta)
 		return
 	if action == PlayerLedgeHang.Action.MANTLE_REQUEST:
 		var mantle_source: PlayerLedgeDetector.LedgeCandidate = ledge_hang.get_candidate()
@@ -419,39 +415,30 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 			horizontal_launch_speed
 		)
 		ledge_hang.cancel()
-		look.exit_ledge_view()
-		state = State.NONE
-		movement.move(body, delta)
-		support.update(body)
+		_finish_release_to_air(delta, false)
 
 
 func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 	if crouch_pressed:
 		_arm_drop_regrab_guard(ledge_corner.get_release_candidates())
-		_release_corner_to_air(input_direction, delta)
+		_release_corner_to_air(delta)
 		return
 	if jump_pressed:
 		_arm_jump_regrab_guard(ledge_corner.get_release_candidates())
 		if input_direction.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED:
 			motor.apply_directional_jump(body, input_direction, jump_height, max_speed)
 			ledge_corner.cancel()
-			look.exit_ledge_view()
-			state = State.NONE
-			movement.move(body, delta)
-			support.update(body)
+			_finish_release_to_air(delta, false)
 			return
 		body.velocity = Vector3.ZERO
 		motor.apply_jump(body, jump_height)
 		ledge_corner.cancel()
-		look.exit_ledge_view()
-		state = State.NONE
-		movement.move(body, delta)
-		support.update(body)
+		_finish_release_to_air(delta, false)
 		return
 
 	if not ledge_corner.update(body, delta):
-		_release_corner_to_air(input_direction, delta)
+		_release_corner_to_air(delta)
 		return
 	look.update_ledge_view_center(ledge_corner.get_current_wall_normal())
 
@@ -466,7 +453,7 @@ func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float
 			body.global_position
 		)
 		if completed_candidate == null:
-			_release_corner_to_air(input_direction, delta)
+			_release_corner_to_air(delta)
 			return
 		ledge_corner.cancel()
 		ledge_hang.start(completed_candidate)
@@ -479,20 +466,17 @@ func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 	if crouch_pressed:
 		_arm_drop_regrab_candidate(ledge_mantle.get_release_candidate())
-		_release_mantle_to_air(input_direction, delta)
+		_release_mantle_to_air(delta)
 		return
 	if jump_pressed and input_direction.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED:
 		_arm_jump_regrab_candidate(ledge_mantle.get_release_candidate())
 		motor.apply_directional_jump(body, input_direction, jump_height, max_speed)
 		ledge_mantle.cancel()
-		look.exit_ledge_view()
-		state = State.NONE
-		movement.move(body, delta)
-		support.update(body)
+		_finish_release_to_air(delta, false)
 		return
 	if not ledge_mantle.update(body, delta):
 		_arm_failed_mantle_candidate(ledge_mantle.get_release_candidate())
-		_release_mantle_to_air(input_direction, delta)
+		_release_mantle_to_air(delta)
 		return
 	if not ledge_mantle.has_completed():
 		return
@@ -512,36 +496,30 @@ func _perform_no_input_hang_jump(
 	body.velocity = Vector3.ZERO
 	motor.apply_jump(body, jump_height)
 	ledge_hang.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
-	movement.move(body, delta)
-	support.update(body)
+	_finish_release_to_air(delta, false)
 
 
-func _release_mantle_to_air(_input_direction: Vector3, delta: float) -> void:
+func _release_mantle_to_air(delta: float) -> void:
 	ledge_mantle.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
-	body.velocity = Vector3.DOWN * gravity * delta
-	movement.move(body, delta)
-	support.update(body)
+	_finish_release_to_air(delta, true)
 
 
-func _release_ledge_to_air(_input_direction: Vector3, delta: float) -> void:
+func _release_ledge_to_air(delta: float) -> void:
 	ledge_hang.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
-	body.velocity = Vector3.DOWN * gravity * delta
-	movement.move(body, delta)
-	support.update(body)
+	_finish_release_to_air(delta, true)
 
 
-func _release_corner_to_air(_input_direction: Vector3, delta: float) -> void:
+func _release_corner_to_air(delta: float) -> void:
 	_arm_corner_release_suppression(ledge_corner.get_release_candidates())
 	ledge_corner.cancel()
+	_finish_release_to_air(delta, true)
+
+
+func _finish_release_to_air(delta: float, apply_fall_velocity: bool) -> void:
 	look.exit_ledge_view()
 	state = State.NONE
-	body.velocity = Vector3.DOWN * gravity * delta
+	if apply_fall_velocity:
+		body.velocity = Vector3.DOWN * gravity * delta
 	movement.move(body, delta)
 	support.update(body)
 
