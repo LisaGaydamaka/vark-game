@@ -244,6 +244,7 @@ func _update_normal_movement(
 	)
 	if (
 		airborne_detection_allowed
+		and not player_input.is_jump_pressed()
 		and ledge_controller.try_enter_hang_from_normal(delta)
 	):
 		return
@@ -256,8 +257,9 @@ func _update_normal_movement(
 
 	var collisions: Array[KinematicCollision3D] = movement.move(self, delta)
 
-	# A contact can expose a hang opportunity that was just outside the magnetic
-	# discovery volume before movement. Hang still gets priority over air mantle.
+	# A contact can expose a ledge opportunity that was just outside the magnetic
+	# discovery volume before movement. Held Space gives mantle first refusal on
+	# real contact; if mantle is invalid, a hangable ledge still falls back to hang.
 	if not collisions.is_empty() and not grounded:
 		ledge_detector.update(
 			self,
@@ -266,9 +268,6 @@ func _update_normal_movement(
 			contact_intent_direction,
 			view_forward
 		)
-		if ledge_controller.try_enter_hang_from_normal(delta):
-			return
-
 		if (
 			player_input.is_jump_pressed()
 			and ledge_controller.try_enter_mantle_from_contacts(
@@ -278,6 +277,9 @@ func _update_normal_movement(
 				true
 			)
 		):
+			return
+
+		if ledge_controller.try_enter_hang_from_normal(delta):
 			return
 
 	# Ground mantle is evaluated only after that same frame's real movement has
