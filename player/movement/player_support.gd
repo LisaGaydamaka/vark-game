@@ -15,7 +15,7 @@ var walkable: bool = false
 var max_walkable_slope: float
 var support_check_distance: float
 var capsule_bottom_offset: float
-var probe_offsets: Array[Vector3] = []
+var maintenance_probe_offsets: Array[Vector3] = []
 
 var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
@@ -49,8 +49,7 @@ func _init(
 		capsule_shape.radius
 		* FOOT_PROBE_RADIUS_RATIO
 	)
-	probe_offsets = [
-		Vector3.ZERO,
+	maintenance_probe_offsets = [
 		Vector3(probe_radius, 0.0, 0.0),
 		Vector3(-probe_radius, 0.0, 0.0),
 		Vector3(0.0, 0.0, probe_radius),
@@ -59,67 +58,101 @@ func _init(
 
 
 func update(player: CharacterBody3D) -> void:
+	var had_support: bool = has_support and walkable
+
 	has_support = false
 	support_normal = Vector3.UP
 	support_point = player.global_position
 	walkable = false
 
-	# Support is a floor sensor, not capsule collision recovery. Vertical foot
-	# probes sample the actual world surface underneath the capsule footprint, so
-	# a rounded capsule touching a stair edge cannot manufacture a fake slope.
+	# Acquiring a new floor and maintaining an existing floor are deliberately
+	# different operations. New support must exist directly beneath the capsule
+	# center. Peripheral probes may only preserve already-established support over
+	# seams and edges; geometry in front of the capsule cannot become our floor.
+	var center_hit: Dictionary = _probe_walkable_floor(
+		player,
+		Vector3.ZERO
+	)
+	if not center_hit.is_empty():
+		_apply_hit(center_hit)
+		return
+
+	if not had_support:
+		return
+
+	var best_hit: Dictionary = {}
+	var best_gap: float = INF
+	for offset: Vector3 in maintenance_probe_offsets:
+		var hit: Dictionary = _probe_walkable_floor(player, offset)
+		if hit.is_empty():
+			continue
+		var gap_value: Variant = hit.get("gap")
+		if not (gap_value is float):
+			continue
+		var gap: float = gap_value
+		if gap >= best_gap:
+			continue
+		best_gap = gap
+		best_hit = hit
+
+	if not best_hit.is_empty():
+		_apply_hit(best_hit)
+
+
+func _probe_walkable_floor(
+	player: CharacterBody3D,
+	offset: Vector3
+) -> Dictionary:
 	var capsule_bottom_y: float = (
 		player.global_position.y
 		+ capsule_bottom_offset
 	)
-	var best_gap: float = INF
-	var best_point: Vector3 = Vector3.ZERO
-	var best_normal: Vector3 = Vector3.UP
+	var ray_from: Vector3 = player.global_position + offset
+	ray_from.y = capsule_bottom_y + PROBE_START_MARGIN
+	var ray_to: Vector3 = ray_from
+	ray_to.y = capsule_bottom_y - support_check_distance
 
-	for offset: Vector3 in probe_offsets:
-		var ray_from: Vector3 = player.global_position + offset
-		ray_from.y = capsule_bottom_y + PROBE_START_MARGIN
-		var ray_to: Vector3 = ray_from
-		ray_to.y = capsule_bottom_y - support_check_distance
+	var query: PhysicsRayQueryParameters3D = _prepare_ray_query(
+		player,
+		ray_from,
+		ray_to
+	)
+	var hit: Dictionary = (
+		player.get_world_3d().direct_space_state.intersect_ray(query)
+	)
+	if hit.is_empty():
+		return {}
 
-		var query: PhysicsRayQueryParameters3D = _prepare_ray_query(
-			player,
-			ray_from,
-			ray_to
-		)
-		var hit: Dictionary = (
-			player.get_world_3d().direct_space_state.intersect_ray(query)
-		)
-		if hit.is_empty():
-			continue
+	var point_value: Variant = hit.get("position")
+	var normal_value: Variant = hit.get("normal")
+	if not (point_value is Vector3) or not (normal_value is Vector3):
+		return {}
 
-		var point_value: Variant = hit.get("position")
-		var normal_value: Variant = hit.get("normal")
-		if not (point_value is Vector3) or not (normal_value is Vector3):
-			continue
+	var normal: Vector3 = normal_value
+	if normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return {}
+	normal = normal.normalized()
+	if not is_walkable_surface(normal):
+		return {}
 
-		var normal: Vector3 = normal_value
-		if normal.length_squared() <= MOTION_EPSILON_SQUARED:
-			continue
-		normal = normal.normalized()
-		if not is_walkable_surface(normal):
-			continue
+	var point: Vector3 = point_value
+	return {
+		"point": point,
+		"normal": normal,
+		"gap": maxf(0.0, ray_from.y - point.y),
+	}
 
-		var point: Vector3 = point_value
-		var gap: float = maxf(0.0, ray_from.y - point.y)
-		if gap >= best_gap:
-			continue
 
-		best_gap = gap
-		best_point = point
-		best_normal = normal
-
-	if best_gap == INF:
+func _apply_hit(hit: Dictionary) -> void:
+	var point_value: Variant = hit.get("point")
+	var normal_value: Variant = hit.get("normal")
+	if not (point_value is Vector3) or not (normal_value is Vector3):
 		return
 
 	has_support = true
 	walkable = true
-	support_point = best_point
-	support_normal = best_normal
+	support_point = point_value
+	support_normal = normal_value
 
 
 func _prepare_ray_query(
