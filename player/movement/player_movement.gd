@@ -50,6 +50,15 @@ func move_normal(
 		0.0,
 		horizontal_velocity.z
 	) * delta
+
+	# An established walkable floor may shape locomotion displacement in either
+	# direction along its plane. This is frame-local surface following: it does not
+	# put slope Y into the motor's persistent horizontal or vertical state.
+	if support.has_support and support.walkable:
+		components.locomotion = components.locomotion.slide(
+			support.support_normal
+		)
+
 	components.vertical_physics = Vector3.UP * vertical_velocity * delta
 	components.traversal = traversal_velocity * delta
 
