@@ -66,6 +66,10 @@ func update(
 		)
 		return
 
+	# The motor is the sole owner of persistent velocity. Support only reports a
+	# validated floor plane; the motor decides how that plane constrains velocity.
+	_constrain_velocity_to_support(player, support)
+
 	var external_acceleration: Vector3 = (
 		Vector3.DOWN
 		* gravity
@@ -113,6 +117,25 @@ func update(
 			player,
 			support,
 			delta
+		)
+
+	_constrain_velocity_to_support(player, support)
+
+
+func _constrain_velocity_to_support(
+	player: CharacterBody3D,
+	support: PlayerSupport
+) -> void:
+	if not support.has_support or not support.walkable:
+		return
+
+	var normal_velocity: float = player.velocity.dot(
+		support.support_normal
+	)
+	if normal_velocity < 0.0:
+		player.velocity -= (
+			support.support_normal
+			* normal_velocity
 		)
 
 
@@ -416,7 +439,6 @@ func apply_kinetic_friction(
 		get_normal_load_acceleration(
 			support
 		)
-	)
 
 	if normal_load_acceleration <= 0.0:
 		return
@@ -431,7 +453,6 @@ func apply_kinetic_friction(
 			Vector3.ZERO,
 			friction_acceleration
 			* delta
-		)
 	)
 
 	var normal_velocity: Vector3 = (
