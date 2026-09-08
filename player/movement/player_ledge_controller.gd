@@ -35,7 +35,6 @@ var ledge_jump_horizontal_speed: float
 var ledge_sprint_jump_horizontal_speed: float
 var ledge_max_approach_angle_degrees: float
 var gravity: float
-var debug_logging: bool
 var minimum_air_mantle_alignment: float
 var minimum_local_ledge_alignment: float
 
@@ -66,8 +65,7 @@ func _init(
 	configured_ledge_jump_horizontal_speed: float,
 	configured_ledge_sprint_jump_horizontal_speed: float,
 	configured_ledge_max_approach_angle_degrees: float,
-	configured_gravity: float,
-	configured_debug_logging: bool
+	configured_gravity: float
 ) -> void:
 	body = player_body
 	head = player_head
@@ -87,7 +85,6 @@ func _init(
 	ledge_sprint_jump_horizontal_speed = configured_ledge_sprint_jump_horizontal_speed
 	ledge_max_approach_angle_degrees = configured_ledge_max_approach_angle_degrees
 	gravity = configured_gravity
-	debug_logging = configured_debug_logging
 
 	var maximum_approach_angle: float = clampf(ledge_max_approach_angle_degrees, 0.0, 89.0)
 	minimum_air_mantle_alignment = cos(deg_to_rad(maximum_approach_angle))
@@ -174,7 +171,7 @@ func try_enter_mantle_from_contacts(
 		if ground_request:
 			if (
 				_should_attempt_ground_mantle_contact(candidate, input_direction)
-				and _try_start_free_mantle(candidate, "Ground mantle entered")
+				and _try_start_free_mantle(candidate)
 			):
 				return true
 			continue
@@ -182,7 +179,7 @@ func try_enter_mantle_from_contacts(
 		if (
 			air_request
 			and _should_attempt_air_mantle_contact(candidate)
-			and _try_start_free_mantle(candidate, "Air mantle entered")
+			and _try_start_free_mantle(candidate)
 		):
 			return true
 	return false
@@ -259,8 +256,7 @@ func _candidate_matches_contact(
 
 
 func _try_start_free_mantle(
-	candidate: PlayerLedgeDetector.LedgeCandidate,
-	debug_message: String
+	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
 	var mantle_candidate: PlayerMantle.MantleCandidate = (
 		ledge_mantle.find_air_candidate(
@@ -276,8 +272,6 @@ func _try_start_free_mantle(
 	look.enter_ledge_view(candidate.wall_normal)
 	state = State.MANTLING
 	body.velocity = Vector3.ZERO
-	if debug_logging:
-		print(debug_message)
 	return true
 
 
@@ -337,8 +331,6 @@ func _update_ledge_catch(crouch_pressed: bool, delta: float) -> void:
 		body.velocity = Vector3.DOWN * gravity * delta
 		movement.move(body, delta)
 		support.update(body)
-		if debug_logging:
-			print("Ledge catch dropped")
 		return
 	ledge_catch.update(body, delta)
 	_finish_ledge_catch_if_ready()
@@ -352,8 +344,6 @@ func _finish_ledge_catch_if_ready() -> void:
 			ledge_hang.start(candidate)
 			state = State.HANGING
 			body.velocity = Vector3.ZERO
-			if debug_logging:
-				print("Ledge hang entered")
 			return
 
 	if ledge_catch.has_failed():
@@ -363,8 +353,6 @@ func _finish_ledge_catch_if_ready() -> void:
 		active_catch_candidate = null
 		look.exit_ledge_view()
 		state = State.NONE
-		if debug_logging:
-			print("Ledge catch failed")
 		return
 
 	if not ledge_catch.is_active():
@@ -389,8 +377,6 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 		return
 	if action == PlayerLedgeHang.Action.LOST_LEDGE:
 		_release_ledge_to_air(input_direction, delta)
-		if debug_logging:
-			print("Ledge hang lost valid geometry")
 		return
 	if action == PlayerLedgeHang.Action.MANTLE_REQUEST:
 		var mantle_source: PlayerLedgeDetector.LedgeCandidate = ledge_hang.get_candidate()
@@ -403,12 +389,8 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 			ledge_hang.cancel()
 			state = State.MANTLING
 			body.velocity = Vector3.ZERO
-			if debug_logging:
-				print("Ledge mantle entered")
 			return
 		_perform_no_input_hang_jump(mantle_source, delta)
-		if debug_logging:
-			print("Mantle invalid; performed hang jump")
 		return
 	if action == PlayerLedgeHang.Action.SHIMMY_BLOCKED:
 		var shimmy_direction: Vector3 = ledge_hang.take_blocked_shimmy_direction()
@@ -423,8 +405,6 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 			ledge_hang.cancel()
 			state = State.CORNERING
 			look.update_ledge_view_center(ledge_corner.get_current_wall_normal())
-			if debug_logging:
-				print("Ledge corner entered")
 		return
 	if action == PlayerLedgeHang.Action.DIRECTIONAL_JUMP:
 		var released_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_hang.get_candidate()
@@ -468,14 +448,10 @@ func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float
 		state = State.NONE
 		movement.move(body, delta)
 		support.update(body)
-		if debug_logging:
-			print("Mantle unavailable during corner; performed hang jump")
 		return
 
 	if not ledge_corner.update(body, delta):
 		_release_corner_to_air(input_direction, delta)
-		if debug_logging:
-			print("Ledge corner lost valid traversal")
 		return
 	look.update_ledge_view_center(ledge_corner.get_current_wall_normal())
 
@@ -491,16 +467,12 @@ func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float
 		)
 		if completed_candidate == null:
 			_release_corner_to_air(input_direction, delta)
-			if debug_logging:
-				print("Ledge corner final hang validation failed")
 			return
 		ledge_corner.cancel()
 		ledge_hang.start(completed_candidate)
 		body.velocity = Vector3.ZERO
 		state = State.HANGING
 		look.update_ledge_view_center(completed_candidate.wall_normal)
-		if debug_logging:
-			print("Ledge corner completed")
 
 
 func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
@@ -521,8 +493,6 @@ func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float
 	if not ledge_mantle.update(body, delta):
 		_arm_failed_mantle_candidate(ledge_mantle.get_release_candidate())
 		_release_mantle_to_air(input_direction, delta)
-		if debug_logging:
-			print("Ledge mantle lost valid traversal")
 		return
 	if not ledge_mantle.has_completed():
 		return
@@ -532,8 +502,6 @@ func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float
 	look.exit_ledge_view()
 	state = State.NONE
 	body.velocity = Vector3.ZERO
-	if debug_logging:
-		print("Ledge mantle completed")
 
 
 func _perform_no_input_hang_jump(
