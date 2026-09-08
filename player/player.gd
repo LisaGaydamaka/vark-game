@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 @onready var head: Node3D = $Head
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
+@onready var player_mesh: MeshInstance3D = $MeshInstance3D
 
 
 @export_category("Movement")
@@ -10,6 +11,11 @@ extends CharacterBody3D
 @export var sprint_speed: float = 6.0
 @export var acceleration: float = 28.0
 @export var ground_deceleration: float = 15.0
+
+
+@export_category("Crouch")
+@export var crouch_height: float = 0.95
+@export var crouch_speed: float = 2.0
 
 
 @export_category("Jump")
@@ -72,6 +78,7 @@ var support: PlayerSupport
 var motor: PlayerMotor
 var movement: PlayerMovement
 var step: PlayerStep
+var crouch: PlayerCrouch
 var ledge_detector: PlayerLedgeDetectorLazy
 var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
@@ -98,7 +105,7 @@ func _physics_process(delta: float) -> void:
 		)
 		return
 
-	_update_normal_movement(jump_pressed, delta)
+	_update_normal_movement(jump_pressed, crouch_pressed, delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -150,6 +157,14 @@ func _create_components() -> void:
 		collision_shape
 	)
 
+	crouch = PlayerCrouch.new(
+		collision_shape,
+		head,
+		player_mesh,
+		crouch_height,
+		ledge_detector
+	)
+
 	ledge_catch = PlayerLedgeCatch.new(
 		jump_height,
 		gravity,
@@ -197,15 +212,20 @@ func _create_components() -> void:
 
 func _update_normal_movement(
 	jump_pressed: bool,
+	crouch_pressed: bool,
 	delta: float
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
 	var jump_held: bool = player_input.is_jump_pressed()
 
 	# Step-up owns persistent Y while active. Clear that temporary vertical state
-	# before cancelling so Space hands control back to normal jump/mantle physics
-	# without carrying any step-up momentum into the normal action.
+	# before cancelling so another action hands control back to normal movement
+	# without carrying any step-up momentum into it.
 	step.constrain_persistent_vertical_velocity(self)
+	if crouch_pressed:
+		step.cancel()
+		crouch.toggle()
+	crouch.update(self)
 	if jump_held:
 		step.cancel()
 
@@ -228,9 +248,13 @@ func _update_normal_movement(
 		and not ground_mantle_requested
 	)
 
-	var ground_target_speed: float = max_speed
+	var ground_target_speed: float = crouch.get_movement_speed(
+		max_speed,
+		crouch_speed
+	)
 	if (
 		grounded
+		and crouch.is_fully_standing()
 		and not input_direction.is_zero_approx()
 		and player_input.is_sprint_pressed()
 	):
