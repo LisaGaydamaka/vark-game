@@ -294,7 +294,8 @@ func _update_normal_movement(
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		delta,
-		step_assist_velocity
+		step_assist_velocity,
+		support
 	)
 
 	if not collisions.is_empty() and not grounded:
@@ -340,7 +341,7 @@ func _update_normal_movement(
 
 	if ground_mantle_requested:
 		motor.apply_jump(self, jump_height)
-		movement.move_vertical_velocity(self, delta)
+		movement.move_vertical_velocity(self, delta, support)
 
 	step.update_after_move(self)
 	if (
