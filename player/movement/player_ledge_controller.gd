@@ -527,16 +527,11 @@ func _exit_traversal_state() -> void:
 
 
 func _arm_jump_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	jump_regrab_candidates.clear()
-	if candidate != null:
-		jump_regrab_candidates.append(candidate)
+	_replace_guard_with_candidate(jump_regrab_candidates, candidate)
 
 
 func _arm_jump_regrab_guard(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
-	jump_regrab_candidates.clear()
-	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-		if candidate != null:
-			jump_regrab_candidates.append(candidate)
+	_replace_guard_with_candidates(jump_regrab_candidates, candidates)
 
 
 func _update_jump_regrab_guard() -> void:
@@ -566,25 +561,15 @@ func _is_in_jump_regrab_region(candidate: PlayerLedgeDetector.LedgeCandidate) ->
 
 
 func _is_jump_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	if candidate == null:
-		return false
-	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in jump_regrab_candidates:
-		if _is_same_local_ledge(candidate, guarded_candidate):
-			return true
-	return false
+	return _is_candidate_blocked_by_guard(candidate, jump_regrab_candidates)
 
 
 func _arm_drop_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	drop_regrab_candidates.clear()
-	if candidate != null:
-		drop_regrab_candidates.append(candidate)
+	_replace_guard_with_candidate(drop_regrab_candidates, candidate)
 
 
 func _arm_drop_regrab_guard(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
-	drop_regrab_candidates.clear()
-	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-		if candidate != null:
-			drop_regrab_candidates.append(candidate)
+	_replace_guard_with_candidates(drop_regrab_candidates, candidates)
 
 
 func _update_drop_regrab_guard() -> void:
@@ -612,18 +597,11 @@ func _is_in_drop_regrab_region(candidate: PlayerLedgeDetector.LedgeCandidate) ->
 
 
 func _is_drop_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	if candidate == null:
-		return false
-	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in drop_regrab_candidates:
-		if _is_same_local_ledge(candidate, guarded_candidate):
-			return true
-	return false
+	return _is_candidate_blocked_by_guard(candidate, drop_regrab_candidates)
 
 
 func _arm_failed_catch_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	failed_catch_regrab_candidates.clear()
-	if candidate != null:
-		failed_catch_regrab_candidates.append(candidate)
+	_replace_guard_with_candidate(failed_catch_regrab_candidates, candidate)
 
 
 func _update_failed_catch_regrab_guard() -> void:
@@ -636,18 +614,11 @@ func _update_failed_catch_regrab_guard() -> void:
 
 
 func _is_failed_catch_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	if candidate == null:
-		return false
-	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in failed_catch_regrab_candidates:
-		if _is_same_local_ledge(candidate, guarded_candidate):
-			return true
-	return false
+	return _is_candidate_blocked_by_guard(candidate, failed_catch_regrab_candidates)
 
 
 func _arm_failed_mantle_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	failed_mantle_candidates.clear()
-	if candidate != null:
-		failed_mantle_candidates.append(candidate)
+	_replace_guard_with_candidate(failed_mantle_candidates, candidate)
 
 
 func _update_failed_mantle_guard() -> void:
@@ -668,19 +639,11 @@ func _update_failed_mantle_guard() -> void:
 
 
 func _is_failed_mantle_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	if candidate == null:
-		return false
-	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in failed_mantle_candidates:
-		if _is_same_local_ledge(candidate, guarded_candidate):
-			return true
-	return false
+	return _is_candidate_blocked_by_guard(candidate, failed_mantle_candidates)
 
 
 func _arm_corner_release_suppression(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
-	corner_release_suppression_candidates.clear()
-	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-		if candidate != null:
-			corner_release_suppression_candidates.append(candidate)
+	_replace_guard_with_candidates(corner_release_suppression_candidates, candidates)
 
 
 func _update_corner_release_suppression() -> void:
@@ -714,10 +677,36 @@ func _should_keep_corner_release_suppression(
 
 
 func _is_corner_release_suppressed(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
+	return _is_candidate_blocked_by_guard(candidate, corner_release_suppression_candidates)
+
+
+func _replace_guard_with_candidate(
+	target: Array[PlayerLedgeDetector.LedgeCandidate],
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> void:
+	target.clear()
+	if candidate != null:
+		target.append(candidate)
+
+
+func _replace_guard_with_candidates(
+	target: Array[PlayerLedgeDetector.LedgeCandidate],
+	candidates: Array[PlayerLedgeDetector.LedgeCandidate]
+) -> void:
+	target.clear()
+	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
+		if candidate != null:
+			target.append(candidate)
+
+
+func _is_candidate_blocked_by_guard(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	guarded_candidates: Array[PlayerLedgeDetector.LedgeCandidate]
+) -> bool:
 	if candidate == null:
 		return false
-	for suppressed_candidate: PlayerLedgeDetector.LedgeCandidate in corner_release_suppression_candidates:
-		if _is_same_local_ledge(candidate, suppressed_candidate):
+	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in guarded_candidates:
+		if _is_same_local_ledge(candidate, guarded_candidate):
 			return true
 	return false
 
