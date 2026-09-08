@@ -191,8 +191,7 @@ func _create_components() -> void:
 		ledge_jump_horizontal_speed,
 		ledge_sprint_jump_horizontal_speed,
 		ledge_max_approach_angle_degrees,
-		gravity,
-		false
+		gravity
 	)
 
 
