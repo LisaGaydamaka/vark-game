@@ -16,18 +16,26 @@ func _init(p_max_collision_iterations: int) -> void:
 func move(
 	player: CharacterBody3D,
 	delta: float,
-	assist_velocity: Vector3 = Vector3.ZERO
+	assist_velocity: Vector3 = Vector3.ZERO,
+	support_normal: Vector3 = Vector3.ZERO
 ) -> Array[KinematicCollision3D]:
 	var collisions: Array[KinematicCollision3D] = []
 
-	# Persistent velocity is locomotion/physics state owned by the motor. Movement
-	# resolves only this frame's requested displacement. A wall or stair may clip
-	# displacement without erasing the horizontal speed the motor is carrying.
-	# Temporary traversal assist contributes to displacement only and is never
-	# copied back into persistent velocity.
-	var motion: Vector3 = (
-		player.velocity + assist_velocity
-	) * delta
+	# Persistent velocity contains only horizontal locomotion plus real vertical
+	# physics. Following a known floor is composed as frame-local Y displacement;
+	# it never becomes persistent vertical momentum.
+	var requested_velocity: Vector3 = player.velocity + assist_velocity
+	if (
+		player.velocity.y <= VERTICAL_NORMAL_EPSILON
+		and support_normal.length_squared() > MOTION_EPSILON_SQUARED
+		and support_normal.y > VERTICAL_NORMAL_EPSILON
+	):
+		requested_velocity.y += _get_surface_follow_vertical_velocity(
+			player.velocity,
+			support_normal.normalized()
+		)
+
+	var motion: Vector3 = requested_velocity * delta
 
 	for _iteration: int in range(max_collision_iterations):
 		if motion.length_squared() <= MOTION_EPSILON_SQUARED:
@@ -39,14 +47,33 @@ func move(
 
 		collisions.append(collision)
 		var normal: Vector3 = collision.get_normal()
-
-		# Collision response may terminate persistent vertical physics at a floor or
-		# ceiling, but never rewrites X/Z locomotion. Horizontal blocking/sliding is
-		# represented exclusively by the clipped remainder for this movement frame.
 		_constrain_vertical_velocity_from_collision(player, normal)
-		motion = collision.get_remainder().slide(normal)
+
+		var remainder: Vector3 = collision.get_remainder()
+		var resolved_remainder: Vector3 = remainder.slide(normal)
+
+		# Collision geometry may remove requested Y, but it may never invent upward
+		# motion. Uphill displacement must already have been authorized by the current
+		# support plane, step assist, or positive vertical physics before collision.
+		var maximum_allowed_upward: float = maxf(0.0, remainder.y)
+		if resolved_remainder.y > maximum_allowed_upward:
+			resolved_remainder.y = maximum_allowed_upward
+
+		motion = resolved_remainder
 
 	return collisions
+
+
+func _get_surface_follow_vertical_velocity(
+	persistent_velocity: Vector3,
+	normal: Vector3
+) -> float:
+	if normal.y <= VERTICAL_NORMAL_EPSILON:
+		return 0.0
+	return -(
+		persistent_velocity.x * normal.x
+		+ persistent_velocity.z * normal.z
+	) / normal.y
 
 
 func _constrain_vertical_velocity_from_collision(
@@ -78,4 +105,9 @@ func move_vertical_velocity(
 
 		var normal: Vector3 = collision.get_normal()
 		_constrain_vertical_velocity_from_collision(player, normal)
-		motion = collision.get_remainder().slide(normal)
+		var remainder: Vector3 = collision.get_remainder()
+		var resolved_remainder: Vector3 = remainder.slide(normal)
+		var maximum_allowed_upward: float = maxf(0.0, remainder.y)
+		if resolved_remainder.y > maximum_allowed_upward:
+			resolved_remainder.y = maximum_allowed_upward
+		motion = resolved_remainder
