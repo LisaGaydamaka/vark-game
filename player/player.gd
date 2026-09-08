@@ -72,7 +72,7 @@ var support: PlayerSupport
 var motor: PlayerMotor
 var movement: PlayerMovement
 var step: PlayerStep
-var ledge_detector: PlayerLedgeDetector
+var ledge_detector: PlayerLedgeDetectorLazy
 var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
@@ -140,7 +140,7 @@ func _create_components() -> void:
 		collision_shape
 	)
 
-	ledge_detector = PlayerLedgeDetector.new(
+	ledge_detector = PlayerLedgeDetectorLazy.new(
 		jump_height,
 		gravity,
 		head.position.y,
@@ -264,13 +264,16 @@ func _update_normal_movement(
 		input_direction,
 		view_forward
 	)
-	if (
-		airborne_detection_allowed
-		and not player_input.is_jump_pressed()
-		and ledge_controller.try_enter_hang_from_normal(delta)
-	):
-		step.cancel()
-		return
+	if airborne_detection_allowed and not player_input.is_jump_pressed():
+		if ledge_controller.try_enter_hang_from_normal(delta):
+			step.cancel()
+			return
+		if (
+			ledge_detector.expand_current_candidates()
+			and ledge_controller.try_enter_hang_from_normal(delta)
+		):
+			step.cancel()
+			return
 
 	var contact_intent_direction: Vector3 = input_direction
 	if contact_intent_direction.is_zero_approx():
@@ -292,19 +295,34 @@ func _update_normal_movement(
 			contact_intent_direction,
 			view_forward
 		)
-		if (
-			player_input.is_jump_pressed()
-			and ledge_controller.try_enter_mantle_from_contacts(
+		if player_input.is_jump_pressed():
+			if ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
 				collisions,
 				false,
 				true
-			)
-		):
-			step.cancel()
-			return
+			):
+				step.cancel()
+				return
+			if (
+				ledge_detector.expand_current_candidates()
+				and ledge_controller.try_enter_mantle_from_contacts(
+					contact_intent_direction,
+					collisions,
+					false,
+					true
+				)
+			):
+				step.cancel()
+				return
 
 		if ledge_controller.try_enter_hang_from_normal(delta):
+			step.cancel()
+			return
+		if (
+			ledge_detector.expand_current_candidates()
+			and ledge_controller.try_enter_hang_from_normal(delta)
+		):
 			step.cancel()
 			return
 
@@ -321,6 +339,17 @@ func _update_normal_movement(
 			collisions,
 			true,
 			false
+		):
+			step.cancel()
+			return
+		if (
+			ledge_detector.expand_current_candidates()
+			and ledge_controller.try_enter_mantle_from_contacts(
+				input_direction,
+				collisions,
+				true,
+				false
+			)
 		):
 			step.cancel()
 			return
