@@ -14,6 +14,8 @@ const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.05
 const TOP_PROBE_VERTICAL_MARGIN_RADIUS_RATIO: float = 0.1
 const CROSSING_CLEARANCE_MARGIN_MULTIPLIER: float = 4.0
 const PLANE_INTERSECTION_MIN_SINE_SQUARED: float = 0.00000001
+const DEBUG_GEOMETRY: bool = true
+const DEBUG_GEOMETRY_INTERVAL_MSEC: int = 250
 
 
 class StepCandidate:
@@ -39,6 +41,7 @@ var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
 var active_candidate: StepCandidate = null
 var current_assist_speed: float = 0.0
+var debug_last_times_msec: Dictionary = {}
 
 
 func _init(
@@ -98,6 +101,20 @@ func _init(
 	)
 
 
+func _debug_geometry(key: String, details: String = "") -> void:
+	if not DEBUG_GEOMETRY:
+		return
+	var now_msec: int = Time.get_ticks_msec()
+	var last_msec: int = int(debug_last_times_msec.get(key, -1000000))
+	if now_msec - last_msec < DEBUG_GEOMETRY_INTERVAL_MSEC:
+		return
+	debug_last_times_msec[key] = now_msec
+	if details.is_empty():
+		print("[StepGeom] ", key)
+	else:
+		print("[StepGeom] ", key, " ", details)
+
+
 func constrain_persistent_vertical_velocity(player: CharacterBody3D) -> void:
 	if active_candidate != null:
 		player.velocity.y = 0.0
@@ -119,6 +136,7 @@ func update_before_move(
 	)
 	var input_strength: float = minf(horizontal_input.length(), 1.0)
 	if input_strength <= sqrt(MOTION_EPSILON_SQUARED):
+		_debug_geometry("END_NO_INPUT")
 		cancel()
 		return Vector3.ZERO
 
@@ -126,17 +144,27 @@ func update_before_move(
 	var inward_direction: Vector3 = -active_candidate.wall_normal
 	var approach_alignment: float = approach_direction.dot(inward_direction)
 	if approach_alignment <= MIN_CONTINUE_ALIGNMENT:
+		_debug_geometry(
+			"END_ALIGNMENT",
+			"alignment=" + str(approach_alignment)
+		)
 		cancel()
 		return Vector3.ZERO
 
 	var remaining_height: float = get_remaining_height(player.global_position)
 	if remaining_height <= PROBE_SAFE_MARGIN:
+		_debug_geometry("END_TREAD_HEIGHT")
 		cancel()
 		return Vector3.ZERO
 	if has_crossed_edge(player.global_position):
+		_debug_geometry("END_CROSSED_EDGE")
 		cancel()
 		return Vector3.ZERO
 	if remaining_height > max_step_height + crossing_clearance_margin:
+		_debug_geometry(
+			"END_HEIGHT_INVALID",
+			"remaining=" + str(remaining_height)
+		)
 		cancel()
 		return Vector3.ZERO
 
@@ -176,9 +204,11 @@ func update_after_move(player: CharacterBody3D) -> void:
 	if active_candidate == null:
 		return
 	if get_remaining_height(player.global_position) <= PROBE_SAFE_MARGIN:
+		_debug_geometry("END_TREAD_HEIGHT")
 		cancel()
 		return
 	if has_crossed_edge(player.global_position):
+		_debug_geometry("END_CROSSED_EDGE")
 		cancel()
 
 
@@ -225,6 +255,13 @@ func try_start_from_contacts(
 
 	active_candidate = best_candidate
 	current_assist_speed = 0.0
+	_debug_geometry(
+		"START",
+		"height=" + str(best_candidate.step_height)
+		+ " edge=" + str(best_candidate.edge_point)
+		+ " wall=" + str(best_candidate.wall_normal)
+		+ " alignment=" + str(best_candidate.approach_alignment)
+	)
 	return true
 
 
@@ -251,12 +288,17 @@ func build_candidate_from_contact(
 	var riser_point_value: Variant = riser_hit.get("point")
 	var wall_normal_value: Variant = riser_hit.get("wall_normal")
 	if not (riser_point_value is Vector3) or not (wall_normal_value is Vector3):
+		_debug_geometry("BAD_RISER_DATA")
 		return null
 
 	var riser_point: Vector3 = riser_point_value
 	var wall_normal: Vector3 = wall_normal_value
 	var approach_alignment: float = approach_direction.dot(-wall_normal)
 	if approach_alignment < MIN_START_ALIGNMENT:
+		_debug_geometry(
+			"RISER_ALIGNMENT",
+			"alignment=" + str(approach_alignment)
+		)
 		return null
 
 	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
@@ -273,6 +315,7 @@ func build_candidate_from_contact(
 	var top_point_value: Variant = top_hit.get("point")
 	var top_normal_value: Variant = top_hit.get("normal")
 	if not (top_point_value is Vector3) or not (top_normal_value is Vector3):
+		_debug_geometry("BAD_TOP_DATA")
 		return null
 
 	var top_point: Vector3 = top_point_value
@@ -280,6 +323,10 @@ func build_candidate_from_contact(
 	var normal_dot: float = clampf(wall_normal.dot(top_normal), -1.0, 1.0)
 	var intersection_sine_squared: float = 1.0 - normal_dot * normal_dot
 	if intersection_sine_squared <= PLANE_INTERSECTION_MIN_SINE_SQUARED:
+		_debug_geometry(
+			"PLANES_PARALLEL",
+			"wall=" + str(wall_normal) + " top=" + str(top_normal)
+		)
 		return null
 
 	# Reconstruct the actual riser/tread edge from their two planes. The riser
@@ -294,14 +341,26 @@ func build_candidate_from_contact(
 	)
 	var step_height: float = edge_point.y - capsule_bottom_y
 	if step_height <= PROBE_SAFE_MARGIN:
+		_debug_geometry(
+			"HEIGHT_TOO_LOW",
+			"height=" + str(step_height)
+		)
 		return null
 	if step_height > max_step_height + PROBE_SAFE_MARGIN:
+		_debug_geometry(
+			"HEIGHT_TOO_HIGH",
+			"height=" + str(step_height)
+		)
 		return null
 
 	var outward_distance: float = (
 		(player.global_position - edge_point).dot(wall_normal)
 	)
 	if outward_distance <= PROBE_SAFE_MARGIN:
+		_debug_geometry(
+			"EDGE_ALREADY_CROSSED",
+			"outward=" + str(outward_distance)
+		)
 		return null
 
 	var candidate := StepCandidate.new()
@@ -311,6 +370,11 @@ func build_candidate_from_contact(
 	candidate.approach_alignment = approach_alignment
 
 	if not has_crossing_clearance(player, candidate, outward_distance):
+		_debug_geometry(
+			"NO_CLEARANCE",
+			"height=" + str(step_height)
+			+ " outward=" + str(outward_distance)
+		)
 		return null
 
 	return candidate
@@ -338,27 +402,39 @@ func find_riser(
 		player.get_world_3d().direct_space_state.intersect_ray(query)
 	)
 	if hit.is_empty():
+		_debug_geometry(
+			"NO_RISER",
+			"from=" + str(ray_from) + " to=" + str(ray_to)
+		)
 		return {}
 
 	var position_value: Variant = hit.get("position")
 	var normal_value: Variant = hit.get("normal")
 	if not (position_value is Vector3) or not (normal_value is Vector3):
+		_debug_geometry("BAD_RISER_HIT")
 		return {}
 
 	var hit_rid_value: Variant = hit.get("rid")
 	if expected_collider_rid.is_valid() and hit_rid_value is RID:
 		var hit_rid: RID = hit_rid_value
 		if hit_rid.is_valid() and hit_rid != expected_collider_rid:
+			_debug_geometry("RISER_COLLIDER_MISMATCH")
 			return {}
 
 	var riser_normal: Vector3 = normal_value
 	if riser_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		_debug_geometry("RISER_NORMAL_ZERO")
 		return {}
 	riser_normal = riser_normal.normalized()
 
 	# A walkable face is a ramp/floor, not a stair riser. This is the fundamental
 	# distinction that the rounded capsule contact could not provide reliably.
 	if support.is_walkable_surface(riser_normal):
+		_debug_geometry(
+			"REJECT_RAMP",
+			"normal=" + str(riser_normal)
+			+ " point=" + str(position_value)
+		)
 		return {}
 
 	var horizontal_normal := Vector3(
@@ -367,12 +443,27 @@ func find_riser(
 		riser_normal.z
 	)
 	if horizontal_normal.length() < MIN_RISER_HORIZONTAL_COMPONENT:
+		_debug_geometry(
+			"RISER_HORIZONTAL_TOO_SMALL",
+			"normal=" + str(riser_normal)
+		)
 		return {}
 
 	var wall_normal: Vector3 = horizontal_normal.normalized()
-	if approach_direction.dot(-wall_normal) < MIN_START_ALIGNMENT:
+	var alignment: float = approach_direction.dot(-wall_normal)
+	if alignment < MIN_START_ALIGNMENT:
+		_debug_geometry(
+			"RISER_ALIGNMENT",
+			"alignment=" + str(alignment)
+		)
 		return {}
 
+	_debug_geometry(
+		"RISER_OK",
+		"point=" + str(position_value)
+		+ " normal=" + str(riser_normal)
+		+ " wall=" + str(wall_normal)
+	)
 	return {
 		"point": position_value,
 		"normal": riser_normal,
@@ -406,20 +497,34 @@ func find_top(
 		player.get_world_3d().direct_space_state.intersect_ray(query)
 	)
 	if hit.is_empty():
+		_debug_geometry(
+			"NO_TOP",
+			"from=" + str(ray_from) + " to=" + str(ray_to)
+		)
 		return {}
 
 	var position_value: Variant = hit.get("position")
 	var normal_value: Variant = hit.get("normal")
 	if not (position_value is Vector3) or not (normal_value is Vector3):
+		_debug_geometry("BAD_TOP_HIT")
 		return {}
 
 	var top_normal: Vector3 = normal_value
 	if top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		_debug_geometry("TOP_NORMAL_ZERO")
 		return {}
 	top_normal = top_normal.normalized()
 	if not support.is_walkable_surface(top_normal):
+		_debug_geometry(
+			"TOP_NOT_WALKABLE",
+			"normal=" + str(top_normal)
+		)
 		return {}
 
+	_debug_geometry(
+		"TOP_OK",
+		"point=" + str(position_value) + " normal=" + str(top_normal)
+	)
 	return {
 		"point": position_value,
 		"normal": top_normal,
