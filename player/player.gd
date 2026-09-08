@@ -46,6 +46,8 @@ extends CharacterBody3D
 @export var step_max_height: float = 0.5
 @export var step_up_acceleration: float = 32.0
 @export var step_up_max_speed: float = 4.0
+@export var step_debug_logging: bool = true
+@export var step_debug_interval: float = 0.25
 
 
 @export_category("Ledge Detection")
@@ -79,6 +81,9 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
+
+var step_debug_elapsed: float = 0.0
+var step_debug_was_active: bool = false
 
 
 func _ready() -> void:
@@ -356,4 +361,65 @@ func _update_normal_movement(
 			collisions
 		)
 
+	_update_step_debug(input_direction, grounded, delta)
 	support.update(self)
+
+
+func _update_step_debug(
+	input_direction: Vector3,
+	grounded: bool,
+	delta: float
+) -> void:
+	if not step_debug_logging:
+		return
+
+	# Debug output is intentionally silent with no WASD input, including step
+	# cancellation caused by releasing movement input.
+	if input_direction.is_zero_approx():
+		step_debug_elapsed = 0.0
+		step_debug_was_active = step.is_active()
+		return
+
+	var active_now: bool = step.is_active()
+	var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
+	var horizontal_speed: float = horizontal_velocity.length()
+
+	if active_now and not step_debug_was_active:
+		print(
+			"[StepUp] START pos=", global_position,
+			" input=", input_direction,
+			" vel=", velocity,
+			" hspeed=", horizontal_speed,
+			" grounded=", grounded,
+			" accel=", step_up_acceleration,
+			" max_step_speed=", step_up_max_speed
+		)
+		step_debug_elapsed = 0.0
+	elif not active_now and step_debug_was_active:
+		print(
+			"[StepUp] END pos=", global_position,
+			" input=", input_direction,
+			" vel=", velocity,
+			" hspeed=", horizontal_speed,
+			" grounded=", grounded
+		)
+		step_debug_elapsed = 0.0
+	elif active_now:
+		step_debug_elapsed += delta
+		var interval: float = maxf(0.05, step_debug_interval)
+		if step_debug_elapsed >= interval:
+			print(
+				"[StepUp] ACTIVE pos=", global_position,
+				" input=", input_direction,
+				" vel=", velocity,
+				" hspeed=", horizontal_speed,
+				" vspeed=", velocity.y,
+				" grounded=", grounded,
+				" accel=", step_up_acceleration,
+				" max_step_speed=", step_up_max_speed
+			)
+			step_debug_elapsed = fmod(step_debug_elapsed, interval)
+	else:
+		step_debug_elapsed = 0.0
+
+	step_debug_was_active = active_now
