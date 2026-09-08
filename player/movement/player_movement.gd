@@ -3,7 +3,7 @@ extends RefCounted
 
 
 const MOTION_EPSILON_SQUARED: float = 0.000001
-const STEP_RISER_NORMAL_ALIGNMENT: float = 0.8
+const VERTICAL_NORMAL_EPSILON: float = 0.0001
 
 
 var max_collision_iterations: int
@@ -16,14 +16,15 @@ func _init(p_max_collision_iterations: int) -> void:
 func move(
 	player: CharacterBody3D,
 	delta: float,
-	assist_velocity: Vector3 = Vector3.ZERO,
-	preserved_step_wall_normal: Vector3 = Vector3.ZERO
+	assist_velocity: Vector3 = Vector3.ZERO
 ) -> Array[KinematicCollision3D]:
 	var collisions: Array[KinematicCollision3D] = []
 
-	# Assist velocity affects displacement only. player.velocity is the persistent
-	# normal-physics velocity and is the only velocity collision response retains.
-	# This prevents traversal assistance from becoming momentum on the next frame.
+	# Persistent velocity is locomotion/physics state owned by the motor. Movement
+	# resolves only this frame's requested displacement. A wall or stair may clip
+	# displacement without erasing the horizontal speed the motor is carrying.
+	# Temporary traversal assist contributes to displacement only and is never
+	# copied back into persistent velocity.
 	var motion: Vector3 = (
 		player.velocity + assist_velocity
 	) * delta
@@ -39,50 +40,26 @@ func move(
 		collisions.append(collision)
 		var normal: Vector3 = collision.get_normal()
 
-		# The active step riser still clips this frame's displacement through the
-		# remainder below, but it does not erase persistent horizontal locomotion.
-		# This lets the existing walk/sprint speed carry the capsule across the tread
-		# once the disposable vertical assist has raised it high enough.
-		var preserve_step_velocity: bool = _matches_step_riser(
-			normal,
-			preserved_step_wall_normal
-		)
-		var normal_velocity: float = player.velocity.dot(normal)
-		if normal_velocity < 0.0 and not preserve_step_velocity:
-			player.velocity -= normal * normal_velocity
-
+		# Collision response may terminate persistent vertical physics at a floor or
+		# ceiling, but never rewrites X/Z locomotion. Horizontal blocking/sliding is
+		# represented exclusively by the clipped remainder for this movement frame.
+		_constrain_vertical_velocity_from_collision(player, normal)
 		motion = collision.get_remainder().slide(normal)
 
 	return collisions
 
 
-func _matches_step_riser(
-	collision_normal: Vector3,
-	step_wall_normal: Vector3
-) -> bool:
-	var horizontal_collision_normal := Vector3(
-		collision_normal.x,
-		0.0,
-		collision_normal.z
-	)
-	var horizontal_step_normal := Vector3(
-		step_wall_normal.x,
-		0.0,
-		step_wall_normal.z
-	)
+func _constrain_vertical_velocity_from_collision(
+	player: CharacterBody3D,
+	normal: Vector3
+) -> void:
+	if absf(normal.y) <= VERTICAL_NORMAL_EPSILON:
+		return
 
-	if (
-		horizontal_collision_normal.length_squared() <= MOTION_EPSILON_SQUARED
-		or horizontal_step_normal.length_squared() <= MOTION_EPSILON_SQUARED
-	):
-		return false
-
-	return (
-		horizontal_collision_normal.normalized().dot(
-			horizontal_step_normal.normalized()
-		)
-		>= STEP_RISER_NORMAL_ALIGNMENT
-	)
+	if player.velocity.y < 0.0 and normal.y > 0.0:
+		player.velocity.y = 0.0
+	elif player.velocity.y > 0.0 and normal.y < 0.0:
+		player.velocity.y = 0.0
 
 
 func move_vertical_velocity(
@@ -100,8 +77,5 @@ func move_vertical_velocity(
 			break
 
 		var normal: Vector3 = collision.get_normal()
-		var normal_velocity: float = player.velocity.dot(normal)
-		if normal_velocity < 0.0:
-			player.velocity -= normal * normal_velocity
-
+		_constrain_vertical_velocity_from_collision(player, normal)
 		motion = collision.get_remainder().slide(normal)
