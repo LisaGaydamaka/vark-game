@@ -6,6 +6,7 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 const PROBE_START_MARGIN: float = 0.01
 const FOOT_PROBE_RADIUS_RATIO: float = 0.55
 const MINIMUM_NORMAL_Y: float = 0.0001
+const MAXIMUM_STEEP_SUPPORT_SLOPE_DEGREES: float = 75.0
 
 
 var has_support: bool = false
@@ -14,6 +15,7 @@ var support_point: Vector3 = Vector3.ZERO
 var walkable: bool = false
 
 var max_walkable_slope: float
+var maximum_support_slope: float
 var support_check_distance: float
 var capsule_bottom_offset: float
 var capsule_radius: float
@@ -30,6 +32,11 @@ func _init(
 	collision_shape: CollisionShape3D
 ) -> void:
 	max_walkable_slope = p_max_walkable_slope
+	maximum_support_slope = clampf(
+		maxf(max_walkable_slope, MAXIMUM_STEEP_SUPPORT_SLOPE_DEGREES),
+		0.0,
+		89.0
+	)
 	support_check_distance = p_support_check_distance
 
 	assert(
@@ -49,7 +56,7 @@ func _init(
 		- capsule_shape.height * 0.5
 	)
 	maximum_slope_contact_allowance = _get_slope_contact_allowance(
-		cos(deg_to_rad(clampf(max_walkable_slope, 0.0, 89.9)))
+		cos(deg_to_rad(maximum_support_slope))
 	)
 
 	var probe_radius: float = (
@@ -71,11 +78,16 @@ func update(player: CharacterBody3D) -> void:
 	support_point = player.global_position
 	walkable = false
 
-	# A capsule can be touching a slope while its lowest vertical point is still
-	# above the supporting plane. Rays search deep enough for the steepest
-	# walkable slope, then each hit is validated against the allowance implied by
-	# its own normal. Flat floors therefore keep the original support distance and
-	# do not become sticky across ledges or stair drops.
+	# Support and grounded are intentionally different states. A walkable floor
+	# makes the player grounded, while a steeper floor can still support/contact
+	# the capsule so the motor can apply slope gravity and kinetic friction rather
+	# than incorrectly treating the player as freely airborne.
+	#
+	# A capsule can touch a slope while its lowest vertical point is above the
+	# center-line ray intersection with that plane. Rays therefore search deeply
+	# enough for the steepest supported slope, then each hit is validated against
+	# the allowance implied by its own normal. Flat floors retain the original
+	# support distance and do not become sticky across ordinary ledges.
 	var capsule_bottom_y: float = (
 		player.global_position.y
 		+ capsule_bottom_offset
@@ -114,7 +126,7 @@ func update(player: CharacterBody3D) -> void:
 		if normal.length_squared() <= MOTION_EPSILON_SQUARED:
 			continue
 		normal = normal.normalized()
-		if not is_walkable_surface(normal):
+		if not is_support_surface(normal):
 			continue
 
 		var point: Vector3 = point_value
@@ -136,7 +148,7 @@ func update(player: CharacterBody3D) -> void:
 		return
 
 	has_support = true
-	walkable = true
+	walkable = is_walkable_surface(best_normal)
 	support_point = best_point
 	support_normal = best_normal
 
@@ -170,6 +182,13 @@ func _prepare_ray_query(
 	ray_query.to = ray_to
 	ray_query.collision_mask = player.collision_mask
 	return ray_query
+
+
+func is_support_surface(normal: Vector3) -> bool:
+	var minimum_normal_y: float = cos(
+		deg_to_rad(maximum_support_slope)
+	)
+	return normal.y >= minimum_normal_y - 0.00001
 
 
 func is_walkable_surface(normal: Vector3) -> bool:
