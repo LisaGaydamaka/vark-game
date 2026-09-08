@@ -357,15 +357,14 @@ func _finish_ledge_catch_if_ready() -> void:
 			return
 
 	if ledge_catch.has_failed():
-		var failed_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_catch.get_failed_candidate()
+		var failed_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_catch.take_failed_candidate()
 		if failed_candidate != null:
 			_arm_failed_catch_regrab_candidate(failed_candidate)
-		var failure_description: String = ledge_catch.take_failure_description()
 		active_catch_candidate = null
 		look.exit_ledge_view()
 		state = State.NONE
 		if debug_logging:
-			print("Ledge catch failed: ", failure_description)
+			print("Ledge catch failed")
 		return
 
 	if not ledge_catch.is_active():
