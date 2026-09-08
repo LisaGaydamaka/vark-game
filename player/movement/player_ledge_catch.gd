@@ -102,16 +102,10 @@ func update(
 		try_complete(player)
 		return
 
-	if not is_catch_path_valid(
-		player,
-		active_candidate,
-		player.global_transform,
-		to_target
-	):
-		player.velocity = catch_velocity
-		fail_catch()
-		return
-
+	# The complete catch path is validated once before entering ACTIVE. During
+	# the catch, move_catch_motion() remains authoritative and rejects any new or
+	# unexpected collision encountered by the actual trajectory, avoiding a
+	# duplicate test_move() solve every physics frame.
 	var catch_acceleration: float = gravity * CATCH_ACCELERATION_GRAVITY_MULTIPLIER
 	var braking_speed: float = sqrt(
 		2.0 * catch_acceleration * distance_to_target
