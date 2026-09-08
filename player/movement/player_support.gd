@@ -23,6 +23,7 @@ var capsule_bottom_offset: float
 var capsule_radius: float
 var maximum_slope_contact_allowance: float
 var probe_offsets: Array[Vector3] = []
+var probe_surface_rises: Array[float] = []
 
 var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
@@ -74,6 +75,19 @@ func _init(
 		Vector3(0.0, 0.0, probe_radius),
 		Vector3(0.0, 0.0, -probe_radius),
 	]
+	probe_surface_rises.clear()
+	for offset: Vector3 in probe_offsets:
+		var horizontal_distance_squared: float = (
+			offset.x * offset.x
+			+ offset.z * offset.z
+		)
+		var lower_surface_radius_y: float = sqrt(maxf(
+			0.0,
+			capsule_radius * capsule_radius - horizontal_distance_squared
+		))
+		probe_surface_rises.append(
+			capsule_radius - lower_surface_radius_y
+		)
 
 
 func update(player: CharacterBody3D) -> void:
@@ -87,11 +101,12 @@ func update(player: CharacterBody3D) -> void:
 	# the capsule so the motor can apply slope gravity and kinetic friction rather
 	# than incorrectly treating the player as freely airborne.
 	#
-	# A capsule can touch a slope while its lowest vertical point is above the
-	# center-line ray intersection with that plane. Rays therefore search deeply
-	# enough for the steepest supported slope, then each hit is validated against
-	# the allowance implied by its own normal. Flat floors retain the original
-	# support distance and do not become sticky across ordinary ledges.
+	# Each foot ray starts just above the actual lower capsule surface at its own
+	# horizontal offset. Using one shared bottom Y makes inward rays on a slope
+	# begin below the floor even while the capsule is tangent to it, which makes
+	# support at exact slope contacts (such as mantle completion) intermittent.
+	# The remaining downward allowance still preserves the existing tolerance for
+	# steep supported surfaces and ordinary support-check distance.
 	var capsule_bottom_y: float = (
 		player.global_position.y
 		+ capsule_bottom_offset
@@ -104,11 +119,16 @@ func update(player: CharacterBody3D) -> void:
 		+ maximum_slope_contact_allowance
 	)
 
-	for offset: Vector3 in probe_offsets:
+	for probe_index: int in range(probe_offsets.size()):
+		var offset: Vector3 = probe_offsets[probe_index]
+		var probe_surface_y: float = (
+			capsule_bottom_y
+			+ probe_surface_rises[probe_index]
+		)
 		var ray_from: Vector3 = player.global_position + offset
-		ray_from.y = capsule_bottom_y + PROBE_START_MARGIN
+		ray_from.y = probe_surface_y + PROBE_START_MARGIN
 		var ray_to: Vector3 = ray_from
-		ray_to.y = capsule_bottom_y - maximum_probe_distance
+		ray_to.y = probe_surface_y - maximum_probe_distance
 
 		var query: PhysicsRayQueryParameters3D = _prepare_ray_query(
 			player,
@@ -134,7 +154,7 @@ func update(player: CharacterBody3D) -> void:
 			continue
 
 		var point: Vector3 = point_value
-		var gap: float = maxf(0.0, capsule_bottom_y - point.y)
+		var gap: float = maxf(0.0, probe_surface_y - point.y)
 		var allowed_gap: float = (
 			support_check_distance
 			+ _get_slope_contact_allowance(normal.y)
