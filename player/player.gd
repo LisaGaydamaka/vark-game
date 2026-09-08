@@ -201,10 +201,17 @@ func _update_normal_movement(
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
 
+	# Step-active itself authorizes a jump, even if the assist has temporarily
+	# lifted the capsule away from support. Remember that state before cancelling
+	# step so this press cannot be lost to the ordinary grounded-only jump gate.
+	var step_jump_requested: bool = jump_pressed and step.is_active()
+
+	# Step owns persistent Y while active. Clear it before cancelling so jumping
+	# out of step-up starts from a clean vertical baseline with no assist momentum.
+	step.constrain_persistent_vertical_velocity(self)
+
 	if player_input.is_jump_pressed():
 		step.cancel()
-
-	step.constrain_persistent_vertical_velocity(self)
 
 	support.update(self)
 	var grounded: bool = support.is_grounded()
@@ -212,15 +219,20 @@ func _update_normal_movement(
 
 	ledge_controller.update_transition_guards()
 
+	# A jump requested during step-up is always a jump, not a mantle request.
 	var ground_mantle_requested: bool = (
 		jump_pressed
 		and grounded
+		and not step_jump_requested
 		and not input_direction.is_zero_approx()
 	)
 	var jump_accepted_before_move: bool = (
-		jump_pressed
-		and grounded
-		and not ground_mantle_requested
+		step_jump_requested
+		or (
+			jump_pressed
+			and grounded
+			and not ground_mantle_requested
+		)
 	)
 
 	var ground_target_speed: float = max_speed
@@ -289,7 +301,8 @@ func _update_normal_movement(
 			view_forward
 		)
 		if (
-			player_input.is_jump_pressed()
+			not step_jump_requested
+			and player_input.is_jump_pressed()
 			and ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
 				collisions,
