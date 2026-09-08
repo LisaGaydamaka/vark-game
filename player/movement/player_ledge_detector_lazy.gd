@@ -176,7 +176,43 @@ func _append_alternate_height_candidates(
 		if local_top == null:
 			continue
 
+		# Build only the pure geometry first. If this sample represents a ledge
+		# path that already produced a validated candidate, avoid paying for the
+		# near-edge ray, exposure ray, span probes, and hang-pose test again.
+		# Failed samples are deliberately not remembered, so a nearby sample can
+		# still succeed when the first one landed on awkward local geometry.
+		var provisional_geometry = build_ledge_geometry(local_wall, local_top)
+		if provisional_geometry == null:
+			continue
+		if _geometry_matches_validated_candidate(
+			results,
+			provisional_geometry
+		):
+			continue
+
 		_add_unique_discovery_candidate(
 			results,
 			build_reachable_candidate(player, support, local_wall, local_top)
 		)
+
+
+func _geometry_matches_validated_candidate(
+	results: Array[PlayerLedgeDetector.LedgeCandidate],
+	geometry
+) -> bool:
+	var provisional := PlayerLedgeDetector.LedgeCandidate.new()
+	provisional.edge_point = geometry.edge_point
+	provisional.wall_normal = geometry.wall_normal
+	provisional.top_normal = geometry.top_normal
+	provisional.ledge_direction = geometry.ledge_direction
+
+	for existing: PlayerLedgeDetector.LedgeCandidate in results:
+		if existing == null:
+			continue
+		if is_same_ledge_path(
+			provisional,
+			existing,
+			get_capsule_radius()
+		):
+			return true
+	return false
