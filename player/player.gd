@@ -216,6 +216,12 @@ func _update_normal_movement(
 	if player_input.is_jump_pressed():
 		step.cancel()
 
+	# While step-up owns vertical traversal, persistent Y must not accumulate
+	# gravity or old vertical momentum behind the temporary assist. Clearing it
+	# before the motor means that if step cancels later this frame, normal gravity
+	# starts again from zero immediately instead of revealing stored fall speed.
+	step.constrain_persistent_vertical_velocity(self)
+
 	support.update(self)
 	var grounded: bool = support.is_grounded()
 	var view_forward: Vector3 = -head.global_transform.basis.z
@@ -368,13 +374,15 @@ func _update_normal_movement(
 			collisions
 		)
 
+	# Refresh support before logging so END lines describe the post-move landing
+	# state rather than the grounded value captured before movement.
+	support.update(self)
 	_update_step_debug(
 		input_direction,
-		grounded,
+		support.is_grounded(),
 		step_assist_velocity,
 		delta
 	)
-	support.update(self)
 
 
 func _update_step_debug(
