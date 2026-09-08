@@ -87,6 +87,7 @@ var step_debug_speed_was_active: bool = false
 
 func _ready() -> void:
 	_create_components()
+	motor.sync_from_player(self)
 	player_look.capture_mouse()
 
 
@@ -101,6 +102,10 @@ func _physics_process(delta: float) -> void:
 			crouch_pressed,
 			delta
 		)
+		# Ledge actions own CharacterBody3D.velocity directly. Synchronize only at
+		# this explicit ownership boundary so normal movement resumes from the state
+		# produced by the ledge action without overwriting motor state every frame.
+		motor.sync_from_player(self)
 		return
 
 	_update_normal_movement(jump_pressed, delta)
@@ -205,17 +210,18 @@ func _update_normal_movement(
 	jump_pressed: bool,
 	delta: float
 ) -> void:
-	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
+	var input_direction: Vector3 = player_input.get_movement_direction(
+		global_transform
+	)
 
-	# Step-up owns persistent Y while active. Clear that temporary vertical state
-	# before cancelling so Space hands control back to normal jump/mantle physics
-	# without carrying any step-up momentum into the normal action.
-	step.constrain_persistent_vertical_velocity(self)
+	# Step traversal owns normal vertical physics while active. The motor remains
+	# authoritative; PlayerStep contributes only its separate traversal velocity.
+	if step.is_active():
+		motor.set_vertical_velocity(0.0)
+		motor.write_to_player(self)
 	if player_input.is_jump_pressed():
 		step.cancel()
 
-	# Support is a pure foot sensor. It reports only legitimate walkable floor and
-	# never mutates velocity or interprets rounded capsule edge contacts as slopes.
 	support.update(self)
 	var grounded: bool = support.is_grounded()
 	var view_forward: Vector3 = -head.global_transform.basis.z
@@ -233,15 +239,19 @@ func _update_normal_movement(
 		and not ground_mantle_requested
 	)
 
+	var locomotion_supported: bool = grounded or step.is_active()
 	var ground_target_speed: float = max_speed
 	if (
-		grounded
+		locomotion_supported
 		and not input_direction.is_zero_approx()
 		and player_input.is_sprint_pressed()
 	):
 		ground_target_speed = sprint_speed
 
-	var use_air_control: bool = not support.has_support
+	var use_air_control: bool = (
+		not support.has_support
+		and not step.is_active()
+	)
 	motor.update(
 		self,
 		support,
@@ -280,23 +290,24 @@ func _update_normal_movement(
 
 	var contact_intent_direction: Vector3 = input_direction
 	if contact_intent_direction.is_zero_approx():
-		var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
-		if horizontal_velocity.length_squared() > 0.000001:
-			contact_intent_direction = horizontal_velocity.normalized()
+		var carried_horizontal: Vector3 = motor.get_horizontal_velocity()
+		if carried_horizontal.length_squared() > 0.000001:
+			contact_intent_direction = carried_horizontal.normalized()
 
-	# Snapshot only for diagnostics. Collision resolution can clip this frame's
-	# displacement, but it no longer owns or rewrites persistent horizontal speed.
-	var horizontal_velocity_before_move := Vector3(
-		velocity.x,
-		0.0,
-		velocity.z
+	var horizontal_velocity_before_move: Vector3 = (
+		motor.get_horizontal_velocity()
 	)
-	var collisions: Array[KinematicCollision3D] = movement.move(
+	var move_result := movement.move_normal(
 		self,
 		delta,
+		motor.get_horizontal_velocity(),
+		motor.get_vertical_velocity(),
 		step_assist_velocity,
 		support
 	)
+	motor.set_vertical_velocity(move_result.vertical_velocity)
+	motor.write_to_player(self)
+	var collisions: Array[KinematicCollision3D] = move_result.collisions
 
 	if not collisions.is_empty() and not grounded:
 		ledge_detector.update(
@@ -341,7 +352,16 @@ func _update_normal_movement(
 
 	if ground_mantle_requested:
 		motor.apply_jump(self, jump_height)
-		movement.move_vertical_velocity(self, delta, support)
+		var vertical_result := movement.move_normal(
+			self,
+			delta,
+			Vector3.ZERO,
+			motor.get_vertical_velocity(),
+			Vector3.ZERO,
+			support
+		)
+		motor.set_vertical_velocity(vertical_result.vertical_velocity)
+		motor.write_to_player(self)
 
 	step.update_after_move(self)
 	if (
@@ -354,9 +374,8 @@ func _update_normal_movement(
 			input_direction,
 			collisions
 		):
-			# A step owns vertical traversal from the instant it is classified. X/Z
-			# requires no restoration because collision resolution never erased it.
-			step.constrain_persistent_vertical_velocity(self)
+			motor.set_vertical_velocity(0.0)
+			motor.write_to_player(self)
 
 	support.update(self)
 	_update_step_speed_debug(
@@ -377,10 +396,8 @@ func _update_step_speed_debug(
 		return
 
 	var active: bool = step.is_active()
-	var horizontal_velocity_after_move := Vector3(
-		velocity.x,
-		0.0,
-		velocity.z
+	var horizontal_velocity_after_move: Vector3 = (
+		motor.get_horizontal_velocity()
 	)
 	var before_speed: float = horizontal_velocity_before_move.length()
 	var after_speed: float = horizontal_velocity_after_move.length()
