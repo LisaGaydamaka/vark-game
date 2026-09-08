@@ -200,12 +200,13 @@ func _update_normal_movement(
 	delta: float
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
+	var jump_held: bool = player_input.is_jump_pressed()
 
 	# Step-up owns persistent Y while active. Clear that temporary vertical state
 	# before cancelling so Space hands control back to normal jump/mantle physics
 	# without carrying any step-up momentum into the normal action.
 	step.constrain_persistent_vertical_velocity(self)
-	if player_input.is_jump_pressed():
+	if jump_held:
 		step.cancel()
 
 	# Support reports floor-like contact separately from whether that contact is
@@ -249,7 +250,7 @@ func _update_normal_movement(
 		motor.apply_jump(self, jump_height)
 
 	var step_assist_velocity: Vector3 = Vector3.ZERO
-	if not player_input.is_jump_pressed():
+	if not jump_held:
 		step_assist_velocity = step.update_before_move(
 			self,
 			input_direction,
@@ -271,7 +272,7 @@ func _update_normal_movement(
 		input_direction,
 		view_forward
 	)
-	if airborne_detection_allowed and not player_input.is_jump_pressed():
+	if airborne_detection_allowed and not jump_held:
 		if ledge_controller.try_enter_hang_from_normal(delta):
 			step.cancel()
 			return
@@ -295,7 +296,7 @@ func _update_normal_movement(
 	)
 
 	if not collisions.is_empty() and not grounded:
-		if player_input.is_jump_pressed():
+		if jump_held:
 			if ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
 				collisions,
@@ -354,7 +355,7 @@ func _update_normal_movement(
 	step.update_after_move(self)
 	if (
 		not step.is_active()
-		and not player_input.is_jump_pressed()
+		and not jump_held
 	):
 		if step.try_start_from_contacts(
 			self,
