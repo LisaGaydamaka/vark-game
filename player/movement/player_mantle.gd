@@ -348,22 +348,22 @@ func is_forward_clearance_clear(player: CharacterBody3D) -> bool:
 
 
 func get_vertical_edge_clearance() -> float:
-	if active_candidate == null:
+	if active_candidate == null or active_candidate.source_candidate == null:
 		return INF
 
-	# The capsule stays in a vertical cross-edge plane while the true ledge line
-	# may climb along its horizontal direction. For a normalized ledge axis with
-	# horizontal factor h, distance from the bottom-cap center to the 3D edge is
-	# sqrt(outward^2 + h^2 * vertical^2). At the centerline crossing outward=0,
-	# so the required vertical offset is clearance_radius / h.
-	var horizontal_factor: float = Vector3(
-		active_candidate.ledge_axis.x,
-		0.0,
-		active_candidate.ledge_axis.z
-	).length()
-	if horizontal_factor <= sqrt(MOTION_EPSILON_SQUARED):
+	# At the wall/edge plane the bottom cap center must remain one clearance
+	# radius away from the sampled top plane. A purely vertical offset contributes
+	# top_normal.y * vertical_clearance to that plane distance, so an uphill top
+	# requires more lift than a flat top. This also subsumes the previous
+	# ledge-line-tilt correction while correctly handling slope across the ledge.
+	var top_normal: Vector3 = active_candidate.source_candidate.top_normal
+	if top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return INF
-	return get_clearance_radius() / horizontal_factor
+	top_normal = top_normal.normalized()
+	var vertical_factor: float = top_normal.dot(Vector3.UP)
+	if vertical_factor <= sqrt(MOTION_EPSILON_SQUARED):
+		return INF
+	return get_clearance_radius() / vertical_factor
 
 
 func get_crossing_edge_point(position: Vector3) -> Vector3:
