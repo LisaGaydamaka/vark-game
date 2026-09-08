@@ -99,6 +99,55 @@ func update(player: CharacterBody3D) -> void:
 		_apply_hit(best_hit)
 
 
+func get_motion_floor_normal(
+	player: CharacterBody3D,
+	horizontal_velocity: Vector3,
+	delta: float
+) -> Vector3:
+	# A new incline may affect this frame only when we are already supported and a
+	# predictive center-foot query finds a walkable floor at the next horizontal
+	# position. This authorizes continuous ramp transitions without allowing an
+	# arbitrary collision normal to create upward motion.
+	if not has_support or not walkable:
+		return Vector3.ZERO
+
+	var horizontal_motion := Vector3(
+		horizontal_velocity.x,
+		0.0,
+		horizontal_velocity.z
+	) * delta
+	if horizontal_motion.length_squared() <= MOTION_EPSILON_SQUARED:
+		return support_normal
+
+	var capsule_bottom_y: float = (
+		player.global_position.y
+		+ capsule_bottom_offset
+	)
+	var maximum_slope_rise: float = (
+		horizontal_motion.length()
+		* tan(deg_to_rad(max_walkable_slope))
+		+ PROBE_START_MARGIN
+	)
+	var ray_from: Vector3 = player.global_position + horizontal_motion
+	ray_from.y = capsule_bottom_y + maximum_slope_rise
+	var ray_to: Vector3 = ray_from
+	ray_to.y = capsule_bottom_y - support_check_distance
+
+	var hit: Dictionary = _raycast_walkable(player, ray_from, ray_to)
+	if hit.is_empty():
+		return support_normal
+
+	var point_value: Variant = hit.get("point")
+	var normal_value: Variant = hit.get("normal")
+	if not (point_value is Vector3) or not (normal_value is Vector3):
+		return support_normal
+
+	var point: Vector3 = point_value
+	if point.y > capsule_bottom_y + maximum_slope_rise + PROBE_START_MARGIN:
+		return support_normal
+	return normal_value
+
+
 func _probe_walkable_floor(
 	player: CharacterBody3D,
 	offset: Vector3
@@ -112,6 +161,23 @@ func _probe_walkable_floor(
 	var ray_to: Vector3 = ray_from
 	ray_to.y = capsule_bottom_y - support_check_distance
 
+	var hit: Dictionary = _raycast_walkable(player, ray_from, ray_to)
+	if hit.is_empty():
+		return {}
+
+	var point_value: Variant = hit.get("point")
+	if not (point_value is Vector3):
+		return {}
+	var point: Vector3 = point_value
+	hit["gap"] = maxf(0.0, ray_from.y - point.y)
+	return hit
+
+
+func _raycast_walkable(
+	player: CharacterBody3D,
+	ray_from: Vector3,
+	ray_to: Vector3
+) -> Dictionary:
 	var query: PhysicsRayQueryParameters3D = _prepare_ray_query(
 		player,
 		ray_from,
@@ -135,11 +201,9 @@ func _probe_walkable_floor(
 	if not is_walkable_surface(normal):
 		return {}
 
-	var point: Vector3 = point_value
 	return {
-		"point": point,
+		"point": point_value,
 		"normal": normal,
-		"gap": maxf(0.0, ray_from.y - point.y),
 	}
 
 
