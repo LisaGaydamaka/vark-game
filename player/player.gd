@@ -46,15 +46,12 @@ extends CharacterBody3D
 @export var step_max_height: float = 0.5
 @export var step_up_acceleration: float = 100.0
 @export var step_up_max_speed: float = 30.0
-@export var step_debug_logging: bool = false
-@export var step_debug_interval: float = 0.25
 
 
 @export_category("Ledge Detection")
 @export var ledge_max_wall_tilt_degrees: float = 15.0
 @export var ledge_max_line_tilt_degrees: float = 70.0
 @export var ledge_max_approach_angle_degrees: float = 65.0
-@export var ledge_debug_logging: bool = false
 
 
 @export_category("Ledge Corner")
@@ -75,15 +72,12 @@ var support: PlayerSupport
 var motor: PlayerMotor
 var movement: PlayerMovement
 var step: PlayerStep
-var ledge_detector: PlayerLedgeDetector
+var ledge_detector: PlayerLedgeDetectorLazy
 var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
-
-var step_debug_elapsed: float = 0.0
-var step_debug_was_active: bool = false
 
 
 func _ready() -> void:
@@ -104,10 +98,7 @@ func _physics_process(delta: float) -> void:
 		)
 		return
 
-	_update_normal_movement(
-		jump_pressed,
-		delta
-	)
+	_update_normal_movement(jump_pressed, delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -124,7 +115,8 @@ func _create_components() -> void:
 
 	support = PlayerSupport.new(
 		max_walkable_slope,
-		support_check_distance
+		support_check_distance,
+		collision_shape
 	)
 
 	motor = PlayerMotor.new(
@@ -148,14 +140,13 @@ func _create_components() -> void:
 		collision_shape
 	)
 
-	ledge_detector = PlayerLedgeDetector.new(
+	ledge_detector = PlayerLedgeDetectorLazy.new(
 		jump_height,
 		gravity,
 		head.position.y,
 		ledge_max_wall_tilt_degrees,
 		ledge_max_line_tilt_degrees,
 		ledge_max_approach_angle_degrees,
-		false,
 		collision_shape
 	)
 
@@ -200,8 +191,7 @@ func _create_components() -> void:
 		ledge_jump_horizontal_speed,
 		ledge_sprint_jump_horizontal_speed,
 		ledge_max_approach_angle_degrees,
-		gravity,
-		false
+		gravity
 	)
 
 
@@ -210,26 +200,23 @@ func _update_normal_movement(
 	delta: float
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
+	var jump_held: bool = player_input.is_jump_pressed()
 
-	# Step-up is the lowest-priority traversal behavior. Holding Space gives the
-	# existing jump/mantle/ledge logic complete control instead.
-	if player_input.is_jump_pressed():
+	# Step-up owns persistent Y while active. Clear that temporary vertical state
+	# before cancelling so Space hands control back to normal jump/mantle physics
+	# without carrying any step-up momentum into the normal action.
+	step.constrain_persistent_vertical_velocity(self)
+	if jump_held:
 		step.cancel()
 
-	# While step-up owns vertical traversal, persistent Y must not accumulate
-	# gravity or old vertical momentum behind the temporary assist. Clearing it
-	# before the motor means that if step cancels later this frame, normal gravity
-	# starts again from zero immediately instead of revealing stored fall speed.
-	step.constrain_persistent_vertical_velocity(self)
-
+	# Support reports floor-like contact separately from whether that contact is
+	# walkable, so steep slopes can use slope physics without becoming grounded.
 	support.update(self)
 	var grounded: bool = support.is_grounded()
 	var view_forward: Vector3 = -head.global_transform.basis.z
 
 	ledge_controller.update_transition_guards()
 
-	# Ground mantle is a discrete request, but geometry alone may not consume it.
-	# The real grounded move must physically contact the obstacle first.
 	var ground_mantle_requested: bool = (
 		jump_pressed
 		and grounded
@@ -260,15 +247,10 @@ func _update_normal_movement(
 	)
 
 	if jump_accepted_before_move:
-		motor.apply_jump(
-			self,
-			jump_height
-		)
+		motor.apply_jump(self, jump_height)
 
-	# Normal velocity is persistent. Step-up contributes only a disposable assist
-	# used by PlayerMovement for this frame's displacement.
 	var step_assist_velocity: Vector3 = Vector3.ZERO
-	if not player_input.is_jump_pressed():
+	if not jump_held:
 		step_assist_velocity = step.update_before_move(
 			self,
 			input_direction,
@@ -276,20 +258,30 @@ func _update_normal_movement(
 		)
 
 	var airborne_detection_allowed: bool = not grounded
+	var ledge_detection_allowed: bool = (
+		airborne_detection_allowed
+		or ground_mantle_requested
+	)
+	# Discover once from the pre-move pose. Post-move collision handling reuses
+	# these candidates and only filters/expands them against the actual contacts,
+	# avoiding a second full wall/top discovery pass in the same physics frame.
 	ledge_detector.update(
 		self,
 		support,
-		airborne_detection_allowed,
+		ledge_detection_allowed,
 		input_direction,
 		view_forward
 	)
-	if (
-		airborne_detection_allowed
-		and not player_input.is_jump_pressed()
-		and ledge_controller.try_enter_hang_from_normal(delta)
-	):
-		step.cancel()
-		return
+	if airborne_detection_allowed and not jump_held:
+		if ledge_controller.try_enter_hang_from_normal(delta):
+			step.cancel()
+			return
+		if (
+			ledge_detector.expand_current_candidates()
+			and ledge_controller.try_enter_hang_from_normal(delta)
+		):
+			step.cancel()
+			return
 
 	var contact_intent_direction: Vector3 = input_direction
 	if contact_intent_direction.is_zero_approx():
@@ -303,43 +295,39 @@ func _update_normal_movement(
 		step_assist_velocity
 	)
 
-	# A contact can expose a ledge opportunity that was just outside the magnetic
-	# discovery volume before movement. Held Space gives mantle first refusal on
-	# real contact; if mantle is invalid, a hangable ledge still falls back to hang.
 	if not collisions.is_empty() and not grounded:
-		ledge_detector.update(
-			self,
-			support,
-			true,
-			contact_intent_direction,
-			view_forward
-		)
-		if (
-			player_input.is_jump_pressed()
-			and ledge_controller.try_enter_mantle_from_contacts(
+		if jump_held:
+			if ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
 				collisions,
 				false,
 				true
-			)
-		):
-			step.cancel()
-			return
+			):
+				step.cancel()
+				return
+			if (
+				ledge_detector.expand_current_candidates()
+				and ledge_controller.try_enter_mantle_from_contacts(
+					contact_intent_direction,
+					collisions,
+					false,
+					true
+				)
+			):
+				step.cancel()
+				return
 
 		if ledge_controller.try_enter_hang_from_normal(delta):
 			step.cancel()
 			return
+		if (
+			ledge_detector.expand_current_candidates()
+			and ledge_controller.try_enter_hang_from_normal(delta)
+		):
+			step.cancel()
+			return
 
-	# Ground mantle is evaluated only after that same frame's real movement has
-	# produced contact. A probe-visible gap can therefore never start mantle.
 	if ground_mantle_requested and not collisions.is_empty():
-		ledge_detector.update(
-			self,
-			support,
-			true,
-			input_direction,
-			view_forward
-		)
 		if ledge_controller.try_enter_mantle_from_contacts(
 			input_direction,
 			collisions,
@@ -348,102 +336,33 @@ func _update_normal_movement(
 		):
 			step.cancel()
 			return
+		if (
+			ledge_detector.expand_current_candidates()
+			and ledge_controller.try_enter_mantle_from_contacts(
+				input_direction,
+				collisions,
+				true,
+				false
+			)
+		):
+			step.cancel()
+			return
 
-	# If the discrete ground mantle request was not consumed by a real contact,
-	# preserve the normal jump in the same physics frame. Horizontal/contact
-	# movement has already run, so execute only the takeoff's vertical component.
 	if ground_mantle_requested:
-		motor.apply_jump(
-			self,
-			jump_height
-		)
+		motor.apply_jump(self, jump_height)
 		movement.move_vertical_velocity(self, delta)
 
-	# Step-up runs only after every higher-priority traversal path has had a
-	# chance to consume the frame. It starts only from a real collision contact,
-	# but once active it is allowed both on the ground and in the air.
 	step.update_after_move(self)
 	if (
 		not step.is_active()
-		and not player_input.is_jump_pressed()
+		and not jump_held
 	):
-		step.try_start_from_contacts(
+		if step.try_start_from_contacts(
 			self,
 			support,
 			input_direction,
 			collisions
-		)
-
-	# Refresh support before logging so END lines describe the post-move landing
-	# state rather than the grounded value captured before movement.
-	support.update(self)
-	_update_step_debug(
-		input_direction,
-		support.is_grounded(),
-		step_assist_velocity,
-		delta
-	)
-
-
-func _update_step_debug(
-	input_direction: Vector3,
-	grounded: bool,
-	step_assist_velocity: Vector3,
-	delta: float
-) -> void:
-	if not step_debug_logging:
-		return
-
-	# Debug output is intentionally silent with no WASD input, including step
-	# cancellation caused by releasing movement input.
-	if input_direction.is_zero_approx():
-		step_debug_elapsed = 0.0
-		step_debug_was_active = step.is_active()
-		return
-
-	var active_now: bool = step.is_active()
-	var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
-	var horizontal_speed: float = horizontal_velocity.length()
-
-	if active_now and not step_debug_was_active:
-		print(
-			"[StepUp] START pos=", global_position,
-			" input=", input_direction,
-			" normal_vel=", velocity,
-			" assist=", step_assist_velocity,
-			" hspeed=", horizontal_speed,
-			" grounded=", grounded,
-			" accel=", step_up_acceleration,
-			" max_step_speed=", step_up_max_speed
-		)
-		step_debug_elapsed = 0.0
-	elif not active_now and step_debug_was_active:
-		print(
-			"[StepUp] END pos=", global_position,
-			" input=", input_direction,
-			" normal_vel=", velocity,
-			" discarded_assist=", step_assist_velocity,
-			" hspeed=", horizontal_speed,
-			" grounded=", grounded
-		)
-		step_debug_elapsed = 0.0
-	elif active_now:
-		step_debug_elapsed += delta
-		var interval: float = maxf(0.05, step_debug_interval)
-		if step_debug_elapsed >= interval:
-			print(
-				"[StepUp] ACTIVE pos=", global_position,
-				" input=", input_direction,
-				" normal_vel=", velocity,
-				" assist=", step_assist_velocity,
-				" hspeed=", horizontal_speed,
-				" normal_vspeed=", velocity.y,
-				" grounded=", grounded,
-				" accel=", step_up_acceleration,
-				" max_step_speed=", step_up_max_speed
-			)
-			step_debug_elapsed = fmod(step_debug_elapsed, interval)
-	else:
-		step_debug_elapsed = 0.0
-
-	step_debug_was_active = active_now
+		):
+			# A step owns vertical traversal from the instant it is classified. X/Z
+			# requires no restoration because collision resolution never erased it.
+			step.constrain_persistent_vertical_velocity(self)

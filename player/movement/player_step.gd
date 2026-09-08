@@ -5,9 +5,11 @@ extends RefCounted
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
-const MIN_HORIZONTAL_CONTACT_COMPONENT: float = 0.05
+const MIN_RISER_HORIZONTAL_COMPONENT: float = 0.05
 const MIN_START_ALIGNMENT: float = 0.25
 const MIN_CONTINUE_ALIGNMENT: float = 0.05
+const RISER_PROBE_HEIGHT_MARGIN_MULTIPLIER: float = 4.0
+const RISER_PROBE_FORWARD_MARGIN_MULTIPLIER: float = 4.0
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.05
 const TOP_PROBE_VERTICAL_MARGIN_RADIUS_RATIO: float = 0.1
 const CROSSING_CLEARANCE_MARGIN_MULTIPLIER: float = 4.0
@@ -16,8 +18,6 @@ const PLANE_INTERSECTION_MIN_SINE_SQUARED: float = 0.00000001
 
 class StepCandidate:
 	var edge_point: Vector3 = Vector3.ZERO
-	var top_point: Vector3 = Vector3.ZERO
-	var top_normal: Vector3 = Vector3.UP
 	var wall_normal: Vector3 = Vector3.ZERO
 	var step_height: float = 0.0
 	var approach_alignment: float = 0.0
@@ -26,11 +26,11 @@ class StepCandidate:
 var max_step_height: float
 var step_acceleration: float
 var max_step_speed: float
-var collision_shape: CollisionShape3D
 
-var capsule_radius: float
-var capsule_height: float
 var capsule_bottom_offset: float
+var capsule_radius: float
+var riser_probe_height: float
+var riser_probe_distance: float
 var top_probe_inset: float
 var top_probe_vertical_margin: float
 var crossing_clearance_margin: float
@@ -45,12 +45,11 @@ func _init(
 	p_max_step_height: float,
 	p_step_acceleration: float,
 	p_max_step_speed: float,
-	p_collision_shape: CollisionShape3D
+	collision_shape: CollisionShape3D
 ) -> void:
 	max_step_height = p_max_step_height
 	step_acceleration = p_step_acceleration
 	max_step_speed = p_max_step_speed
-	collision_shape = p_collision_shape
 
 	assert(
 		max_step_height >= 0.0,
@@ -74,12 +73,17 @@ func _init(
 		shape is CapsuleShape3D,
 		"PlayerStep requires the player collision shape to be CapsuleShape3D."
 	)
-	var capsule_shape: CapsuleShape3D = shape as CapsuleShape3D
+
+	var capsule_shape := shape as CapsuleShape3D
 	capsule_radius = capsule_shape.radius
-	capsule_height = capsule_shape.height
-	capsule_bottom_offset = (
-		collision_shape.position.y
-		- capsule_height * 0.5
+	var capsule_height: float = capsule_shape.height
+	capsule_bottom_offset = collision_shape.position.y - capsule_height * 0.5
+	riser_probe_height = (
+		PROBE_SAFE_MARGIN * RISER_PROBE_HEIGHT_MARGIN_MULTIPLIER
+	)
+	riser_probe_distance = (
+		capsule_radius
+		+ PROBE_SAFE_MARGIN * RISER_PROBE_FORWARD_MARGIN_MULTIPLIER
 	)
 	top_probe_inset = maxf(
 		PROBE_SAFE_MARGIN * 4.0,
@@ -90,21 +94,13 @@ func _init(
 		capsule_radius * TOP_PROBE_VERTICAL_MARGIN_RADIUS_RATIO
 	)
 	crossing_clearance_margin = (
-		PROBE_SAFE_MARGIN
-		* CROSSING_CLEARANCE_MARGIN_MULTIPLIER
+		PROBE_SAFE_MARGIN * CROSSING_CLEARANCE_MARGIN_MULTIPLIER
 	)
 
 
-func constrain_persistent_vertical_velocity(
-	player: CharacterBody3D
-) -> void:
-	if active_candidate == null:
-		return
-
-	# Step-up owns the vertical axis while active. Clear any vertical momentum
-	# carried from the previous physics frame before the normal motor runs. If the
-	# step cancels this frame, gravity can then resume from zero immediately.
-	player.velocity.y = 0.0
+func constrain_persistent_vertical_velocity(player: CharacterBody3D) -> void:
+	if active_candidate != null:
+		player.velocity.y = 0.0
 
 
 func update_before_move(
@@ -133,42 +129,30 @@ func update_before_move(
 		cancel()
 		return Vector3.ZERO
 
-	active_candidate.approach_alignment = approach_alignment
-
 	var remaining_height: float = get_remaining_height(player.global_position)
 	if remaining_height <= PROBE_SAFE_MARGIN:
 		cancel()
 		return Vector3.ZERO
-
 	if has_crossed_edge(player.global_position):
 		cancel()
 		return Vector3.ZERO
-
 	if remaining_height > max_step_height + crossing_clearance_margin:
 		cancel()
 		return Vector3.ZERO
 
-	# The normal motor has already run this frame. Continuing step-up means the
-	# step constraint owns Y, so discard gravity/vertical physics generated during
-	# the motor update instead of allowing it to accumulate behind the assist.
+	# Step-up owns vertical motion while active. Normal horizontal locomotion and
+	# collision response remain persistent; the upward assist exists only for the
+	# current movement frame.
 	player.velocity.y = 0.0
 
 	var control_strength: float = (
-		input_strength
-		* clampf(approach_alignment, 0.0, 1.0)
+		input_strength * clampf(approach_alignment, 0.0, 1.0)
 	)
-	var target_assist_speed: float = (
-		max_step_speed
-		* control_strength
-	)
+	var target_assist_speed: float = max_step_speed * control_strength
 
-	# Step-up owns only a disposable upward correction. Normal WASD and collision
-	# response remain in player.velocity; the assist is added only to this frame's
-	# displacement by PlayerMovement and never becomes persistent momentum.
 	if delta > sqrt(MOTION_EPSILON_SQUARED):
 		var maximum_upward_speed: float = (
-			maxf(0.0, remaining_height + PROBE_SAFE_MARGIN)
-			/ delta
+			maxf(0.0, remaining_height + PROBE_SAFE_MARGIN) / delta
 		)
 		target_assist_speed = minf(
 			target_assist_speed,
@@ -180,9 +164,6 @@ func update_before_move(
 		target_assist_speed,
 		step_acceleration * control_strength * delta
 	)
-
-	# The remaining-height limit is hard. A high previous assist value cannot
-	# survive into a frame where less vertical clearance remains.
 	current_assist_speed = minf(
 		maxf(0.0, current_assist_speed),
 		maxf(0.0, target_assist_speed)
@@ -194,11 +175,9 @@ func update_before_move(
 func update_after_move(player: CharacterBody3D) -> void:
 	if active_candidate == null:
 		return
-
 	if get_remaining_height(player.global_position) <= PROBE_SAFE_MARGIN:
 		cancel()
 		return
-
 	if has_crossed_edge(player.global_position):
 		cancel()
 
@@ -256,31 +235,35 @@ func build_candidate_from_contact(
 	collision: KinematicCollision3D,
 	collision_index: int
 ) -> StepCandidate:
-	var contact_normal: Vector3 = collision.get_normal(collision_index)
-	if contact_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		return null
-	contact_normal = contact_normal.normalized()
-
-	# The capsule's rounded lower cap can contact a sharp stair edge with a
-	# diagonal normal, so only the horizontal component identifies the riser.
-	var horizontal_normal := Vector3(
-		contact_normal.x,
-		0.0,
-		contact_normal.z
+	# The capsule contact is only evidence that locomotion was blocked. It is not
+	# used as the stair face because the rounded capsule can report a diagonal
+	# normal on both real risers and ordinary ramps. Prove a separate low blocker.
+	var expected_collider_rid: RID = collision.get_collider_rid(collision_index)
+	var riser_hit: Dictionary = find_riser(
+		player,
+		support,
+		approach_direction,
+		expected_collider_rid
 	)
-	if horizontal_normal.length() < MIN_HORIZONTAL_CONTACT_COMPONENT:
+	if riser_hit.is_empty():
 		return null
-	var wall_normal: Vector3 = horizontal_normal.normalized()
+
+	var riser_point_value: Variant = riser_hit.get("point")
+	var wall_normal_value: Variant = riser_hit.get("wall_normal")
+	if not (riser_point_value is Vector3) or not (wall_normal_value is Vector3):
+		return null
+
+	var riser_point: Vector3 = riser_point_value
+	var wall_normal: Vector3 = wall_normal_value
 	var approach_alignment: float = approach_direction.dot(-wall_normal)
 	if approach_alignment < MIN_START_ALIGNMENT:
 		return null
 
-	var contact_point: Vector3 = collision.get_position(collision_index)
 	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
 	var top_hit: Dictionary = find_top(
 		player,
 		support,
-		contact_point,
+		riser_point,
 		wall_normal,
 		capsule_bottom_y
 	)
@@ -291,18 +274,18 @@ func build_candidate_from_contact(
 	var top_normal_value: Variant = top_hit.get("normal")
 	if not (top_point_value is Vector3) or not (top_normal_value is Vector3):
 		return null
+
 	var top_point: Vector3 = top_point_value
 	var top_normal: Vector3 = top_normal_value
-
 	var normal_dot: float = clampf(wall_normal.dot(top_normal), -1.0, 1.0)
 	var intersection_sine_squared: float = 1.0 - normal_dot * normal_dot
 	if intersection_sine_squared <= PLANE_INTERSECTION_MIN_SINE_SQUARED:
 		return null
 
-	# Reconstruct the wall/top plane intersection. The capsule contact point is
-	# not the step height when its rounded bottom is touching the corner.
+	# Reconstruct the actual riser/tread edge from their two planes. The riser
+	# point now comes from the dedicated blocker probe, not the rounded capsule.
 	var wall_plane_distance: float = (
-		(top_point - contact_point).dot(wall_normal)
+		(top_point - riser_point).dot(wall_normal)
 	)
 	var edge_point: Vector3 = (
 		top_point
@@ -323,35 +306,94 @@ func build_candidate_from_contact(
 
 	var candidate := StepCandidate.new()
 	candidate.edge_point = edge_point
-	candidate.top_point = top_point
-	candidate.top_normal = top_normal
 	candidate.wall_normal = wall_normal
 	candidate.step_height = step_height
 	candidate.approach_alignment = approach_alignment
 
-	if not has_crossing_clearance(
-		player,
-		candidate,
-		outward_distance
-	):
+	if not has_crossing_clearance(player, candidate, outward_distance):
 		return null
 
 	return candidate
 
 
+func find_riser(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	approach_direction: Vector3,
+	expected_collider_rid: RID
+) -> Dictionary:
+	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
+	var ray_from: Vector3 = player.global_position
+	ray_from.y = capsule_bottom_y + riser_probe_height
+	var ray_to: Vector3 = (
+		ray_from + approach_direction * riser_probe_distance
+	)
+
+	var query: PhysicsRayQueryParameters3D = prepare_ray_query(
+		player,
+		ray_from,
+		ray_to
+	)
+	var hit: Dictionary = (
+		player.get_world_3d().direct_space_state.intersect_ray(query)
+	)
+	if hit.is_empty():
+		return {}
+
+	var position_value: Variant = hit.get("position")
+	var normal_value: Variant = hit.get("normal")
+	if not (position_value is Vector3) or not (normal_value is Vector3):
+		return {}
+
+	var hit_rid_value: Variant = hit.get("rid")
+	if expected_collider_rid.is_valid() and hit_rid_value is RID:
+		var hit_rid: RID = hit_rid_value
+		if hit_rid.is_valid() and hit_rid != expected_collider_rid:
+			return {}
+
+	var riser_normal: Vector3 = normal_value
+	if riser_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return {}
+	riser_normal = riser_normal.normalized()
+
+	# A walkable face is a ramp/floor, not a stair riser. This is the fundamental
+	# distinction that the rounded capsule contact could not provide reliably.
+	if support.is_walkable_surface(riser_normal):
+		return {}
+
+	var horizontal_normal := Vector3(
+		riser_normal.x,
+		0.0,
+		riser_normal.z
+	)
+	if horizontal_normal.length() < MIN_RISER_HORIZONTAL_COMPONENT:
+		return {}
+
+	var wall_normal: Vector3 = horizontal_normal.normalized()
+	var alignment: float = approach_direction.dot(-wall_normal)
+	if alignment < MIN_START_ALIGNMENT:
+		return {}
+
+	return {
+		"point": position_value,
+		"normal": riser_normal,
+		"wall_normal": wall_normal,
+	}
+
+
 func find_top(
 	player: CharacterBody3D,
 	support: PlayerSupport,
-	contact_point: Vector3,
+	riser_point: Vector3,
 	wall_normal: Vector3,
 	capsule_bottom_y: float
 ) -> Dictionary:
-	var probe_center: Vector3 = contact_point - wall_normal * top_probe_inset
+	# Probe behind a proven blocking riser. A continuous ramp cannot reach this
+	# stage because its low face is walkable and is rejected by find_riser().
+	var probe_center: Vector3 = riser_point - wall_normal * top_probe_inset
 	var ray_from: Vector3 = probe_center
 	ray_from.y = (
-		capsule_bottom_y
-		+ max_step_height
-		+ top_probe_vertical_margin
+		capsule_bottom_y + max_step_height + top_probe_vertical_margin
 	)
 	var ray_to: Vector3 = probe_center
 	ray_to.y = capsule_bottom_y - top_probe_vertical_margin
@@ -362,9 +404,7 @@ func find_top(
 		ray_to
 	)
 	var hit: Dictionary = (
-		player.get_world_3d()
-		.direct_space_state
-		.intersect_ray(query)
+		player.get_world_3d().direct_space_state.intersect_ray(query)
 	)
 	if hit.is_empty():
 		return {}
@@ -424,8 +464,7 @@ func has_crossing_clearance(
 		* (outward_distance + crossing_clearance_margin)
 	)
 	crossing_transform.origin.y += (
-		candidate.step_height
-		+ crossing_clearance_margin
+		candidate.step_height + crossing_clearance_margin
 	)
 
 	var collision := KinematicCollision3D.new()
@@ -458,10 +497,6 @@ func get_remaining_height(position: Vector3) -> float:
 
 func get_capsule_bottom_y(position: Vector3) -> float:
 	return position.y + capsule_bottom_offset
-
-
-func get_assist_velocity() -> Vector3:
-	return Vector3.UP * current_assist_speed
 
 
 func is_active() -> bool:

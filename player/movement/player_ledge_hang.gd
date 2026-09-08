@@ -78,15 +78,19 @@ func update(
 		return Action.MANTLE_REQUEST
 
 	attachment_revalidation_elapsed += delta
+	update_blocked_endpoint_input_state(input_direction)
+	if not update_shimmy(player, support, input_direction, delta):
+		return Action.LOST_LEDGE
+
+	# A successful shimmy already refreshed the tracked ledge candidate at the
+	# player's new position. Only run the periodic stationary/blocked attachment
+	# check when that movement path did not satisfy the revalidation interval.
 	if (
 		attachment_revalidation_elapsed >= ATTACHMENT_REVALIDATION_INTERVAL_SECONDS
 		and not revalidate_attachment(player, support)
 	):
 		return Action.LOST_LEDGE
 
-	update_blocked_endpoint_input_state(input_direction)
-	if not update_shimmy(player, support, input_direction, delta):
-		return Action.LOST_LEDGE
 	if blocked_shimmy_direction.length_squared() > MOTION_EPSILON_SQUARED:
 		return Action.SHIMMY_BLOCKED
 	return Action.NONE
@@ -173,12 +177,12 @@ func update_shimmy(
 	var motion: Vector3 = next_candidate.hang_position - player.global_position
 	if motion.length_squared() <= MOTION_EPSILON_SQUARED:
 		set_active_candidate(next_candidate)
+		attachment_revalidation_elapsed = 0.0
 		return true
 
-	if not is_shimmy_path_clear(player, motion, next_candidate):
-		set_blocked_shimmy_direction(input_shimmy_direction)
-		return true
-
+	# The real move is authoritative. If it encounters an unexpected blocker,
+	# move_shimmy_motion() restores the starting transform so blocked shimmy has
+	# the same no-partial-advance result without a duplicate test_move() solve.
 	if not move_shimmy_motion(player, motion, next_candidate):
 		shimmy_velocity = 0.0
 		if not revalidate_attachment(player, support):
@@ -188,6 +192,7 @@ func update_shimmy(
 
 	clear_blocked_endpoint()
 	set_active_candidate(next_candidate)
+	attachment_revalidation_elapsed = 0.0
 	return true
 
 
@@ -270,52 +275,12 @@ func clear_blocked_endpoint() -> void:
 	blocked_endpoint_input_released = false
 
 
-func is_shimmy_path_clear(
-	player: CharacterBody3D,
-	motion: Vector3,
-	next_candidate: PlayerLedgeDetector.LedgeCandidate
-) -> bool:
-	var simulated_transform: Transform3D = player.global_transform
-	var remaining_motion: Vector3 = motion
-	for _iteration: int in range(PROBE_MAX_COLLISIONS):
-		if remaining_motion.length_squared() <= MOTION_EPSILON_SQUARED:
-			return true
-		var collision := KinematicCollision3D.new()
-		var blocked: bool = player.test_move(
-			simulated_transform,
-			remaining_motion,
-			collision,
-			PROBE_SAFE_MARGIN,
-			false,
-			PROBE_MAX_COLLISIONS
-		)
-		if not blocked:
-			return true
-
-		var previous_motion_length_squared: float = remaining_motion.length_squared()
-		var next_motion: Vector3 = collision.get_remainder()
-		var collision_count: int = collision.get_collision_count()
-		for collision_index: int in range(collision_count):
-			if not is_expected_wall_contact(collision, collision_index, next_candidate):
-				return false
-			next_motion = next_motion.slide(collision.get_normal(collision_index))
-
-		var travel: Vector3 = collision.get_travel()
-		simulated_transform.origin += travel
-		if (
-			travel.length_squared() <= MOTION_EPSILON_SQUARED
-			and next_motion.length_squared() >= previous_motion_length_squared - MOTION_EPSILON_SQUARED
-		):
-			return false
-		remaining_motion = next_motion
-	return remaining_motion.length_squared() <= MOTION_EPSILON_SQUARED
-
-
 func move_shimmy_motion(
 	player: CharacterBody3D,
 	motion: Vector3,
 	next_candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
+	var starting_transform: Transform3D = player.global_transform
 	var remaining_motion: Vector3 = motion
 	for _iteration: int in range(PROBE_MAX_COLLISIONS):
 		if remaining_motion.length_squared() <= MOTION_EPSILON_SQUARED:
@@ -335,6 +300,7 @@ func move_shimmy_motion(
 		var collision_count: int = collision.get_collision_count()
 		for collision_index: int in range(collision_count):
 			if not is_expected_wall_contact(collision, collision_index, next_candidate):
+				player.global_transform = starting_transform
 				return false
 			next_motion = next_motion.slide(collision.get_normal(collision_index))
 
@@ -342,9 +308,14 @@ func move_shimmy_motion(
 			collision.get_travel().length_squared() <= MOTION_EPSILON_SQUARED
 			and next_motion.length_squared() >= previous_motion_length_squared - MOTION_EPSILON_SQUARED
 		):
+			player.global_transform = starting_transform
 			return false
 		remaining_motion = next_motion
-	return remaining_motion.length_squared() <= MOTION_EPSILON_SQUARED
+
+	if remaining_motion.length_squared() > MOTION_EPSILON_SQUARED:
+		player.global_transform = starting_transform
+		return false
+	return true
 
 
 func is_expected_wall_contact(

@@ -35,7 +35,6 @@ var ledge_jump_horizontal_speed: float
 var ledge_sprint_jump_horizontal_speed: float
 var ledge_max_approach_angle_degrees: float
 var gravity: float
-var debug_logging: bool
 var minimum_air_mantle_alignment: float
 var minimum_local_ledge_alignment: float
 
@@ -66,8 +65,7 @@ func _init(
 	configured_ledge_jump_horizontal_speed: float,
 	configured_ledge_sprint_jump_horizontal_speed: float,
 	configured_ledge_max_approach_angle_degrees: float,
-	configured_gravity: float,
-	configured_debug_logging: bool
+	configured_gravity: float
 ) -> void:
 	body = player_body
 	head = player_head
@@ -87,7 +85,6 @@ func _init(
 	ledge_sprint_jump_horizontal_speed = configured_ledge_sprint_jump_horizontal_speed
 	ledge_max_approach_angle_degrees = configured_ledge_max_approach_angle_degrees
 	gravity = configured_gravity
-	debug_logging = configured_debug_logging
 
 	var maximum_approach_angle: float = clampf(ledge_max_approach_angle_degrees, 0.0, 89.0)
 	minimum_air_mantle_alignment = cos(deg_to_rad(maximum_approach_angle))
@@ -174,7 +171,7 @@ func try_enter_mantle_from_contacts(
 		if ground_request:
 			if (
 				_should_attempt_ground_mantle_contact(candidate, input_direction)
-				and _try_start_free_mantle(candidate, "Ground mantle entered")
+				and _try_start_free_mantle(candidate)
 			):
 				return true
 			continue
@@ -182,7 +179,7 @@ func try_enter_mantle_from_contacts(
 		if (
 			air_request
 			and _should_attempt_air_mantle_contact(candidate)
-			and _try_start_free_mantle(candidate, "Air mantle entered")
+			and _try_start_free_mantle(candidate)
 		):
 			return true
 	return false
@@ -259,8 +256,7 @@ func _candidate_matches_contact(
 
 
 func _try_start_free_mantle(
-	candidate: PlayerLedgeDetector.LedgeCandidate,
-	debug_message: String
+	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
 	var mantle_candidate: PlayerMantle.MantleCandidate = (
 		ledge_mantle.find_air_candidate(
@@ -274,10 +270,7 @@ func _try_start_free_mantle(
 
 	ledge_detector.clear_candidate()
 	look.enter_ledge_view(candidate.wall_normal)
-	state = State.MANTLING
-	body.velocity = Vector3.ZERO
-	if debug_logging:
-		print(debug_message)
+	_enter_active_state(State.MANTLING)
 	return true
 
 
@@ -332,13 +325,7 @@ func _update_ledge_catch(crouch_pressed: bool, delta: float) -> void:
 		_arm_drop_regrab_candidate(active_catch_candidate)
 		ledge_catch.cancel()
 		active_catch_candidate = null
-		look.exit_ledge_view()
-		state = State.NONE
-		body.velocity = Vector3.DOWN * gravity * delta
-		movement.move(body, delta)
-		support.update(body)
-		if debug_logging:
-			print("Ledge catch dropped")
+		_finish_release_to_air(delta, true)
 		return
 	ledge_catch.update(body, delta)
 	_finish_ledge_catch_if_ready()
@@ -350,28 +337,20 @@ func _finish_ledge_catch_if_ready() -> void:
 		active_catch_candidate = null
 		if candidate != null:
 			ledge_hang.start(candidate)
-			state = State.HANGING
-			body.velocity = Vector3.ZERO
-			if debug_logging:
-				print("Ledge hang entered")
+			_enter_active_state(State.HANGING)
 			return
 
 	if ledge_catch.has_failed():
-		var failed_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_catch.get_failed_candidate()
+		var failed_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_catch.take_failed_candidate()
 		if failed_candidate != null:
 			_arm_failed_catch_regrab_candidate(failed_candidate)
-		var failure_description: String = ledge_catch.take_failure_description()
 		active_catch_candidate = null
-		look.exit_ledge_view()
-		state = State.NONE
-		if debug_logging:
-			print("Ledge catch failed: ", failure_description)
+		_exit_traversal_state()
 		return
 
 	if not ledge_catch.is_active():
 		active_catch_candidate = null
-		look.exit_ledge_view()
-		state = State.NONE
+		_exit_traversal_state()
 
 
 func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
@@ -386,12 +365,10 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 	)
 	if action == PlayerLedgeHang.Action.DROP:
 		_arm_drop_regrab_candidate(ledge_hang.get_candidate())
-		_release_ledge_to_air(input_direction, delta)
+		_release_ledge_to_air(delta)
 		return
 	if action == PlayerLedgeHang.Action.LOST_LEDGE:
-		_release_ledge_to_air(input_direction, delta)
-		if debug_logging:
-			print("Ledge hang lost valid geometry")
+		_release_ledge_to_air(delta)
 		return
 	if action == PlayerLedgeHang.Action.MANTLE_REQUEST:
 		var mantle_source: PlayerLedgeDetector.LedgeCandidate = ledge_hang.get_candidate()
@@ -402,14 +379,9 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 		)
 		if mantle_candidate != null and ledge_mantle.try_start(body, mantle_candidate):
 			ledge_hang.cancel()
-			state = State.MANTLING
-			body.velocity = Vector3.ZERO
-			if debug_logging:
-				print("Ledge mantle entered")
+			_enter_active_state(State.MANTLING)
 			return
 		_perform_no_input_hang_jump(mantle_source, delta)
-		if debug_logging:
-			print("Mantle invalid; performed hang jump")
 		return
 	if action == PlayerLedgeHang.Action.SHIMMY_BLOCKED:
 		var shimmy_direction: Vector3 = ledge_hang.take_blocked_shimmy_direction()
@@ -424,8 +396,6 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 			ledge_hang.cancel()
 			state = State.CORNERING
 			look.update_ledge_view_center(ledge_corner.get_current_wall_normal())
-			if debug_logging:
-				print("Ledge corner entered")
 		return
 	if action == PlayerLedgeHang.Action.DIRECTIONAL_JUMP:
 		var released_candidate: PlayerLedgeDetector.LedgeCandidate = ledge_hang.get_candidate()
@@ -440,43 +410,30 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 			horizontal_launch_speed
 		)
 		ledge_hang.cancel()
-		look.exit_ledge_view()
-		state = State.NONE
-		movement.move(body, delta)
-		support.update(body)
+		_finish_release_to_air(delta, false)
 
 
 func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 	if crouch_pressed:
 		_arm_drop_regrab_guard(ledge_corner.get_release_candidates())
-		_release_corner_to_air(input_direction, delta)
+		_release_corner_to_air(delta)
 		return
 	if jump_pressed:
 		_arm_jump_regrab_guard(ledge_corner.get_release_candidates())
 		if input_direction.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED:
 			motor.apply_directional_jump(body, input_direction, jump_height, max_speed)
 			ledge_corner.cancel()
-			look.exit_ledge_view()
-			state = State.NONE
-			movement.move(body, delta)
-			support.update(body)
+			_finish_release_to_air(delta, false)
 			return
 		body.velocity = Vector3.ZERO
 		motor.apply_jump(body, jump_height)
 		ledge_corner.cancel()
-		look.exit_ledge_view()
-		state = State.NONE
-		movement.move(body, delta)
-		support.update(body)
-		if debug_logging:
-			print("Mantle unavailable during corner; performed hang jump")
+		_finish_release_to_air(delta, false)
 		return
 
 	if not ledge_corner.update(body, delta):
-		_release_corner_to_air(input_direction, delta)
-		if debug_logging:
-			print("Ledge corner lost valid traversal")
+		_release_corner_to_air(delta)
 		return
 	look.update_ledge_view_center(ledge_corner.get_current_wall_normal())
 
@@ -491,50 +448,37 @@ func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float
 			body.global_position
 		)
 		if completed_candidate == null:
-			_release_corner_to_air(input_direction, delta)
-			if debug_logging:
-				print("Ledge corner final hang validation failed")
+			_release_corner_to_air(delta)
 			return
 		ledge_corner.cancel()
 		ledge_hang.start(completed_candidate)
-		body.velocity = Vector3.ZERO
-		state = State.HANGING
+		_enter_active_state(State.HANGING)
 		look.update_ledge_view_center(completed_candidate.wall_normal)
-		if debug_logging:
-			print("Ledge corner completed")
 
 
 func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(head.global_transform)
 	if crouch_pressed:
 		_arm_drop_regrab_candidate(ledge_mantle.get_release_candidate())
-		_release_mantle_to_air(input_direction, delta)
+		_release_mantle_to_air(delta)
 		return
 	if jump_pressed and input_direction.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED:
 		_arm_jump_regrab_candidate(ledge_mantle.get_release_candidate())
 		motor.apply_directional_jump(body, input_direction, jump_height, max_speed)
 		ledge_mantle.cancel()
-		look.exit_ledge_view()
-		state = State.NONE
-		movement.move(body, delta)
-		support.update(body)
+		_finish_release_to_air(delta, false)
 		return
 	if not ledge_mantle.update(body, delta):
 		_arm_failed_mantle_candidate(ledge_mantle.get_release_candidate())
-		_release_mantle_to_air(input_direction, delta)
-		if debug_logging:
-			print("Ledge mantle lost valid traversal")
+		_release_mantle_to_air(delta)
 		return
 	if not ledge_mantle.has_completed():
 		return
 	body.velocity = Vector3.ZERO
 	support.update(body)
 	ledge_mantle.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
+	_exit_traversal_state()
 	body.velocity = Vector3.ZERO
-	if debug_logging:
-		print("Ledge mantle completed")
 
 
 func _perform_no_input_hang_jump(
@@ -545,51 +489,49 @@ func _perform_no_input_hang_jump(
 	body.velocity = Vector3.ZERO
 	motor.apply_jump(body, jump_height)
 	ledge_hang.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
-	movement.move(body, delta)
-	support.update(body)
+	_finish_release_to_air(delta, false)
 
 
-func _release_mantle_to_air(_input_direction: Vector3, delta: float) -> void:
+func _release_mantle_to_air(delta: float) -> void:
 	ledge_mantle.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
-	body.velocity = Vector3.DOWN * gravity * delta
-	movement.move(body, delta)
-	support.update(body)
+	_finish_release_to_air(delta, true)
 
 
-func _release_ledge_to_air(_input_direction: Vector3, delta: float) -> void:
+func _release_ledge_to_air(delta: float) -> void:
 	ledge_hang.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
-	body.velocity = Vector3.DOWN * gravity * delta
-	movement.move(body, delta)
-	support.update(body)
+	_finish_release_to_air(delta, true)
 
 
-func _release_corner_to_air(_input_direction: Vector3, delta: float) -> void:
+func _release_corner_to_air(delta: float) -> void:
 	_arm_corner_release_suppression(ledge_corner.get_release_candidates())
 	ledge_corner.cancel()
-	look.exit_ledge_view()
-	state = State.NONE
-	body.velocity = Vector3.DOWN * gravity * delta
+	_finish_release_to_air(delta, true)
+
+
+func _finish_release_to_air(delta: float, apply_fall_velocity: bool) -> void:
+	_exit_traversal_state()
+	if apply_fall_velocity:
+		body.velocity = Vector3.DOWN * gravity * delta
 	movement.move(body, delta)
 	support.update(body)
+
+
+func _enter_active_state(next_state: int) -> void:
+	state = next_state
+	body.velocity = Vector3.ZERO
+
+
+func _exit_traversal_state() -> void:
+	look.exit_ledge_view()
+	state = State.NONE
 
 
 func _arm_jump_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	jump_regrab_candidates.clear()
-	if candidate != null:
-		jump_regrab_candidates.append(candidate)
+	_replace_guard_with_candidate(jump_regrab_candidates, candidate)
 
 
 func _arm_jump_regrab_guard(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
-	jump_regrab_candidates.clear()
-	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-		if candidate != null:
-			jump_regrab_candidates.append(candidate)
+	_replace_guard_with_candidates(jump_regrab_candidates, candidates)
 
 
 func _update_jump_regrab_guard() -> void:
@@ -619,25 +561,15 @@ func _is_in_jump_regrab_region(candidate: PlayerLedgeDetector.LedgeCandidate) ->
 
 
 func _is_jump_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	if candidate == null:
-		return false
-	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in jump_regrab_candidates:
-		if _is_same_local_ledge(candidate, guarded_candidate):
-			return true
-	return false
+	return _is_candidate_blocked_by_guard(candidate, jump_regrab_candidates)
 
 
 func _arm_drop_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	drop_regrab_candidates.clear()
-	if candidate != null:
-		drop_regrab_candidates.append(candidate)
+	_replace_guard_with_candidate(drop_regrab_candidates, candidate)
 
 
 func _arm_drop_regrab_guard(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
-	drop_regrab_candidates.clear()
-	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-		if candidate != null:
-			drop_regrab_candidates.append(candidate)
+	_replace_guard_with_candidates(drop_regrab_candidates, candidates)
 
 
 func _update_drop_regrab_guard() -> void:
@@ -665,18 +597,11 @@ func _is_in_drop_regrab_region(candidate: PlayerLedgeDetector.LedgeCandidate) ->
 
 
 func _is_drop_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	if candidate == null:
-		return false
-	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in drop_regrab_candidates:
-		if _is_same_local_ledge(candidate, guarded_candidate):
-			return true
-	return false
+	return _is_candidate_blocked_by_guard(candidate, drop_regrab_candidates)
 
 
 func _arm_failed_catch_regrab_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	failed_catch_regrab_candidates.clear()
-	if candidate != null:
-		failed_catch_regrab_candidates.append(candidate)
+	_replace_guard_with_candidate(failed_catch_regrab_candidates, candidate)
 
 
 func _update_failed_catch_regrab_guard() -> void:
@@ -689,18 +614,11 @@ func _update_failed_catch_regrab_guard() -> void:
 
 
 func _is_failed_catch_regrab_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	if candidate == null:
-		return false
-	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in failed_catch_regrab_candidates:
-		if _is_same_local_ledge(candidate, guarded_candidate):
-			return true
-	return false
+	return _is_candidate_blocked_by_guard(candidate, failed_catch_regrab_candidates)
 
 
 func _arm_failed_mantle_candidate(candidate: PlayerLedgeDetector.LedgeCandidate) -> void:
-	failed_mantle_candidates.clear()
-	if candidate != null:
-		failed_mantle_candidates.append(candidate)
+	_replace_guard_with_candidate(failed_mantle_candidates, candidate)
 
 
 func _update_failed_mantle_guard() -> void:
@@ -721,19 +639,11 @@ func _update_failed_mantle_guard() -> void:
 
 
 func _is_failed_mantle_blocked(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
-	if candidate == null:
-		return false
-	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in failed_mantle_candidates:
-		if _is_same_local_ledge(candidate, guarded_candidate):
-			return true
-	return false
+	return _is_candidate_blocked_by_guard(candidate, failed_mantle_candidates)
 
 
 func _arm_corner_release_suppression(candidates: Array[PlayerLedgeDetector.LedgeCandidate]) -> void:
-	corner_release_suppression_candidates.clear()
-	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-		if candidate != null:
-			corner_release_suppression_candidates.append(candidate)
+	_replace_guard_with_candidates(corner_release_suppression_candidates, candidates)
 
 
 func _update_corner_release_suppression() -> void:
@@ -767,10 +677,36 @@ func _should_keep_corner_release_suppression(
 
 
 func _is_corner_release_suppressed(candidate: PlayerLedgeDetector.LedgeCandidate) -> bool:
+	return _is_candidate_blocked_by_guard(candidate, corner_release_suppression_candidates)
+
+
+func _replace_guard_with_candidate(
+	target: Array[PlayerLedgeDetector.LedgeCandidate],
+	candidate: PlayerLedgeDetector.LedgeCandidate
+) -> void:
+	target.clear()
+	if candidate != null:
+		target.append(candidate)
+
+
+func _replace_guard_with_candidates(
+	target: Array[PlayerLedgeDetector.LedgeCandidate],
+	candidates: Array[PlayerLedgeDetector.LedgeCandidate]
+) -> void:
+	target.clear()
+	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
+		if candidate != null:
+			target.append(candidate)
+
+
+func _is_candidate_blocked_by_guard(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	guarded_candidates: Array[PlayerLedgeDetector.LedgeCandidate]
+) -> bool:
 	if candidate == null:
 		return false
-	for suppressed_candidate: PlayerLedgeDetector.LedgeCandidate in corner_release_suppression_candidates:
-		if _is_same_local_ledge(candidate, suppressed_candidate):
+	for guarded_candidate: PlayerLedgeDetector.LedgeCandidate in guarded_candidates:
+		if _is_same_local_ledge(candidate, guarded_candidate):
 			return true
 	return false
 

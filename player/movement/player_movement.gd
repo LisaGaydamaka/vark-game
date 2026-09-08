@@ -3,6 +3,7 @@ extends RefCounted
 
 
 const MOTION_EPSILON_SQUARED: float = 0.000001
+const VERTICAL_NORMAL_EPSILON: float = 0.0001
 
 
 var max_collision_iterations: int
@@ -19,9 +20,11 @@ func move(
 ) -> Array[KinematicCollision3D]:
 	var collisions: Array[KinematicCollision3D] = []
 
-	# Assist velocity affects displacement only. player.velocity is the persistent
-	# normal-physics velocity and is the only velocity collision response retains.
-	# This prevents traversal assistance from becoming momentum on the next frame.
+	# Persistent velocity is locomotion/physics state owned by the motor. Movement
+	# resolves only this frame's requested displacement. A wall or stair may clip
+	# displacement without erasing the horizontal speed the motor is carrying.
+	# Temporary traversal assist contributes to displacement only and is never
+	# copied back into persistent velocity.
 	var motion: Vector3 = (
 		player.velocity + assist_velocity
 	) * delta
@@ -37,15 +40,26 @@ func move(
 		collisions.append(collision)
 		var normal: Vector3 = collision.get_normal()
 
-		# Resolve only persistent velocity. The temporary assist participates in
-		# this frame's motion/remainder below, then disappears automatically.
-		var normal_velocity: float = player.velocity.dot(normal)
-		if normal_velocity < 0.0:
-			player.velocity -= normal * normal_velocity
-
+		# Collision response may terminate persistent vertical physics at a floor or
+		# ceiling, but never rewrites X/Z locomotion. Horizontal blocking/sliding is
+		# represented exclusively by the clipped remainder for this movement frame.
+		_constrain_vertical_velocity_from_collision(player, normal)
 		motion = collision.get_remainder().slide(normal)
 
 	return collisions
+
+
+func _constrain_vertical_velocity_from_collision(
+	player: CharacterBody3D,
+	normal: Vector3
+) -> void:
+	if absf(normal.y) <= VERTICAL_NORMAL_EPSILON:
+		return
+
+	if player.velocity.y < 0.0 and normal.y > 0.0:
+		player.velocity.y = 0.0
+	elif player.velocity.y > 0.0 and normal.y < 0.0:
+		player.velocity.y = 0.0
 
 
 func move_vertical_velocity(
@@ -63,8 +77,5 @@ func move_vertical_velocity(
 			break
 
 		var normal: Vector3 = collision.get_normal()
-		var normal_velocity: float = player.velocity.dot(normal)
-		if normal_velocity < 0.0:
-			player.velocity -= normal * normal_velocity
-
+		_constrain_vertical_velocity_from_collision(player, normal)
 		motion = collision.get_remainder().slide(normal)

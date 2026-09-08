@@ -170,9 +170,14 @@ func try_start(
 		route_edge_point.z
 	)
 
-	# Eligibility and live traversal share the same first contract: the capsule
-	# must be able to move straight upward at its current horizontal position.
+	# Mantle eligibility must validate the same two-stage route used at runtime:
+	# first lift clear of the lip, then cross inward to the edge plane. Checking
+	# only the vertical segment lets recessed/inward ledges start a mantle whose
+	# forward phase immediately runs into wall geometry.
 	if not is_vertical_clearance_clear(player):
+		cancel()
+		return false
+	if not is_forward_clearance_clear(player):
 		cancel()
 		return false
 
@@ -250,20 +255,24 @@ func update(
 					completed = true
 					break
 
-				# Forward travel has a hard geometric ceiling: the capsule centerline
-				# may reach the edge/wall plane but may never be carried beyond it.
-				# If any geometry blocks that request earlier, mantle ends at the
-				# physically reached position and normal physics owns the result.
+				var forward_direction: Vector3 = -active_candidate.wall_normal
 				var collision: KinematicCollision3D = player.move_and_collide(
-					-active_candidate.wall_normal * forward_distance,
+					forward_direction * forward_distance,
 					false,
 					PROBE_SAFE_MARGIN,
 					false,
 					PROBE_MAX_COLLISIONS
 				)
 				if collision != null:
-					completed = true
-					break
+					var actual_forward: float = maxf(
+						0.0,
+						collision.get_travel().dot(forward_direction)
+					)
+					if (
+						actual_forward
+						< forward_distance - get_route_progress_tolerance()
+					):
+						return false
 				if has_reached_forward_limit(player.global_position):
 					completed = true
 				break
@@ -294,6 +303,47 @@ func is_vertical_clearance_clear(player: CharacterBody3D) -> bool:
 	return (
 		collision.get_travel().y
 		>= vertical_distance - get_route_progress_tolerance()
+	)
+
+
+func is_forward_clearance_clear(player: CharacterBody3D) -> bool:
+	if active_candidate == null:
+		return false
+
+	# Simulate the forward phase from the pose the lift phase is expected to
+	# reach. This rejects recessed ledges and other geometry that leaves the
+	# vertical column clear but blocks crossing the edge plane.
+	var lifted_position: Vector3 = player.global_position
+	lifted_position.y = maxf(lifted_position.y, lift_target_height)
+	var forward_distance: float = maxf(
+		0.0,
+		get_outward_distance(lifted_position)
+	)
+	if forward_distance <= get_route_progress_tolerance():
+		return true
+
+	var lifted_transform: Transform3D = player.global_transform
+	lifted_transform.origin = lifted_position
+	var forward_direction: Vector3 = -active_candidate.wall_normal
+	var collision := KinematicCollision3D.new()
+	var blocked: bool = player.test_move(
+		lifted_transform,
+		forward_direction * forward_distance,
+		collision,
+		PROBE_SAFE_MARGIN,
+		false,
+		PROBE_MAX_COLLISIONS
+	)
+	if not blocked:
+		return true
+
+	var forward_travel: float = maxf(
+		0.0,
+		collision.get_travel().dot(forward_direction)
+	)
+	return (
+		forward_travel
+		>= forward_distance - get_route_progress_tolerance()
 	)
 
 
