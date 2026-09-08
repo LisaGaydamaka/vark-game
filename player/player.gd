@@ -201,14 +201,9 @@ func _update_normal_movement(
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
 
-	# Only a fresh jump press during an active step gets the special permission
-	# to jump without ground support. The jump starts from the current position,
-	# with no step-assist momentum and no mantle/ledge conversion on this frame.
-	var step_jump_requested: bool = jump_pressed and step.is_active()
-
 	# Step-up owns persistent Y while active. Clear that temporary vertical state
-	# before cancelling so a step jump starts from the same clean vertical baseline
-	# as an ordinary jump instead of inheriting step-assist momentum.
+	# before cancelling so Space hands control back to normal jump/mantle physics
+	# without carrying any step-up momentum into the normal action.
 	step.constrain_persistent_vertical_velocity(self)
 	if player_input.is_jump_pressed():
 		step.cancel()
@@ -219,21 +214,15 @@ func _update_normal_movement(
 
 	ledge_controller.update_transition_guards()
 
-	# Normal grounded jump/mantle behavior is unchanged. Only a step jump bypasses
-	# mantle and is accepted even when the step has lifted us away from support.
 	var ground_mantle_requested: bool = (
 		jump_pressed
 		and grounded
-		and not step_jump_requested
 		and not input_direction.is_zero_approx()
 	)
 	var jump_accepted_before_move: bool = (
-		step_jump_requested
-		or (
-			jump_pressed
-			and grounded
-			and not ground_mantle_requested
-		)
+		jump_pressed
+		and grounded
+		and not ground_mantle_requested
 	)
 
 	var ground_target_speed: float = max_speed
@@ -302,8 +291,7 @@ func _update_normal_movement(
 			view_forward
 		)
 		if (
-			not step_jump_requested
-			and player_input.is_jump_pressed()
+			player_input.is_jump_pressed()
 			and ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
 				collisions,
@@ -314,12 +302,7 @@ func _update_normal_movement(
 			step.cancel()
 			return
 
-		# A step jump is intentionally just a jump for this frame. Do not let the
-		# collision that ended/left the step immediately convert it into auto-hang.
-		if (
-			not step_jump_requested
-			and ledge_controller.try_enter_hang_from_normal(delta)
-		):
+		if ledge_controller.try_enter_hang_from_normal(delta):
 			step.cancel()
 			return
 
