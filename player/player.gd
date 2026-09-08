@@ -244,6 +244,10 @@ func _update_normal_movement(
 		ground_target_speed = sprint_speed
 
 	var use_air_control: bool = not support.has_support
+	var locomotion_speed_budget: float = ground_target_speed
+	if use_air_control:
+		locomotion_speed_budget = air_max_speed
+
 	motor.update(
 		self,
 		support,
@@ -263,6 +267,7 @@ func _update_normal_movement(
 		step.update_before_move(
 			self,
 			input_direction,
+			locomotion_speed_budget,
 			delta
 		)
 
@@ -361,13 +366,19 @@ func _update_normal_movement(
 			collisions
 		)
 
-	_update_step_debug(input_direction, grounded, delta)
+	_update_step_debug(
+		input_direction,
+		grounded,
+		locomotion_speed_budget,
+		delta
+	)
 	support.update(self)
 
 
 func _update_step_debug(
 	input_direction: Vector3,
 	grounded: bool,
+	locomotion_speed_budget: float,
 	delta: float
 ) -> void:
 	if not step_debug_logging:
@@ -391,6 +402,7 @@ func _update_step_debug(
 			" vel=", velocity,
 			" hspeed=", horizontal_speed,
 			" grounded=", grounded,
+			" locomotion_budget=", locomotion_speed_budget,
 			" accel=", step_up_acceleration,
 			" max_step_speed=", step_up_max_speed
 		)
@@ -401,7 +413,8 @@ func _update_step_debug(
 			" input=", input_direction,
 			" vel=", velocity,
 			" hspeed=", horizontal_speed,
-			" grounded=", grounded
+			" grounded=", grounded,
+			" locomotion_budget=", locomotion_speed_budget
 		)
 		step_debug_elapsed = 0.0
 	elif active_now:
@@ -415,6 +428,7 @@ func _update_step_debug(
 				" hspeed=", horizontal_speed,
 				" vspeed=", velocity.y,
 				" grounded=", grounded,
+				" locomotion_budget=", locomotion_speed_budget,
 				" accel=", step_up_acceleration,
 				" max_step_speed=", step_up_max_speed
 			)
