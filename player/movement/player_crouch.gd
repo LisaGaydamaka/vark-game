@@ -5,6 +5,7 @@ extends RefCounted
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const HEIGHT_EPSILON: float = 0.0001
+const TRANSITION_SPEED: float = 3.5
 
 
 var collision_shape: CollisionShape3D
@@ -64,27 +65,43 @@ func toggle() -> void:
 
 
 func update(player: CharacterBody3D) -> bool:
-	if not standing_requested:
-		return _apply_height(crouch_height)
-
 	var current_height: float = capsule_shape.height
+	var delta: float = 1.0 / float(Engine.physics_ticks_per_second)
+	var max_height_change: float = TRANSITION_SPEED * delta
+
+	if not standing_requested:
+		var next_crouch_height: float = move_toward(
+			current_height,
+			crouch_height,
+			max_height_change
+		)
+		return _apply_height(next_crouch_height)
+
 	var missing_height: float = standing_height - current_height
 	if missing_height <= HEIGHT_EPSILON:
 		return _apply_height(standing_height)
 
-	# Sweeping the current bottom-anchored capsule upward covers the same volume
-	# that increasing its height would occupy. Collision travel therefore tells
-	# us exactly how much of the requested stand-up is currently available.
+	var requested_height: float = move_toward(
+		current_height,
+		standing_height,
+		max_height_change
+	)
+	var requested_growth: float = requested_height - current_height
+	if requested_growth <= HEIGHT_EPSILON:
+		return false
+
+	# Sweep only the volume this frame's smooth growth would occupy. This keeps
+	# the transition gradual while still stopping immediately under a ceiling.
 	var collision := KinematicCollision3D.new()
 	var blocked: bool = player.test_move(
 		player.global_transform,
-		Vector3.UP * missing_height,
+		Vector3.UP * requested_growth,
 		collision,
 		PROBE_SAFE_MARGIN,
 		false,
 		PROBE_MAX_COLLISIONS
 	)
-	var allowed_growth: float = missing_height
+	var allowed_growth: float = requested_growth
 	if blocked:
 		allowed_growth = maxf(
 			0.0,
@@ -93,7 +110,9 @@ func update(player: CharacterBody3D) -> bool:
 	if allowed_growth <= HEIGHT_EPSILON:
 		return false
 
-	return _apply_height(minf(standing_height, current_height + allowed_growth))
+	return _apply_height(
+		minf(standing_height, current_height + allowed_growth)
+	)
 
 
 func get_movement_speed(standing_speed: float, crouched_speed: float) -> float:
