@@ -7,8 +7,7 @@ const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const ROUTE_BLOCKING_DOT_EPSILON: float = 0.0001
 const MIN_RISER_HORIZONTAL_COMPONENT: float = 0.05
-const MIN_START_ALIGNMENT: float = 0.25
-const MIN_CONTINUE_ALIGNMENT: float = 0.05
+const MIN_INWARD_ALIGNMENT: float = 0.02
 const RISER_PROBE_HEIGHT_MARGIN_MULTIPLIER: float = 4.0
 const RISER_PROBE_FORWARD_MARGIN_MULTIPLIER: float = 4.0
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.05
@@ -22,6 +21,7 @@ class StepCandidate:
 	var wall_normal: Vector3 = Vector3.ZERO
 	var step_height: float = 0.0
 	var crossing_distance: float = 0.0
+	var crossing_direction: Vector3 = Vector3.ZERO
 	var approach_alignment: float = 0.0
 
 
@@ -33,6 +33,7 @@ var capsule_bottom_offset: float
 var capsule_radius: float
 var riser_probe_height: float
 var riser_probe_distance: float
+var riser_probe_forward_margin: float
 var top_probe_inset: float
 var top_probe_vertical_margin: float
 var crossing_clearance_margin: float
@@ -87,6 +88,9 @@ func _init(
 		capsule_radius
 		+ PROBE_SAFE_MARGIN * RISER_PROBE_FORWARD_MARGIN_MULTIPLIER
 	)
+	riser_probe_forward_margin = (
+		PROBE_SAFE_MARGIN * RISER_PROBE_FORWARD_MARGIN_MULTIPLIER
+	)
 	top_probe_inset = maxf(
 		PROBE_SAFE_MARGIN * 4.0,
 		capsule_radius * TOP_PROBE_INSET_RADIUS_RATIO
@@ -127,7 +131,7 @@ func update_before_move(
 	var approach_direction: Vector3 = horizontal_input.normalized()
 	var inward_direction: Vector3 = -active_candidate.wall_normal
 	var approach_alignment: float = approach_direction.dot(inward_direction)
-	if approach_alignment <= MIN_CONTINUE_ALIGNMENT:
+	if approach_alignment <= MIN_INWARD_ALIGNMENT:
 		_cancel_for_lost_intent(player)
 		return Vector3.ZERO
 
@@ -142,14 +146,12 @@ func update_before_move(
 		cancel()
 		return Vector3.ZERO
 
-	# Step-up owns vertical motion while active. Normal horizontal locomotion and
-	# collision response remain persistent; the upward assist exists only for the
-	# current movement frame.
+	# Step-up changes only height. Horizontal locomotion remains entirely owned
+	# by the motor and movement solver, so a diagonal/sideways approach keeps its
+	# original XZ path instead of being steered toward the riser normal.
 	player.velocity.y = 0.0
 
-	var control_strength: float = (
-		input_strength * clampf(approach_alignment, 0.0, 1.0)
-	)
+	var control_strength: float = input_strength
 	var target_assist_speed: float = max_step_speed * control_strength
 
 	if delta > sqrt(MOTION_EPSILON_SQUARED):
@@ -237,15 +239,18 @@ func build_candidate_from_contact(
 	collision: KinematicCollision3D,
 	collision_index: int
 ) -> StepCandidate:
-	# The capsule contact is only evidence that locomotion was blocked. It is not
-	# used as the stair face because the rounded capsule can report a diagonal
-	# normal on both real risers and ordinary ramps. Prove a separate low blocker.
-	var expected_collider_rid: RID = collision.get_collider_rid(collision_index)
+	# The contact point tells us where locomotion was physically blocked. Probe
+	# the low geometry locally around that point instead of casting from the
+	# capsule center, which can miss a riser that touches the capsule off-center
+	# during a diagonal or sideways approach.
+	var contact_point: Vector3 = collision.get_position(collision_index)
+	var contact_normal: Vector3 = collision.get_normal(collision_index)
 	var riser_hit: Dictionary = find_riser(
 		player,
 		support,
 		approach_direction,
-		expected_collider_rid
+		contact_point,
+		contact_normal
 	)
 	if riser_hit.is_empty():
 		return null
@@ -258,7 +263,7 @@ func build_candidate_from_contact(
 	var riser_point: Vector3 = riser_point_value
 	var wall_normal: Vector3 = wall_normal_value
 	var approach_alignment: float = approach_direction.dot(-wall_normal)
-	if approach_alignment < MIN_START_ALIGNMENT:
+	if approach_alignment <= MIN_INWARD_ALIGNMENT:
 		return null
 
 	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
@@ -284,8 +289,7 @@ func build_candidate_from_contact(
 	if intersection_sine_squared <= PLANE_INTERSECTION_MIN_SINE_SQUARED:
 		return null
 
-	# Reconstruct the actual riser/tread edge from their two planes. The riser
-	# point now comes from the dedicated blocker probe, not the rounded capsule.
+	# Reconstruct the actual riser/tread edge from their two planes.
 	var wall_plane_distance: float = (
 		(top_point - riser_point).dot(wall_normal)
 	)
@@ -310,7 +314,14 @@ func build_candidate_from_contact(
 	candidate.edge_point = edge_point
 	candidate.wall_normal = wall_normal
 	candidate.step_height = step_height
-	candidate.crossing_distance = outward_distance + crossing_clearance_margin
+	candidate.crossing_direction = approach_direction
+	# Contact already proves the current path reached the riser. Clearance only
+	# needs to validate the local continuation of that same path after lifting;
+	# it must not force a perpendicular route through the riser plane.
+	candidate.crossing_distance = minf(
+		(outward_distance + crossing_clearance_margin) / approach_alignment,
+		riser_probe_distance
+	)
 	candidate.approach_alignment = approach_alignment
 
 	if not has_route_clearance(player, candidate):
@@ -323,13 +334,68 @@ func find_riser(
 	player: CharacterBody3D,
 	support: PlayerSupport,
 	approach_direction: Vector3,
-	expected_collider_rid: RID
+	contact_point: Vector3,
+	contact_normal: Vector3
 ) -> Dictionary:
+	var hit: Dictionary = _probe_riser_from_contact(
+		player,
+		support,
+		approach_direction,
+		contact_point,
+		approach_direction
+	)
+	if not hit.is_empty():
+		return hit
+
+	# Rounded capsule contacts can give a diagonal normal. It is still useful as
+	# a fallback probe axis, but the raycast hit itself supplies the riser normal
+	# used for classification.
+	var horizontal_contact_normal := Vector3(
+		contact_normal.x,
+		0.0,
+		contact_normal.z
+	)
+	if horizontal_contact_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return {}
+
+	var inward_probe_direction: Vector3 = -horizontal_contact_normal.normalized()
+	if inward_probe_direction.dot(approach_direction) < 0.0:
+		inward_probe_direction = -inward_probe_direction
+
+	return _probe_riser_from_contact(
+		player,
+		support,
+		approach_direction,
+		contact_point,
+		inward_probe_direction
+	)
+
+
+func _probe_riser_from_contact(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	approach_direction: Vector3,
+	contact_point: Vector3,
+	probe_direction: Vector3
+) -> Dictionary:
+	var horizontal_probe := Vector3(
+		probe_direction.x,
+		0.0,
+		probe_direction.z
+	)
+	if horizontal_probe.length_squared() <= MOTION_EPSILON_SQUARED:
+		return {}
+	horizontal_probe = horizontal_probe.normalized()
+
 	var capsule_bottom_y: float = get_capsule_bottom_y(player.global_position)
-	var ray_from: Vector3 = player.global_position
-	ray_from.y = capsule_bottom_y + riser_probe_height
+	var probe_anchor: Vector3 = contact_point
+	probe_anchor.y = capsule_bottom_y + riser_probe_height
+
+	var ray_from: Vector3 = (
+		probe_anchor - horizontal_probe * riser_probe_distance
+	)
 	var ray_to: Vector3 = (
-		ray_from + approach_direction * riser_probe_distance
+		probe_anchor + horizontal_probe * riser_probe_forward_margin
 	)
 
 	var query: PhysicsRayQueryParameters3D = prepare_ray_query(
@@ -348,19 +414,12 @@ func find_riser(
 	if not (position_value is Vector3) or not (normal_value is Vector3):
 		return {}
 
-	var hit_rid_value: Variant = hit.get("rid")
-	if expected_collider_rid.is_valid() and hit_rid_value is RID:
-		var hit_rid: RID = hit_rid_value
-		if hit_rid.is_valid() and hit_rid != expected_collider_rid:
-			return {}
-
 	var riser_normal: Vector3 = normal_value
 	if riser_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return {}
 	riser_normal = riser_normal.normalized()
 
-	# A walkable face is a ramp/floor, not a stair riser. This is the fundamental
-	# distinction that the rounded capsule contact could not provide reliably.
+	# A walkable face is a ramp/floor, not a stair riser.
 	if support.is_walkable_surface(riser_normal):
 		return {}
 
@@ -374,7 +433,7 @@ func find_riser(
 
 	var wall_normal: Vector3 = horizontal_normal.normalized()
 	var alignment: float = approach_direction.dot(-wall_normal)
-	if alignment < MIN_START_ALIGNMENT:
+	if alignment <= MIN_INWARD_ALIGNMENT:
 		return {}
 
 	return {
@@ -391,8 +450,8 @@ func find_top(
 	wall_normal: Vector3,
 	capsule_bottom_y: float
 ) -> Dictionary:
-	# Probe behind a proven blocking riser. A continuous ramp cannot reach this
-	# stage because its low face is walkable and is rejected by find_riser().
+	# Probe just behind the proven low blocker. This proves that the obstacle is
+	# a step with walkable tread rather than an ordinary wall or continuous ramp.
 	var probe_center: Vector3 = riser_point - wall_normal * top_probe_inset
 	var ray_from: Vector3 = probe_center
 	ray_from.y = (
@@ -483,12 +542,16 @@ func is_forward_route_clear(
 	player: CharacterBody3D,
 	candidate: StepCandidate
 ) -> bool:
+	if candidate.crossing_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+
 	var lifted_transform: Transform3D = player.global_transform
 	lifted_transform.origin.y += (
 		candidate.step_height + crossing_clearance_margin
 	)
 	var crossing_motion: Vector3 = (
-		-candidate.wall_normal * candidate.crossing_distance
+		candidate.crossing_direction.normalized()
+		* candidate.crossing_distance
 	)
 	return _can_travel_route_segment(
 		player,
@@ -529,9 +592,9 @@ func _can_travel_route_segment(
 	):
 		return true
 
-	# Jolt can still report geometry that is already tangent to the capsule.
-	# Tangential side contacts do not obstruct this segment; only a contact whose
-	# normal actually opposes the requested route makes the segment invalid.
+	# Jolt can still report geometry already tangent to the capsule. Tangential
+	# side contacts do not obstruct the route; only a contact whose normal
+	# actually opposes the requested route makes the segment invalid.
 	for collision_index: int in range(collision.get_collision_count()):
 		var normal: Vector3 = collision.get_normal(collision_index)
 		if normal.dot(route_direction) < -ROUTE_BLOCKING_DOT_EPSILON:
