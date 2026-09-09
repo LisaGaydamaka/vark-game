@@ -428,22 +428,87 @@ func move_vertical_velocity(
 	player: CharacterBody3D,
 	delta: float
 ) -> void:
+	var debug_jump: bool = Input.is_action_just_pressed("jump")
+	var start_position: Vector3 = player.global_position
+	var start_velocity: Vector3 = player.velocity
 	var motion: Vector3 = Vector3.UP * player.velocity.y * delta
 	var desired_destination: Vector3 = player.global_position + motion
 	var active_planes: Array[Vector3] = []
 
-	for _iteration: int in range(max_collision_iterations):
+	if debug_jump:
+		print(
+			"[JUMP_DEBUG] frame=%d event=VERTICAL_MOVE_BEGIN pos=%s vel=%s requested_motion=%s desired_destination=%s"
+			% [
+				Engine.get_physics_frames(),
+				str(start_position),
+				str(start_velocity),
+				str(motion),
+				str(desired_destination),
+			]
+		)
+
+	for iteration: int in range(max_collision_iterations):
 		if motion.length_squared() <= MOTION_EPSILON_SQUARED:
 			break
 
+		var requested_motion: Vector3 = motion
 		var collision: KinematicCollision3D = player.move_and_collide(motion)
 		if collision == null:
+			if debug_jump:
+				print(
+					"[JUMP_DEBUG] frame=%d event=VERTICAL_MOVE_CLEAR iteration=%d requested=%s pos=%s vel=%s"
+					% [
+						Engine.get_physics_frames(),
+						iteration,
+						str(requested_motion),
+						str(player.global_position),
+						str(player.velocity),
+					]
+				)
 			break
 
 		var collision_normals: Array[Vector3] = _get_collision_normals(collision)
+		var velocity_before_constraints: Vector3 = player.velocity
+		var contact_details := PackedStringArray()
+		if debug_jump:
+			var collision_count: int = collision.get_collision_count()
+			if collision_count <= 0:
+				contact_details.append(
+					"contact=0 normal=%s point=%s"
+					% [
+						str(collision.get_normal()),
+						str(collision.get_position()),
+					]
+				)
+			else:
+				for contact_index: int in range(collision_count):
+					contact_details.append(
+						"contact=%d normal=%s point=%s"
+						% [
+							contact_index,
+							str(collision.get_normal(contact_index)),
+							str(collision.get_position(contact_index)),
+						]
+					)
+
 		for normal: Vector3 in collision_normals:
 			_constrain_vertical_velocity_from_collision(player, normal)
 			_append_unique_plane(active_planes, normal)
+
+		if debug_jump:
+			print(
+				"[JUMP_DEBUG] frame=%d event=VERTICAL_MOVE_COLLISION iteration=%d requested=%s travel=%s remainder=%s velocity_before=%s velocity_after=%s contacts=[%s]"
+				% [
+					Engine.get_physics_frames(),
+					iteration,
+					str(requested_motion),
+					str(collision.get_travel()),
+					str(collision.get_remainder()),
+					str(velocity_before_constraints),
+					str(player.velocity),
+					", ".join(contact_details),
+				]
+			)
 
 		var desired_remaining: Vector3 = (
 			desired_destination - player.global_position
@@ -451,4 +516,17 @@ func move_vertical_velocity(
 		motion = _resolve_3d_constraints(
 			desired_remaining,
 			active_planes
+		)
+
+	if debug_jump:
+		print(
+			"[JUMP_DEBUG] frame=%d event=VERTICAL_MOVE_END start_pos=%s end_pos=%s actual_displacement=%s start_vel=%s end_vel=%s"
+			% [
+				Engine.get_physics_frames(),
+				str(start_position),
+				str(player.global_position),
+				str(player.global_position - start_position),
+				str(start_velocity),
+				str(player.velocity),
+			]
 		)
