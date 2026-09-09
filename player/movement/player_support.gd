@@ -27,6 +27,7 @@ var probe_surface_rises: Array[float] = []
 
 var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
+var jump_debug_last_frame: int = -1
 
 
 func _init(
@@ -169,12 +170,62 @@ func update(player: CharacterBody3D) -> void:
 		best_normal = normal
 
 	if best_gap == INF:
+		_debug_jump_gate(player)
 		return
 
 	has_support = true
 	walkable = is_walkable_surface(best_normal)
 	support_point = best_point
 	support_normal = best_normal
+	_debug_jump_gate(player)
+
+
+func _debug_jump_gate(player: CharacterBody3D) -> void:
+	if not Input.is_action_just_pressed("jump"):
+		return
+
+	var frame: int = Engine.get_physics_frames()
+	if frame == jump_debug_last_frame:
+		return
+	jump_debug_last_frame = frame
+
+	var grounded: bool = has_support and walkable
+	var movement_input: Vector2 = Input.get_vector(
+		"move_left",
+		"move_right",
+		"move_forward",
+		"move_backward"
+	)
+	var reason: String = ""
+	if grounded:
+		if movement_input.is_zero_approx():
+			reason = "eligible_normal_jump"
+		else:
+			reason = "eligible_but_routed_through_ground_mantle_first"
+	elif has_support and not walkable:
+		reason = "blocked_sliding_on_non_walkable_support"
+	else:
+		reason = "blocked_no_ground_support"
+
+	print(
+		"[JUMP_DEBUG] frame=%d event=GROUND_GATE reason=%s raw_space=%s action_held=%s grounded=%s has_support=%s walkable=%s normal=%s normal_y=%.4f min_walkable_y=%.4f point=%s pos=%s vel=%s move=%s"
+		% [
+			frame,
+			reason,
+			str(Input.is_physical_key_pressed(KEY_SPACE)),
+			str(Input.is_action_pressed("jump")),
+			str(grounded),
+			str(has_support),
+			str(walkable),
+			str(support_normal),
+			support_normal.y,
+			minimum_walkable_normal_y,
+			str(support_point),
+			str(player.global_position),
+			str(player.velocity),
+			str(movement_input),
+		]
+	)
 
 
 func _get_slope_contact_allowance(normal_y: float) -> float:
