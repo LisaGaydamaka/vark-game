@@ -56,7 +56,16 @@ func get_movement_vector() -> Vector2:
 
 
 func is_jump_just_pressed() -> bool:
-	return Input.is_action_just_pressed("jump")
+	var pressed: bool = Input.is_action_just_pressed("jump")
+	if pressed:
+		print(
+			"[JUMP_PRESS] frame=%d held=%s"
+			% [
+				Engine.get_physics_frames(),
+				str(Input.is_action_pressed("jump")),
+			]
+		)
+	return pressed
 
 
 func is_jump_pressed() -> bool:
