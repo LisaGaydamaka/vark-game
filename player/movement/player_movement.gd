@@ -11,6 +11,12 @@ const SAME_PLANE_DOT: float = 0.999
 var max_collision_iterations: int
 var ground_motion: PlayerGroundMotion
 
+var jump_debug_previous_move_frame: int = -1
+var jump_debug_previous_move_mode: String = "none"
+var jump_debug_previous_collision_count: int = 0
+var jump_debug_previous_contact_count: int = 0
+var jump_debug_previous_contacts: PackedStringArray = PackedStringArray()
+
 
 func _init(p_max_collision_iterations: int) -> void:
 	max_collision_iterations = p_max_collision_iterations
@@ -23,6 +29,9 @@ func move(
 	assist_velocity: Vector3 = Vector3.ZERO,
 	support: PlayerSupport = null
 ) -> Array[KinematicCollision3D]:
+	var move_mode: String = "free"
+	var collisions: Array[KinematicCollision3D]
+
 	if (
 		support != null
 		and support.has_support
@@ -30,9 +39,19 @@ func move(
 		and absf(player.velocity.y) <= sqrt(MOTION_EPSILON_SQUARED)
 		and assist_velocity.length_squared() <= MOTION_EPSILON_SQUARED
 	):
-		return _move_walkable_ground(player, support, delta)
+		move_mode = "walkable_ground"
+		collisions = _move_walkable_ground(player, support, delta)
+	else:
+		collisions = _move_free(player, delta, assist_velocity)
 
-	return _move_free(player, delta, assist_velocity)
+	_debug_rejected_jump_contacts(
+		player,
+		support,
+		move_mode,
+		collisions
+	)
+	_cache_jump_debug_contacts(move_mode, collisions)
+	return collisions
 
 
 func _move_walkable_ground(
@@ -164,6 +183,106 @@ func _move_free(
 		)
 
 	return collisions
+
+
+func _debug_rejected_jump_contacts(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	move_mode: String,
+	collisions: Array[KinematicCollision3D]
+) -> void:
+	if not Input.is_action_just_pressed("jump"):
+		return
+	if support != null and support.is_grounded():
+		return
+
+	var current_contacts: PackedStringArray = _describe_collision_contacts(
+		collisions
+	)
+	var current_contact_count: int = _count_collision_contacts(collisions)
+	var has_support: bool = support != null and support.has_support
+	var walkable: bool = support != null and support.walkable
+	var grounded: bool = support != null and support.is_grounded()
+	print(
+		"[JUMP_DEBUG] frame=%d event=REJECTED_JUMP_MOVE_CONTACTS mode=%s grounded=%s has_support=%s walkable=%s pos=%s vel=%s previous_frame=%d previous_mode=%s previous_collisions=%d previous_contacts=%d previous=[%s] current_collisions=%d current_contacts=%d current=[%s]"
+		% [
+			Engine.get_physics_frames(),
+			move_mode,
+			str(grounded),
+			str(has_support),
+			str(walkable),
+			str(player.global_position),
+			str(player.velocity),
+			jump_debug_previous_move_frame,
+			jump_debug_previous_move_mode,
+			jump_debug_previous_collision_count,
+			jump_debug_previous_contact_count,
+			", ".join(jump_debug_previous_contacts),
+			collisions.size(),
+			current_contact_count,
+			", ".join(current_contacts),
+		]
+	)
+
+
+func _cache_jump_debug_contacts(
+	move_mode: String,
+	collisions: Array[KinematicCollision3D]
+) -> void:
+	jump_debug_previous_move_frame = Engine.get_physics_frames()
+	jump_debug_previous_move_mode = move_mode
+	jump_debug_previous_collision_count = collisions.size()
+	jump_debug_previous_contact_count = _count_collision_contacts(collisions)
+	jump_debug_previous_contacts = _describe_collision_contacts(collisions)
+
+
+func _count_collision_contacts(
+	collisions: Array[KinematicCollision3D]
+) -> int:
+	var contact_count: int = 0
+	for collision: KinematicCollision3D in collisions:
+		if collision == null:
+			continue
+		contact_count += maxi(1, collision.get_collision_count())
+	return contact_count
+
+
+func _describe_collision_contacts(
+	collisions: Array[KinematicCollision3D]
+) -> PackedStringArray:
+	var details := PackedStringArray()
+	for move_index: int in range(collisions.size()):
+		var collision: KinematicCollision3D = collisions[move_index]
+		if collision == null:
+			continue
+
+		var collision_count: int = collision.get_collision_count()
+		if collision_count <= 0:
+			details.append(
+				"move=%d contact=0 normal=%s point=%s travel=%s remainder=%s"
+				% [
+					move_index,
+					str(collision.get_normal()),
+					str(collision.get_position()),
+					str(collision.get_travel()),
+					str(collision.get_remainder()),
+				]
+			)
+			continue
+
+		for contact_index: int in range(collision_count):
+			details.append(
+				"move=%d contact=%d normal=%s point=%s travel=%s remainder=%s"
+				% [
+					move_index,
+					contact_index,
+					str(collision.get_normal(contact_index)),
+					str(collision.get_position(contact_index)),
+					str(collision.get_travel()),
+					str(collision.get_remainder()),
+				]
+			)
+	return details
 
 
 func _resolve_horizontal_constraints(
