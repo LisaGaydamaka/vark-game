@@ -106,11 +106,14 @@ func _analyze(current: Dictionary) -> void:
 		return
 
 	var previous: Dictionary = history[history.size() - 1]
+	if not _state_is_comparable(previous, current):
+		return
+
 	var reasons: PackedStringArray = PackedStringArray()
 	var score: int = 0
 	var support_flips: int = _count_recent_support_flips(current)
 	if support_flips >= 2:
-		score += 3
+		score += 2
 		reasons.append("support_oscillation:%d_flips" % support_flips)
 
 	var displacement_reversal: bool = _has_displacement_reversal(previous, current)
@@ -153,8 +156,6 @@ func _analyze(current: Dictionary) -> void:
 		reasons.append("contact_normal_flip")
 
 	if score < 3:
-		return
-	if not _state_is_comparable(previous, current) and support_flips < 2:
 		return
 
 	var frame: int = int(current["frame"])
@@ -324,7 +325,7 @@ func _diagnose(
 	if displacement_reversal and collision_blocked:
 		return "collision response reversed actual movement while player intent stayed stable"
 	if support_flips >= 2:
-		return "support classification is unstable across adjacent physics frames"
+		return "support classification is unstable alongside another motion anomaly"
 	if displacement_reversal:
 		return "actual player displacement reversed without a matching input reversal"
 	return "abrupt motion-state change exceeded jitter thresholds"
