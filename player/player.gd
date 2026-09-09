@@ -303,6 +303,7 @@ func _update_normal_movement(
 	)
 
 	if jump_accepted_before_move:
+		support.release_walkable_support(self)
 		motor.apply_jump(self, jump_height)
 		_step_jump_debug_event("NORMAL_JUMP_APPLIED", "")
 
@@ -424,6 +425,7 @@ func _update_normal_movement(
 			return
 
 	if ground_mantle_requested:
+		support.release_walkable_support(self)
 		motor.apply_jump(self, jump_height)
 		movement.move_vertical_velocity(self, delta)
 		_step_jump_debug_event(

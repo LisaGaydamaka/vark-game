@@ -3,6 +3,7 @@ extends RefCounted
 
 
 const MOTION_EPSILON_SQUARED: float = 0.000001
+const SUPPORT_SEPARATION_EPSILON: float = 0.0001
 const PROBE_START_MARGIN: float = 0.01
 const FOOT_PROBE_RADIUS_RATIO: float = 0.55
 const MINIMUM_NORMAL_Y: float = 0.0001
@@ -21,10 +22,12 @@ var minimum_support_normal_y: float
 var support_check_distance: float
 var capsule_bottom_offset: float
 var capsule_radius: float
-var maximum_slope_contact_allowance: float
+var capsule_lower_sphere_center_offset: float
+var maximum_probe_extra_distance: float
 var probe_offsets: Array[Vector3] = []
 var probe_surface_rises: Array[float] = []
 
+var walkable_support_released: bool = false
 var ray_query: PhysicsRayQueryParameters3D = null
 var ray_query_player_rid: RID = RID()
 var jump_debug_last_frame: int = -1
@@ -61,14 +64,16 @@ func _init(
 		collision_shape.position.y
 		- capsule_shape.height * 0.5
 	)
-	maximum_slope_contact_allowance = _get_slope_contact_allowance(
+	capsule_lower_sphere_center_offset = capsule_bottom_offset + capsule_radius
+
+	# Rays are only candidate discovery. They may search deeply enough to find a
+	# steep plane beneath the curved capsule, but the hit is accepted only after
+	# exact capsule-to-plane separation is measured below.
+	maximum_probe_extra_distance = _get_vertical_discovery_allowance(
 		minimum_support_normal_y
 	)
 
-	var probe_radius: float = (
-		capsule_radius
-		* FOOT_PROBE_RADIUS_RATIO
-	)
+	var probe_radius: float = capsule_radius * FOOT_PROBE_RADIUS_RATIO
 	probe_offsets = [
 		Vector3.ZERO,
 		Vector3(probe_radius, 0.0, 0.0),
@@ -92,32 +97,21 @@ func _init(
 
 
 func update(player: CharacterBody3D) -> void:
-	has_support = false
-	support_normal = Vector3.UP
-	support_point = player.global_position
-	walkable = false
+	_clear_support(player)
 
-	# Support and grounded are intentionally different states. A walkable floor
-	# makes the player grounded, while a steeper floor can still support/contact
-	# the capsule so the motor can apply slope gravity and kinetic friction rather
-	# than incorrectly treating the player as freely airborne.
-	#
-	# Each foot ray starts just above the actual lower capsule surface at its own
-	# horizontal offset. Using one shared bottom Y makes inward rays on a slope
-	# begin below the floor even while the capsule is tangent to it, which makes
-	# support at exact slope contacts (such as mantle completion) intermittent.
-	# The remaining downward allowance still preserves the existing tolerance for
-	# steep supported surfaces and ordinary support-check distance.
-	var capsule_bottom_y: float = (
-		player.global_position.y
-		+ capsule_bottom_offset
-	)
-	var best_gap: float = INF
+	# Jumping explicitly releases walkable support. It can be reacquired only
+	# after ballistic ascent has ended. This makes grounded -> airborne a real
+	# state transition instead of something a nearby floor ray can undo.
+	if walkable_support_released and player.velocity.y <= SUPPORT_SEPARATION_EPSILON:
+		walkable_support_released = false
+
+	var capsule_bottom_y: float = player.global_position.y + capsule_bottom_offset
+	var best_separation: float = INF
 	var best_point: Vector3 = Vector3.ZERO
 	var best_normal: Vector3 = Vector3.UP
 	var maximum_probe_distance: float = (
 		support_check_distance
-		+ maximum_slope_contact_allowance
+		+ maximum_probe_extra_distance
 	)
 
 	for probe_index: int in range(probe_offsets.size()):
@@ -155,21 +149,40 @@ func update(player: CharacterBody3D) -> void:
 			continue
 
 		var point: Vector3 = point_value
-		var gap: float = maxf(0.0, probe_surface_y - point.y)
-		var allowed_gap: float = (
-			support_check_distance
-			+ _get_slope_contact_allowance(normal.y)
+		var separation: float = _get_capsule_plane_separation(
+			player,
+			point,
+			normal
 		)
-		if gap > allowed_gap + 0.00001:
-			continue
-		if gap >= best_gap:
+		if separation > support_check_distance + SUPPORT_SEPARATION_EPSILON:
 			continue
 
-		best_gap = gap
+		var candidate_walkable: bool = is_walkable_surface(normal)
+		if candidate_walkable:
+			# Persistent Y is ballistic in this controller. A walkable plane cannot
+			# reacquire support while that ballistic state is moving upward, even if
+			# the plane remains inside snap/proximity distance for a frame or two.
+			if (
+				walkable_support_released
+				or player.velocity.y > SUPPORT_SEPARATION_EPSILON
+			):
+				continue
+		else:
+			# Steep support uses full 3D surface velocity. If that velocity is moving
+			# away from the candidate plane, the unilateral contact is released.
+			var normal_velocity: float = player.velocity.dot(normal)
+			if normal_velocity > SUPPORT_SEPARATION_EPSILON:
+				continue
+
+		var ranking_separation: float = maxf(0.0, separation)
+		if ranking_separation >= best_separation:
+			continue
+
+		best_separation = ranking_separation
 		best_point = point
 		best_normal = normal
 
-	if best_gap == INF:
+	if best_separation == INF:
 		_debug_jump_gate(player)
 		return
 
@@ -178,6 +191,31 @@ func update(player: CharacterBody3D) -> void:
 	support_point = best_point
 	support_normal = best_normal
 	_debug_jump_gate(player)
+
+
+func release_walkable_support(player: CharacterBody3D) -> void:
+	walkable_support_released = true
+	_clear_support(player)
+
+
+func _clear_support(player: CharacterBody3D) -> void:
+	has_support = false
+	support_normal = Vector3.UP
+	support_point = player.global_position
+	walkable = false
+
+
+func _get_capsule_plane_separation(
+	player: CharacterBody3D,
+	plane_point: Vector3,
+	plane_normal: Vector3
+) -> float:
+	var lower_sphere_center: Vector3 = player.global_position
+	lower_sphere_center.y += capsule_lower_sphere_center_offset
+	return (
+		plane_normal.dot(lower_sphere_center - plane_point)
+		- capsule_radius
+	)
 
 
 func _debug_jump_gate(player: CharacterBody3D) -> void:
@@ -208,7 +246,7 @@ func _debug_jump_gate(player: CharacterBody3D) -> void:
 		reason = "blocked_no_ground_support"
 
 	print(
-		"[JUMP_DEBUG] frame=%d event=GROUND_GATE reason=%s raw_space=%s action_held=%s grounded=%s has_support=%s walkable=%s normal=%s normal_y=%.4f min_walkable_y=%.4f point=%s pos=%s vel=%s move=%s"
+		"[JUMP_DEBUG] frame=%d event=GROUND_GATE reason=%s raw_space=%s action_held=%s grounded=%s has_support=%s walkable=%s normal=%s normal_y=%.4f min_walkable_y=%.4f point=%s pos=%s vel=%s move=%s support_released=%s"
 		% [
 			frame,
 			reason,
@@ -224,11 +262,12 @@ func _debug_jump_gate(player: CharacterBody3D) -> void:
 			str(player.global_position),
 			str(player.velocity),
 			str(movement_input),
+			str(walkable_support_released),
 		]
 	)
 
 
-func _get_slope_contact_allowance(normal_y: float) -> float:
+func _get_vertical_discovery_allowance(normal_y: float) -> float:
 	var safe_normal_y: float = clampf(normal_y, MINIMUM_NORMAL_Y, 1.0)
 	return capsule_radius * (1.0 / safe_normal_y - 1.0)
 
