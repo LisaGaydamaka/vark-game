@@ -42,7 +42,7 @@ func move(
 		move_mode = "walkable_ground"
 		collisions = _move_walkable_ground(player, support, delta)
 	else:
-		collisions = _move_free(player, delta, assist_velocity)
+		collisions = _move_free(player, delta, assist_velocity, support)
 
 	_debug_rejected_jump_contacts(
 		player,
@@ -97,8 +97,6 @@ func _move_walkable_ground(
 		var next_support_y: float = -INF
 
 		for normal: Vector3 in collision_normals:
-			_constrain_vertical_velocity_from_collision(player, normal)
-
 			if (
 				normal.y < -VERTICAL_NORMAL_EPSILON
 				and motion.y > 0.0
@@ -143,21 +141,22 @@ func _move_walkable_ground(
 func _move_free(
 	player: CharacterBody3D,
 	delta: float,
-	assist_velocity: Vector3
+	assist_velocity: Vector3,
+	support: PlayerSupport
 ) -> Array[KinematicCollision3D]:
 	var collisions: Array[KinematicCollision3D] = []
 	var active_planes: Array[Vector3] = []
 
-	# Persistent velocity is locomotion/physics state owned by the motor.
-	# Temporary traversal assist contributes only to this frame's displacement.
+	# Free movement has two independent physical owners:
+	# - X/Z is locomotion intent.
+	# - Y is ballistic/traversal intent.
+	# Contacts may constrain both, but a wall or rounded edge is not allowed to
+	# erase ballistic Y just because its raw collision normal has a Y component.
 	var motion: Vector3 = (
 		player.velocity + assist_velocity
 	) * delta
 	var desired_destination: Vector3 = player.global_position + motion
 
-	# Each collision adds constraints to one active contact manifold. Every
-	# iteration resolves toward the original requested endpoint, so a deflection
-	# created by one contact never becomes new intent for later contacts.
 	for _iteration: int in range(max_collision_iterations):
 		if motion.length_squared() <= MOTION_EPSILON_SQUARED:
 			break
@@ -169,18 +168,38 @@ func _move_free(
 		collisions.append(collision)
 		var collision_normals: Array[Vector3] = _get_collision_normals(collision)
 		for normal: Vector3 in collision_normals:
-			# Collision response may terminate persistent vertical physics at a floor
-			# or ceiling, but never rewrites X/Z locomotion.
-			_constrain_vertical_velocity_from_collision(player, normal)
 			_append_unique_plane(active_planes, normal)
+
+		# Landing is owned by PlayerSupport, not by raw movement normals. Refresh
+		# support at the collision pose so only a validated walkable support may
+		# terminate downward ballistic velocity.
+		var landed_on_walkable_support: bool = false
+		if (
+			support != null
+			and player.velocity.y < -sqrt(MOTION_EPSILON_SQUARED)
+		):
+			support.update(player)
+			landed_on_walkable_support = support.is_grounded()
+			if landed_on_walkable_support:
+				player.velocity.y = 0.0
 
 		var desired_remaining: Vector3 = (
 			desired_destination - player.global_position
 		)
-		motion = _resolve_3d_constraints(
+		if landed_on_walkable_support and desired_remaining.y < 0.0:
+			desired_remaining.y = 0.0
+
+		var resolution: Dictionary = _resolve_motion_with_vertical_priority(
 			desired_remaining,
 			active_planes
 		)
+		motion = resolution["motion"]
+
+		if (
+			bool(resolution["vertical_blocked"])
+			and absf(player.velocity.y) > sqrt(MOTION_EPSILON_SQUARED)
+		):
+			player.velocity.y = 0.0
 
 	return collisions
 
@@ -289,88 +308,209 @@ func _resolve_horizontal_constraints(
 	desired_motion: Vector3,
 	planes: Array[Vector3]
 ) -> Vector3:
-	var desired := Vector3(
+	var horizontal_desired := Vector3(
 		desired_motion.x,
 		0.0,
 		desired_motion.z
 	)
-	if desired.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-	if planes.is_empty() or _satisfies_constraints(desired, planes):
-		return desired
-
-	# In 2D the closest feasible point is either the desired point, a projection
-	# onto one active boundary, or the corner at zero. Testing each boundary
-	# against every plane makes the answer independent of which wall was hit first.
-	var best_motion: Vector3 = Vector3.ZERO
-	var best_distance_squared: float = desired.length_squared()
-
-	for plane: Vector3 in planes:
-		var candidate: Vector3 = desired.slide(plane)
-		candidate.y = 0.0
-		if not _satisfies_constraints(candidate, planes):
-			continue
-		var distance_squared: float = candidate.distance_squared_to(desired)
-		if distance_squared < best_distance_squared:
-			best_distance_squared = distance_squared
-			best_motion = candidate
-
-	return best_motion
+	var fixed_vertical: Dictionary = _resolve_horizontal_for_fixed_vertical(
+		horizontal_desired,
+		planes
+	)
+	if bool(fixed_vertical["valid"]):
+		return fixed_vertical["motion"]
+	return Vector3.ZERO
 
 
-func _resolve_3d_constraints(
+func _resolve_motion_with_vertical_priority(
 	desired_motion: Vector3,
 	planes: Array[Vector3]
-) -> Vector3:
+) -> Dictionary:
 	if desired_motion.length_squared() <= MOTION_EPSILON_SQUARED:
-		return Vector3.ZERO
-	if planes.is_empty() or _satisfies_constraints(desired_motion, planes):
-		return desired_motion
+		return {
+			"motion": Vector3.ZERO,
+			"vertical_blocked": false,
+		}
+	if planes.is_empty():
+		return {
+			"motion": desired_motion,
+			"vertical_blocked": false,
+		}
 
-	# Project the requested remainder onto the feasible contact cone. In 3D the
-	# closest point can lie on one plane, on the crease formed by two planes, or
-	# at the fully constrained origin. Every candidate must satisfy every active
-	# plane, so a new contact can only remove freedom; it cannot reopen an older
-	# blocked direction.
-	var best_motion: Vector3 = Vector3.ZERO
-	var best_distance_squared: float = desired_motion.length_squared()
+	# First solve X/Z while keeping the requested Y exactly. A diagonal wall/edge
+	# contact can therefore add only the minimum lateral separation needed to let
+	# gravity or a jump continue. This is the mathematical expression of the
+	# ownership rule: lateral geometry cannot silently consume ballistic Y.
+	var fixed_vertical: Dictionary = _resolve_horizontal_for_fixed_vertical(
+		desired_motion,
+		planes
+	)
+	if bool(fixed_vertical["valid"]):
+		return {
+			"motion": fixed_vertical["motion"],
+			"vertical_blocked": false,
+		}
+
+	# If no X/Z displacement can satisfy the manifold while preserving Y, the
+	# vertical motion is genuinely blocked by the geometry (for example a flat
+	# floor or ceiling). Only then may movement terminate ballistic Y.
+	var horizontal_only := Vector3(
+		desired_motion.x,
+		0.0,
+		desired_motion.z
+	)
+	var fallback: Dictionary = _resolve_horizontal_for_fixed_vertical(
+		horizontal_only,
+		planes
+	)
+	return {
+		"motion": (
+			fallback["motion"]
+			if bool(fallback["valid"])
+			else Vector3.ZERO
+		),
+		"vertical_blocked": absf(desired_motion.y) > sqrt(MOTION_EPSILON_SQUARED),
+	}
+
+
+func _resolve_horizontal_for_fixed_vertical(
+	desired_motion: Vector3,
+	planes: Array[Vector3]
+) -> Dictionary:
+	var desired_horizontal := Vector2(desired_motion.x, desired_motion.z)
+	var fixed_y: float = desired_motion.y
+
+	# A purely vertical plane constraint cannot be repaired by X/Z. If it rejects
+	# this fixed Y, the caller must decide whether vertical motion is allowed to stop.
+	for plane: Vector3 in planes:
+		var horizontal_axis := Vector2(plane.x, plane.z)
+		var horizontal_length_squared: float = horizontal_axis.length_squared()
+		var required_dot: float = -fixed_y * plane.y
+		if (
+			horizontal_length_squared <= MOTION_EPSILON_SQUARED
+			and required_dot > CONSTRAINT_EPSILON
+		):
+			return {
+				"valid": false,
+				"motion": Vector3.ZERO,
+			}
+
+	if _satisfies_fixed_vertical_constraints(
+		desired_horizontal,
+		fixed_y,
+		planes
+	):
+		return {
+			"valid": true,
+			"motion": desired_motion,
+		}
+
+	# For a convex set of 2D half-spaces, the closest feasible point to the
+	# requested X/Z lies on one active boundary or at the intersection of two.
+	# Test those candidates directly so the result is independent of contact order.
+	var best_horizontal: Vector2 = Vector2.ZERO
+	var best_distance_squared: float = INF
+	var found_candidate: bool = false
 
 	for plane: Vector3 in planes:
-		var candidate: Vector3 = desired_motion.slide(plane)
-		if not _satisfies_constraints(candidate, planes):
+		var axis := Vector2(plane.x, plane.z)
+		var axis_length_squared: float = axis.length_squared()
+		if axis_length_squared <= MOTION_EPSILON_SQUARED:
 			continue
-		var distance_squared: float = candidate.distance_squared_to(desired_motion)
+
+		var required_dot: float = -fixed_y * plane.y
+		var projection_scale: float = (
+			(required_dot - axis.dot(desired_horizontal))
+			/ axis_length_squared
+		)
+		var candidate: Vector2 = (
+			desired_horizontal + axis * projection_scale
+		)
+		if not _satisfies_fixed_vertical_constraints(
+			candidate,
+			fixed_y,
+			planes
+		):
+			continue
+
+		var distance_squared: float = candidate.distance_squared_to(
+			desired_horizontal
+		)
 		if distance_squared < best_distance_squared:
 			best_distance_squared = distance_squared
-			best_motion = candidate
+			best_horizontal = candidate
+			found_candidate = true
 
 	for first_index: int in range(planes.size()):
 		for second_index: int in range(first_index + 1, planes.size()):
-			var crease: Vector3 = planes[first_index].cross(planes[second_index])
-			if crease.length_squared() <= MOTION_EPSILON_SQUARED:
+			var first: Vector3 = planes[first_index]
+			var second: Vector3 = planes[second_index]
+			var first_axis := Vector2(first.x, first.z)
+			var second_axis := Vector2(second.x, second.z)
+			if (
+				first_axis.length_squared() <= MOTION_EPSILON_SQUARED
+				or second_axis.length_squared() <= MOTION_EPSILON_SQUARED
+			):
 				continue
-			crease = crease.normalized()
-			var candidate: Vector3 = (
-				crease * desired_motion.dot(crease)
+
+			var determinant: float = (
+				first_axis.x * second_axis.y
+				- first_axis.y * second_axis.x
 			)
-			if not _satisfies_constraints(candidate, planes):
+			if absf(determinant) <= CONSTRAINT_EPSILON:
 				continue
+
+			var first_required_dot: float = -fixed_y * first.y
+			var second_required_dot: float = -fixed_y * second.y
+			var candidate := Vector2(
+				(
+					first_required_dot * second_axis.y
+					- first_axis.y * second_required_dot
+				) / determinant,
+				(
+					first_axis.x * second_required_dot
+					- first_required_dot * second_axis.x
+				) / determinant
+			)
+			if not _satisfies_fixed_vertical_constraints(
+				candidate,
+				fixed_y,
+				planes
+			):
+				continue
+
 			var distance_squared: float = candidate.distance_squared_to(
-				desired_motion
+				desired_horizontal
 			)
 			if distance_squared < best_distance_squared:
 				best_distance_squared = distance_squared
-				best_motion = candidate
+				best_horizontal = candidate
+				found_candidate = true
 
-	return best_motion
+	if not found_candidate:
+		return {
+			"valid": false,
+			"motion": Vector3.ZERO,
+		}
+
+	return {
+		"valid": true,
+		"motion": Vector3(best_horizontal.x, fixed_y, best_horizontal.y),
+	}
 
 
-func _satisfies_constraints(
-	motion: Vector3,
+func _satisfies_fixed_vertical_constraints(
+	horizontal_motion: Vector2,
+	fixed_y: float,
 	planes: Array[Vector3]
 ) -> bool:
 	for plane: Vector3 in planes:
-		if motion.dot(plane) < -CONSTRAINT_EPSILON:
+		var dot_value: float = (
+			horizontal_motion.x * plane.x
+			+ fixed_y * plane.y
+			+ horizontal_motion.y * plane.z
+		)
+		if dot_value < -CONSTRAINT_EPSILON:
 			return false
 	return true
 
@@ -409,19 +549,6 @@ func _get_collision_normals(
 			collision.get_normal(collision_index)
 		)
 	return normals
-
-
-func _constrain_vertical_velocity_from_collision(
-	player: CharacterBody3D,
-	normal: Vector3
-) -> void:
-	if absf(normal.y) <= VERTICAL_NORMAL_EPSILON:
-		return
-
-	if player.velocity.y < 0.0 and normal.y > 0.0:
-		player.velocity.y = 0.0
-	elif player.velocity.y > 0.0 and normal.y < 0.0:
-		player.velocity.y = 0.0
 
 
 func move_vertical_velocity(
@@ -492,8 +619,18 @@ func move_vertical_velocity(
 					)
 
 		for normal: Vector3 in collision_normals:
-			_constrain_vertical_velocity_from_collision(player, normal)
 			_append_unique_plane(active_planes, normal)
+
+		var desired_remaining: Vector3 = (
+			desired_destination - player.global_position
+		)
+		var resolution: Dictionary = _resolve_motion_with_vertical_priority(
+			desired_remaining,
+			active_planes
+		)
+		motion = resolution["motion"]
+		if bool(resolution["vertical_blocked"]):
+			player.velocity.y = 0.0
 
 		if debug_jump:
 			print(
@@ -509,14 +646,6 @@ func move_vertical_velocity(
 					", ".join(contact_details),
 				]
 			)
-
-		var desired_remaining: Vector3 = (
-			desired_destination - player.global_position
-		)
-		motion = _resolve_3d_constraints(
-			desired_remaining,
-			active_planes
-		)
 
 	if debug_jump:
 		print(
