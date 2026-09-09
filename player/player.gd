@@ -338,7 +338,8 @@ func _update_normal_movement(
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		delta,
-		step_assist_velocity
+		step_assist_velocity,
+		support
 	)
 
 	if not collisions.is_empty() and not grounded:
