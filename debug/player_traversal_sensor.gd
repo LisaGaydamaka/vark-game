@@ -102,26 +102,30 @@ func observe(
 
 	previous_mantling = mantling
 	previous_step_active = step_active
-	previous_continuation_count = (
-		mantle.edge_continuation_count
-		if mantling and mantle != null
-		else 0
-	)
+	if mantling and mantle != null:
+		previous_continuation_count = mantle.edge_continuation_count
+	else:
+		previous_continuation_count = 0
 
 
 func _mantle_details(mantle: PlayerMantle) -> String:
 	if mantle == null:
 		return ""
-	var details: Array[String] = [
-		"phase=%d" % mantle.phase,
-		"continuations=%d" % mantle.edge_continuation_count,
-		"origin=%s" % str(mantle.mantle_origin_edge_point),
-		"route_edge=%s" % str(mantle.route_edge_point),
-	]
+	var details: String = (
+		"phase=%d continuations=%d origin=%s route_edge=%s"
+		% [
+			mantle.phase,
+			mantle.edge_continuation_count,
+			str(mantle.mantle_origin_edge_point),
+			str(mantle.route_edge_point),
+		]
+	)
 	if mantle.active_candidate != null:
-		details.append("active_edge=%s" % str(mantle.active_candidate.edge_point))
-		details.append("wall=%s" % str(mantle.active_candidate.wall_normal))
-	return " ".join(details)
+		details += " active_edge=%s wall=%s" % [
+			str(mantle.active_candidate.edge_point),
+			str(mantle.active_candidate.wall_normal),
+		]
+	return details
 
 
 func _step_details(step: PlayerStep) -> String:
