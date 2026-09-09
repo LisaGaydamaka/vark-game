@@ -14,16 +14,6 @@ config/name="VARK GAME"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
-[autoload]
-
-GameLog="*res://debug/game_log.gd"
-
-[debug]
-
-file_logging/enable_file_logging=true
-file_logging/log_path="user://logs/godot.log"
-file_logging/max_log_files=20
-
 [display]
 
 window/stretch/mode="canvas_items"
