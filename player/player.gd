@@ -85,7 +85,6 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
-var jitter_sensor: PlayerJitterSensor
 
 
 func _ready() -> void:
@@ -94,7 +93,6 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	jitter_sensor.begin_frame(self, delta)
 	var jump_pressed: bool = player_input.is_jump_just_pressed()
 	var crouch_pressed: bool = player_input.is_crouch_just_pressed()
 
@@ -105,11 +103,9 @@ func _physics_process(delta: float) -> void:
 			crouch_pressed,
 			delta
 		)
-		_finish_jitter_frame()
 		return
 
 	_update_normal_movement(jump_pressed, crouch_pressed, delta)
-	_finish_jitter_frame()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -123,7 +119,6 @@ func _create_components() -> void:
 		head,
 		mouse_sensitivity
 	)
-	jitter_sensor = PlayerJitterSensor.new()
 
 	support = PlayerSupport.new(
 		max_walkable_slope,
@@ -222,14 +217,12 @@ func _update_normal_movement(
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
 	var jump_held: bool = player_input.is_jump_pressed()
-	jitter_sensor.set_intent(input_direction)
 
 	# Step-up owns persistent Y while active. Clear that temporary vertical state
 	# before cancelling so another action hands control back to normal movement
 	# without carrying any step-up momentum into it.
 	step.constrain_persistent_vertical_velocity(self)
 	if crouch_pressed:
-		jitter_sensor.mark_expected_discontinuity("crouch")
 		step.cancel()
 		crouch.toggle()
 	crouch.update(self)
@@ -278,7 +271,6 @@ func _update_normal_movement(
 	)
 
 	if jump_accepted_before_move:
-		jitter_sensor.mark_expected_discontinuity("jump")
 		motor.apply_jump(self, jump_height)
 
 	var step_assist_velocity: Vector3 = Vector3.ZERO
@@ -327,7 +319,6 @@ func _update_normal_movement(
 		step_assist_velocity,
 		support
 	)
-	jitter_sensor.record_collisions(collisions)
 
 	if not collisions.is_empty() and not grounded:
 		if jump_held:
@@ -383,7 +374,6 @@ func _update_normal_movement(
 			return
 
 	if ground_mantle_requested:
-		jitter_sensor.mark_expected_discontinuity("ground_mantle_fallback_jump")
 		motor.apply_jump(self, jump_height)
 		movement.move_vertical_velocity(self, delta)
 
@@ -401,26 +391,3 @@ func _update_normal_movement(
 			# A step owns vertical traversal from the instant it is classified. X/Z
 			# requires no restoration because collision resolution never erased it.
 			step.constrain_persistent_vertical_velocity(self)
-
-
-func _finish_jitter_frame() -> void:
-	jitter_sensor.end_frame(
-		self,
-		support,
-		_get_ledge_state_name(ledge_controller.state),
-		step.is_active()
-	)
-
-
-func _get_ledge_state_name(value: int) -> String:
-	match value:
-		PlayerLedgeController.State.CATCHING:
-			return "catching"
-		PlayerLedgeController.State.HANGING:
-			return "hanging"
-		PlayerLedgeController.State.CORNERING:
-			return "cornering"
-		PlayerLedgeController.State.MANTLING:
-			return "mantling"
-		_:
-			return "normal"
