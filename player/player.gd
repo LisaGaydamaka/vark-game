@@ -85,22 +85,16 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
-
-var support_log_initialized: bool = false
-var logged_has_support: bool = false
-var logged_walkable: bool = false
-var logged_ledge_state: int = PlayerLedgeController.State.NONE
+var jitter_sensor: PlayerJitterSensor
 
 
 func _ready() -> void:
 	_create_components()
 	player_look.capture_mouse()
-	GameLog.info("player", "ready", {
-		"position": global_position,
-	})
 
 
 func _physics_process(delta: float) -> void:
+	jitter_sensor.begin_frame(self, delta)
 	var jump_pressed: bool = player_input.is_jump_just_pressed()
 	var crouch_pressed: bool = player_input.is_crouch_just_pressed()
 
@@ -111,11 +105,11 @@ func _physics_process(delta: float) -> void:
 			crouch_pressed,
 			delta
 		)
-		_log_ledge_state_transition()
+		_finish_jitter_frame()
 		return
 
 	_update_normal_movement(jump_pressed, crouch_pressed, delta)
-	_log_ledge_state_transition()
+	_finish_jitter_frame()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -129,6 +123,7 @@ func _create_components() -> void:
 		head,
 		mouse_sensitivity
 	)
+	jitter_sensor = PlayerJitterSensor.new()
 
 	support = PlayerSupport.new(
 		max_walkable_slope,
@@ -227,29 +222,23 @@ func _update_normal_movement(
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
 	var jump_held: bool = player_input.is_jump_pressed()
+	jitter_sensor.set_intent(input_direction)
 
 	# Step-up owns persistent Y while active. Clear that temporary vertical state
 	# before cancelling so another action hands control back to normal movement
 	# without carrying any step-up momentum into it.
 	step.constrain_persistent_vertical_velocity(self)
 	if crouch_pressed:
+		jitter_sensor.mark_expected_discontinuity("crouch")
 		step.cancel()
 		crouch.toggle()
 	crouch.update(self)
-	if crouch_pressed:
-		var capsule_shape := collision_shape.shape as CapsuleShape3D
-		GameLog.info("movement", "crouch_toggled", {
-			"height": capsule_shape.height,
-			"position": global_position,
-			"standing_requested": crouch.standing_requested,
-		})
 	if jump_held:
 		step.cancel()
 
 	# Support reports floor-like contact separately from whether that contact is
 	# walkable, so steep slopes can use slope physics without becoming grounded.
 	support.update(self)
-	_log_support_transition()
 	var grounded: bool = support.is_grounded()
 	var view_forward: Vector3 = -head.global_transform.basis.z
 
@@ -289,11 +278,8 @@ func _update_normal_movement(
 	)
 
 	if jump_accepted_before_move:
+		jitter_sensor.mark_expected_discontinuity("jump")
 		motor.apply_jump(self, jump_height)
-		GameLog.info("movement", "jump", {
-			"position": global_position,
-			"velocity": velocity,
-		})
 
 	var step_assist_velocity: Vector3 = Vector3.ZERO
 	if not jump_held:
@@ -341,6 +327,7 @@ func _update_normal_movement(
 		step_assist_velocity,
 		support
 	)
+	jitter_sensor.record_collisions(collisions)
 
 	if not collisions.is_empty() and not grounded:
 		if jump_held:
@@ -396,9 +383,7 @@ func _update_normal_movement(
 			return
 
 	if ground_mantle_requested:
-		GameLog.debug("mantle", "ground_request_fell_back_to_jump", {
-			"position": global_position,
-		})
+		jitter_sensor.mark_expected_discontinuity("ground_mantle_fallback_jump")
 		motor.apply_jump(self, jump_height)
 		movement.move_vertical_velocity(self, delta)
 
@@ -418,47 +403,13 @@ func _update_normal_movement(
 			step.constrain_persistent_vertical_velocity(self)
 
 
-func _log_support_transition() -> void:
-	if not support_log_initialized:
-		support_log_initialized = true
-		logged_has_support = support.has_support
-		logged_walkable = support.walkable
-		GameLog.debug("movement", "support_initialized", {
-			"has_support": support.has_support,
-			"normal": support.support_normal,
-			"walkable": support.walkable,
-		})
-		return
-
-	if (
-		logged_has_support == support.has_support
-		and logged_walkable == support.walkable
-	):
-		return
-
-	GameLog.debug("movement", "support_changed", {
-		"has_support": support.has_support,
-		"normal": support.support_normal,
-		"point": support.support_point,
-		"position": global_position,
-		"velocity": velocity,
-		"walkable": support.walkable,
-	})
-	logged_has_support = support.has_support
-	logged_walkable = support.walkable
-
-
-func _log_ledge_state_transition() -> void:
-	var current_state: int = ledge_controller.state
-	if current_state == logged_ledge_state:
-		return
-	GameLog.info("ledge", "state_changed", {
-		"from": _get_ledge_state_name(logged_ledge_state),
-		"position": global_position,
-		"to": _get_ledge_state_name(current_state),
-		"velocity": velocity,
-	})
-	logged_ledge_state = current_state
+func _finish_jitter_frame() -> void:
+	jitter_sensor.end_frame(
+		self,
+		support,
+		_get_ledge_state_name(ledge_controller.state),
+		step.is_active()
+	)
 
 
 func _get_ledge_state_name(value: int) -> String:
