@@ -3,6 +3,7 @@ extends RefCounted
 
 
 const HISTORY_CAPACITY: int = 12
+const REPORT_HISTORY_FRAMES: int = 5
 const SUPPORT_WINDOW_FRAMES: int = 5
 const REPORT_COOLDOWN_FRAMES: int = 300
 const MINIMUM_JITTER_DISPLACEMENT: float = 0.00075
@@ -91,9 +92,6 @@ func end_frame(
 		"support_point": support.support_point,
 	}
 
-	# This never reaches the console at the normal DEBUG threshold, but leaves a
-	# short black-box timeline in GameLog's ring buffer before a jitter report.
-	GameLog.trace("jitter", "frame", snapshot)
 	_analyze(snapshot)
 
 	history.append(snapshot)
@@ -151,7 +149,8 @@ func _analyze(current: Dictionary) -> void:
 		score += 1
 		reasons.append("collision_blocked_reversal:%.2f" % blocked_ratio)
 
-	if _contact_manifold_flipped(previous, current):
+	var contact_flip: bool = _contact_manifold_flipped(previous, current)
+	if contact_flip:
 		score += 1
 		reasons.append("contact_normal_flip")
 
@@ -168,49 +167,36 @@ func _analyze(current: Dictionary) -> void:
 		displacement_reversal,
 		vertical_flip,
 		collision_blocked,
+		contact_flip,
 		current
 	)
-	GameLog.warn("jitter", "detected", {
-		"diagnosis": diagnosis,
-		"reasons": reasons,
-		"score": score,
-		"position": current["position"],
-		"displacement": current["displacement"],
-		"velocity_before": current["velocity_before"],
-		"velocity": current["velocity"],
-		"intent": current["intent"],
-		"state": current["state"],
-		"step": current["step"],
-		"support": current["support"],
-		"walkable": current["walkable"],
-		"support_normal": current["support_normal"],
-		"support_point": current["support_point"],
-		"collisions": current["collisions"],
-		"collision_normals": current["collision_normals"],
-		"collision_points": current["collision_points"],
-	})
-	GameLog.dump_trace()
+	print(_format_report(current, diagnosis, reasons, score, blocked_ratio))
 
 
 func _count_recent_support_flips(current: Dictionary) -> int:
+	var snapshots: Array[Dictionary] = []
 	var start_index: int = maxi(0, history.size() - SUPPORT_WINDOW_FRAMES + 1)
-	var previous_support: bool = bool(history[start_index]["support"])
-	var previous_walkable: bool = bool(history[start_index]["walkable"])
-	var flips: int = 0
-
-	for history_index: int in range(start_index + 1, history.size()):
+	for history_index: int in range(start_index, history.size()):
 		var snapshot: Dictionary = history[history_index]
+		if not _snapshot_matches_context(snapshot, current):
+			continue
+		snapshots.append(snapshot)
+	snapshots.append(current)
+
+	if snapshots.size() < 2:
+		return 0
+
+	var previous_support: bool = bool(snapshots[0]["support"])
+	var previous_walkable: bool = bool(snapshots[0]["walkable"])
+	var flips: int = 0
+	for snapshot_index: int in range(1, snapshots.size()):
+		var snapshot: Dictionary = snapshots[snapshot_index]
 		var next_support: bool = bool(snapshot["support"])
 		var next_walkable: bool = bool(snapshot["walkable"])
 		if next_support != previous_support or next_walkable != previous_walkable:
 			flips += 1
 		previous_support = next_support
 		previous_walkable = next_walkable
-
-	var current_support: bool = bool(current["support"])
-	var current_walkable: bool = bool(current["walkable"])
-	if current_support != previous_support or current_walkable != previous_walkable:
-		flips += 1
 	return flips
 
 
@@ -294,12 +280,16 @@ func _contact_manifold_flipped(previous: Dictionary, current: Dictionary) -> boo
 
 
 func _state_is_comparable(previous: Dictionary, current: Dictionary) -> bool:
-	if str(previous["state"]) != str(current["state"]):
+	return _snapshot_matches_context(previous, current)
+
+
+func _snapshot_matches_context(snapshot: Dictionary, current: Dictionary) -> bool:
+	if str(snapshot["state"]) != str(current["state"]):
 		return false
-	if bool(previous["step"]) != bool(current["step"]):
+	if bool(snapshot["step"]) != bool(current["step"]):
 		return false
 	return (
-		str(previous["expected"]).is_empty()
+		str(snapshot["expected"]).is_empty()
 		and str(current["expected"]).is_empty()
 	)
 
@@ -309,6 +299,7 @@ func _diagnose(
 	displacement_reversal: bool,
 	vertical_flip: bool,
 	collision_blocked: bool,
+	contact_flip: bool,
 	current: Dictionary
 ) -> String:
 	var current_velocity: Vector3 = current["velocity"]
@@ -319,13 +310,85 @@ func _diagnose(
 	):
 		return "walkable support created or preserved upward persistent velocity"
 	if support_flips >= 2 and vertical_flip:
-		return "support classification is oscillating while vertical velocity changes sign"
+		return "support classification oscillated while vertical velocity changed sign"
 	if support_flips >= 2 and collision_blocked:
-		return "collision blocking and support classification are alternating across frames"
+		return "collision blocking and support classification alternated across frames"
+	if support_flips >= 2 and contact_flip:
+		return "support and collision contact normals were unstable across frames"
 	if displacement_reversal and collision_blocked:
-		return "collision response reversed actual movement while player intent stayed stable"
+		return "collision response reversed actual movement while input stayed stable"
 	if support_flips >= 2:
-		return "support classification is unstable alongside another motion anomaly"
+		return "support classification was unstable alongside another motion anomaly"
 	if displacement_reversal:
-		return "actual player displacement reversed without a matching input reversal"
+		return "actual displacement reversed without a matching input reversal"
+	if contact_flip:
+		return "collision contact normal changed abruptly between adjacent frames"
 	return "abrupt motion-state change exceeded jitter thresholds"
+
+
+func _format_report(
+	current: Dictionary,
+	diagnosis: String,
+	reasons: PackedStringArray,
+	score: int,
+	blocked_ratio: float
+) -> String:
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("")
+	lines.append("==================== [JITTER DETECTED] ====================")
+	lines.append("diagnosis: %s" % diagnosis)
+	lines.append("reasons: %s" % ", ".join(reasons))
+	lines.append("score: %d" % score)
+	lines.append("frame: %d  state: %s  step: %s" % [
+		int(current["frame"]),
+		str(current["state"]),
+		str(current["step"]),
+	])
+	lines.append("position: %s" % str(current["position"]))
+	lines.append("displacement: %s" % str(current["displacement"]))
+	lines.append("velocity: %s -> %s" % [
+		str(current["velocity_before"]),
+		str(current["velocity"]),
+	])
+	lines.append("intent: %s" % str(current["intent"]))
+	lines.append("support: %s  walkable: %s" % [
+		str(current["support"]),
+		str(current["walkable"]),
+	])
+	lines.append("support_normal: %s  support_point: %s" % [
+		str(current["support_normal"]),
+		str(current["support_point"]),
+	])
+	if blocked_ratio >= 0.0:
+		lines.append("horizontal_motion_ratio: %.3f" % blocked_ratio)
+	lines.append("collisions: %d" % int(current["collisions"]))
+	lines.append("collision_normals: %s" % str(current["collision_normals"]))
+	lines.append("collision_points: %s" % str(current["collision_points"]))
+	lines.append("recent frames (oldest -> newest):")
+
+	var start_index: int = maxi(0, history.size() - REPORT_HISTORY_FRAMES + 1)
+	for history_index: int in range(start_index, history.size()):
+		lines.append("  %s" % _format_snapshot_line(history[history_index]))
+	lines.append("  %s" % _format_snapshot_line(current))
+	lines.append("===========================================================")
+	return "\n".join(lines)
+
+
+func _format_snapshot_line(snapshot: Dictionary) -> String:
+	return (
+		"F:%d state=%s pos=%s move=%s vel=%s intent=%s "
+		+ "support=%s walkable=%s support_n=%s collisions=%d normals=%s expected=%s"
+	) % [
+		int(snapshot["frame"]),
+		str(snapshot["state"]),
+		str(snapshot["position"]),
+		str(snapshot["displacement"]),
+		str(snapshot["velocity"]),
+		str(snapshot["intent"]),
+		str(snapshot["support"]),
+		str(snapshot["walkable"]),
+		str(snapshot["support_normal"]),
+		int(snapshot["collisions"]),
+		str(snapshot["collision_normals"]),
+		str(snapshot["expected"]),
+	]
