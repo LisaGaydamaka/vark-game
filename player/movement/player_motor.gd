@@ -2,6 +2,9 @@ class_name PlayerMotor
 extends RefCounted
 
 
+const MOTION_EPSILON: float = 0.000001
+
+
 var max_speed: float
 var acceleration: float
 var ground_deceleration: float
@@ -51,10 +54,19 @@ func update(
 		constrain_horizontal_speed(player, ground_target_speed)
 		return
 
-	# The motor is the sole owner of persistent velocity. Support reports the
-	# current floor-like contact plane, including steep non-walkable support. The
-	# motor constrains penetration into that plane, while grounded-only behavior
-	# such as static friction still requires support.walkable.
+	if support.walkable:
+		_update_walkable_ground(
+			player,
+			support,
+			input_direction,
+			ground_target_speed,
+			delta
+		)
+		return
+
+	# Steep support remains explicit surface physics. Walkable support no longer
+	# reaches this path because its vertical terrain-following motion is derived
+	# transiently by PlayerMovement instead of being stored in velocity.y.
 	_constrain_velocity_to_support(player, support)
 
 	var external_acceleration: Vector3 = Vector3.DOWN * gravity
@@ -66,29 +78,122 @@ func update(
 			ground_target_speed
 		)
 
-	if (
-		support.has_support
-		and support.walkable
-		and input_direction.is_zero_approx()
-	):
-		external_acceleration = apply_static_friction(
-			external_acceleration,
-			support
-		)
-
 	player.velocity += external_acceleration * delta
-
-	if (
-		support.has_support
-		and support.walkable
-		and input_direction.is_zero_approx()
-	):
-		apply_ground_deceleration(player, support, delta)
-	elif support.has_support:
-		apply_kinetic_friction(player, support, delta)
+	apply_kinetic_friction(player, support, delta)
 
 	_constrain_velocity_to_support(player, support)
 	constrain_horizontal_speed(player, ground_target_speed)
+
+
+func _update_walkable_ground(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	input_direction: Vector3,
+	target_speed: float,
+	delta: float
+) -> void:
+	# Walkable ground owns no persistent vertical momentum. Slope rise/fall is
+	# temporary displacement produced later from actual accepted X/Z movement.
+	player.velocity.y = 0.0
+
+	var horizontal_velocity := Vector3(
+		player.velocity.x,
+		0.0,
+		player.velocity.z
+	)
+	var horizontal_input := Vector3(
+		input_direction.x,
+		0.0,
+		input_direction.z
+	)
+	var input_strength: float = minf(horizontal_input.length(), 1.0)
+
+	var slope_acceleration: Vector3 = _get_walkable_slope_acceleration(support)
+	var external_acceleration: Vector3 = slope_acceleration
+
+	if input_strength > MOTION_EPSILON:
+		var clamped_target_speed: float = maxf(target_speed, 0.0)
+		if clamped_target_speed > MOTION_EPSILON:
+			var desired_velocity: Vector3 = (
+				horizontal_input.normalized()
+				* clamped_target_speed
+				* input_strength
+			)
+			var velocity_error: Vector3 = desired_velocity - horizontal_velocity
+			external_acceleration += velocity_error * (
+				acceleration / clamped_target_speed
+			)
+	elif _walkable_static_friction_holds(support):
+		external_acceleration = Vector3.ZERO
+
+	horizontal_velocity += external_acceleration * delta
+
+	if input_strength <= MOTION_EPSILON:
+		var stopping_acceleration: float = maxf(
+			maxf(ground_deceleration, 0.0),
+			kinetic_friction_coefficient
+			* get_normal_load_acceleration(support)
+		)
+		horizontal_velocity = horizontal_velocity.move_toward(
+			Vector3.ZERO,
+			stopping_acceleration * delta
+		)
+	else:
+		horizontal_velocity = _apply_horizontal_kinetic_friction(
+			horizontal_velocity,
+			support,
+			delta
+		)
+
+	player.velocity.x = horizontal_velocity.x
+	player.velocity.z = horizontal_velocity.z
+	player.velocity.y = 0.0
+	constrain_horizontal_speed(player, target_speed)
+
+
+func _get_walkable_slope_acceleration(
+	support: PlayerSupport
+) -> Vector3:
+	var surface_gravity: Vector3 = (
+		Vector3.DOWN * gravity
+	).slide(support.support_normal)
+	return Vector3(
+		surface_gravity.x,
+		0.0,
+		surface_gravity.z
+	)
+
+
+func _walkable_static_friction_holds(
+	support: PlayerSupport
+) -> bool:
+	var surface_gravity: Vector3 = (
+		Vector3.DOWN * gravity
+	).slide(support.support_normal)
+	var maximum_static_friction: float = (
+		static_friction_coefficient
+		* get_normal_load_acceleration(support)
+	)
+	return surface_gravity.length() <= maximum_static_friction
+
+
+func _apply_horizontal_kinetic_friction(
+	horizontal_velocity: Vector3,
+	support: PlayerSupport,
+	delta: float
+) -> Vector3:
+	var horizontal_speed: float = horizontal_velocity.length()
+	if horizontal_speed <= MOTION_EPSILON:
+		return horizontal_velocity
+
+	var friction_acceleration: float = (
+		kinetic_friction_coefficient
+		* get_normal_load_acceleration(support)
+	)
+	return horizontal_velocity.move_toward(
+		Vector3.ZERO,
+		friction_acceleration * delta
+	)
 
 
 func _constrain_velocity_to_support(
@@ -114,7 +219,7 @@ func constrain_horizontal_speed(
 	)
 	var speed_limit: float = maxf(target_speed, 0.0)
 	var horizontal_speed: float = horizontal_velocity.length()
-	if horizontal_speed <= speed_limit or horizontal_speed <= 0.000001:
+	if horizontal_speed <= speed_limit or horizontal_speed <= MOTION_EPSILON:
 		return
 
 	horizontal_velocity = horizontal_velocity.normalized() * speed_limit
@@ -147,7 +252,7 @@ func apply_directional_jump(
 	var horizontal_velocity: Vector3 = Vector3.ZERO
 	var clamped_launch_speed: float = maxf(horizontal_launch_speed, 0.0)
 
-	if input_strength > 0.000001:
+	if input_strength > MOTION_EPSILON:
 		horizontal_velocity = (
 			horizontal_input.normalized()
 			* clamped_launch_speed
@@ -174,14 +279,16 @@ func apply_air_horizontal_velocity(
 		input_direction.z
 	)
 	var input_strength: float = minf(horizontal_input.length(), 1.0)
-	if input_strength <= 0.000001:
+	if input_strength <= MOTION_EPSILON:
 		return
 
 	var desired_direction: Vector3 = horizontal_input.normalized()
 	var current_speed: float = horizontal_velocity.length()
 	var current_alignment: float = 1.0
-	if current_speed > 0.000001:
-		current_alignment = horizontal_velocity.normalized().dot(desired_direction)
+	if current_speed > MOTION_EPSILON:
+		current_alignment = horizontal_velocity.normalized().dot(
+			desired_direction
+		)
 
 	var preserve_inherited_speed: bool = (
 		current_speed > air_max_speed
@@ -203,7 +310,7 @@ func apply_air_horizontal_velocity(
 
 	if preserve_inherited_speed:
 		var steered_speed: float = horizontal_velocity.length()
-		if steered_speed > 0.000001:
+		if steered_speed > MOTION_EPSILON:
 			horizontal_velocity = (
 				horizontal_velocity.normalized()
 				* current_speed
@@ -220,7 +327,7 @@ func get_motor_acceleration(
 	target_speed: float
 ) -> Vector3:
 	var clamped_target_speed: float = maxf(target_speed, 0.0)
-	if clamped_target_speed <= 0.000001:
+	if clamped_target_speed <= MOTION_EPSILON:
 		return Vector3.ZERO
 
 	var movement_direction: Vector3 = input_direction
@@ -236,66 +343,24 @@ func get_motor_acceleration(
 			support.support_normal
 		)
 		var projected_input_length: float = projected_input.length()
-		if projected_input_length <= 0.000001:
+		if projected_input_length <= MOTION_EPSILON:
 			return Vector3.ZERO
 
 		movement_direction = projected_input / projected_input_length
 		input_projection_scale = projected_input_length
-		controlled_velocity = player.velocity.slide(support.support_normal)
+		controlled_velocity = player.velocity.slide(
+			support.support_normal
+		)
 
-	var target_velocity: Vector3 = movement_direction * clamped_target_speed
+	var target_velocity: Vector3 = (
+		movement_direction * clamped_target_speed
+	)
 	var velocity_error: Vector3 = target_velocity - controlled_velocity
 	return velocity_error * (
 		acceleration
 		/ clamped_target_speed
 		* input_projection_scale
 	)
-
-
-func apply_static_friction(
-	external_acceleration: Vector3,
-	support: PlayerSupport
-) -> Vector3:
-	var surface_acceleration: Vector3 = external_acceleration.slide(
-		support.support_normal
-	)
-	var normal_load_acceleration: float = get_normal_load_acceleration(support)
-	var maximum_static_friction: float = (
-		static_friction_coefficient
-		* normal_load_acceleration
-	)
-
-	if surface_acceleration.length() <= maximum_static_friction:
-		return external_acceleration - surface_acceleration
-	return external_acceleration
-
-
-func apply_ground_deceleration(
-	player: CharacterBody3D,
-	support: PlayerSupport,
-	delta: float
-) -> void:
-	var surface_velocity: Vector3 = player.velocity.slide(
-		support.support_normal
-	)
-	var surface_speed: float = surface_velocity.length()
-	if surface_speed <= 0.000001:
-		return
-
-	var friction_acceleration: float = (
-		kinetic_friction_coefficient
-		* get_normal_load_acceleration(support)
-	)
-	var stopping_acceleration: float = maxf(
-		maxf(ground_deceleration, 0.0),
-		friction_acceleration
-	)
-	var new_surface_velocity: Vector3 = surface_velocity.move_toward(
-		Vector3.ZERO,
-		stopping_acceleration * delta
-	)
-	var normal_velocity: Vector3 = player.velocity - surface_velocity
-	player.velocity = normal_velocity + new_surface_velocity
 
 
 func apply_kinetic_friction(
@@ -307,10 +372,12 @@ func apply_kinetic_friction(
 		support.support_normal
 	)
 	var surface_speed: float = surface_velocity.length()
-	if surface_speed <= 0.000001:
+	if surface_speed <= MOTION_EPSILON:
 		return
 
-	var normal_load_acceleration: float = get_normal_load_acceleration(support)
+	var normal_load_acceleration: float = get_normal_load_acceleration(
+		support
+	)
 	if normal_load_acceleration <= 0.0:
 		return
 
