@@ -5,6 +5,7 @@ extends RefCounted
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
+const ROUTE_BLOCKING_DOT_EPSILON: float = 0.0001
 const MIN_RISER_HORIZONTAL_COMPONENT: float = 0.05
 const MIN_START_ALIGNMENT: float = 0.25
 const MIN_CONTINUE_ALIGNMENT: float = 0.05
@@ -20,6 +21,7 @@ class StepCandidate:
 	var edge_point: Vector3 = Vector3.ZERO
 	var wall_normal: Vector3 = Vector3.ZERO
 	var step_height: float = 0.0
+	var crossing_distance: float = 0.0
 	var approach_alignment: float = 0.0
 
 
@@ -308,9 +310,10 @@ func build_candidate_from_contact(
 	candidate.edge_point = edge_point
 	candidate.wall_normal = wall_normal
 	candidate.step_height = step_height
+	candidate.crossing_distance = outward_distance + crossing_clearance_margin
 	candidate.approach_alignment = approach_alignment
 
-	if not has_crossing_clearance(player, candidate, outward_distance):
+	if not has_route_clearance(player, candidate):
 		return null
 
 	return candidate
@@ -453,29 +456,91 @@ func prepare_ray_query(
 	return ray_query
 
 
-func has_crossing_clearance(
+func has_route_clearance(
 	player: CharacterBody3D,
-	candidate: StepCandidate,
-	outward_distance: float
+	candidate: StepCandidate
 ) -> bool:
-	var crossing_transform: Transform3D = player.global_transform
-	crossing_transform.origin += (
-		-candidate.wall_normal
-		* (outward_distance + crossing_clearance_margin)
-	)
-	crossing_transform.origin.y += (
+	if not is_vertical_route_clear(player, candidate):
+		return false
+	return is_forward_route_clear(player, candidate)
+
+
+func is_vertical_route_clear(
+	player: CharacterBody3D,
+	candidate: StepCandidate
+) -> bool:
+	var lift_motion: Vector3 = Vector3.UP * (
 		candidate.step_height + crossing_clearance_margin
 	)
+	return _can_travel_route_segment(
+		player,
+		player.global_transform,
+		lift_motion
+	)
+
+
+func is_forward_route_clear(
+	player: CharacterBody3D,
+	candidate: StepCandidate
+) -> bool:
+	var lifted_transform: Transform3D = player.global_transform
+	lifted_transform.origin.y += (
+		candidate.step_height + crossing_clearance_margin
+	)
+	var crossing_motion: Vector3 = (
+		-candidate.wall_normal * candidate.crossing_distance
+	)
+	return _can_travel_route_segment(
+		player,
+		lifted_transform,
+		crossing_motion
+	)
+
+
+func _can_travel_route_segment(
+	player: CharacterBody3D,
+	from_transform: Transform3D,
+	motion: Vector3
+) -> bool:
+	var required_distance: float = motion.length()
+	if required_distance <= sqrt(MOTION_EPSILON_SQUARED):
+		return true
 
 	var collision := KinematicCollision3D.new()
-	return not player.test_move(
-		crossing_transform,
-		Vector3.ZERO,
+	var blocked: bool = player.test_move(
+		from_transform,
+		motion,
 		collision,
 		PROBE_SAFE_MARGIN,
-		true,
+		false,
 		PROBE_MAX_COLLISIONS
 	)
+	if not blocked:
+		return true
+
+	var route_direction: Vector3 = motion / required_distance
+	var traveled_distance: float = maxf(
+		0.0,
+		collision.get_travel().dot(route_direction)
+	)
+	if (
+		traveled_distance
+		>= required_distance - get_route_progress_tolerance()
+	):
+		return true
+
+	# Jolt can still report geometry that is already tangent to the capsule.
+	# Tangential side contacts do not obstruct this segment; only a contact whose
+	# normal actually opposes the requested route makes the segment invalid.
+	for collision_index: int in range(collision.get_collision_count()):
+		var normal: Vector3 = collision.get_normal(collision_index)
+		if normal.dot(route_direction) < -ROUTE_BLOCKING_DOT_EPSILON:
+			return false
+	return true
+
+
+func get_route_progress_tolerance() -> float:
+	return PROBE_SAFE_MARGIN + crossing_clearance_margin
 
 
 func has_crossed_edge(position: Vector3) -> bool:
