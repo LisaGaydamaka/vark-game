@@ -86,10 +86,17 @@ var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
 
+var support_log_initialized: bool = false
+var logged_has_support: bool = false
+var logged_walkable: bool = false
+
 
 func _ready() -> void:
 	_create_components()
 	player_look.capture_mouse()
+	GameLog.info("player", "ready", {
+		"position": global_position,
+	})
 
 
 func _physics_process(delta: float) -> void:
@@ -226,12 +233,20 @@ func _update_normal_movement(
 		step.cancel()
 		crouch.toggle()
 	crouch.update(self)
+	if crouch_pressed:
+		var capsule_shape := collision_shape.shape as CapsuleShape3D
+		GameLog.info("movement", "crouch_toggled", {
+			"height": capsule_shape.height,
+			"position": global_position,
+			"standing_requested": crouch.standing_requested,
+		})
 	if jump_held:
 		step.cancel()
 
 	# Support reports floor-like contact separately from whether that contact is
 	# walkable, so steep slopes can use slope physics without becoming grounded.
 	support.update(self)
+	_log_support_transition()
 	var grounded: bool = support.is_grounded()
 	var view_forward: Vector3 = -head.global_transform.basis.z
 
@@ -272,6 +287,10 @@ func _update_normal_movement(
 
 	if jump_accepted_before_move:
 		motor.apply_jump(self, jump_height)
+		GameLog.info("movement", "jump", {
+			"position": global_position,
+			"velocity": velocity,
+		})
 
 	var step_assist_velocity: Vector3 = Vector3.ZERO
 	if not jump_held:
@@ -373,6 +392,9 @@ func _update_normal_movement(
 			return
 
 	if ground_mantle_requested:
+		GameLog.debug("mantle", "ground_request_fell_back_to_jump", {
+			"position": global_position,
+		})
 		motor.apply_jump(self, jump_height)
 		movement.move_vertical_velocity(self, delta)
 
@@ -390,3 +412,33 @@ func _update_normal_movement(
 			# A step owns vertical traversal from the instant it is classified. X/Z
 			# requires no restoration because collision resolution never erased it.
 			step.constrain_persistent_vertical_velocity(self)
+
+
+func _log_support_transition() -> void:
+	if not support_log_initialized:
+		support_log_initialized = true
+		logged_has_support = support.has_support
+		logged_walkable = support.walkable
+		GameLog.debug("movement", "support_initialized", {
+			"has_support": support.has_support,
+			"normal": support.support_normal,
+			"walkable": support.walkable,
+		})
+		return
+
+	if (
+		logged_has_support == support.has_support
+		and logged_walkable == support.walkable
+	):
+		return
+
+	GameLog.debug("movement", "support_changed", {
+		"has_support": support.has_support,
+		"normal": support.support_normal,
+		"point": support.support_point,
+		"position": global_position,
+		"velocity": velocity,
+		"walkable": support.walkable,
+	})
+	logged_has_support = support.has_support
+	logged_walkable = support.walkable
