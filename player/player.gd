@@ -89,6 +89,7 @@ var ledge_controller: PlayerLedgeController
 var support_log_initialized: bool = false
 var logged_has_support: bool = false
 var logged_walkable: bool = false
+var logged_ledge_state: int = PlayerLedgeController.State.NONE
 
 
 func _ready() -> void:
@@ -110,9 +111,11 @@ func _physics_process(delta: float) -> void:
 			crouch_pressed,
 			delta
 		)
+		_log_ledge_state_transition()
 		return
 
 	_update_normal_movement(jump_pressed, crouch_pressed, delta)
+	_log_ledge_state_transition()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -442,3 +445,30 @@ func _log_support_transition() -> void:
 	})
 	logged_has_support = support.has_support
 	logged_walkable = support.walkable
+
+
+func _log_ledge_state_transition() -> void:
+	var current_state: int = ledge_controller.state
+	if current_state == logged_ledge_state:
+		return
+	GameLog.info("ledge", "state_changed", {
+		"from": _get_ledge_state_name(logged_ledge_state),
+		"position": global_position,
+		"to": _get_ledge_state_name(current_state),
+		"velocity": velocity,
+	})
+	logged_ledge_state = current_state
+
+
+func _get_ledge_state_name(value: int) -> String:
+	match value:
+		PlayerLedgeController.State.CATCHING:
+			return "catching"
+		PlayerLedgeController.State.HANGING:
+			return "hanging"
+		PlayerLedgeController.State.CORNERING:
+			return "cornering"
+		PlayerLedgeController.State.MANTLING:
+			return "mantling"
+		_:
+			return "normal"
