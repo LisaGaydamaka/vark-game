@@ -276,34 +276,47 @@ func update(
 				var outward_distance: float = get_outward_distance(
 					player.global_position
 				)
-				var forward_distance: float = minf(
-					remaining_distance,
-					maxf(0.0, outward_distance)
-				)
-				if forward_distance <= 0.0:
+				if outward_distance <= 0.0:
 					completed = true
 					break
 
+				var route_direction: Vector3 = get_forward_route_direction()
+				if route_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+					return false
+
 				var forward_direction: Vector3 = -active_candidate.wall_normal
+				var inward_rate: float = route_direction.dot(forward_direction)
+				if inward_rate <= sqrt(MOTION_EPSILON_SQUARED):
+					return false
+
+				var distance_to_cross: float = outward_distance / inward_rate
+				var route_distance: float = minf(
+					remaining_distance,
+					maxf(0.0, distance_to_cross)
+				)
+				if route_distance <= 0.0:
+					completed = true
+					break
+
 				var collision: KinematicCollision3D = player.move_and_collide(
-					forward_direction * forward_distance,
+					route_direction * route_distance,
 					false,
 					PROBE_SAFE_MARGIN,
 					false,
 					PROBE_MAX_COLLISIONS
 				)
 				if collision != null:
-					var actual_forward: float = maxf(
+					var actual_route: float = maxf(
 						0.0,
-						collision.get_travel().dot(forward_direction)
+						collision.get_travel().dot(route_direction)
 					)
 					remaining_distance = maxf(
 						0.0,
-						remaining_distance - actual_forward
+						remaining_distance - actual_route
 					)
 					if (
-						actual_forward
-						< forward_distance - get_route_progress_tolerance()
+						actual_route
+						< route_distance - get_route_progress_tolerance()
 					):
 						if _try_continue_over_forward_blocker(player, collision):
 							break
@@ -313,6 +326,38 @@ func update(
 				break
 
 	return true
+
+
+func get_forward_route_direction() -> Vector3:
+	if active_candidate == null or active_candidate.source_candidate == null:
+		return Vector3.ZERO
+
+	var forward_direction: Vector3 = -active_candidate.wall_normal
+	var top_normal: Vector3 = active_candidate.source_candidate.top_normal
+	if top_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	top_normal = top_normal.normalized()
+
+	var vertical_factor: float = top_normal.dot(Vector3.UP)
+	if vertical_factor <= sqrt(MOTION_EPSILON_SQUARED):
+		return Vector3.ZERO
+
+	# The bottom capsule cap starts tangent to the radius-offset top plane at the
+	# crossing edge. Moving horizontally into an uphill plane would reduce that
+	# signed distance and embed the capsule. Add exactly the upward component
+	# required for tangent travel. Downhill travel keeps the existing height so
+	# clearance may increase, but never decreases because of mantle motion.
+	var rise_per_horizontal: float = maxf(
+		0.0,
+		-top_normal.dot(forward_direction) / vertical_factor
+	)
+	var route_direction := (
+		forward_direction
+		+ Vector3.UP * rise_per_horizontal
+	)
+	if route_direction.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	return route_direction.normalized()
 
 
 func _try_continue_over_forward_blocker(
