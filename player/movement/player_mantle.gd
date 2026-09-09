@@ -6,6 +6,8 @@ const PROBE_SAFE_MARGIN: float = 0.001
 const ROUTE_CLEARANCE_SLACK: float = 0.002
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
+const MAX_EDGE_CONTINUATIONS: int = 4
+const MINIMUM_CONTINUATION_WALL_ALIGNMENT: float = 0.965925826
 
 
 enum Phase {
@@ -17,6 +19,7 @@ enum Phase {
 
 class MantleCandidate:
 	var source_candidate: PlayerLedgeDetector.LedgeCandidate = null
+	var support: PlayerSupport = null
 	var edge_point: Vector3 = Vector3.ZERO
 	var wall_normal: Vector3 = Vector3.ZERO
 	var ledge_axis: Vector3 = Vector3.ZERO
@@ -31,6 +34,7 @@ var detector: PlayerLedgeDetector
 var active_candidate: MantleCandidate = null
 var route_edge_point: Vector3 = Vector3.ZERO
 var lift_target_height: float = 0.0
+var edge_continuation_count: int = 0
 var phase: int = Phase.NONE
 var completed: bool = false
 
@@ -136,6 +140,7 @@ func find_candidate_with_source_mode(
 
 	var candidate := MantleCandidate.new()
 	candidate.source_candidate = refreshed_source
+	candidate.support = support
 	candidate.edge_point = refreshed_source.edge_point
 	candidate.wall_normal = wall_normal
 	candidate.ledge_axis = ledge_axis
@@ -152,11 +157,37 @@ func try_start(
 		return false
 
 	cancel()
+	if not _configure_route(player, candidate):
+		cancel()
+		return false
+
+	# A mantle candidate represents an edge to clear, not a platform volume to
+	# occupy. Eligibility therefore validates only the lift required at the edge.
+	# Geometry behind the lip is classified later, when the body actually reaches
+	# it during traversal.
+	if not is_vertical_clearance_clear(player):
+		cancel()
+		return false
+
+	phase = Phase.LIFT
+	if has_reached_lift_height(player.global_position):
+		phase = Phase.FORWARD
+		if has_reached_forward_limit(player.global_position):
+			completed = true
+	return true
+
+
+func _configure_route(
+	player: CharacterBody3D,
+	candidate: MantleCandidate
+) -> bool:
+	if candidate == null or not candidate.valid:
+		return false
+
 	active_candidate = candidate
 	route_edge_point = get_crossing_edge_point(player.global_position)
 	var vertical_edge_clearance: float = get_vertical_edge_clearance()
 	if not is_finite(vertical_edge_clearance):
-		cancel()
 		return false
 
 	lift_target_height = (
@@ -169,23 +200,7 @@ func try_start(
 		lift_target_height,
 		route_edge_point.z
 	)
-
-	# Mantle eligibility must validate the same two-stage route used at runtime:
-	# first lift clear of the lip, then cross inward to the edge plane. Checking
-	# only the vertical segment lets recessed/inward ledges start a mantle whose
-	# forward phase immediately runs into wall geometry.
-	if not is_vertical_clearance_clear(player):
-		cancel()
-		return false
-	if not is_forward_clearance_clear(player):
-		cancel()
-		return false
-
-	phase = Phase.LIFT
-	if has_reached_lift_height(player.global_position):
-		phase = Phase.FORWARD
-		if has_reached_forward_limit(player.global_position):
-			completed = true
+	completed = false
 	return true
 
 
@@ -233,8 +248,8 @@ func update(
 					phase = Phase.FORWARD
 					continue
 
-				# The vertical path was prevalidated. A live collision before the
-				# required height therefore means traversal can no longer stay valid.
+				# The vertical path was validated for the current edge. A live collision
+				# before the required height means that edge can no longer be cleared.
 				if collision != null or actual_lift <= sqrt(MOTION_EPSILON_SQUARED):
 					return false
 				break
@@ -268,15 +283,106 @@ func update(
 						0.0,
 						collision.get_travel().dot(forward_direction)
 					)
+					remaining_distance = maxf(
+						0.0,
+						remaining_distance - actual_forward
+					)
 					if (
 						actual_forward
 						< forward_distance - get_route_progress_tolerance()
 					):
+						if _try_continue_over_forward_blocker(player, collision):
+							break
 						return false
 				if has_reached_forward_limit(player.global_position):
 					completed = true
 				break
 
+	return true
+
+
+func _try_continue_over_forward_blocker(
+	player: CharacterBody3D,
+	collision: KinematicCollision3D
+) -> bool:
+	if (
+		active_candidate == null
+		or active_candidate.support == null
+		or collision == null
+		or edge_continuation_count >= MAX_EDGE_CONTINUATIONS
+	):
+		return false
+
+	var blocker_normal: Vector3 = collision.get_normal()
+	var blocker_wall_normal := Vector3(
+		blocker_normal.x,
+		0.0,
+		blocker_normal.z
+	)
+	if blocker_wall_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	blocker_wall_normal = blocker_wall_normal.normalized()
+	if (
+		blocker_wall_normal.dot(active_candidate.wall_normal)
+		< MINIMUM_CONTINUATION_WALL_ALIGNMENT
+	):
+		return false
+
+	# A forward blocker close enough to touch the capsule may itself be another
+	# edge. Search only around the contact-height envelope; this is local edge
+	# classification, not a requirement that the original platform have depth.
+	var next_source: PlayerLedgeDetector.LedgeCandidate = (
+		detector.find_local_candidate(
+			player,
+			active_candidate.support,
+			blocker_wall_normal,
+			collision.get_position(),
+			get_clearance_radius(),
+			false,
+			false
+		)
+	)
+	if next_source == null:
+		return false
+	if not active_candidate.support.is_walkable_surface(next_source.top_normal):
+		return false
+
+	var current_wall_normal: Vector3 = active_candidate.wall_normal
+	var current_edge_point: Vector3 = route_edge_point
+	var inward_direction: Vector3 = -current_wall_normal
+	var inward_progress: float = (
+		next_source.edge_point - current_edge_point
+	).dot(inward_direction)
+	if inward_progress <= get_route_progress_tolerance():
+		return false
+	if (
+		next_source.edge_point.y
+		< current_edge_point.y - get_route_progress_tolerance()
+	):
+		return false
+
+	var next_candidate: MantleCandidate = find_candidate_with_source_mode(
+		player,
+		active_candidate.support,
+		next_source,
+		false
+	)
+	if next_candidate == null:
+		return false
+	if (
+		next_candidate.wall_normal.dot(current_wall_normal)
+		< MINIMUM_CONTINUATION_WALL_ALIGNMENT
+	):
+		return false
+	if not _configure_route(player, next_candidate):
+		return false
+	if not is_vertical_clearance_clear(player):
+		return false
+
+	edge_continuation_count += 1
+	phase = Phase.LIFT
+	if has_reached_lift_height(player.global_position):
+		phase = Phase.FORWARD
 	return true
 
 
@@ -303,47 +409,6 @@ func is_vertical_clearance_clear(player: CharacterBody3D) -> bool:
 	return (
 		collision.get_travel().y
 		>= vertical_distance - get_route_progress_tolerance()
-	)
-
-
-func is_forward_clearance_clear(player: CharacterBody3D) -> bool:
-	if active_candidate == null:
-		return false
-
-	# Simulate the forward phase from the pose the lift phase is expected to
-	# reach. This rejects recessed ledges and other geometry that leaves the
-	# vertical column clear but blocks crossing the edge plane.
-	var lifted_position: Vector3 = player.global_position
-	lifted_position.y = maxf(lifted_position.y, lift_target_height)
-	var forward_distance: float = maxf(
-		0.0,
-		get_outward_distance(lifted_position)
-	)
-	if forward_distance <= get_route_progress_tolerance():
-		return true
-
-	var lifted_transform: Transform3D = player.global_transform
-	lifted_transform.origin = lifted_position
-	var forward_direction: Vector3 = -active_candidate.wall_normal
-	var collision := KinematicCollision3D.new()
-	var blocked: bool = player.test_move(
-		lifted_transform,
-		forward_direction * forward_distance,
-		collision,
-		PROBE_SAFE_MARGIN,
-		false,
-		PROBE_MAX_COLLISIONS
-	)
-	if not blocked:
-		return true
-
-	var forward_travel: float = maxf(
-		0.0,
-		collision.get_travel().dot(forward_direction)
-	)
-	return (
-		forward_travel
-		>= forward_distance - get_route_progress_tolerance()
 	)
 
 
@@ -469,5 +534,6 @@ func cancel() -> void:
 	active_candidate = null
 	route_edge_point = Vector3.ZERO
 	lift_target_height = 0.0
+	edge_continuation_count = 0
 	phase = Phase.NONE
 	completed = false
