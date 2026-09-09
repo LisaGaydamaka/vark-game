@@ -47,6 +47,9 @@ func _move_walkable_ground(
 		0.0,
 		player.velocity.z
 	) * delta
+	var desired_horizontal_destination: Vector3 = (
+		player.global_position + remaining_horizontal
+	)
 	var current_support_normal: Vector3 = support.support_normal
 
 	# Ground locomotion is solved in XZ. Walkable terrain contributes only the
@@ -102,14 +105,16 @@ func _move_walkable_ground(
 		if next_support_y > -INF:
 			current_support_normal = next_support_normal
 
-		var remainder: Vector3 = collision.get_remainder()
-		var horizontal_remainder := Vector3(
-			remainder.x,
+		# Resolve toward the original horizontal endpoint, not toward a remainder
+		# that may already contain a collision-generated deflection. This preserves
+		# the player's requested motion as the source of truth for every iteration.
+		var horizontal_to_destination := Vector3(
+			desired_horizontal_destination.x - player.global_position.x,
 			0.0,
-			remainder.z
+			desired_horizontal_destination.z - player.global_position.z
 		)
 		remaining_horizontal = _resolve_horizontal_constraints(
-			horizontal_remainder,
+			horizontal_to_destination,
 			active_horizontal_planes
 		)
 
@@ -129,10 +134,11 @@ func _move_free(
 	var motion: Vector3 = (
 		player.velocity + assist_velocity
 	) * delta
+	var desired_destination: Vector3 = player.global_position + motion
 
-	# Each collision adds constraints to one active contact manifold. The next
-	# remainder is projected into the feasible cone of every plane encountered so
-	# far, making corners and cracks independent of collision ordering.
+	# Each collision adds constraints to one active contact manifold. Every
+	# iteration resolves toward the original requested endpoint, so a deflection
+	# created by one contact never becomes new intent for later contacts.
 	for _iteration: int in range(max_collision_iterations):
 		if motion.length_squared() <= MOTION_EPSILON_SQUARED:
 			break
@@ -149,8 +155,11 @@ func _move_free(
 			_constrain_vertical_velocity_from_collision(player, normal)
 			_append_unique_plane(active_planes, normal)
 
+		var desired_remaining: Vector3 = (
+			desired_destination - player.global_position
+		)
 		motion = _resolve_3d_constraints(
-			collision.get_remainder(),
+			desired_remaining,
 			active_planes
 		)
 
@@ -199,7 +208,7 @@ func _resolve_3d_constraints(
 	if planes.is_empty() or _satisfies_constraints(desired_motion, planes):
 		return desired_motion
 
-	# Project the desired remainder onto the feasible contact cone. In 3D the
+	# Project the requested remainder onto the feasible contact cone. In 3D the
 	# closest point can lie on one plane, on the crease formed by two planes, or
 	# at the fully constrained origin. Every candidate must satisfy every active
 	# plane, so a new contact can only remove freedom; it cannot reopen an older
@@ -301,6 +310,7 @@ func move_vertical_velocity(
 	delta: float
 ) -> void:
 	var motion: Vector3 = Vector3.UP * player.velocity.y * delta
+	var desired_destination: Vector3 = player.global_position + motion
 	var active_planes: Array[Vector3] = []
 
 	for _iteration: int in range(max_collision_iterations):
@@ -316,7 +326,10 @@ func move_vertical_velocity(
 			_constrain_vertical_velocity_from_collision(player, normal)
 			_append_unique_plane(active_planes, normal)
 
+		var desired_remaining: Vector3 = (
+			desired_destination - player.global_position
+		)
 		motion = _resolve_3d_constraints(
-			collision.get_remainder(),
+			desired_remaining,
 			active_planes
 		)
