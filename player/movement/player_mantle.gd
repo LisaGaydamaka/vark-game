@@ -161,10 +161,16 @@ func try_start(
 		cancel()
 		return false
 
-	# A mantle candidate represents an edge to clear, not a platform volume to
-	# occupy. Eligibility therefore validates only the lift required at the edge.
-	# Geometry behind the lip is classified later, when the body actually reaches
-	# it during traversal.
+	# Mantle eligibility is edge-centric. The vertical space directly above the
+	# crossing edge must fit the player's current capsule height. Platform depth
+	# is not part of this decision.
+	if not is_edge_height_clear(player):
+		cancel()
+		return false
+
+	# Separately verify that the body can actually reach the crossing height from
+	# its current position. This is a traversal-path check, not the edge-height
+	# eligibility rule above.
 	if not is_vertical_clearance_clear(player):
 		cancel()
 		return false
@@ -376,6 +382,8 @@ func _try_continue_over_forward_blocker(
 		return false
 	if not _configure_route(player, next_candidate):
 		return false
+	if not is_edge_height_clear(player):
+		return false
 	if not is_vertical_clearance_clear(player):
 		return false
 
@@ -384,6 +392,50 @@ func _try_continue_over_forward_blocker(
 	if has_reached_lift_height(player.global_position):
 		phase = Phase.FORWARD
 	return true
+
+
+func is_edge_height_clear(player: CharacterBody3D) -> bool:
+	if active_candidate == null:
+		return false
+
+	var required_height: float = detector.get_capsule_height()
+	if required_height <= 0.0:
+		return false
+
+	# Probe a hair inward so an edge shared by the wall and top surface is sampled
+	# on the platform side rather than in empty space outside the wall. The height
+	# itself is still measured vertically from the reconstructed crossing edge.
+	var probe_origin: Vector3 = (
+		route_edge_point
+		- active_candidate.wall_normal * PROBE_SAFE_MARGIN
+		+ Vector3.UP * PROBE_SAFE_MARGIN
+	)
+	var probe_target := Vector3(
+		probe_origin.x,
+		route_edge_point.y + required_height + get_route_progress_tolerance(),
+		probe_origin.z
+	)
+	var query := PhysicsRayQueryParameters3D.create(
+		probe_origin,
+		probe_target,
+		player.collision_mask,
+		[player.get_rid()]
+	)
+	query.collide_with_areas = false
+
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return true
+
+	var position_value: Variant = hit.get("position")
+	if not (position_value is Vector3):
+		return false
+	var ceiling_point: Vector3 = position_value
+	var available_height: float = ceiling_point.y - route_edge_point.y
+	return (
+		available_height
+		>= required_height - get_route_progress_tolerance()
+	)
 
 
 func is_vertical_clearance_clear(player: CharacterBody3D) -> bool:
