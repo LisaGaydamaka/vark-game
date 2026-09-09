@@ -48,10 +48,34 @@ func update(
 	use_air_control: bool,
 	delta: float
 ) -> void:
+	var debug_upward_support: bool = (
+		support.has_support
+		and player.velocity.y > MOTION_EPSILON
+	)
+	var debug_start_velocity: Vector3 = player.velocity
+	if debug_upward_support:
+		_debug_upward_support_motor(
+			"BEFORE_MOTOR",
+			"pending",
+			player,
+			support,
+			use_air_control,
+			debug_start_velocity
+		)
+
 	if use_air_control:
 		player.velocity.y -= gravity * delta
 		apply_air_horizontal_velocity(player, input_direction, delta)
 		constrain_horizontal_speed(player, ground_target_speed)
+		if debug_upward_support:
+			_debug_upward_support_motor(
+				"AFTER_MOTOR",
+				"air_control",
+				player,
+				support,
+				use_air_control,
+				debug_start_velocity
+			)
 		return
 
 	if support.walkable:
@@ -62,6 +86,15 @@ func update(
 			ground_target_speed,
 			delta
 		)
+		if debug_upward_support:
+			_debug_upward_support_motor(
+				"AFTER_MOTOR",
+				"walkable_ground",
+				player,
+				support,
+				use_air_control,
+				debug_start_velocity
+			)
 		return
 
 	# Steep support remains explicit surface physics. Walkable support no longer
@@ -83,6 +116,43 @@ func update(
 
 	_constrain_velocity_to_support(player, support)
 	constrain_horizontal_speed(player, ground_target_speed)
+	if debug_upward_support:
+		_debug_upward_support_motor(
+			"AFTER_MOTOR",
+			"steep_support",
+			player,
+			support,
+			use_air_control,
+			debug_start_velocity
+		)
+
+
+func _debug_upward_support_motor(
+	stage: String,
+	path: String,
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	use_air_control: bool,
+	start_velocity: Vector3
+) -> void:
+	print(
+		"[JUMP_DEBUG] frame=%d event=UPWARD_SUPPORT_%s path=%s pos=%s start_vel=%s current_vel=%s use_air=%s grounded=%s has_support=%s walkable=%s normal=%s separation_speed=%.4f action_held=%s"
+		% [
+			Engine.get_physics_frames(),
+			stage,
+			path,
+			str(player.global_position),
+			str(start_velocity),
+			str(player.velocity),
+			str(use_air_control),
+			str(support.is_grounded()),
+			str(support.has_support),
+			str(support.walkable),
+			str(support.support_normal),
+			start_velocity.dot(support.support_normal),
+			str(Input.is_action_pressed("jump")),
+		]
+	)
 
 
 func _update_walkable_ground(
