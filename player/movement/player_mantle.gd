@@ -34,6 +34,8 @@ var detector: PlayerLedgeDetector
 var active_candidate: MantleCandidate = null
 var route_edge_point: Vector3 = Vector3.ZERO
 var lift_target_height: float = 0.0
+var mantle_origin_edge_point: Vector3 = Vector3.ZERO
+var mantle_origin_wall_normal: Vector3 = Vector3.ZERO
 var edge_continuation_count: int = 0
 var phase: int = Phase.NONE
 var completed: bool = false
@@ -160,6 +162,12 @@ func try_start(
 	if not _configure_route(player, candidate):
 		cancel()
 		return false
+
+	# One mantle input owns one immutable crossing envelope. Continuation edges
+	# may help clear local geometry, but they never become a new origin from which
+	# the mantle can keep walking deeper into the level.
+	mantle_origin_edge_point = route_edge_point
+	mantle_origin_wall_normal = active_candidate.wall_normal
 
 	# Mantle eligibility is edge-centric. The vertical space directly above the
 	# crossing edge must fit the player's current capsule height. Platform depth
@@ -315,6 +323,7 @@ func _try_continue_over_forward_blocker(
 		active_candidate == null
 		or active_candidate.support == null
 		or collision == null
+		or mantle_origin_wall_normal.length_squared() <= MOTION_EPSILON_SQUARED
 		or edge_continuation_count >= MAX_EDGE_CONTINUATIONS
 	):
 		return false
@@ -329,14 +338,14 @@ func _try_continue_over_forward_blocker(
 		return false
 	blocker_wall_normal = blocker_wall_normal.normalized()
 	if (
-		blocker_wall_normal.dot(active_candidate.wall_normal)
+		blocker_wall_normal.dot(mantle_origin_wall_normal)
 		< MINIMUM_CONTINUATION_WALL_ALIGNMENT
 	):
 		return false
 
 	# A forward blocker close enough to touch the capsule may itself be another
-	# edge. Search only around the contact-height envelope; this is local edge
-	# classification, not a requirement that the original platform have depth.
+	# local edge required to clear the original crossing. Search only around the
+	# live contact; acceptance below remains anchored to the immutable origin.
 	var next_source: PlayerLedgeDetector.LedgeCandidate = (
 		detector.find_local_candidate(
 			player,
@@ -353,18 +362,38 @@ func _try_continue_over_forward_blocker(
 	if not active_candidate.support.is_walkable_surface(next_source.top_normal):
 		return false
 
+	# The next edge must make real progress beyond the current route, but that
+	# progress is never allowed to reset the mantle objective. Total inward travel
+	# and total rise are always measured from the original edge and are limited to
+	# the capsule-sized local crossing envelope.
 	var current_wall_normal: Vector3 = active_candidate.wall_normal
 	var current_edge_point: Vector3 = route_edge_point
-	var inward_direction: Vector3 = -current_wall_normal
+	var current_inward_direction: Vector3 = -current_wall_normal
 	var inward_progress: float = (
 		next_source.edge_point - current_edge_point
-	).dot(inward_direction)
+	).dot(current_inward_direction)
 	if inward_progress <= get_route_progress_tolerance():
 		return false
 	if (
 		next_source.edge_point.y
 		< current_edge_point.y - get_route_progress_tolerance()
 	):
+		return false
+
+	var origin_inward_direction: Vector3 = -mantle_origin_wall_normal
+	var total_inward_progress: float = (
+		next_source.edge_point - mantle_origin_edge_point
+	).dot(origin_inward_direction)
+	var total_rise: float = (
+		next_source.edge_point.y - mantle_origin_edge_point.y
+	)
+	var local_envelope: float = get_clearance_radius()
+	var envelope_tolerance: float = get_route_progress_tolerance()
+	if total_inward_progress <= envelope_tolerance:
+		return false
+	if total_inward_progress > local_envelope + envelope_tolerance:
+		return false
+	if total_rise > local_envelope + envelope_tolerance:
 		return false
 
 	var next_candidate: MantleCandidate = find_candidate_with_source_mode(
@@ -376,7 +405,7 @@ func _try_continue_over_forward_blocker(
 	if next_candidate == null:
 		return false
 	if (
-		next_candidate.wall_normal.dot(current_wall_normal)
+		next_candidate.wall_normal.dot(mantle_origin_wall_normal)
 		< MINIMUM_CONTINUATION_WALL_ALIGNMENT
 	):
 		return false
@@ -586,6 +615,8 @@ func cancel() -> void:
 	active_candidate = null
 	route_edge_point = Vector3.ZERO
 	lift_target_height = 0.0
+	mantle_origin_edge_point = Vector3.ZERO
+	mantle_origin_wall_normal = Vector3.ZERO
 	edge_continuation_count = 0
 	phase = Phase.NONE
 	completed = false
