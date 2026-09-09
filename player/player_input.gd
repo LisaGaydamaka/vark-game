@@ -4,6 +4,12 @@ extends RefCounted
 
 const DIRECTION_EPSILON_SQUARED: float = 0.000001
 
+var previous_physical_space_pressed: bool = false
+
+
+func _init() -> void:
+	previous_physical_space_pressed = Input.is_physical_key_pressed(KEY_SPACE)
+
 
 func get_movement_direction(
 	reference_transform: Transform3D
@@ -56,16 +62,33 @@ func get_movement_vector() -> Vector2:
 
 
 func is_jump_just_pressed() -> bool:
-	var pressed: bool = Input.is_action_just_pressed("jump")
-	if pressed:
+	var physical_space_pressed: bool = Input.is_physical_key_pressed(KEY_SPACE)
+	var physical_space_just_pressed: bool = (
+		physical_space_pressed
+		and not previous_physical_space_pressed
+	)
+	previous_physical_space_pressed = physical_space_pressed
+
+	var action_just_pressed: bool = Input.is_action_just_pressed("jump")
+	var action_pressed: bool = Input.is_action_pressed("jump")
+	if physical_space_just_pressed or action_just_pressed:
+		var mapping_status: String = "input_ok"
+		if physical_space_just_pressed and not action_just_pressed:
+			mapping_status = "space_seen_but_jump_action_missing"
+		elif action_just_pressed and not physical_space_pressed:
+			mapping_status = "jump_action_seen_without_physical_space"
 		print(
-			"[JUMP_PRESS] frame=%d held=%s"
+			"[JUMP_DEBUG] frame=%d event=SPACE_INPUT raw_space_just=%s raw_space_held=%s action_just=%s action_held=%s mapping=%s"
 			% [
 				Engine.get_physics_frames(),
-				str(Input.is_action_pressed("jump")),
+				str(physical_space_just_pressed),
+				str(physical_space_pressed),
+				str(action_just_pressed),
+				str(action_pressed),
+				mapping_status,
 			]
 		)
-	return pressed
+	return action_just_pressed
 
 
 func is_jump_pressed() -> bool:
