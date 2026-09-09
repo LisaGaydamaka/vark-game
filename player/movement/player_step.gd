@@ -20,8 +20,6 @@ class StepCandidate:
 	var edge_point: Vector3 = Vector3.ZERO
 	var wall_normal: Vector3 = Vector3.ZERO
 	var step_height: float = 0.0
-	var crossing_distance: float = 0.0
-	var crossing_direction: Vector3 = Vector3.ZERO
 	var approach_alignment: float = 0.0
 
 
@@ -314,17 +312,13 @@ func build_candidate_from_contact(
 	candidate.edge_point = edge_point
 	candidate.wall_normal = wall_normal
 	candidate.step_height = step_height
-	candidate.crossing_direction = approach_direction
-	# Contact already proves the current path reached the riser. Clearance only
-	# needs to validate the local continuation of that same path after lifting;
-	# it must not force a perpendicular route through the riser plane.
-	candidate.crossing_distance = minf(
-		(outward_distance + crossing_clearance_margin) / approach_alignment,
-		riser_probe_distance
-	)
 	candidate.approach_alignment = approach_alignment
 
-	if not has_route_clearance(player, candidate):
+	# Step owns only vertical configuration: prove that the capsule can rise to
+	# the candidate support height. Horizontal continuation is deliberately not
+	# predicted here; PlayerMovement remains authoritative and resolves the same
+	# locomotion intent against walls/corners while the lift is applied.
+	if not has_lift_clearance(player, candidate):
 		return null
 
 	return candidate
@@ -515,16 +509,7 @@ func prepare_ray_query(
 	return ray_query
 
 
-func has_route_clearance(
-	player: CharacterBody3D,
-	candidate: StepCandidate
-) -> bool:
-	if not is_vertical_route_clear(player, candidate):
-		return false
-	return is_forward_route_clear(player, candidate)
-
-
-func is_vertical_route_clear(
+func has_lift_clearance(
 	player: CharacterBody3D,
 	candidate: StepCandidate
 ) -> bool:
@@ -535,28 +520,6 @@ func is_vertical_route_clear(
 		player,
 		player.global_transform,
 		lift_motion
-	)
-
-
-func is_forward_route_clear(
-	player: CharacterBody3D,
-	candidate: StepCandidate
-) -> bool:
-	if candidate.crossing_direction.length_squared() <= MOTION_EPSILON_SQUARED:
-		return false
-
-	var lifted_transform: Transform3D = player.global_transform
-	lifted_transform.origin.y += (
-		candidate.step_height + crossing_clearance_margin
-	)
-	var crossing_motion: Vector3 = (
-		candidate.crossing_direction.normalized()
-		* candidate.crossing_distance
-	)
-	return _can_travel_route_segment(
-		player,
-		lifted_transform,
-		crossing_motion
 	)
 
 
