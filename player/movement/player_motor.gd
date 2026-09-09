@@ -231,10 +231,22 @@ func apply_jump(
 	player: CharacterBody3D,
 	jump_height: float
 ) -> void:
+	var previous_vertical_velocity: float = player.velocity.y
 	var jump_speed: float = sqrt(
 		2.0 * gravity * maxf(jump_height, 0.0)
 	)
 	player.velocity.y = jump_speed
+	print(
+		"[JUMP_DEBUG] frame=%d event=JUMP_IMPULSE_APPLIED pos=%s previous_y=%.4f jump_y=%.4f raw_space=%s action_held=%s"
+		% [
+			Engine.get_physics_frames(),
+			str(player.global_position),
+			previous_vertical_velocity,
+			player.velocity.y,
+			str(Input.is_physical_key_pressed(KEY_SPACE)),
+			str(Input.is_action_pressed("jump")),
+		]
+	)
 
 
 func apply_directional_jump(
