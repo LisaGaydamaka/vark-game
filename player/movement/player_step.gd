@@ -119,14 +119,14 @@ func update_before_move(
 	)
 	var input_strength: float = minf(horizontal_input.length(), 1.0)
 	if input_strength <= sqrt(MOTION_EPSILON_SQUARED):
-		cancel()
+		_cancel_for_lost_intent(player)
 		return Vector3.ZERO
 
 	var approach_direction: Vector3 = horizontal_input.normalized()
 	var inward_direction: Vector3 = -active_candidate.wall_normal
 	var approach_alignment: float = approach_direction.dot(inward_direction)
 	if approach_alignment <= MIN_CONTINUE_ALIGNMENT:
-		cancel()
+		_cancel_for_lost_intent(player)
 		return Vector3.ZERO
 
 	var remaining_height: float = get_remaining_height(player.global_position)
@@ -501,6 +501,15 @@ func get_capsule_bottom_y(position: Vector3) -> float:
 
 func is_active() -> bool:
 	return active_candidate != null
+
+
+func _cancel_for_lost_intent(player: CharacterBody3D) -> void:
+	if active_candidate != null:
+		var inward_direction: Vector3 = -active_candidate.wall_normal
+		var inward_speed: float = player.velocity.dot(inward_direction)
+		if inward_speed > 0.0:
+			player.velocity -= inward_direction * inward_speed
+	cancel()
 
 
 func cancel() -> void:
