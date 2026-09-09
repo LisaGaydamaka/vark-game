@@ -85,7 +85,17 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
-var traversal_sensor: PlayerTraversalSensor
+
+const STEP_JUMP_DEBUG_RECENT_STEP_FRAMES: int = 8
+const STEP_JUMP_DEBUG_MAX_HOLD_FRAMES: int = 60
+
+var step_jump_debug_last_step_frame: int = -1000000
+var step_jump_debug_active: bool = false
+var step_jump_debug_end_frame: int = -1
+var step_jump_debug_state_initialized: bool = false
+var step_jump_debug_previous_grounded: bool = false
+var step_jump_debug_previous_step_active: bool = false
+var step_jump_debug_previous_ledge_state: int = -1
 
 
 func _ready() -> void:
@@ -95,7 +105,10 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	var jump_pressed: bool = player_input.is_jump_just_pressed()
+	var jump_held: bool = player_input.is_jump_pressed()
 	var crouch_pressed: bool = player_input.is_crouch_just_pressed()
+
+	_step_jump_debug_begin_frame(jump_pressed, jump_held)
 
 	if ledge_controller.is_active():
 		step.cancel()
@@ -104,21 +117,11 @@ func _physics_process(delta: float) -> void:
 			crouch_pressed,
 			delta
 		)
-		traversal_sensor.observe(
-			self,
-			step,
-			ledge_mantle,
-			ledge_controller.state
-		)
+		_step_jump_debug_end_frame(jump_held)
 		return
 
 	_update_normal_movement(jump_pressed, crouch_pressed, delta)
-	traversal_sensor.observe(
-		self,
-		step,
-		ledge_mantle,
-		ledge_controller.state
-	)
+	_step_jump_debug_end_frame(jump_held)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -132,8 +135,6 @@ func _create_components() -> void:
 		head,
 		mouse_sensitivity
 	)
-	traversal_sensor = PlayerTraversalSensor.new()
-
 	support = PlayerSupport.new(
 		max_walkable_slope,
 		support_check_distance,
@@ -241,6 +242,11 @@ func _update_normal_movement(
 		crouch.toggle()
 	crouch.update(self)
 	if jump_held:
+		if step.is_active():
+			_step_jump_debug_event(
+				"STEP_CANCELLED_BY_HELD_JUMP",
+				""
+			)
 		step.cancel()
 
 	# Support reports floor-like contact separately from whether that contact is
@@ -261,6 +267,18 @@ func _update_normal_movement(
 		and grounded
 		and not ground_mantle_requested
 	)
+	if jump_pressed:
+		_step_jump_debug_event(
+			"JUMP_CLASSIFIED",
+			"grounded=%s support=%s ground_mantle=%s normal_jump=%s input=%s"
+			% [
+				str(grounded),
+				str(support.has_support),
+				str(ground_mantle_requested),
+				str(jump_accepted_before_move),
+				str(input_direction),
+			]
+		)
 
 	var ground_target_speed: float = crouch.get_movement_speed(
 		max_speed,
@@ -286,6 +304,7 @@ func _update_normal_movement(
 
 	if jump_accepted_before_move:
 		motor.apply_jump(self, jump_height)
+		_step_jump_debug_event("NORMAL_JUMP_APPLIED", "")
 
 	var step_assist_velocity: Vector3 = Vector3.ZERO
 	if not jump_held:
@@ -333,6 +352,7 @@ func _update_normal_movement(
 		step_assist_velocity,
 		support
 	)
+	_step_jump_debug_collisions(collisions)
 
 	if not collisions.is_empty() and not grounded:
 		if jump_held:
@@ -342,6 +362,10 @@ func _update_normal_movement(
 				false,
 				true
 			):
+				_step_jump_debug_event(
+					"AIR_MANTLE_STARTED_WHILE_HELD",
+					"expanded=false"
+				)
 				step.cancel()
 				return
 			if (
@@ -353,6 +377,10 @@ func _update_normal_movement(
 					true
 				)
 			):
+				_step_jump_debug_event(
+					"AIR_MANTLE_STARTED_WHILE_HELD",
+					"expanded=true"
+				)
 				step.cancel()
 				return
 
@@ -373,6 +401,10 @@ func _update_normal_movement(
 			true,
 			false
 		):
+			_step_jump_debug_event(
+				"GROUND_MANTLE_STARTED",
+				"expanded=false"
+			)
 			step.cancel()
 			return
 		if (
@@ -384,12 +416,20 @@ func _update_normal_movement(
 				false
 			)
 		):
+			_step_jump_debug_event(
+				"GROUND_MANTLE_STARTED",
+				"expanded=true"
+			)
 			step.cancel()
 			return
 
 	if ground_mantle_requested:
 		motor.apply_jump(self, jump_height)
 		movement.move_vertical_velocity(self, delta)
+		_step_jump_debug_event(
+			"GROUND_MANTLE_FALLBACK_JUMP_APPLIED",
+			""
+		)
 
 	step.update_after_move(self)
 	if (
@@ -405,3 +445,129 @@ func _update_normal_movement(
 			# A step owns vertical traversal from the instant it is classified. X/Z
 			# requires no restoration because collision resolution never erased it.
 			step.constrain_persistent_vertical_velocity(self)
+
+
+func _step_jump_debug_begin_frame(
+	jump_pressed: bool,
+	jump_held: bool
+) -> void:
+	var frame: int = Engine.get_physics_frames()
+	if step != null and step.is_active():
+		step_jump_debug_last_step_frame = frame
+
+	if not jump_pressed or not jump_held:
+		return
+
+	var frames_since_step: int = frame - step_jump_debug_last_step_frame
+	if (
+		frames_since_step < 0
+		or frames_since_step > STEP_JUMP_DEBUG_RECENT_STEP_FRAMES
+	):
+		return
+
+	step_jump_debug_active = true
+	step_jump_debug_end_frame = frame + STEP_JUMP_DEBUG_MAX_HOLD_FRAMES
+	step_jump_debug_state_initialized = false
+	_step_jump_debug_event(
+		"JUMP_PRESS_AFTER_STEP",
+		"frames_since_step=%d step_active=%s"
+		% [
+			frames_since_step,
+			str(step != null and step.is_active()),
+		]
+	)
+
+
+func _step_jump_debug_end_frame(jump_held: bool) -> void:
+	var frame: int = Engine.get_physics_frames()
+	var step_active: bool = step != null and step.is_active()
+	if step_active:
+		step_jump_debug_last_step_frame = frame
+
+	if not step_jump_debug_active:
+		return
+
+	var grounded: bool = support != null and support.is_grounded()
+	var ledge_state: int = (
+		ledge_controller.state
+		if ledge_controller != null
+		else PlayerLedgeController.State.NONE
+	)
+
+	if (
+		not step_jump_debug_state_initialized
+		or grounded != step_jump_debug_previous_grounded
+		or step_active != step_jump_debug_previous_step_active
+		or ledge_state != step_jump_debug_previous_ledge_state
+	):
+		_step_jump_debug_event(
+			"HELD_STATE_CHANGED",
+			"jump_held=%s grounded=%s support=%s step=%s ledge_state=%d"
+			% [
+				str(jump_held),
+				str(grounded),
+				str(support != null and support.has_support),
+				str(step_active),
+				ledge_state,
+			]
+		)
+		step_jump_debug_state_initialized = true
+		step_jump_debug_previous_grounded = grounded
+		step_jump_debug_previous_step_active = step_active
+		step_jump_debug_previous_ledge_state = ledge_state
+
+	if not jump_held:
+		_step_jump_debug_event("JUMP_RELEASED", "")
+		step_jump_debug_active = false
+		return
+
+	if frame >= step_jump_debug_end_frame:
+		_step_jump_debug_event("TRACE_TIMEOUT_WHILE_HELD", "")
+		step_jump_debug_active = false
+
+
+func _step_jump_debug_collisions(
+	collisions: Array[KinematicCollision3D]
+) -> void:
+	if not step_jump_debug_active or collisions.is_empty():
+		return
+
+	var normals := PackedStringArray()
+	var contact_count: int = 0
+	for collision: KinematicCollision3D in collisions:
+		if collision == null:
+			continue
+		for collision_index: int in range(collision.get_collision_count()):
+			contact_count += 1
+			normals.append(str(collision.get_normal(collision_index)))
+
+	_step_jump_debug_event(
+		"MOVE_COLLISIONS",
+		"collisions=%d contacts=%d normals=[%s]"
+		% [
+			collisions.size(),
+			contact_count,
+			", ".join(normals),
+		]
+	)
+
+
+func _step_jump_debug_event(
+	event_name: String,
+	details: String
+) -> void:
+	if not step_jump_debug_active:
+		return
+
+	var line: String = (
+		"[STEP_JUMP] frame=%d event=%s pos=%s vel=%s"
+		% [
+			Engine.get_physics_frames(),
+			event_name,
+			str(global_position),
+			str(velocity),
+		]
+	)
+	if not details.is_empty():
+		line += " " + details
+	print(line)
