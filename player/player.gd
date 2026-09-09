@@ -85,6 +85,7 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
+var traversal_sensor: PlayerTraversalSensor
 
 
 func _ready() -> void:
@@ -103,9 +104,21 @@ func _physics_process(delta: float) -> void:
 			crouch_pressed,
 			delta
 		)
+		traversal_sensor.observe(
+			self,
+			step,
+			ledge_mantle,
+			ledge_controller.state
+		)
 		return
 
 	_update_normal_movement(jump_pressed, crouch_pressed, delta)
+	traversal_sensor.observe(
+		self,
+		step,
+		ledge_mantle,
+		ledge_controller.state
+	)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -119,6 +132,7 @@ func _create_components() -> void:
 		head,
 		mouse_sensitivity
 	)
+	traversal_sensor = PlayerTraversalSensor.new()
 
 	support = PlayerSupport.new(
 		max_walkable_slope,
