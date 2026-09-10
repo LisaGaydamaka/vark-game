@@ -85,6 +85,7 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
+var air_mantle_intent_active: bool = false
 
 const STEP_JUMP_DEBUG_RECENT_STEP_FRAMES: int = 8
 const STEP_JUMP_DEBUG_MAX_HOLD_FRAMES: int = 60
@@ -120,7 +121,7 @@ func _physics_process(delta: float) -> void:
 		_step_jump_debug_end_frame(jump_held)
 		return
 
-	_update_normal_movement(jump_pressed, crouch_pressed, delta)
+	_update_normal_movement(jump_pressed, jump_held, crouch_pressed, delta)
 	_step_jump_debug_end_frame(jump_held)
 
 
@@ -227,6 +228,7 @@ func _create_components() -> void:
 
 func _update_normal_movement(
 	jump_pressed: bool,
+	jump_held: bool,
 	crouch_pressed: bool,
 	delta: float
 ) -> void:
@@ -241,14 +243,23 @@ func _update_normal_movement(
 		crouch.toggle()
 	crouch.update(self)
 
-	# Jump/mantle is edge-triggered. Holding Space after a press is not a
-	# persistent traversal command and therefore has no authority over stepping.
-	# This keeps input event semantics separate from traversal state ownership.
-
+	# A jump press arms mantle intent for that airborne attempt. Keeping Space
+	# held preserves the intent until release or landing, but never owns or gates
+	# grounded step-up. This gives jump->hold->mantle buffering without making
+	# held Space a persistent grounded traversal command.
+	#
 	# Support reports floor-like contact separately from whether that contact is
 	# walkable, so steep slopes can use slope physics without becoming grounded.
 	support.update(self)
 	var grounded: bool = support.is_grounded()
+	if jump_pressed:
+		air_mantle_intent_active = true
+	if not jump_held or (grounded and not jump_pressed):
+		air_mantle_intent_active = false
+	var airborne_mantle_intent: bool = (
+		jump_held
+		and air_mantle_intent_active
+	)
 	var view_forward: Vector3 = -head.global_transform.basis.z
 
 	ledge_controller.update_transition_guards()
@@ -324,7 +335,7 @@ func _update_normal_movement(
 		input_direction,
 		view_forward
 	)
-	if airborne_detection_allowed and not jump_pressed:
+	if airborne_detection_allowed and not airborne_mantle_intent:
 		if ledge_controller.try_enter_hang_from_normal(delta):
 			step.cancel()
 			return
@@ -349,8 +360,20 @@ func _update_normal_movement(
 	)
 	_step_jump_debug_collisions(collisions)
 
-	if not collisions.is_empty() and not grounded:
-		if jump_pressed:
+	# PlayerMovement refreshes support when downward motion lands. Consume the
+	# airborne mantle intent immediately on landing so held Space cannot turn a
+	# grounded step contact into a mantle/hang request in the landing frame.
+	var grounded_after_move: bool = support.is_grounded()
+	if grounded_after_move and not ground_mantle_requested:
+		air_mantle_intent_active = false
+	var air_mantle_requested: bool = (
+		not grounded_after_move
+		and jump_held
+		and air_mantle_intent_active
+	)
+
+	if not collisions.is_empty() and not grounded_after_move:
+		if air_mantle_requested:
 			if ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
 				collisions,
@@ -358,7 +381,7 @@ func _update_normal_movement(
 				true
 			):
 				_step_jump_debug_event(
-					"AIR_MANTLE_STARTED_ON_PRESS",
+					"AIR_MANTLE_STARTED_FROM_HELD_INTENT",
 					"expanded=false"
 				)
 				step.cancel()
@@ -373,7 +396,7 @@ func _update_normal_movement(
 				)
 			):
 				_step_jump_debug_event(
-					"AIR_MANTLE_STARTED_ON_PRESS",
+					"AIR_MANTLE_STARTED_FROM_HELD_INTENT",
 					"expanded=true"
 				)
 				step.cancel()
