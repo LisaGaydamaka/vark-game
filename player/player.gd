@@ -3,6 +3,7 @@ extends CharacterBody3D
 
 const MANTLE_DEBUG_POST_FRAMES: int = 12
 const MANTLE_DEBUG_NORMAL_EPSILON_SQUARED: float = 0.000001
+const MANTLE_DEBUG_SAFE_MARGIN: float = 0.001
 
 
 @onready var head: Node3D = $Head
@@ -154,28 +155,50 @@ func _debug_trace_mantle_frame() -> void:
 		ledge_detector.get_capsule_bottom_offset()
 		+ ledge_detector.get_capsule_radius()
 	)
+
+	# A zero-motion recovery probe is read-only: it reports whether the live
+	# capsule is already touching/overlapping geometry at this exact pose.
+	var overlap_collision := KinematicCollision3D.new()
+	var overlapping: bool = test_move(
+		global_transform,
+		Vector3.ZERO,
+		overlap_collision,
+		MANTLE_DEBUG_SAFE_MARGIN,
+		true,
+		max_collision_iterations
+	)
+	var overlap_point: Vector3 = Vector3.ZERO
+	var overlap_normal: Vector3 = Vector3.ZERO
+	if overlapping and overlap_collision.get_collision_count() > 0:
+		overlap_point = overlap_collision.get_position(0)
+		overlap_normal = overlap_collision.get_normal(0)
+
 	var trace_state: String = "MANTLE" if mantle_active else "POST"
-	print(
+	var trace_message: String = (
 		"[MantleTrace] frame=%d state=%s body=%s capsule_center=%s "
 		+ "bottom_cap=%s frame_delta=%s velocity=%s target=%s outward=%.6f "
-		+ "radius=%.4f support=%s walkable=%s support_point=%s support_normal=%s"
-		% [
-			Engine.get_physics_frames(),
-			trace_state,
-			str(global_position),
-			str(collision_shape.global_position),
-			str(bottom_cap_center),
-			str(frame_displacement),
-			str(velocity),
-			str(mantle_debug_target_position),
-			outward_distance,
-			ledge_detector.get_capsule_radius(),
-			str(support.has_support),
-			str(support.walkable),
-			str(support.support_point),
-			str(support.support_normal),
-		]
-	)
+		+ "radius=%.4f support=%s walkable=%s support_point=%s support_normal=%s "
+		+ "overlap=%s overlap_point=%s overlap_normal=%s"
+	) % [
+		Engine.get_physics_frames(),
+		trace_state,
+		str(global_position),
+		str(collision_shape.global_position),
+		str(bottom_cap_center),
+		str(frame_displacement),
+		str(velocity),
+		str(mantle_debug_target_position),
+		outward_distance,
+		ledge_detector.get_capsule_radius(),
+		str(support.has_support),
+		str(support.walkable),
+		str(support.support_point),
+		str(support.support_normal),
+		str(overlapping),
+		str(overlap_point),
+		str(overlap_normal),
+	]
+	print(trace_message)
 
 	mantle_debug_previous_body_position = global_position
 	mantle_debug_has_previous_position = true
