@@ -8,6 +8,7 @@ var support: PlayerSupport
 var motor: PlayerMotor
 var velocity_state: PlayerVelocityState
 var motion_solver: PlayerMotionSolver
+var contact_motion_solver: PlayerContactMotionSolver
 var step: PlayerStep
 var crouch: PlayerCrouch
 var ledge_detector: PlayerLedgeDetectorLazy
@@ -44,6 +45,9 @@ func _init(
 	motor = player_motor
 	velocity_state = player_velocity_state
 	motion_solver = player_motion_solver
+	contact_motion_solver = PlayerContactMotionSolver.new(
+		player_motion_solver.max_collision_iterations
+	)
 	step = player_step
 	crouch = player_crouch
 	ledge_detector = player_ledge_detector
@@ -199,12 +203,20 @@ func update(
 	var movement_sample_start: Vector3 = body.global_position
 	var movement_requested_velocity: Vector3 = body.velocity
 	var movement_grounded_before_move: bool = support.is_grounded()
-	var collisions: Array[KinematicCollision3D] = motion_solver.move(
-		body,
-		delta,
-		support,
-		step_plan
-	)
+	var collisions: Array[KinematicCollision3D] = []
+	if step_traversal_active or not support.has_support:
+		# Step transactions keep their explicit route semantics, and truly
+		# unsupported ballistic fall keeps the seam-safe free-fall solver.
+		collisions = motion_solver.move(
+			body,
+			delta,
+			support,
+			step_plan
+		)
+	else:
+		# Any validated support enters one contact model. Primary support controls
+		# support policy only; every collision remains part of physical resolution.
+		collisions = contact_motion_solver.move(body, delta, support)
 	velocity_state.capture_controlled_from_composed_body(body)
 	velocity_state.apply_to_body(body)
 	anomaly_sensor.observe(
@@ -220,7 +232,7 @@ func update(
 		step_traversal_active
 	)
 
-	# PlayerMotionSolver refreshes support when downward motion lands. Consume the
+	# The motion solver refreshes support when downward motion lands. Consume the
 	# airborne mantle intent immediately on landing so held Space cannot turn a
 	# grounded step contact into a mantle/hang request in the landing frame.
 	var grounded_after_move: bool = support.is_grounded()
