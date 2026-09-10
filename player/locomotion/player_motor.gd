@@ -18,7 +18,6 @@ var air_deceleration: float
 
 
 func _init(
-	_p_max_speed: float,
 	p_acceleration: float,
 	p_ground_deceleration: float,
 	p_gravity: float,
@@ -247,18 +246,6 @@ func _apply_horizontal_kinetic_friction(
 	)
 
 
-func _constrain_velocity_to_support(
-	player: CharacterBody3D,
-	support: PlayerSupport
-) -> void:
-	if not support.has_support:
-		return
-
-	var normal_velocity: float = player.velocity.dot(support.support_normal)
-	if normal_velocity < 0.0:
-		player.velocity -= support.support_normal * normal_velocity
-
-
 func constrain_horizontal_speed(
 	player: CharacterBody3D,
 	target_speed: float
@@ -308,7 +295,7 @@ func apply_directional_jump(
 			horizontal_input.normalized()
 			* clamped_launch_speed
 			* input_strength
-		)
+			)
 
 	player.velocity = horizontal_velocity
 	apply_jump(player, jump_height)
@@ -369,49 +356,6 @@ func apply_air_horizontal_velocity(
 
 	player.velocity.x = horizontal_velocity.x
 	player.velocity.z = horizontal_velocity.z
-
-
-func get_motor_acceleration(
-	player: CharacterBody3D,
-	support: PlayerSupport,
-	input_direction: Vector3,
-	target_speed: float
-) -> Vector3:
-	var clamped_target_speed: float = maxf(target_speed, 0.0)
-	if clamped_target_speed <= MOTION_EPSILON:
-		return Vector3.ZERO
-
-	var movement_direction: Vector3 = input_direction
-	var input_projection_scale: float = 1.0
-	var controlled_velocity := Vector3(
-		player.velocity.x,
-		0.0,
-		player.velocity.z
-	)
-
-	if support.has_support:
-		var projected_input: Vector3 = input_direction.slide(
-			support.support_normal
-		)
-		var projected_input_length: float = projected_input.length()
-		if projected_input_length <= MOTION_EPSILON:
-			return Vector3.ZERO
-
-		movement_direction = projected_input / projected_input_length
-		input_projection_scale = projected_input_length
-		controlled_velocity = player.velocity.slide(
-			support.support_normal
-		)
-
-	var target_velocity: Vector3 = (
-		movement_direction * clamped_target_speed
-	)
-	var velocity_error: Vector3 = target_velocity - controlled_velocity
-	return velocity_error * (
-		acceleration
-		/ clamped_target_speed
-		* input_projection_scale
-	)
 
 
 func apply_kinetic_friction(
