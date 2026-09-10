@@ -5,7 +5,6 @@ extends RefCounted
 const MOTION_EPSILON: float = 0.000001
 
 
-var max_speed: float
 var acceleration: float
 var ground_deceleration: float
 var gravity: float
@@ -29,7 +28,6 @@ func _init(
 	p_air_acceleration: float,
 	p_air_deceleration: float
 ) -> void:
-	max_speed = p_max_speed
 	acceleration = p_acceleration
 	ground_deceleration = p_ground_deceleration
 	gravity = p_gravity
