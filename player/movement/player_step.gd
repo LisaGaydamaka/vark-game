@@ -5,7 +5,6 @@ extends RefCounted
 const PROBE_SAFE_MARGIN: float = 0.001
 const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
-const ROUTE_BLOCKING_DOT_EPSILON: float = 0.0001
 const MIN_RISER_HORIZONTAL_COMPONENT: float = 0.05
 const MIN_INWARD_ALIGNMENT: float = 0.02
 const RISER_PROBE_HEIGHT_MARGIN_MULTIPLIER: float = 4.0
@@ -21,6 +20,14 @@ class StepCandidate:
 	var wall_normal: Vector3 = Vector3.ZERO
 	var step_height: float = 0.0
 	var approach_alignment: float = 0.0
+
+
+class StepPlan:
+	var candidate: StepCandidate = null
+	var rise_distance: float = 0.0
+	var validation_lift_distance: float = 0.0
+	var crossing_motion: Vector3 = Vector3.ZERO
+	var valid: bool = false
 
 
 var max_step_height: float
@@ -102,19 +109,14 @@ func _init(
 	)
 
 
-func constrain_persistent_vertical_velocity(player: CharacterBody3D) -> void:
-	if active_candidate != null:
-		player.velocity.y = 0.0
-
-
-func update_before_move(
+func prepare_plan(
 	player: CharacterBody3D,
 	input_direction: Vector3,
 	delta: float
-) -> Vector3:
+) -> StepPlan:
 	if active_candidate == null:
 		current_assist_speed = 0.0
-		return Vector3.ZERO
+		return null
 
 	var horizontal_input := Vector3(
 		input_direction.x,
@@ -123,64 +125,88 @@ func update_before_move(
 	)
 	var input_strength: float = minf(horizontal_input.length(), 1.0)
 	if input_strength <= sqrt(MOTION_EPSILON_SQUARED):
-		_cancel_for_lost_intent(player)
-		return Vector3.ZERO
+		cancel()
+		return null
 
 	var approach_direction: Vector3 = horizontal_input.normalized()
 	var inward_direction: Vector3 = -active_candidate.wall_normal
 	var approach_alignment: float = approach_direction.dot(inward_direction)
 	if approach_alignment <= MIN_INWARD_ALIGNMENT:
-		_cancel_for_lost_intent(player)
-		return Vector3.ZERO
-
-	var remaining_height: float = get_remaining_height(player.global_position)
-	if remaining_height <= PROBE_SAFE_MARGIN:
 		cancel()
-		return Vector3.ZERO
+		return null
+
 	if has_crossed_edge(player.global_position):
 		cancel()
-		return Vector3.ZERO
+		return null
+
+	var remaining_height: float = get_remaining_height(player.global_position)
 	if remaining_height > max_step_height + crossing_clearance_margin:
 		cancel()
-		return Vector3.ZERO
+		return null
 
-	# Step-up changes only height. Horizontal locomotion remains entirely owned
-	# by the motor and movement solver, so a diagonal/sideways approach keeps its
-	# original XZ path instead of being steered toward the riser normal.
-	player.velocity.y = 0.0
-
-	var control_strength: float = input_strength
-	var target_assist_speed: float = max_step_speed * control_strength
-
+	# Step speed controls only how much of an already-proven route may be
+	# committed this frame. It is not velocity and is never added to the body's
+	# persistent velocity state.
+	var target_step_speed: float = max_step_speed * input_strength
+	var maximum_rise_distance: float = maxf(
+		0.0,
+		remaining_height + PROBE_SAFE_MARGIN
+	)
 	if delta > sqrt(MOTION_EPSILON_SQUARED):
-		var maximum_upward_speed: float = (
-			maxf(0.0, remaining_height + PROBE_SAFE_MARGIN) / delta
-		)
-		target_assist_speed = minf(
-			target_assist_speed,
-			maximum_upward_speed
+		target_step_speed = minf(
+			target_step_speed,
+			maximum_rise_distance / delta
 		)
 
 	current_assist_speed = move_toward(
 		current_assist_speed,
-		target_assist_speed,
-		step_acceleration * control_strength * delta
+		target_step_speed,
+		step_acceleration * input_strength * delta
 	)
 	current_assist_speed = minf(
 		maxf(0.0, current_assist_speed),
-		maxf(0.0, target_assist_speed)
+		maxf(0.0, target_step_speed)
 	)
 
-	return Vector3.UP * current_assist_speed
+	var outward_distance: float = maxf(
+		0.0,
+		(player.global_position - active_candidate.edge_point).dot(
+			active_candidate.wall_normal
+		)
+	)
+
+	var plan := StepPlan.new()
+	plan.candidate = active_candidate
+	plan.rise_distance = minf(
+		maximum_rise_distance,
+		current_assist_speed * delta
+	)
+	plan.validation_lift_distance = maxf(
+		0.0,
+		remaining_height + crossing_clearance_margin
+	)
+	plan.crossing_motion = (
+		inward_direction
+		* (outward_distance + crossing_clearance_margin)
+	)
+	plan.valid = true
+	return plan
 
 
 func update_after_move(player: CharacterBody3D) -> void:
 	if active_candidate == null:
 		return
-	if get_remaining_height(player.global_position) <= PROBE_SAFE_MARGIN:
+
+	# Height completion alone does not finish a step. Keep ownership until the
+	# body actually crosses the classified riser plane so PlayerMovement can keep
+	# validating the local crossing envelope every frame.
+	if has_crossed_edge(player.global_position):
 		cancel()
 		return
-	if has_crossed_edge(player.global_position):
+
+	if get_remaining_height(player.global_position) > (
+		max_step_height + crossing_clearance_margin
+	):
 		cancel()
 
 
@@ -313,14 +339,6 @@ func build_candidate_from_contact(
 	candidate.wall_normal = wall_normal
 	candidate.step_height = step_height
 	candidate.approach_alignment = approach_alignment
-
-	# Step owns only vertical configuration: prove that the capsule can rise to
-	# the candidate support height. Horizontal continuation is deliberately not
-	# predicted here; PlayerMovement remains authoritative and resolves the same
-	# locomotion intent against walls/corners while the lift is applied.
-	if not has_lift_clearance(player, candidate):
-		return null
-
 	return candidate
 
 
@@ -509,66 +527,6 @@ func prepare_ray_query(
 	return ray_query
 
 
-func has_lift_clearance(
-	player: CharacterBody3D,
-	candidate: StepCandidate
-) -> bool:
-	var lift_motion: Vector3 = Vector3.UP * (
-		candidate.step_height + crossing_clearance_margin
-	)
-	return _can_travel_route_segment(
-		player,
-		player.global_transform,
-		lift_motion
-	)
-
-
-func _can_travel_route_segment(
-	player: CharacterBody3D,
-	from_transform: Transform3D,
-	motion: Vector3
-) -> bool:
-	var required_distance: float = motion.length()
-	if required_distance <= sqrt(MOTION_EPSILON_SQUARED):
-		return true
-
-	var collision := KinematicCollision3D.new()
-	var blocked: bool = player.test_move(
-		from_transform,
-		motion,
-		collision,
-		PROBE_SAFE_MARGIN,
-		false,
-		PROBE_MAX_COLLISIONS
-	)
-	if not blocked:
-		return true
-
-	var route_direction: Vector3 = motion / required_distance
-	var traveled_distance: float = maxf(
-		0.0,
-		collision.get_travel().dot(route_direction)
-	)
-	if (
-		traveled_distance
-		>= required_distance - get_route_progress_tolerance()
-	):
-		return true
-
-	# Jolt can still report geometry already tangent to the capsule. Tangential
-	# side contacts do not obstruct the route; only a contact whose normal
-	# actually opposes the requested route makes the segment invalid.
-	for collision_index: int in range(collision.get_collision_count()):
-		var normal: Vector3 = collision.get_normal(collision_index)
-		if normal.dot(route_direction) < -ROUTE_BLOCKING_DOT_EPSILON:
-			return false
-	return true
-
-
-func get_route_progress_tolerance() -> float:
-	return PROBE_SAFE_MARGIN + crossing_clearance_margin
-
-
 func has_crossed_edge(position: Vector3) -> bool:
 	if active_candidate == null:
 		return false
@@ -592,15 +550,6 @@ func get_capsule_bottom_y(position: Vector3) -> float:
 
 func is_active() -> bool:
 	return active_candidate != null
-
-
-func _cancel_for_lost_intent(player: CharacterBody3D) -> void:
-	if active_candidate != null:
-		var inward_direction: Vector3 = -active_candidate.wall_normal
-		var inward_speed: float = player.velocity.dot(inward_direction)
-		if inward_speed > 0.0:
-			player.velocity -= inward_direction * inward_speed
-	cancel()
 
 
 func cancel() -> void:

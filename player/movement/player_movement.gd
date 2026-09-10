@@ -6,6 +6,8 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 const VERTICAL_NORMAL_EPSILON: float = 0.0001
 const CONSTRAINT_EPSILON: float = 0.000001
 const SAME_PLANE_DOT: float = 0.999
+const STEP_ROUTE_SAFE_MARGIN: float = 0.001
+const STEP_ROUTE_PROGRESS_TOLERANCE: float = 0.002
 
 
 var max_collision_iterations: int
@@ -20,18 +22,156 @@ func _init(p_max_collision_iterations: int) -> void:
 func move(
 	player: CharacterBody3D,
 	delta: float,
-	assist_velocity: Vector3 = Vector3.ZERO,
-	support: PlayerSupport = null
+	support: PlayerSupport = null,
+	step_plan: PlayerStep.StepPlan = null
 ) -> Array[KinematicCollision3D]:
+	if step_plan != null and step_plan.valid:
+		return _move_step_transaction(player, delta, support, step_plan)
+
 	if (
 		support != null
 		and support.has_support
 		and support.walkable
 		and absf(player.velocity.y) <= sqrt(MOTION_EPSILON_SQUARED)
-		and assist_velocity.length_squared() <= MOTION_EPSILON_SQUARED
 	):
 		return _move_walkable_ground(player, support, delta)
-	return _move_free(player, delta, assist_velocity, support)
+	return _move_free(player, delta, support)
+
+
+func _move_step_transaction(
+	player: CharacterBody3D,
+	delta: float,
+	support: PlayerSupport,
+	step_plan: PlayerStep.StepPlan
+) -> Array[KinematicCollision3D]:
+	# Step displacement is kinematic configuration, not momentum. Movement is
+	# the sole owner of the transform and persistent vertical velocity while a
+	# step plan is active.
+	player.velocity.y = 0.0
+
+	# A step frame is transactional: prove the entire remaining lift and local
+	# edge crossing with the player's current collider before committing any
+	# upward progress. If the route is blocked, execute ordinary locomotion only;
+	# the StepPlan remains alive and will be retried next physics frame.
+	if not _is_step_route_clear(player, step_plan):
+		return _move_without_step_progress(player, delta, support)
+
+	var transaction_start: Transform3D = player.global_transform
+	var collisions: Array[KinematicCollision3D] = []
+	if step_plan.rise_distance > sqrt(MOTION_EPSILON_SQUARED):
+		var rise_motion: Vector3 = Vector3.UP * step_plan.rise_distance
+		var rise_collision: KinematicCollision3D = player.move_and_collide(
+			rise_motion,
+			false,
+			STEP_ROUTE_SAFE_MARGIN,
+			false,
+			max_collision_iterations
+		)
+		if rise_collision != null:
+			var traveled_up: float = maxf(
+				0.0,
+				rise_collision.get_travel().dot(Vector3.UP)
+			)
+			if (
+				traveled_up
+				< step_plan.rise_distance - STEP_ROUTE_PROGRESS_TOLERANCE
+			):
+				# Geometry changed between validation and execution. Roll back the
+				# partial rise and fall back to a stable no-step move this frame.
+				player.global_transform = transaction_start
+				player.velocity.y = 0.0
+				return _move_without_step_progress(player, delta, support)
+			collisions.append(rise_collision)
+
+	# Horizontal locomotion remains exactly the motor's requested X/Z. The step
+	# route only contributes the separately committed vertical configuration.
+	collisions.append_array(_move_step_horizontal(player, delta, support))
+	return collisions
+
+
+func _is_step_route_clear(
+	player: CharacterBody3D,
+	step_plan: PlayerStep.StepPlan
+) -> bool:
+	var simulated_transform: Transform3D = player.global_transform
+
+	if step_plan.validation_lift_distance > sqrt(MOTION_EPSILON_SQUARED):
+		var lift_motion: Vector3 = (
+			Vector3.UP * step_plan.validation_lift_distance
+		)
+		if not _is_route_segment_clear(
+			player,
+			simulated_transform,
+			lift_motion
+		):
+			return false
+		simulated_transform.origin += lift_motion
+
+	if step_plan.crossing_motion.length_squared() > MOTION_EPSILON_SQUARED:
+		if not _is_route_segment_clear(
+			player,
+			simulated_transform,
+			step_plan.crossing_motion
+		):
+			return false
+
+	return true
+
+
+func _is_route_segment_clear(
+	player: CharacterBody3D,
+	from_transform: Transform3D,
+	motion: Vector3
+) -> bool:
+	var required_distance: float = motion.length()
+	if required_distance <= sqrt(MOTION_EPSILON_SQUARED):
+		return true
+
+	var collision := KinematicCollision3D.new()
+	var blocked: bool = player.test_move(
+		from_transform,
+		motion,
+		collision,
+		STEP_ROUTE_SAFE_MARGIN,
+		false,
+		max_collision_iterations
+	)
+	if not blocked:
+		return true
+
+	var route_direction: Vector3 = motion / required_distance
+	var traveled_distance: float = maxf(
+		0.0,
+		collision.get_travel().dot(route_direction)
+	)
+	return (
+		traveled_distance
+		>= required_distance - STEP_ROUTE_PROGRESS_TOLERANCE
+	)
+
+
+func _move_without_step_progress(
+	player: CharacterBody3D,
+	delta: float,
+	support: PlayerSupport
+) -> Array[KinematicCollision3D]:
+	player.velocity.y = 0.0
+	if (
+		support != null
+		and support.has_support
+		and support.walkable
+	):
+		return _move_walkable_ground(player, support, delta)
+	return _move_free(player, delta, support)
+
+
+func _move_step_horizontal(
+	player: CharacterBody3D,
+	delta: float,
+	support: PlayerSupport
+) -> Array[KinematicCollision3D]:
+	player.velocity.y = 0.0
+	return _move_free(player, delta, support)
 
 
 func _move_walkable_ground(
@@ -121,7 +261,6 @@ func _move_walkable_ground(
 func _move_free(
 	player: CharacterBody3D,
 	delta: float,
-	assist_velocity: Vector3,
 	support: PlayerSupport
 ) -> Array[KinematicCollision3D]:
 	var collisions: Array[KinematicCollision3D] = []
@@ -132,9 +271,7 @@ func _move_free(
 	# - Y is ballistic/traversal intent.
 	# Contacts may constrain both, but a wall or rounded edge is not allowed to
 	# erase ballistic Y just because its raw collision normal has a Y component.
-	var motion: Vector3 = (
-		player.velocity + assist_velocity
-	) * delta
+	var motion: Vector3 = player.velocity * delta
 	var desired_destination: Vector3 = player.global_position + motion
 
 	for _iteration: int in range(max_collision_iterations):

@@ -267,7 +267,9 @@ func end_physics_frame(mantle_intent_active: bool) -> void:
 	var unexplained_motion_error: bool = (
 		motion_plan_valid
 		and contact_count == 0
-		and start_step_active == step_active
+		and not jump_pressed
+		and not start_step_active
+		and not step_active
 		and start_ledge_state == ledge_state
 		and movement_error.length() > POSITION_ERROR_THRESHOLD
 	)
@@ -377,7 +379,7 @@ func _print_jitter_frame(
 	var reason_text: String = "|".join(jitter_reasons)
 
 	print(
-		"[JITTER] reason=%s pf=%d rf=%d dt=%.6f renders=%d render_dt_avg=%.6f render_dt_min=%.6f render_dt_max=%.6f interp=%.4f pos0=%s pos1=%s dpos=%s observed_vel=%s vel0=%s planned_vel=%s assist=%s vel1=%s expected_dpos=%s motion_error=%s input=%s jump_press=%s jump_hold=%s crouch_press=%s sprint=%s ground=%s->%s support=%s->%s walkable=%s->%s support_normal0=%s support_normal1=%s support_point=%s step=%s->%s step_assist=%.4f step_remaining=%.4f step_height=%.4f step_edge=%s step_wall=%s ledge=%s->%s candidates=%d mantle_intent=%s capsule_h=%.4f head_local0=%s head_local1=%s head_global0=%s head_global1=%s camera_global0=%s camera_global1=%s body_rot=%s head_rot=%s contacts=%d"
+		"[JITTER] reason=%s pf=%d rf=%d dt=%.6f renders=%d render_dt_avg=%.6f render_dt_min=%.6f render_dt_max=%.6f interp=%.4f pos0=%s pos1=%s dpos=%s observed_vel=%s vel0=%s planned_vel=%s assist=%s vel1=%s expected_dpos=%s motion_error=%s input=%s jump_press=%s jump_hold=%s crouch_press=%s sprint=%s ground=%s->%s support=%s->%s walkable=%s->%s support_normal0=%s support_normal1=%s support_point=%s step=%s->%s step_speed=%.4f step_remaining=%.4f step_height=%.4f step_edge=%s step_wall=%s ledge=%s->%s candidates=%d mantle_intent=%s capsule_h=%.4f head_local0=%s head_local1=%s head_global0=%s head_global1=%s camera_global0=%s camera_global1=%s body_rot=%s head_rot=%s contacts=%d"
 		% [
 			reason_text,
 			Engine.get_physics_frames(),

@@ -85,6 +85,25 @@ func update(
 	constrain_horizontal_speed(player, ground_target_speed)
 
 
+func update_step_horizontal(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	input_direction: Vector3,
+	target_speed: float,
+	delta: float
+) -> void:
+	# An active step is a kinematic configuration owned by PlayerMovement.
+	# Preserve ground-style X/Z response while the capsule is temporarily lifted
+	# away from its support, and keep ballistic Y completely out of step motion.
+	_update_walkable_ground(
+		player,
+		support,
+		input_direction,
+		target_speed,
+		delta
+	)
+
+
 func _update_walkable_ground(
 	player: CharacterBody3D,
 	support: PlayerSupport,

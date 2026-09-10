@@ -256,12 +256,10 @@ func _update_normal_movement(
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
 
-	# Step-up owns persistent Y while active. Clear that temporary vertical state
-	# before cancelling so another action hands control back to normal movement
-	# without carrying any step-up momentum into it.
-	step.constrain_persistent_vertical_velocity(self)
+	# Crouch changes the live capsule shape, but it does not cancel an active
+	# step. A blocked step route may therefore become valid naturally as the
+	# capsule shrinks, without a cancel/reacquire cycle.
 	if crouch_pressed:
-		step.cancel()
 		crouch.toggle()
 	crouch.update(self)
 
@@ -297,6 +295,11 @@ func _update_normal_movement(
 		and not ground_mantle_requested
 	)
 
+	# A fresh jump/mantle press supersedes step traversal. Held Space on later
+	# frames never cancels or gates step-up.
+	if jump_pressed:
+		step.cancel()
+
 	var ground_target_speed: float = crouch.get_movement_speed(
 		max_speed,
 		crouch_speed
@@ -309,27 +312,43 @@ func _update_normal_movement(
 	):
 		ground_target_speed = sprint_speed
 
-	var use_air_control: bool = not support.has_support
-	motor.update(
-		self,
-		support,
-		input_direction,
-		ground_target_speed,
-		use_air_control,
-		delta
-	)
+	# While a step is active, horizontal locomotion keeps ground-style response
+	# even if the kinematic lift temporarily moves the capsule outside the support
+	# probe range. Step Y is not ballistic state and never enters PlayerMotor.
+	if step.is_active():
+		motor.update_step_horizontal(
+			self,
+			support,
+			input_direction,
+			ground_target_speed,
+			delta
+		)
+	else:
+		var use_air_control: bool = not support.has_support
+		motor.update(
+			self,
+			support,
+			input_direction,
+			ground_target_speed,
+			use_air_control,
+			delta
+		)
 
 	if jump_accepted_before_move:
+		step.cancel()
 		support.release_walkable_support(self)
 		motor.apply_jump(self, jump_height)
 
-	var step_assist_velocity: Vector3 = step.update_before_move(
+	var step_plan: PlayerStep.StepPlan = step.prepare_plan(
 		self,
 		input_direction,
 		delta
 	)
 
-	var airborne_detection_allowed: bool = not grounded
+	var step_traversal_active: bool = step_plan != null
+	var airborne_detection_allowed: bool = (
+		not grounded and not step_traversal_active
+	)
 	var ledge_detection_allowed: bool = (
 		airborne_detection_allowed
 		or ground_mantle_requested
@@ -361,12 +380,12 @@ func _update_normal_movement(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
-	jitter_sensor.record_motion_plan(velocity, step_assist_velocity)
+	jitter_sensor.record_motion_plan(velocity, Vector3.ZERO)
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		delta,
-		step_assist_velocity,
-		support
+		support,
+		step_plan
 	)
 	jitter_sensor.record_collisions(collisions)
 
@@ -382,7 +401,11 @@ func _update_normal_movement(
 		and air_mantle_intent_active
 	)
 
-	if not collisions.is_empty() and not grounded_after_move:
+	if (
+		not collisions.is_empty()
+		and not grounded_after_move
+		and not step_traversal_active
+	):
 		if air_mantle_requested:
 			if ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
@@ -436,18 +459,16 @@ func _update_normal_movement(
 			return
 
 	if ground_mantle_requested:
+		step.cancel()
 		support.release_walkable_support(self)
 		motor.apply_jump(self, jump_height)
 		movement.move_vertical_velocity(self, delta)
 
 	step.update_after_move(self)
 	if not step.is_active():
-		if step.try_start_from_contacts(
+		step.try_start_from_contacts(
 			self,
 			support,
 			input_direction,
 			collisions
-		):
-			# A step owns vertical traversal from the instant it is classified. X/Z
-			# requires no restoration because collision resolution never erased it.
-			step.constrain_persistent_vertical_velocity(self)
+		)
