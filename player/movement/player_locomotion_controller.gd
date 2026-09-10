@@ -6,7 +6,7 @@ var body: CharacterBody3D
 var head: Node3D
 var support: PlayerSupport
 var motor: PlayerMotor
-var movement: PlayerMovement
+var motion_solver: PlayerMotionSolver
 var step: PlayerStep
 var crouch: PlayerCrouch
 var ledge_detector: PlayerLedgeDetectorLazy
@@ -25,7 +25,7 @@ func _init(
 	player_head: Node3D,
 	player_support: PlayerSupport,
 	player_motor: PlayerMotor,
-	player_movement: PlayerMovement,
+	player_motion_solver: PlayerMotionSolver,
 	player_step: PlayerStep,
 	player_crouch: PlayerCrouch,
 	player_ledge_detector: PlayerLedgeDetectorLazy,
@@ -39,7 +39,7 @@ func _init(
 	head = player_head
 	support = player_support
 	motor = player_motor
-	movement = player_movement
+	motion_solver = player_motion_solver
 	step = player_step
 	crouch = player_crouch
 	ledge_detector = player_ledge_detector
@@ -187,14 +187,14 @@ func update(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
-	var collisions: Array[KinematicCollision3D] = movement.move(
+	var collisions: Array[KinematicCollision3D] = motion_solver.move(
 		body,
 		delta,
 		support,
 		step_plan
 	)
 
-	# PlayerMovement refreshes support when downward motion lands. Consume the
+	# PlayerMotionSolver refreshes support when downward motion lands. Consume the
 	# airborne mantle intent immediately on landing so held Space cannot turn a
 	# grounded step contact into a mantle/hang request in the landing frame.
 	var grounded_after_move: bool = support.is_grounded()
@@ -267,7 +267,7 @@ func update(
 		step.cancel()
 		support.release_walkable_support(body)
 		motor.apply_jump(body, jump_height)
-		movement.move_vertical_velocity(body, delta)
+		motion_solver.move_vertical_velocity(body, delta)
 
 	step.update_after_move(body)
 	if not step.is_active():
