@@ -4,10 +4,19 @@ extends RefCounted
 
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const SUPPORT_SEPARATION_EPSILON: float = 0.0001
+const SUPPORT_CONTACT_SAFE_MARGIN: float = 0.001
+const SUPPORT_CONTACT_MAX_COLLISIONS: int = 8
 const PROBE_START_MARGIN: float = 0.01
 const FOOT_PROBE_RADIUS_RATIO: float = 0.55
 const MINIMUM_NORMAL_Y: float = 0.0001
 const MAXIMUM_STEEP_SUPPORT_SLOPE_DEGREES: float = 75.0
+
+
+class SupportCandidate:
+	var valid: bool = false
+	var separation: float = INF
+	var point: Vector3 = Vector3.ZERO
+	var normal: Vector3 = Vector3.UP
 
 
 var has_support: bool = false
@@ -65,9 +74,11 @@ func _init(
 	)
 	capsule_lower_sphere_center_offset = capsule_bottom_offset + capsule_radius
 
-	# Rays are only candidate discovery. They may search deeply enough to find a
-	# steep plane beneath the curved capsule, but the hit is accepted only after
-	# exact capsule-to-plane separation is measured below.
+	# Capsule contact/sweep queries are the primary support authority because
+	# support is a property of the actual collider configuration, including
+	# narrow edges that point probes can miss. Rays remain fallback discovery for
+	# nearby steep surfaces, and every candidate is still validated by exact
+	# capsule-to-plane separation below.
 	maximum_probe_extra_distance = _get_vertical_discovery_allowance(
 		minimum_support_normal_y
 	)
@@ -100,14 +111,61 @@ func update(player: CharacterBody3D) -> void:
 
 	# Jumping explicitly releases walkable support. It can be reacquired only
 	# after ballistic ascent has ended. This makes grounded -> airborne a real
-	# state transition instead of something a nearby floor ray can undo.
+	# state transition instead of something a nearby contact/probe can undo.
 	if walkable_support_released and player.velocity.y <= SUPPORT_SEPARATION_EPSILON:
 		walkable_support_released = false
 
+	var best := SupportCandidate.new()
+	_find_capsule_contact_support(player, best)
+	_find_ray_support(player, best)
+
+	if not best.valid:
+		return
+
+	has_support = true
+	walkable = is_walkable_surface(best.normal)
+	support_point = best.point
+	support_normal = best.normal
+
+
+func _find_capsule_contact_support(
+	player: CharacterBody3D,
+	best: SupportCandidate
+) -> void:
+	# test_move() uses the body's live collider and reports both the short
+	# downward sweep and recovery/touching contacts without changing the body.
+	# This makes exact edge tangency a real support candidate instead of relying
+	# on whether one of the foot rays happens to land on a narrow top face.
+	var collision := KinematicCollision3D.new()
+	var probe_distance: float = maxf(
+		support_check_distance + SUPPORT_SEPARATION_EPSILON,
+		SUPPORT_SEPARATION_EPSILON
+	)
+	var blocked: bool = player.test_move(
+		player.global_transform,
+		Vector3.DOWN * probe_distance,
+		collision,
+		SUPPORT_CONTACT_SAFE_MARGIN,
+		true,
+		SUPPORT_CONTACT_MAX_COLLISIONS
+	)
+	if not blocked:
+		return
+
+	for collision_index: int in range(collision.get_collision_count()):
+		_consider_support_candidate(
+			player,
+			collision.get_position(collision_index),
+			collision.get_normal(collision_index),
+			best
+		)
+
+
+func _find_ray_support(
+	player: CharacterBody3D,
+	best: SupportCandidate
+) -> void:
 	var capsule_bottom_y: float = player.global_position.y + capsule_bottom_offset
-	var best_separation: float = INF
-	var best_point: Vector3 = Vector3.ZERO
-	var best_normal: Vector3 = Vector3.UP
 	var maximum_probe_distance: float = (
 		support_check_distance
 		+ maximum_probe_extra_distance
@@ -140,54 +198,59 @@ func update(player: CharacterBody3D) -> void:
 		if not (point_value is Vector3) or not (normal_value is Vector3):
 			continue
 
-		var normal: Vector3 = normal_value
-		if normal.length_squared() <= MOTION_EPSILON_SQUARED:
-			continue
-		normal = normal.normalized()
-		if not is_support_surface(normal):
-			continue
-
-		var point: Vector3 = point_value
-		var separation: float = _get_capsule_plane_separation(
+		_consider_support_candidate(
 			player,
-			point,
-			normal
+			point_value,
+			normal_value,
+			best
 		)
-		if separation > support_check_distance + SUPPORT_SEPARATION_EPSILON:
-			continue
 
-		var candidate_walkable: bool = is_walkable_surface(normal)
-		if candidate_walkable:
-			# Persistent Y is ballistic in this controller. A walkable plane cannot
-			# reacquire support while that ballistic state is moving upward, even if
-			# the plane remains inside snap/proximity distance for a frame or two.
-			if (
-				walkable_support_released
-				or player.velocity.y > SUPPORT_SEPARATION_EPSILON
-			):
-				continue
-		else:
-			# Steep support uses full 3D surface velocity. If that velocity is moving
-			# away from the candidate plane, the unilateral contact is released.
-			var normal_velocity: float = player.velocity.dot(normal)
-			if normal_velocity > SUPPORT_SEPARATION_EPSILON:
-				continue
 
-		var ranking_separation: float = maxf(0.0, separation)
-		if ranking_separation >= best_separation:
-			continue
-
-		best_separation = ranking_separation
-		best_point = point
-		best_normal = normal
-
-	if best_separation == INF:
+func _consider_support_candidate(
+	player: CharacterBody3D,
+	point: Vector3,
+	normal: Vector3,
+	best: SupportCandidate
+) -> void:
+	if normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return
+	normal = normal.normalized()
+	if not is_support_surface(normal):
 		return
 
-	has_support = true
-	walkable = is_walkable_surface(best_normal)
-	support_point = best_point
-	support_normal = best_normal
+	var separation: float = _get_capsule_plane_separation(
+		player,
+		point,
+		normal
+	)
+	if separation > support_check_distance + SUPPORT_SEPARATION_EPSILON:
+		return
+
+	var candidate_walkable: bool = is_walkable_surface(normal)
+	if candidate_walkable:
+		# Persistent Y is ballistic in this controller. A walkable plane cannot
+		# reacquire support while that ballistic state is moving upward, even if
+		# the plane remains inside snap/proximity distance for a frame or two.
+		if (
+			walkable_support_released
+			or player.velocity.y > SUPPORT_SEPARATION_EPSILON
+		):
+			return
+	else:
+		# Steep support uses full 3D surface velocity. If that velocity is moving
+		# away from the candidate plane, the unilateral contact is released.
+		var normal_velocity: float = player.velocity.dot(normal)
+		if normal_velocity > SUPPORT_SEPARATION_EPSILON:
+			return
+
+	var ranking_separation: float = maxf(0.0, separation)
+	if best.valid and ranking_separation >= best.separation:
+		return
+
+	best.valid = true
+	best.separation = ranking_separation
+	best.point = point
+	best.normal = normal
 
 
 func release_walkable_support(player: CharacterBody3D) -> void:
