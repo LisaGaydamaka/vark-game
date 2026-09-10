@@ -6,9 +6,9 @@ const MOTION_EPSILON_SQUARED: float = 0.00000001
 const POSITION_ERROR_THRESHOLD: float = 0.002
 const VERTICAL_ERROR_THRESHOLD: float = 0.001
 const VERTICAL_OSCILLATION_THRESHOLD: float = 0.0005
-const HEAD_CHANGE_THRESHOLD: float = 0.0001
 const RENDER_DT_SPREAD_THRESHOLD: float = 0.002
 const PHYSICS_DT_MULTIPLIER_WARNING: float = 1.25
+const SUPPORT_NORMAL_DOT_JITTER_THRESHOLD: float = 0.996194698
 const MAX_CONTACT_LINES: int = 12
 
 
@@ -38,9 +38,12 @@ var physics_delta: float = 0.0
 var start_position: Vector3 = Vector3.ZERO
 var start_velocity: Vector3 = Vector3.ZERO
 var start_head_local_position: Vector3 = Vector3.ZERO
+var start_head_global_position: Vector3 = Vector3.ZERO
+var start_camera_global_position: Vector3 = Vector3.ZERO
 var start_grounded: bool = false
 var start_has_support: bool = false
 var start_walkable: bool = false
+var start_support_normal: Vector3 = Vector3.UP
 var start_step_active: bool = false
 var start_ledge_state: int = PlayerLedgeController.State.NONE
 var jump_pressed: bool = false
@@ -55,8 +58,10 @@ var planned_support_normal: Vector3 = Vector3.UP
 
 var contact_lines: PackedStringArray = PackedStringArray()
 var contact_count: int = 0
+
 var previous_vertical_displacement: float = 0.0
 var previous_grounded: bool = false
+var previous_support_normal: Vector3 = Vector3.UP
 var has_previous_physics_sample: bool = false
 
 
@@ -123,9 +128,14 @@ func begin_physics_frame(
 	start_position = body.global_position
 	start_velocity = body.velocity
 	start_head_local_position = head.position
+	start_head_global_position = head.global_position
+	start_camera_global_position = (
+		camera.global_position if camera != null else Vector3.ZERO
+	)
 	start_grounded = support.is_grounded()
 	start_has_support = support.has_support
 	start_walkable = support.walkable
+	start_support_normal = support.support_normal
 	start_step_active = step.is_active()
 	start_ledge_state = ledge_controller.state
 	jump_pressed = p_jump_pressed
@@ -220,149 +230,217 @@ func end_physics_frame(mantle_intent_active: bool) -> void:
 		expected_displacement = _get_expected_displacement()
 		movement_error = displacement - expected_displacement
 
-	var flags := PackedStringArray()
-	var nominal_physics_delta: float = (
-		1.0 / float(Engine.physics_ticks_per_second)
-	)
-	if physics_delta > nominal_physics_delta * PHYSICS_DT_MULTIPLIER_WARNING:
-		flags.append("PHYSICS_DT_HIGH")
-	if (
-		frame_render_count > 1
-		and frame_render_delta_max - frame_render_delta_min
-		> RENDER_DT_SPREAD_THRESHOLD
-	):
-		flags.append("RENDER_DT_VARIANCE")
-	if start_grounded != grounded:
-		flags.append("GROUND_FLIP")
-	if start_has_support != has_support:
-		flags.append("SUPPORT_FLIP")
-	if start_walkable != walkable:
-		flags.append("WALKABLE_FLIP")
-	if start_step_active != step_active:
-		flags.append("STEP_FLIP")
-	if start_ledge_state != ledge_state:
-		flags.append("LEDGE_FLIP")
-	if contact_count > 0:
-		flags.append("CONTACT")
-	if motion_plan_valid and movement_error.length() > POSITION_ERROR_THRESHOLD:
-		flags.append(
-			"COLLISION_MOTION_ERROR"
-			if contact_count > 0
-			else "UNEXPLAINED_MOTION_ERROR"
-		)
-	if motion_plan_valid and absf(movement_error.y) > VERTICAL_ERROR_THRESHOLD:
-		flags.append("VERTICAL_CORRECTION")
-	if (
-		has_previous_physics_sample
-		and previous_grounded
-		and grounded
-		and not start_step_active
-		and not step_active
-		and absf(previous_vertical_displacement) > VERTICAL_OSCILLATION_THRESHOLD
-		and absf(displacement.y) > VERTICAL_OSCILLATION_THRESHOLD
-		and previous_vertical_displacement * displacement.y < 0.0
-	):
-		flags.append("GROUNDED_VERTICAL_OSCILLATION")
-	if head.position.distance_to(start_head_local_position) > HEAD_CHANGE_THRESHOLD:
-		flags.append("HEAD_LOCAL_MOVED")
-
-	var should_print: bool = (
+	var active_motion: bool = (
 		displacement.length_squared() > MOTION_EPSILON_SQUARED
 		or body.velocity.length_squared() > MOTION_EPSILON_SQUARED
 		or not input_vector.is_zero_approx()
-		or jump_pressed
-		or jump_held
-		or crouch_pressed
-		or contact_count > 0
-		or start_grounded != grounded
-		or start_step_active != step_active
-		or start_ledge_state != ledge_state
 	)
-	if should_print:
-		var capsule_height: float = 0.0
-		if collision_shape.shape is CapsuleShape3D:
-			var capsule_shape := collision_shape.shape as CapsuleShape3D
-			capsule_height = capsule_shape.height
+	var stable_ground_context: bool = (
+		start_grounded
+		and grounded
+		and start_has_support
+		and has_support
+		and start_walkable
+		and walkable
+		and not start_step_active
+		and not step_active
+		and start_ledge_state == PlayerLedgeController.State.NONE
+		and ledge_state == PlayerLedgeController.State.NONE
+		and not jump_pressed
+		and not crouch_pressed
+	)
 
-		var step_remaining: float = 0.0
-		var step_edge: Vector3 = Vector3.ZERO
-		var step_wall_normal: Vector3 = Vector3.ZERO
-		var step_height: float = 0.0
-		if step.active_candidate != null:
-			step_remaining = step.get_remaining_height(body.global_position)
-			step_edge = step.active_candidate.edge_point
-			step_wall_normal = step.active_candidate.wall_normal
-			step_height = step.active_candidate.step_height
-
-		var planned_velocity: Vector3 = (
-			planned_persistent_velocity + planned_assist_velocity
-		)
-		var flag_text: String = "none" if flags.is_empty() else "|".join(flags)
-		print(
-			"[JITTER] pf=%d rf=%d dt=%.6f renders=%d render_dt_avg=%.6f render_dt_min=%.6f render_dt_max=%.6f interp=%.4f pos0=%s pos1=%s dpos=%s observed_vel=%s vel0=%s planned_vel=%s assist=%s vel1=%s expected_dpos=%s motion_error=%s input=%s jump_press=%s jump_hold=%s crouch_press=%s sprint=%s ground=%s->%s support=%s->%s walkable=%s->%s support_normal=%s support_point=%s step=%s->%s step_assist=%.4f step_remaining=%.4f step_height=%.4f step_edge=%s step_wall=%s ledge=%s->%s candidates=%d mantle_intent=%s capsule_h=%.4f head_local=%s head_global=%s camera_global=%s body_rot=%s head_rot=%s contacts=%d flags=%s"
-			% [
-				Engine.get_physics_frames(),
-				Engine.get_process_frames(),
-				physics_delta,
-				frame_render_count,
-				frame_render_delta_average,
-				frame_render_delta_min,
-				frame_render_delta_max,
-				Engine.get_physics_interpolation_fraction(),
-				str(start_position),
-				str(end_position),
-				str(displacement),
-				str(observed_velocity),
-				str(start_velocity),
-				str(planned_velocity),
-				str(planned_assist_velocity),
-				str(body.velocity),
-				str(expected_displacement),
-				str(movement_error),
-				str(input_vector),
-				str(jump_pressed),
-				str(jump_held),
-				str(crouch_pressed),
-				str(player_input.is_sprint_pressed()),
-				str(start_grounded),
-				str(grounded),
-				str(start_has_support),
-				str(has_support),
-				str(start_walkable),
-				str(walkable),
-				str(support.support_normal),
-				str(support.support_point),
-				str(start_step_active),
-				str(step_active),
-				step.current_assist_speed,
-				step_remaining,
-				step_height,
-				str(step_edge),
-				str(step_wall_normal),
-				_ledge_state_name(start_ledge_state),
-				_ledge_state_name(ledge_state),
-				ledge_detector.get_candidates().size(),
-				str(mantle_intent_active),
-				capsule_height,
-				str(head.position),
-				str(head.global_position),
-				str(camera.global_position),
-				str(body.rotation),
-				str(head.rotation),
-				contact_count,
-				flag_text,
-			]
-		)
-
-		for contact_line: String in contact_lines:
-			print(
-				"[JITTER_CONTACT] pf=%d %s"
-				% [Engine.get_physics_frames(), contact_line]
+	var nominal_physics_delta: float = (
+		1.0 / float(Engine.physics_ticks_per_second)
+	)
+	var physics_hitch: bool = (
+		active_motion
+		and physics_delta
+		> nominal_physics_delta * PHYSICS_DT_MULTIPLIER_WARNING
+	)
+	var render_frame_pacing_jitter: bool = (
+		active_motion
+		and frame_render_count > 1
+		and frame_render_delta_max - frame_render_delta_min
+		> RENDER_DT_SPREAD_THRESHOLD
+	)
+	var unexplained_motion_error: bool = (
+		motion_plan_valid
+		and contact_count == 0
+		and start_step_active == step_active
+		and start_ledge_state == ledge_state
+		and movement_error.length() > POSITION_ERROR_THRESHOLD
+	)
+	var grounded_vertical_correction: bool = (
+		motion_plan_valid
+		and stable_ground_context
+		and absf(movement_error.y) > VERTICAL_ERROR_THRESHOLD
+	)
+	var grounded_vertical_oscillation: bool = (
+		has_previous_physics_sample
+		and previous_grounded
+		and stable_ground_context
+		and absf(previous_vertical_displacement)
+		> VERTICAL_OSCILLATION_THRESHOLD
+		and absf(displacement.y) > VERTICAL_OSCILLATION_THRESHOLD
+		and previous_vertical_displacement * displacement.y < 0.0
+	)
+	var support_normal_snap: bool = false
+	if (
+		has_previous_physics_sample
+		and previous_grounded
+		and stable_ground_context
+		and active_motion
+		and previous_support_normal.length_squared() > MOTION_EPSILON_SQUARED
+		and support.support_normal.length_squared() > MOTION_EPSILON_SQUARED
+	):
+		support_normal_snap = (
+			previous_support_normal.normalized().dot(
+				support.support_normal.normalized()
 			)
+			< SUPPORT_NORMAL_DOT_JITTER_THRESHOLD
+		)
+
+	var jitter_reasons := PackedStringArray()
+	if grounded_vertical_oscillation:
+		jitter_reasons.append("GROUNDED_VERTICAL_OSCILLATION")
+	if grounded_vertical_correction:
+		jitter_reasons.append("GROUND_VERTICAL_CORRECTION")
+	if unexplained_motion_error:
+		jitter_reasons.append("UNEXPLAINED_MOTION_ERROR")
+	if support_normal_snap:
+		jitter_reasons.append("SUPPORT_NORMAL_SNAP")
+	if physics_hitch:
+		jitter_reasons.append("PHYSICS_HITCH")
+	if render_frame_pacing_jitter:
+		jitter_reasons.append("RENDER_FRAME_PACING")
+
+	if not jitter_reasons.is_empty():
+		_print_jitter_frame(
+			jitter_reasons,
+			end_position,
+			displacement,
+			observed_velocity,
+			expected_displacement,
+			movement_error,
+			input_vector,
+			grounded,
+			has_support,
+			walkable,
+			step_active,
+			ledge_state,
+			mantle_intent_active
+		)
 
 	previous_vertical_displacement = displacement.y
 	previous_grounded = grounded
+	previous_support_normal = support.support_normal
 	has_previous_physics_sample = true
+
+
+func _print_jitter_frame(
+	jitter_reasons: PackedStringArray,
+	end_position: Vector3,
+	displacement: Vector3,
+	observed_velocity: Vector3,
+	expected_displacement: Vector3,
+	movement_error: Vector3,
+	input_vector: Vector2,
+	grounded: bool,
+	has_support: bool,
+	walkable: bool,
+	step_active: bool,
+	ledge_state: int,
+	mantle_intent_active: bool
+) -> void:
+	var capsule_height: float = 0.0
+	if collision_shape.shape is CapsuleShape3D:
+		var capsule_shape := collision_shape.shape as CapsuleShape3D
+		capsule_height = capsule_shape.height
+
+	var step_remaining: float = 0.0
+	var step_edge: Vector3 = Vector3.ZERO
+	var step_wall_normal: Vector3 = Vector3.ZERO
+	var step_height: float = 0.0
+	if step.active_candidate != null:
+		step_remaining = step.get_remaining_height(body.global_position)
+		step_edge = step.active_candidate.edge_point
+		step_wall_normal = step.active_candidate.wall_normal
+		step_height = step.active_candidate.step_height
+
+	var planned_velocity: Vector3 = (
+		planned_persistent_velocity + planned_assist_velocity
+	)
+	var end_camera_global_position: Vector3 = (
+		camera.global_position if camera != null else Vector3.ZERO
+	)
+	var reason_text: String = "|".join(jitter_reasons)
+
+	print(
+		"[JITTER] reason=%s pf=%d rf=%d dt=%.6f renders=%d render_dt_avg=%.6f render_dt_min=%.6f render_dt_max=%.6f interp=%.4f pos0=%s pos1=%s dpos=%s observed_vel=%s vel0=%s planned_vel=%s assist=%s vel1=%s expected_dpos=%s motion_error=%s input=%s jump_press=%s jump_hold=%s crouch_press=%s sprint=%s ground=%s->%s support=%s->%s walkable=%s->%s support_normal0=%s support_normal1=%s support_point=%s step=%s->%s step_assist=%.4f step_remaining=%.4f step_height=%.4f step_edge=%s step_wall=%s ledge=%s->%s candidates=%d mantle_intent=%s capsule_h=%.4f head_local0=%s head_local1=%s head_global0=%s head_global1=%s camera_global0=%s camera_global1=%s body_rot=%s head_rot=%s contacts=%d"
+		% [
+			reason_text,
+			Engine.get_physics_frames(),
+			Engine.get_process_frames(),
+			physics_delta,
+			frame_render_count,
+			frame_render_delta_average,
+			frame_render_delta_min,
+			frame_render_delta_max,
+			Engine.get_physics_interpolation_fraction(),
+			str(start_position),
+			str(end_position),
+			str(displacement),
+			str(observed_velocity),
+			str(start_velocity),
+			str(planned_velocity),
+			str(planned_assist_velocity),
+			str(body.velocity),
+			str(expected_displacement),
+			str(movement_error),
+			str(input_vector),
+			str(jump_pressed),
+			str(jump_held),
+			str(crouch_pressed),
+			str(player_input.is_sprint_pressed()),
+			str(start_grounded),
+			str(grounded),
+			str(start_has_support),
+			str(has_support),
+			str(start_walkable),
+			str(walkable),
+			str(start_support_normal),
+			str(support.support_normal),
+			str(support.support_point),
+			str(start_step_active),
+			str(step_active),
+			step.current_assist_speed,
+			step_remaining,
+			step_height,
+			str(step_edge),
+			str(step_wall_normal),
+			_ledge_state_name(start_ledge_state),
+			_ledge_state_name(ledge_state),
+			ledge_detector.get_candidates().size(),
+			str(mantle_intent_active),
+			capsule_height,
+			str(start_head_local_position),
+			str(head.position),
+			str(start_head_global_position),
+			str(head.global_position),
+			str(start_camera_global_position),
+			str(end_camera_global_position),
+			str(body.rotation),
+			str(head.rotation),
+			contact_count,
+		]
+	)
+
+	for contact_line: String in contact_lines:
+		print(
+			"[JITTER_CONTACT] pf=%d %s"
+			% [Engine.get_physics_frames(), contact_line]
+		)
 
 
 func _get_expected_displacement() -> Vector3:
