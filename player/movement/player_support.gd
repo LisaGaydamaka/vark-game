@@ -197,11 +197,13 @@ func _find_ray_support(
 		var normal_value: Variant = hit.get("normal")
 		if not (point_value is Vector3) or not (normal_value is Vector3):
 			continue
+		var point: Vector3 = point_value
+		var normal: Vector3 = normal_value
 
 		_consider_support_candidate(
 			player,
-			point_value,
-			normal_value,
+			point,
+			normal,
 			best
 		)
 
