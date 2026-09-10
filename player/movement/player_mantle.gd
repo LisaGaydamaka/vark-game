@@ -13,7 +13,6 @@ const INVALID_STANCE: int = -1
 
 enum Phase {
 	NONE,
-	STANCE,
 	LIFT,
 	FORWARD,
 }
@@ -179,11 +178,10 @@ func try_start(
 	mantle_origin_edge_point = route_edge_point
 	mantle_origin_wall_normal = active_candidate.wall_normal
 
-	# Stance is part of mantle eligibility. Prefer the player's standing posture
-	# when it already owns that posture and the edge has enough vertical room.
-	# If standing does not fit but crouching does, the mantle owns a crouched
-	# landing posture and waits for PlayerCrouch to establish that real collider
-	# state before any traversal motion begins.
+	# Landing stance is decided before traversal starts, but the physical stance
+	# transition is part of the climb itself. A crouch-only mantle therefore rises
+	# immediately while PlayerCrouch smoothly compresses the live collider/head;
+	# forward crossing is forbidden until that requested stance is fully reached.
 	if not _select_stance_for_configured_route(player):
 		cancel()
 		return false
@@ -230,10 +228,17 @@ func _select_stance_for_configured_route(
 
 	active_candidate.target_stance = target_stance
 	crouch.request_stance(target_stance)
-	phase = Phase.STANCE
+	phase = Phase.LIFT
 
-	if crouch.is_at_stance(target_stance):
-		return _begin_configured_route(player)
+	# Standing traversal can be validated immediately because its live collider
+	# already matches the selected route. Crouch-only traversal is validated at
+	# the top after the real collider has finished shrinking; until then every
+	# lift increment is still collision-resolved against the live intermediate
+	# capsule, so the transition can never tunnel through the ceiling.
+	if target_stance == PlayerCrouch.Stance.STANDING:
+		if not is_vertical_clearance_clear(player):
+			return false
+
 	return true
 
 
@@ -268,28 +273,30 @@ func _resolve_target_stance(player: CharacterBody3D) -> int:
 	return INVALID_STANCE
 
 
-func _begin_configured_route(player: CharacterBody3D) -> bool:
+func _enter_forward_phase(player: CharacterBody3D) -> bool:
 	if active_candidate == null:
 		return false
+	if not crouch.is_at_stance(active_candidate.target_stance):
+		return false
 
-	# Rebuild from the unchanged body origin after the stance transition so all
-	# detector-derived capsule offsets reflect the actual collider that will move.
+	# Rebuild from the same body origin after the stance transition so all
+	# detector-derived capsule offsets reflect the exact collider that will cross
+	# the edge. The immutable mantle origin remains untouched.
 	var candidate: MantleCandidate = active_candidate
 	if not _configure_route(player, candidate):
 		return false
 	if not is_edge_height_clear(player):
 		return false
 
-	# This path test intentionally uses the live collider. For a crouch-only
-	# mantle it therefore validates the exact crouched capsule, not an estimate.
+	# This final path test uses the actual selected collider. For a crouch-only
+	# mantle it therefore proves the exact crouched capsule before any forward
+	# motion is committed.
 	if not is_vertical_clearance_clear(player):
 		return false
 
-	phase = Phase.LIFT
-	if has_reached_lift_height(player.global_position):
-		phase = Phase.FORWARD
-		if has_reached_forward_limit(player.global_position):
-			completed = true
+	phase = Phase.FORWARD
+	if has_reached_forward_limit(player.global_position):
+		completed = true
 	return true
 
 
@@ -302,14 +309,12 @@ func update(
 
 	player.velocity = Vector3.ZERO
 
-	if phase == Phase.STANCE:
+	# Stance transition belongs to the lift. The collider, head and visuals all
+	# compress through PlayerCrouch while the body rises. Once the climb reaches
+	# its vertical target, lift motion pauses until the requested stance catches
+	# up; only then may the mantle cross forward beneath the ceiling.
+	if phase == Phase.LIFT:
 		crouch.update(player)
-		if not crouch.is_at_stance(active_candidate.target_stance):
-			return true
-		if not _begin_configured_route(player):
-			return false
-		if completed:
-			return true
 
 	var remaining_distance: float = traversal_speed * delta
 
@@ -320,7 +325,10 @@ func update(
 		match phase:
 			Phase.LIFT:
 				if has_reached_lift_height(player.global_position):
-					phase = Phase.FORWARD
+					if not crouch.is_at_stance(active_candidate.target_stance):
+						break
+					if not _enter_forward_phase(player):
+						return false
 					continue
 
 				var lift_distance: float = minf(
@@ -328,7 +336,10 @@ func update(
 					maxf(0.0, lift_target_height - player.global_position.y)
 				)
 				if lift_distance <= 0.000001:
-					phase = Phase.FORWARD
+					if not crouch.is_at_stance(active_candidate.target_stance):
+						break
+					if not _enter_forward_phase(player):
+						return false
 					continue
 
 				var collision: KinematicCollision3D = player.move_and_collide(
@@ -344,12 +355,19 @@ func update(
 				remaining_distance = maxf(0.0, remaining_distance - actual_lift)
 
 				if has_reached_lift_height(player.global_position):
-					phase = Phase.FORWARD
+					if not crouch.is_at_stance(active_candidate.target_stance):
+						break
+					if not _enter_forward_phase(player):
+						return false
 					continue
 
-				# The vertical path was validated for the current edge. A live collision
-				# before the required height means that edge can no longer be cleared.
 				if collision != null or actual_lift <= sqrt(MOTION_EPSILON_SQUARED):
+					# During a crouch-only climb, a temporary ceiling contact is not
+					# route failure while the capsule is still shrinking. Keep the mantle
+					# active, consume no forward motion, and retry the lift next frame
+					# against the newly shortened live collider.
+					if not crouch.is_at_stance(active_candidate.target_stance):
+						break
 					return false
 				break
 
