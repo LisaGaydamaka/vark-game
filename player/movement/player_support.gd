@@ -74,11 +74,10 @@ func _init(
 	)
 	capsule_lower_sphere_center_offset = capsule_bottom_offset + capsule_radius
 
-	# Capsule contact/sweep queries are the primary support authority because
-	# support is a property of the actual collider configuration, including
-	# narrow edges that point probes can miss. Rays remain fallback discovery for
-	# nearby steep surfaces, and every candidate is still validated by exact
-	# capsule-to-plane separation below.
+	# Footprint probes identify the stable support surface beneath the capsule.
+	# Capsule contacts are fallback support for narrow/tangent geometry that the
+	# footprint cannot sample. This distinction prevents an obstacle edge touched
+	# during locomotion from replacing the floor that actually supports the body.
 	maximum_probe_extra_distance = _get_vertical_discovery_allowance(
 		minimum_support_normal_y
 	)
@@ -115,9 +114,15 @@ func update(player: CharacterBody3D) -> void:
 	if walkable_support_released and player.velocity.y <= SUPPORT_SEPARATION_EPSILON:
 		walkable_support_released = false
 
+	# Stable footprint support has semantic priority over incidental capsule
+	# contacts. In particular, touching a stair edge must not replace the source
+	# floor used to measure a support-to-support step transition. If the footprint
+	# has no valid support, fall back to the live capsule contact manifold so
+	# narrow rails/edges can still bear the player.
 	var best := SupportCandidate.new()
-	_find_capsule_contact_support(player, best)
 	_find_ray_support(player, best)
+	if not best.valid:
+		_find_capsule_contact_support(player, best)
 
 	if not best.valid:
 		return
