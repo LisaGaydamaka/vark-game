@@ -76,7 +76,7 @@ var player_input: PlayerInput
 var player_look: PlayerLook
 var support: PlayerSupport
 var motor: PlayerMotor
-var movement: PlayerMovement
+var motion_solver: PlayerMotionSolver
 var step: PlayerStep
 var crouch: PlayerCrouch
 var ledge_detector: PlayerLedgeDetectorLazy
@@ -136,7 +136,7 @@ func _create_components() -> void:
 		air_deceleration
 	)
 
-	movement = PlayerMovement.new(max_collision_iterations)
+	motion_solver = PlayerMotionSolver.new(max_collision_iterations)
 
 	step = PlayerStep.new(
 		step_max_height,
@@ -193,7 +193,7 @@ func _create_components() -> void:
 		player_input,
 		support,
 		motor,
-		movement,
+		motion_solver,
 		ledge_detector,
 		ledge_catch,
 		ledge_hang,
@@ -213,7 +213,7 @@ func _create_components() -> void:
 		head,
 		support,
 		motor,
-		movement,
+		motion_solver,
 		step,
 		crouch,
 		ledge_detector,
