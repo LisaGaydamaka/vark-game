@@ -208,15 +208,19 @@ func _print_report(
 			% [collision_index, collision.get_travel(), "; ".join(contact_details)]
 		)
 
-	print(
+	var report_template: String = (
 		"[LocomotionAnomaly] reason=%s frame=%d stuck_frames=%d jitter_score=%d\n"
 		+ "  position_start=%s position_end=%s input=%s\n"
 		+ "  requested_velocity=%s requested_motion=%s realized_motion=%s progress_ratio=%.4f\n"
+		+ "  previous_requested_horizontal=%s previous_realized_horizontal=%s\n"
 		+ "  body_velocity=%s controlled_velocity=%s support_velocity=%s external_velocity=%s\n"
 		+ "  support={%s}\n"
 		+ "  walkable_normals=%s\n"
 		+ "  collision_normals=%s\n"
 		+ "  collisions=%s"
+	)
+	print(
+		report_template
 		% [
 			"+".join(reasons),
 			physics_frame,
@@ -229,6 +233,8 @@ func _print_report(
 			requested_motion,
 			realized_motion,
 			progress_ratio,
+			previous_requested_horizontal,
+			previous_realized_horizontal,
 			body.velocity,
 			velocity_state.controlled_velocity,
 			velocity_state.support_velocity,
