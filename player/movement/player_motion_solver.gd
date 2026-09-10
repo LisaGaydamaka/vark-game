@@ -306,9 +306,10 @@ func _move_free(
 			desired_remaining.y = 0.0
 
 		if falling_before_collision and not has_validated_support:
-			# Unsupported falling is a hard ownership boundary. Seam, edge and
-			# face normals can redirect X/Z enough to clear geometry, but the
-			# requested downward displacement is preserved exactly.
+			# Unsupported contacts may constrain or redirect requested motion,
+			# but they cannot manufacture a longer displacement just to preserve
+			# ballistic Y. The stored velocity remains ballistic until support is
+			# independently validated; only realized displacement is constrained.
 			motion = _resolve_unsupported_fall_motion(
 				desired_remaining,
 				active_planes
@@ -406,35 +407,32 @@ func _resolve_unsupported_fall_motion(
 ) -> Vector3:
 	if desired_motion.length_squared() <= MOTION_EPSILON_SQUARED:
 		return Vector3.ZERO
+	if planes.is_empty():
+		return desired_motion
 
-	# First retain the useful Y-to-X/Z relationship of a real angled lateral
-	# contact. This lets the capsule move outward while continuing to fall down
-	# a steep wall instead of merely retrying the same blocked vertical sweep.
-	var fixed_vertical: Dictionary = _resolve_horizontal_for_fixed_vertical(
-		desired_motion,
-		planes
-	)
-	if bool(fixed_vertical["valid"]):
-		return fixed_vertical["motion"]
+	# Project into the admissible contact half-spaces instead of holding Y fixed.
+	# Projection onto a unit-normal half-space can only remove motion magnitude,
+	# so gravity may produce a small physical slide on an angled lateral contact
+	# but can never be amplified into a larger horizontal displacement.
+	var resolved_motion: Vector3 = desired_motion
+	for _pass: int in range(max_collision_iterations):
+		var changed: bool = false
+		for plane: Vector3 in planes:
+			var inward_motion: float = resolved_motion.dot(plane)
+			if inward_motion >= -CONSTRAINT_EPSILON:
+				continue
+			resolved_motion -= plane * inward_motion
+			changed = true
+		if not changed:
+			return resolved_motion
 
-	# Conflicting feature normals from a seam are not evidence that gravity is
-	# blocked. Collapse them to pure horizontal topology and preserve Y exactly.
-	var horizontal_planes: Array[Vector3] = []
+	# If a pathological set of feature normals has not converged within the same
+	# collision-iteration budget, stopping realized motion is safer than inventing
+	# displacement. Ballistic velocity itself is intentionally left untouched.
 	for plane: Vector3 in planes:
-		var horizontal_plane := Vector3(plane.x, 0.0, plane.z)
-		if horizontal_plane.length_squared() <= MOTION_EPSILON_SQUARED:
-			continue
-		_append_unique_plane(horizontal_planes, horizontal_plane)
-
-	var horizontal_motion: Vector3 = _resolve_horizontal_constraints(
-		desired_motion,
-		horizontal_planes
-	)
-	return Vector3(
-		horizontal_motion.x,
-		desired_motion.y,
-		horizontal_motion.z
-	)
+		if resolved_motion.dot(plane) < -CONSTRAINT_EPSILON:
+			return Vector3.ZERO
+	return resolved_motion
 
 
 func _resolve_horizontal_constraints(
