@@ -42,14 +42,16 @@ func move(
 	var walkable_support_normal: Vector3 = Vector3.UP
 
 	if support != null and support.has_support:
+		# Primary support is also part of the physical manifold. If another
+		# walkable face becomes primary later in the move, this original support
+		# remains available as a simultaneous unilateral constraint.
+		_append_unique_plane(contact_planes, support.support_normal)
 		if (
 			support.walkable
 			and requested_velocity.y <= sqrt(MOTION_EPSILON_SQUARED)
 		):
 			walkable_support_active = true
 			walkable_support_normal = support.support_normal
-		else:
-			_append_unique_plane(contact_planes, support.support_normal)
 
 	var motion: Vector3 = _resolve_remaining_motion(
 		player,
@@ -77,6 +79,8 @@ func move(
 
 		if support != null:
 			support.update(player)
+			if support.has_support:
+				_append_unique_plane(contact_planes, support.support_normal)
 			if (
 				support.is_grounded()
 				and requested_velocity.y <= sqrt(MOTION_EPSILON_SQUARED)
@@ -85,10 +89,6 @@ func move(
 				# accepted X/Z displacement determines its terrain-following Y.
 				walkable_support_active = true
 				walkable_support_normal = support.support_normal
-			elif support.has_support:
-				# Steep support is unilateral. Gravity and controlled X/Z intent are
-				# resolved against it together with every other current contact.
-				_append_unique_plane(contact_planes, support.support_normal)
 
 		motion = _resolve_remaining_motion(
 			player,
