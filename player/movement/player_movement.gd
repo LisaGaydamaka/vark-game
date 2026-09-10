@@ -282,7 +282,8 @@ func _move_free(
 				active_planes,
 				player,
 				collision,
-				collision_normals
+				collision_normals,
+				support
 			)
 			if (
 				has_validated_support
@@ -333,10 +334,20 @@ func _append_fall_collision_constraints(
 	planes: Array[Vector3],
 	player: CharacterBody3D,
 	collision: KinematicCollision3D,
-	collision_normals: Array[Vector3]
+	collision_normals: Array[Vector3],
+	support: PlayerSupport
 ) -> void:
 	var found_lateral_plane: bool = false
 	for normal: Vector3 in collision_normals:
+		# A raw floor/support-like feature is only candidate support. If the
+		# independent support probe did not validate it, its tiny horizontal
+		# component must not turn fixed ballistic Y into invented lateral motion.
+		if (
+			support != null
+			and normal.length_squared() > MOTION_EPSILON_SQUARED
+			and support.is_support_surface(normal.normalized())
+		):
+			continue
 		if _append_fall_lateral_plane(planes, normal):
 			found_lateral_plane = true
 
@@ -346,7 +357,7 @@ func _append_fall_collision_constraints(
 	# A convex edge can occasionally be reported with only the adjacent face's
 	# vertical normal. If that face was not validated as support, infer the
 	# lateral side from the contact point rather than allowing it to become a
-	# fake floor.
+	# fake floor. This fallback is horizontal-only, so gravity cannot amplify it.
 	var contact_offset: Vector3 = player.global_position - collision.get_position()
 	contact_offset.y = 0.0
 	if contact_offset.length_squared() <= MOTION_EPSILON_SQUARED:
