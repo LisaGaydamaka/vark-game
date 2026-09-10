@@ -62,25 +62,13 @@ func update(
 		)
 		return
 
-	# Steep support remains explicit surface physics. Walkable support no longer
-	# reaches this path because its vertical terrain-following motion is derived
-	# transiently by PlayerMotionSolver instead of being stored in velocity.y.
-	_constrain_velocity_to_support(player, support)
-
-	var external_acceleration: Vector3 = Vector3.DOWN * gravity
-	if not input_direction.is_zero_approx():
-		external_acceleration += get_motor_acceleration(
-			player,
-			support,
-			input_direction,
-			ground_target_speed
-		)
-
-	player.velocity += external_acceleration * delta
-	apply_kinetic_friction(player, support, delta)
-
-	_constrain_velocity_to_support(player, support)
-	constrain_horizontal_speed(player, ground_target_speed)
+	_update_steep_support(
+		player,
+		support,
+		input_direction,
+		ground_target_speed,
+		delta
+	)
 
 
 func update_step_horizontal(
@@ -165,6 +153,52 @@ func _update_walkable_ground(
 	player.velocity.x = horizontal_velocity.x
 	player.velocity.z = horizontal_velocity.z
 	player.velocity.y = 0.0
+	constrain_horizontal_speed(player, target_speed)
+
+
+func _update_steep_support(
+	player: CharacterBody3D,
+	support: PlayerSupport,
+	input_direction: Vector3,
+	target_speed: float,
+	delta: float
+) -> void:
+	# Motor output is intent plus real acceleration only. Do not project input or
+	# gravity into the support plane here: doing so manufactures terrain-derived
+	# Y before other contacts are known. PlayerContactMotionSolver owns the joint
+	# contact solve and turns this raw intent into physically feasible motion.
+	var horizontal_velocity := Vector3(
+		player.velocity.x,
+		0.0,
+		player.velocity.z
+	)
+	var horizontal_input := Vector3(
+		input_direction.x,
+		0.0,
+		input_direction.z
+	)
+	var input_strength: float = minf(horizontal_input.length(), 1.0)
+
+	if input_strength > MOTION_EPSILON:
+		var clamped_target_speed: float = maxf(target_speed, 0.0)
+		if clamped_target_speed > MOTION_EPSILON:
+			var desired_velocity: Vector3 = (
+				horizontal_input.normalized()
+				* clamped_target_speed
+				* input_strength
+			)
+			var velocity_error: Vector3 = desired_velocity - horizontal_velocity
+			horizontal_velocity += velocity_error * (
+				acceleration / clamped_target_speed * delta
+			)
+
+	player.velocity.x = horizontal_velocity.x
+	player.velocity.z = horizontal_velocity.z
+	player.velocity.y -= gravity * delta
+
+	# Friction remains a material force. Contact projection itself is deferred to
+	# the motion solver so no single support plane gets privileged over another.
+	apply_kinetic_friction(player, support, delta)
 	constrain_horizontal_speed(player, target_speed)
 
 
