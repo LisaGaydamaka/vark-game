@@ -1,6 +1,10 @@
 extends CharacterBody3D
 
 
+const MANTLE_DEBUG_POST_FRAMES: int = 12
+const MANTLE_DEBUG_NORMAL_EPSILON_SQUARED: float = 0.000001
+
+
 @onready var head: Node3D = $Head
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
@@ -87,6 +91,13 @@ var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
 var air_mantle_intent_active: bool = false
 
+var mantle_debug_post_frames_remaining: int = 0
+var mantle_debug_was_active: bool = false
+var mantle_debug_target_position: Vector3 = Vector3.ZERO
+var mantle_debug_wall_normal: Vector3 = Vector3.ZERO
+var mantle_debug_previous_body_position: Vector3 = Vector3.ZERO
+var mantle_debug_has_previous_position: bool = false
+
 
 func _ready() -> void:
 	_create_components()
@@ -105,6 +116,74 @@ func _physics_process(delta: float) -> void:
 		)
 	else:
 		_update_normal_movement(command, delta)
+
+	_debug_trace_mantle_frame()
+
+
+func _debug_trace_mantle_frame() -> void:
+	var mantle_active: bool = ledge_mantle != null and ledge_mantle.is_active()
+	if mantle_active:
+		mantle_debug_post_frames_remaining = MANTLE_DEBUG_POST_FRAMES
+		mantle_debug_target_position = ledge_mantle.get_target_position()
+		var release_candidate: PlayerLedgeDetector.LedgeCandidate = (
+			ledge_mantle.get_release_candidate()
+		)
+		if release_candidate != null:
+			mantle_debug_wall_normal = release_candidate.wall_normal
+	elif mantle_debug_was_active:
+		mantle_debug_post_frames_remaining = MANTLE_DEBUG_POST_FRAMES
+	elif mantle_debug_post_frames_remaining <= 0:
+		mantle_debug_was_active = false
+		return
+
+	var frame_displacement: Vector3 = Vector3.ZERO
+	if mantle_debug_has_previous_position:
+		frame_displacement = global_position - mantle_debug_previous_body_position
+
+	var outward_distance: float = INF
+	if (
+		mantle_debug_wall_normal.length_squared()
+		> MANTLE_DEBUG_NORMAL_EPSILON_SQUARED
+	):
+		outward_distance = (
+			(global_position - mantle_debug_target_position)
+			.dot(mantle_debug_wall_normal.normalized())
+		)
+
+	var bottom_cap_center: Vector3 = global_position + Vector3.UP * (
+		ledge_detector.get_capsule_bottom_offset()
+		+ ledge_detector.get_capsule_radius()
+	)
+	var trace_state: String = "MANTLE" if mantle_active else "POST"
+	print(
+		"[MantleTrace] frame=%d state=%s body=%s capsule_center=%s "
+		+ "bottom_cap=%s frame_delta=%s velocity=%s target=%s outward=%.6f "
+		+ "radius=%.4f support=%s walkable=%s support_point=%s support_normal=%s"
+		% [
+			Engine.get_physics_frames(),
+			trace_state,
+			str(global_position),
+			str(collision_shape.global_position),
+			str(bottom_cap_center),
+			str(frame_displacement),
+			str(velocity),
+			str(mantle_debug_target_position),
+			outward_distance,
+			ledge_detector.get_capsule_radius(),
+			str(support.has_support),
+			str(support.walkable),
+			str(support.support_point),
+			str(support.support_normal),
+		]
+	)
+
+	mantle_debug_previous_body_position = global_position
+	mantle_debug_has_previous_position = true
+	mantle_debug_was_active = mantle_active
+	if not mantle_active:
+		mantle_debug_post_frames_remaining -= 1
+		if mantle_debug_post_frames_remaining <= 0:
+			mantle_debug_has_previous_position = false
 
 
 func _unhandled_input(event: InputEvent) -> void:
