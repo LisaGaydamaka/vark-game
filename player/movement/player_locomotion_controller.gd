@@ -6,6 +6,7 @@ var body: CharacterBody3D
 var head: Node3D
 var support: PlayerSupport
 var motor: PlayerMotor
+var velocity_state: PlayerVelocityState
 var motion_solver: PlayerMotionSolver
 var step: PlayerStep
 var crouch: PlayerCrouch
@@ -25,6 +26,7 @@ func _init(
 	player_head: Node3D,
 	player_support: PlayerSupport,
 	player_motor: PlayerMotor,
+	player_velocity_state: PlayerVelocityState,
 	player_motion_solver: PlayerMotionSolver,
 	player_step: PlayerStep,
 	player_crouch: PlayerCrouch,
@@ -39,6 +41,7 @@ func _init(
 	head = player_head
 	support = player_support
 	motor = player_motor
+	velocity_state = player_velocity_state
 	motion_solver = player_motion_solver
 	step = player_step
 	crouch = player_crouch
@@ -54,6 +57,8 @@ func update(
 	command: PlayerCommand,
 	delta: float
 ) -> void:
+	velocity_state.apply_to_body(body)
+
 	var jump_pressed: bool = command.jump_pressed
 	var jump_held: bool = command.jump_held
 	var crouch_pressed: bool = command.crouch_pressed
@@ -115,9 +120,10 @@ func update(
 	):
 		ground_target_speed = sprint_speed
 
-	# While a step is active, horizontal locomotion keeps ground-style response
-	# even if the kinematic lift temporarily moves the capsule outside the support
-	# probe range. Step Y is not ballistic state and never enters PlayerMotor.
+	# PlayerMotor owns only the controlled channel. Support/platform and external
+	# velocity are additive state that the motor must not accidentally steer or
+	# clamp. Recompose the full body velocity immediately after motor policy runs.
+	velocity_state.apply_controlled_to_body(body)
 	if step.is_active():
 		motor.update_step_horizontal(
 			body,
@@ -136,11 +142,13 @@ func update(
 			use_air_control,
 			delta
 		)
+	velocity_state.capture_controlled_from_body(body)
+	velocity_state.apply_to_body(body)
 
 	if jump_accepted_before_move:
 		step.cancel()
 		support.release_walkable_support(body)
-		motor.apply_jump(body, jump_height)
+		_apply_controlled_jump()
 
 	var step_plan: PlayerStep.StepPlan = step.prepare_plan(
 		body,
@@ -193,6 +201,8 @@ func update(
 		support,
 		step_plan
 	)
+	velocity_state.capture_controlled_from_composed_body(body)
+	velocity_state.apply_to_body(body)
 
 	# PlayerMotionSolver refreshes support when downward motion lands. Consume the
 	# airborne mantle intent immediately on landing so held Space cannot turn a
@@ -266,8 +276,10 @@ func update(
 	if ground_mantle_requested:
 		step.cancel()
 		support.release_walkable_support(body)
-		motor.apply_jump(body, jump_height)
+		_apply_controlled_jump()
 		motion_solver.move_vertical_velocity(body, delta)
+		velocity_state.capture_controlled_from_composed_body(body)
+		velocity_state.apply_to_body(body)
 
 	step.update_after_move(body)
 	if not step.is_active():
@@ -277,3 +289,10 @@ func update(
 			input_direction,
 			collisions
 		)
+
+
+func _apply_controlled_jump() -> void:
+	velocity_state.apply_controlled_to_body(body)
+	motor.apply_jump(body, jump_height)
+	velocity_state.capture_controlled_from_body(body)
+	velocity_state.apply_to_body(body)

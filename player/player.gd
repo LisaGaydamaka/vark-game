@@ -20,6 +20,7 @@ var player_input: PlayerInput
 var player_look: PlayerLook
 var support: PlayerSupport
 var motor: PlayerMotor
+var velocity_state: PlayerVelocityState
 var motion_solver: PlayerMotionSolver
 var step: PlayerStep
 var crouch: PlayerCrouch
@@ -39,6 +40,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	var command: PlayerCommand = player_input.sample()
+	velocity_state.apply_to_body(self)
 
 	if ledge_controller.is_active():
 		step.cancel()
@@ -47,8 +49,11 @@ func _physics_process(delta: float) -> void:
 			command.crouch_pressed,
 			delta
 		)
+		velocity_state.capture_body_as_controlled(self)
 	else:
 		locomotion_controller.update(command, delta)
+		if ledge_controller.is_active():
+			velocity_state.capture_body_as_controlled(self)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -57,6 +62,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _create_components() -> void:
 	player_input = PlayerInput.new()
+	velocity_state = PlayerVelocityState.new()
 	player_look = PlayerLook.new(
 		self,
 		head,
@@ -159,6 +165,7 @@ func _create_components() -> void:
 		head,
 		support,
 		motor,
+		velocity_state,
 		motion_solver,
 		step,
 		crouch,
