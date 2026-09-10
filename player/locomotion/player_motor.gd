@@ -64,7 +64,7 @@ func update(
 
 	# Steep support remains explicit surface physics. Walkable support no longer
 	# reaches this path because its vertical terrain-following motion is derived
-	# transiently by PlayerMovement instead of being stored in velocity.y.
+	# transiently by PlayerMotionSolver instead of being stored in velocity.y.
 	_constrain_velocity_to_support(player, support)
 
 	var external_acceleration: Vector3 = Vector3.DOWN * gravity
@@ -90,7 +90,7 @@ func update_step_horizontal(
 	target_speed: float,
 	delta: float
 ) -> void:
-	# An active step is a kinematic configuration owned by PlayerMovement.
+	# An active step is a kinematic configuration owned by PlayerMotionSolver.
 	# Preserve ground-style X/Z response while the capsule is temporarily lifted
 	# away from its support, and keep ballistic Y completely out of step motion.
 	_update_walkable_ground(
