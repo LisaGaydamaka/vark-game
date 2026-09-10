@@ -12,17 +12,23 @@ const MINIMUM_NORMAL_Y: float = 0.0001
 const MAXIMUM_STEEP_SUPPORT_SLOPE_DEGREES: float = 75.0
 
 
-class SupportCandidate:
-	var valid: bool = false
-	var separation: float = INF
-	var point: Vector3 = Vector3.ZERO
-	var normal: Vector3 = Vector3.UP
+var current_contact: PlayerSupportContact = PlayerSupportContact.new()
 
+var has_support: bool:
+	get:
+		return current_contact.valid
 
-var has_support: bool = false
-var support_normal: Vector3 = Vector3.UP
-var support_point: Vector3 = Vector3.ZERO
-var walkable: bool = false
+var support_normal: Vector3:
+	get:
+		return current_contact.normal
+
+var support_point: Vector3:
+	get:
+		return current_contact.point
+
+var walkable: bool:
+	get:
+		return current_contact.walkable
 
 var max_walkable_slope: float
 var maximum_support_slope: float
@@ -119,7 +125,7 @@ func update(player: CharacterBody3D) -> void:
 	# floor used to measure a support-to-support step transition. If the footprint
 	# has no valid support, fall back to the live capsule contact manifold so
 	# narrow rails/edges can still bear the player.
-	var best := SupportCandidate.new()
+	var best := PlayerSupportContact.new()
 	_find_ray_support(player, best)
 	if not best.valid:
 		_find_capsule_contact_support(player, best)
@@ -127,15 +133,12 @@ func update(player: CharacterBody3D) -> void:
 	if not best.valid:
 		return
 
-	has_support = true
-	walkable = is_walkable_surface(best.normal)
-	support_point = best.point
-	support_normal = best.normal
+	current_contact.copy_from(best)
 
 
 func _find_capsule_contact_support(
 	player: CharacterBody3D,
-	best: SupportCandidate
+	best: PlayerSupportContact
 ) -> void:
 	# test_move() uses the body's live collider and reports both the short
 	# downward sweep and recovery/touching contacts without changing the body.
@@ -162,13 +165,15 @@ func _find_capsule_contact_support(
 			player,
 			collision.get_position(collision_index),
 			collision.get_normal(collision_index),
+			collision.get_collider_rid(collision_index),
+			PlayerSupportContact.Source.CAPSULE_CONTACT,
 			best
 		)
 
 
 func _find_ray_support(
 	player: CharacterBody3D,
-	best: SupportCandidate
+	best: PlayerSupportContact
 ) -> void:
 	var capsule_bottom_y: float = player.global_position.y + capsule_bottom_offset
 	var maximum_probe_distance: float = (
@@ -204,11 +209,17 @@ func _find_ray_support(
 			continue
 		var point: Vector3 = point_value
 		var normal: Vector3 = normal_value
+		var collider_rid: RID = RID()
+		var rid_value: Variant = hit.get("rid")
+		if rid_value is RID:
+			collider_rid = rid_value
 
 		_consider_support_candidate(
 			player,
 			point,
 			normal,
+			collider_rid,
+			PlayerSupportContact.Source.FOOTPRINT,
 			best
 		)
 
@@ -217,7 +228,9 @@ func _consider_support_candidate(
 	player: CharacterBody3D,
 	point: Vector3,
 	normal: Vector3,
-	best: SupportCandidate
+	collider_rid: RID,
+	source: int,
+	best: PlayerSupportContact
 ) -> void:
 	if normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return
@@ -254,10 +267,18 @@ func _consider_support_candidate(
 	if best.valid and ranking_separation >= best.separation:
 		return
 
-	best.valid = true
-	best.separation = ranking_separation
-	best.point = point
-	best.normal = normal
+	best.set_contact(
+		ranking_separation,
+		point,
+		normal,
+		candidate_walkable,
+		collider_rid,
+		source
+	)
+
+
+func get_contact() -> PlayerSupportContact:
+	return current_contact
 
 
 func release_walkable_support(player: CharacterBody3D) -> void:
@@ -266,10 +287,7 @@ func release_walkable_support(player: CharacterBody3D) -> void:
 
 
 func _clear_support(player: CharacterBody3D) -> void:
-	has_support = false
-	support_normal = Vector3.UP
-	support_point = player.global_position
-	walkable = false
+	current_contact.clear(player.global_position)
 
 
 func _get_capsule_plane_separation(
