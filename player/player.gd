@@ -2,7 +2,6 @@ extends CharacterBody3D
 
 
 @onready var head: Node3D = $Head
-@onready var camera: Camera3D = $Head/Camera3D
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
 
@@ -73,10 +72,6 @@ extends CharacterBody3D
 @export var mouse_sensitivity: float = 0.007
 
 
-@export_category("Diagnostics")
-@export var jitter_sensor_enabled: bool = true
-
-
 var player_input: PlayerInput
 var player_look: PlayerLook
 var support: PlayerSupport
@@ -90,7 +85,6 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
-var jitter_sensor: PlayerJitterSensor
 var air_mantle_intent_active: bool = false
 
 
@@ -99,21 +93,10 @@ func _ready() -> void:
 	player_look.capture_mouse()
 
 
-func _process(delta: float) -> void:
-	jitter_sensor.capture_render_frame(delta)
-
-
 func _physics_process(delta: float) -> void:
 	var jump_pressed: bool = player_input.is_jump_just_pressed()
 	var jump_held: bool = player_input.is_jump_pressed()
 	var crouch_pressed: bool = player_input.is_crouch_just_pressed()
-
-	jitter_sensor.begin_physics_frame(
-		delta,
-		jump_pressed,
-		jump_held,
-		crouch_pressed
-	)
 
 	if ledge_controller.is_active():
 		step.cancel()
@@ -129,8 +112,6 @@ func _physics_process(delta: float) -> void:
 			crouch_pressed,
 			delta
 		)
-
-	jitter_sensor.end_physics_frame(air_mantle_intent_active)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -209,7 +190,8 @@ func _create_components() -> void:
 
 	ledge_mantle = PlayerMantle.new(
 		mantle_speed,
-		ledge_detector
+		ledge_detector,
+		crouch
 	)
 
 	ledge_controller = PlayerLedgeController.new(
@@ -231,20 +213,6 @@ func _create_components() -> void:
 		ledge_sprint_jump_horizontal_speed,
 		ledge_max_approach_angle_degrees,
 		gravity
-	)
-
-	jitter_sensor = PlayerJitterSensor.new(
-		jitter_sensor_enabled,
-		self,
-		head,
-		camera,
-		collision_shape,
-		player_input,
-		support,
-		step,
-		crouch,
-		ledge_detector,
-		ledge_controller
 	)
 
 
@@ -380,14 +348,12 @@ func _update_normal_movement(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
-	jitter_sensor.record_motion_plan(velocity, Vector3.ZERO)
 	var collisions: Array[KinematicCollision3D] = movement.move(
 		self,
 		delta,
 		support,
 		step_plan
 	)
-	jitter_sensor.record_collisions(collisions)
 
 	# PlayerMovement refreshes support when downward motion lands. Consume the
 	# airborne mantle intent immediately on landing so held Space cannot turn a

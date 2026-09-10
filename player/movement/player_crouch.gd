@@ -8,6 +8,12 @@ const HEIGHT_EPSILON: float = 0.0001
 const TRANSITION_SPEED: float = 3.5
 
 
+enum Stance {
+	STANDING,
+	CROUCHED,
+}
+
+
 var collision_shape: CollisionShape3D
 var head: Node3D
 var visual_mesh: MeshInstance3D
@@ -21,7 +27,7 @@ var capsule_bottom_offset: float
 var standing_head_height: float
 var head_top_clearance: float
 var visual_bottom_offset: float = 0.0
-var standing_requested: bool = true
+var requested_stance: int = Stance.STANDING
 
 
 func _init(
@@ -61,7 +67,29 @@ func _init(
 
 
 func toggle() -> void:
-	standing_requested = not standing_requested
+	requested_stance = (
+		Stance.CROUCHED
+		if requested_stance == Stance.STANDING
+		else Stance.STANDING
+	)
+
+
+func request_stance(stance: int) -> void:
+	assert(
+		stance == Stance.STANDING or stance == Stance.CROUCHED,
+		"PlayerCrouch received an invalid stance."
+	)
+	requested_stance = stance
+
+
+func get_requested_stance() -> int:
+	return requested_stance
+
+
+func get_height_for_stance(stance: int) -> float:
+	if stance == Stance.CROUCHED:
+		return crouch_height
+	return standing_height
 
 
 func update(player: CharacterBody3D) -> bool:
@@ -69,7 +97,7 @@ func update(player: CharacterBody3D) -> bool:
 	var delta: float = 1.0 / float(Engine.physics_ticks_per_second)
 	var max_height_change: float = TRANSITION_SPEED * delta
 
-	if not standing_requested:
+	if requested_stance == Stance.CROUCHED:
 		var next_crouch_height: float = move_toward(
 			current_height,
 			crouch_height,
@@ -126,11 +154,24 @@ func get_movement_speed(standing_speed: float, crouched_speed: float) -> float:
 	return lerpf(crouched_speed, standing_speed, stance_fraction)
 
 
-func is_fully_standing() -> bool:
+func is_at_stance(stance: int) -> bool:
+	if stance == Stance.CROUCHED:
+		return (
+			requested_stance == Stance.CROUCHED
+			and capsule_shape.height <= crouch_height + HEIGHT_EPSILON
+		)
 	return (
-		standing_requested
+		requested_stance == Stance.STANDING
 		and capsule_shape.height >= standing_height - HEIGHT_EPSILON
 	)
+
+
+func is_fully_standing() -> bool:
+	return is_at_stance(Stance.STANDING)
+
+
+func is_fully_crouched() -> bool:
+	return is_at_stance(Stance.CROUCHED)
 
 
 func _apply_height(next_height: float) -> bool:

@@ -8,10 +8,12 @@ const PROBE_MAX_COLLISIONS: int = 8
 const MOTION_EPSILON_SQUARED: float = 0.000001
 const MAX_EDGE_CONTINUATIONS: int = 4
 const MINIMUM_CONTINUATION_WALL_ALIGNMENT: float = 0.965925826
+const INVALID_STANCE: int = -1
 
 
 enum Phase {
 	NONE,
+	STANCE,
 	LIFT,
 	FORWARD,
 }
@@ -25,11 +27,13 @@ class MantleCandidate:
 	var ledge_axis: Vector3 = Vector3.ZERO
 	var traversal_axis: Vector3 = Vector3.ZERO
 	var target_position: Vector3 = Vector3.ZERO
+	var target_stance: int = PlayerCrouch.Stance.STANDING
 	var valid: bool = false
 
 
 var traversal_speed: float
 var detector: PlayerLedgeDetector
+var crouch: PlayerCrouch
 
 var active_candidate: MantleCandidate = null
 var route_edge_point: Vector3 = Vector3.ZERO
@@ -43,10 +47,12 @@ var completed: bool = false
 
 func _init(
 	p_traversal_speed: float,
-	p_detector: PlayerLedgeDetector
+	p_detector: PlayerLedgeDetector,
+	p_crouch: PlayerCrouch
 ) -> void:
 	traversal_speed = p_traversal_speed
 	detector = p_detector
+	crouch = p_crouch
 	assert(
 		traversal_speed > 0.0,
 		"PlayerMantle requires traversal_speed to be greater than zero."
@@ -54,6 +60,10 @@ func _init(
 	assert(
 		detector != null,
 		"PlayerMantle requires a PlayerLedgeDetector."
+	)
+	assert(
+		crouch != null,
+		"PlayerMantle requires a PlayerCrouch."
 	)
 
 
@@ -169,25 +179,15 @@ func try_start(
 	mantle_origin_edge_point = route_edge_point
 	mantle_origin_wall_normal = active_candidate.wall_normal
 
-	# Mantle eligibility is edge-centric. The vertical space directly above the
-	# crossing edge must fit the player's current capsule height. Platform depth
-	# is not part of this decision.
-	if not is_edge_height_clear(player):
+	# Stance is part of mantle eligibility. Prefer the player's standing posture
+	# when it already owns that posture and the edge has enough vertical room.
+	# If standing does not fit but crouching does, the mantle owns a crouched
+	# landing posture and waits for PlayerCrouch to establish that real collider
+	# state before any traversal motion begins.
+	if not _select_stance_for_configured_route(player):
 		cancel()
 		return false
 
-	# Separately verify that the body can actually reach the crossing height from
-	# its current position. This is a traversal-path check, not the edge-height
-	# eligibility rule above.
-	if not is_vertical_clearance_clear(player):
-		cancel()
-		return false
-
-	phase = Phase.LIFT
-	if has_reached_lift_height(player.global_position):
-		phase = Phase.FORWARD
-		if has_reached_forward_limit(player.global_position):
-			completed = true
 	return true
 
 
@@ -218,6 +218,81 @@ func _configure_route(
 	return true
 
 
+func _select_stance_for_configured_route(
+	player: CharacterBody3D
+) -> bool:
+	if active_candidate == null:
+		return false
+
+	var target_stance: int = _resolve_target_stance(player)
+	if target_stance == INVALID_STANCE:
+		return false
+
+	active_candidate.target_stance = target_stance
+	crouch.request_stance(target_stance)
+	phase = Phase.STANCE
+
+	if crouch.is_at_stance(target_stance):
+		return _begin_configured_route(player)
+	return true
+
+
+func _resolve_target_stance(player: CharacterBody3D) -> int:
+	var crouched_height: float = crouch.get_height_for_stance(
+		PlayerCrouch.Stance.CROUCHED
+	)
+	var crouched_clear: bool = is_edge_height_clear_for_height(
+		player,
+		crouched_height
+	)
+
+	# Preserve an already-requested/non-standing posture. A mantle should never
+	# force the player to grow before entering a traversal route.
+	if (
+		crouch.get_requested_stance() == PlayerCrouch.Stance.CROUCHED
+		or not crouch.is_fully_standing()
+	):
+		return (
+			PlayerCrouch.Stance.CROUCHED
+			if crouched_clear
+			else INVALID_STANCE
+		)
+
+	var standing_height: float = crouch.get_height_for_stance(
+		PlayerCrouch.Stance.STANDING
+	)
+	if is_edge_height_clear_for_height(player, standing_height):
+		return PlayerCrouch.Stance.STANDING
+	if crouched_clear:
+		return PlayerCrouch.Stance.CROUCHED
+	return INVALID_STANCE
+
+
+func _begin_configured_route(player: CharacterBody3D) -> bool:
+	if active_candidate == null:
+		return false
+
+	# Rebuild from the unchanged body origin after the stance transition so all
+	# detector-derived capsule offsets reflect the actual collider that will move.
+	var candidate: MantleCandidate = active_candidate
+	if not _configure_route(player, candidate):
+		return false
+	if not is_edge_height_clear(player):
+		return false
+
+	# This path test intentionally uses the live collider. For a crouch-only
+	# mantle it therefore validates the exact crouched capsule, not an estimate.
+	if not is_vertical_clearance_clear(player):
+		return false
+
+	phase = Phase.LIFT
+	if has_reached_lift_height(player.global_position):
+		phase = Phase.FORWARD
+		if has_reached_forward_limit(player.global_position):
+			completed = true
+	return true
+
+
 func update(
 	player: CharacterBody3D,
 	delta: float
@@ -226,6 +301,16 @@ func update(
 		return false
 
 	player.velocity = Vector3.ZERO
+
+	if phase == Phase.STANCE:
+		crouch.update(player)
+		if not crouch.is_at_stance(active_candidate.target_stance):
+			return true
+		if not _begin_configured_route(player):
+			return false
+		if completed:
+			return true
+
 	var remaining_distance: float = traversal_speed * delta
 
 	for _phase_iteration: int in range(2):
@@ -456,29 +541,32 @@ func _try_continue_over_forward_blocker(
 		return false
 	if not _configure_route(player, next_candidate):
 		return false
-	if not is_edge_height_clear(player):
-		return false
-	if not is_vertical_clearance_clear(player):
+	if not _select_stance_for_configured_route(player):
 		return false
 
 	edge_continuation_count += 1
-	phase = Phase.LIFT
-	if has_reached_lift_height(player.global_position):
-		phase = Phase.FORWARD
 	return true
 
 
 func is_edge_height_clear(player: CharacterBody3D) -> bool:
 	if active_candidate == null:
 		return false
+	return is_edge_height_clear_for_height(
+		player,
+		crouch.get_height_for_stance(active_candidate.target_stance)
+	)
 
-	var required_height: float = detector.get_capsule_height()
-	if required_height <= 0.0:
+
+func is_edge_height_clear_for_height(
+	player: CharacterBody3D,
+	required_height: float
+) -> bool:
+	if active_candidate == null or required_height <= 0.0:
 		return false
 
 	# Probe a hair inward so an edge shared by the wall and top surface is sampled
-	# on the platform side rather than in empty space outside the wall. The height
-	# itself is still measured vertically from the reconstructed crossing edge.
+	# on the platform side rather than in empty space outside the wall. Mantle
+	# posture is decided solely by the vertical room above this crossing edge.
 	var probe_origin: Vector3 = (
 		route_edge_point
 		- active_candidate.wall_normal * PROBE_SAFE_MARGIN
