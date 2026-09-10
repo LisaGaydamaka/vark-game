@@ -6,66 +6,10 @@ extends CharacterBody3D
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
 
 
-@export_category("Movement")
-@export var max_speed: float = 4.0
-@export var sprint_speed: float = 6.0
-@export var acceleration: float = 28.0
-@export var ground_deceleration: float = 15.0
-
-
-@export_category("Crouch")
-@export var crouch_height: float = 0.95
-@export var crouch_speed: float = 2.0
-
-
-@export_category("Jump")
-@export var jump_height: float = 0.75
-
-
-@export_category("Ledge Jump")
-@export var ledge_jump_horizontal_speed: float = 2.5
-@export var ledge_sprint_jump_horizontal_speed: float = 4.0
-
-
-@export_category("Air")
-@export var air_max_speed: float = 2.5
-@export var air_acceleration: float = 20.0
-@export var air_deceleration: float = 15.0
-
-
-@export_category("Surface")
-@export var max_walkable_slope: float = 45.0
-@export var support_check_distance: float = 0.05
-@export var static_friction_coefficient: float = 1.0
-@export var kinetic_friction_coefficient: float = 0.1
-
-
-@export_category("Gravity")
-@export var gravity: float = 12.0
-
-
-@export_category("Collision")
-@export var max_collision_iterations: int = 8
-
-
-@export_category("Step Up")
-@export var step_max_height: float = 0.5
-@export var step_up_acceleration: float = 100.0
-@export var step_up_max_speed: float = 30.0
-
-
-@export_category("Ledge Detection")
-@export var ledge_max_wall_tilt_degrees: float = 15.0
-@export var ledge_max_line_tilt_degrees: float = 70.0
-@export var ledge_max_approach_angle_degrees: float = 65.0
-
-
-@export_category("Ledge Corner")
-@export var ledge_corner_turn_speed_degrees: float = 720.0
-
-
-@export_category("Mantle")
-@export var mantle_speed: float = 4.0
+@export_category("Settings")
+@export var locomotion_settings: PlayerLocomotionSettings = PlayerLocomotionSettings.new()
+@export var stance_settings: PlayerStanceSettings = PlayerStanceSettings.new()
+@export var traversal_settings: PlayerTraversalSettings = PlayerTraversalSettings.new()
 
 
 @export_category("Look")
@@ -119,39 +63,41 @@ func _create_components() -> void:
 		mouse_sensitivity
 	)
 	support = PlayerSupport.new(
-		max_walkable_slope,
-		support_check_distance,
+		locomotion_settings.max_walkable_slope,
+		locomotion_settings.support_check_distance,
 		collision_shape
 	)
 
 	motor = PlayerMotor.new(
-		max_speed,
-		acceleration,
-		ground_deceleration,
-		gravity,
-		static_friction_coefficient,
-		kinetic_friction_coefficient,
-		air_max_speed,
-		air_acceleration,
-		air_deceleration
+		locomotion_settings.max_speed,
+		locomotion_settings.acceleration,
+		locomotion_settings.ground_deceleration,
+		locomotion_settings.gravity,
+		locomotion_settings.static_friction_coefficient,
+		locomotion_settings.kinetic_friction_coefficient,
+		locomotion_settings.air_max_speed,
+		locomotion_settings.air_acceleration,
+		locomotion_settings.air_deceleration
 	)
 
-	motion_solver = PlayerMotionSolver.new(max_collision_iterations)
+	motion_solver = PlayerMotionSolver.new(
+		locomotion_settings.max_collision_iterations
+	)
 
 	step = PlayerStep.new(
-		step_max_height,
-		step_up_acceleration,
-		step_up_max_speed,
+		locomotion_settings.step_max_height,
+		locomotion_settings.step_up_acceleration,
+		locomotion_settings.step_up_max_speed,
 		collision_shape
 	)
 
 	ledge_detector = PlayerLedgeDetectorLazy.new(
-		jump_height,
-		gravity,
+		locomotion_settings.jump_height,
+		locomotion_settings.gravity,
 		head.position.y,
-		ledge_max_wall_tilt_degrees,
-		ledge_max_line_tilt_degrees,
-		ledge_max_approach_angle_degrees,
+		traversal_settings.ledge_max_wall_tilt_degrees,
+		traversal_settings.ledge_max_line_tilt_degrees,
+		traversal_settings.ledge_max_approach_angle_degrees,
 		collision_shape
 	)
 
@@ -159,30 +105,30 @@ func _create_components() -> void:
 		collision_shape,
 		head,
 		player_mesh,
-		crouch_height,
+		stance_settings.crouch_height,
 		ledge_detector
 	)
 
 	ledge_catch = PlayerLedgeCatch.new(
-		jump_height,
-		gravity,
+		locomotion_settings.jump_height,
+		locomotion_settings.gravity,
 		ledge_detector,
 		collision_shape
 	)
 
 	ledge_hang = PlayerLedgeHang.new(
-		max_speed,
-		acceleration,
+		locomotion_settings.max_speed,
+		locomotion_settings.acceleration,
 		ledge_detector
 	)
 
 	ledge_corner = PlayerLedgeCorner.new(
-		ledge_corner_turn_speed_degrees,
+		traversal_settings.ledge_corner_turn_speed_degrees,
 		ledge_detector
 	)
 
 	ledge_mantle = PlayerMantle.new(
-		mantle_speed,
+		traversal_settings.mantle_speed,
 		ledge_detector,
 		crouch
 	)
@@ -200,12 +146,12 @@ func _create_components() -> void:
 		ledge_corner,
 		ledge_mantle,
 		player_look,
-		jump_height,
-		max_speed,
-		ledge_jump_horizontal_speed,
-		ledge_sprint_jump_horizontal_speed,
-		ledge_max_approach_angle_degrees,
-		gravity
+		locomotion_settings.jump_height,
+		locomotion_settings.max_speed,
+		traversal_settings.ledge_jump_horizontal_speed,
+		traversal_settings.ledge_sprint_jump_horizontal_speed,
+		traversal_settings.ledge_max_approach_angle_degrees,
+		locomotion_settings.gravity
 	)
 
 	locomotion_controller = PlayerLocomotionController.new(
@@ -218,8 +164,8 @@ func _create_components() -> void:
 		crouch,
 		ledge_detector,
 		ledge_controller,
-		max_speed,
-		sprint_speed,
-		crouch_speed,
-		jump_height
+		locomotion_settings.max_speed,
+		locomotion_settings.sprint_speed,
+		stance_settings.crouch_speed,
+		locomotion_settings.jump_height
 	)
