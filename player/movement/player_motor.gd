@@ -18,7 +18,7 @@ var air_deceleration: float
 
 
 func _init(
-	p_max_speed: float,
+	_p_max_speed: float,
 	p_acceleration: float,
 	p_ground_deceleration: float,
 	p_gravity: float,
