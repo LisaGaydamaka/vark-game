@@ -92,9 +92,10 @@ func get_height_for_stance(stance: int) -> float:
 	return standing_height
 
 
-func update(player: CharacterBody3D) -> bool:
+func update(player: CharacterBody3D, delta: float = -1.0) -> bool:
 	var current_height: float = capsule_shape.height
-	var delta: float = 1.0 / float(Engine.physics_ticks_per_second)
+	if delta < 0.0:
+		delta = 1.0 / float(Engine.physics_ticks_per_second)
 	var max_height_change: float = TRANSITION_SPEED * delta
 
 	if requested_stance == Stance.CROUCHED:
