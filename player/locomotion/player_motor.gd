@@ -295,7 +295,7 @@ func apply_directional_jump(
 			horizontal_input.normalized()
 			* clamped_launch_speed
 			* input_strength
-			)
+		)
 
 	player.velocity = horizontal_velocity
 	apply_jump(player, jump_height)
