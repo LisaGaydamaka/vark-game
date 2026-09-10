@@ -202,7 +202,7 @@ func update_after_move(player: CharacterBody3D) -> void:
 		return
 
 	# Height completion alone does not finish a step. Keep ownership until the
-	# body actually crosses the classified riser plane so PlayerMovement can keep
+	# body actually crosses the classified riser plane so PlayerMotionSolver can keep
 	# validating the local crossing envelope every frame.
 	if has_crossed_edge(player.global_position):
 		cancel()
