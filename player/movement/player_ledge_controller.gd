@@ -472,13 +472,35 @@ func _update_ledge_mantle(jump_pressed: bool, crouch_pressed: bool, delta: float
 		_arm_failed_mantle_candidate(ledge_mantle.get_release_candidate())
 		_release_mantle_to_air(delta)
 		return
+
+	# Mantle owns controlled motion while active. Its kinematic route clamps the
+	# final displacement to the crossing plane, but that clamp is not physical
+	# braking; preserve the full commanded phase velocity across the handoff.
+	body.velocity = _get_mantle_commanded_velocity()
 	if not ledge_mantle.has_completed():
 		return
-	body.velocity = Vector3.ZERO
+
+	var terminal_velocity: Vector3 = body.velocity
 	support.update(body)
 	ledge_mantle.cancel()
 	_exit_traversal_state()
-	body.velocity = Vector3.ZERO
+	body.velocity = terminal_velocity
+
+
+func _get_mantle_commanded_velocity() -> Vector3:
+	match ledge_mantle.phase:
+		PlayerMantle.Phase.LIFT:
+			# Once lift reaches its geometric target it may pause for a crouch
+			# transition. A waiting stance owns no physical vertical momentum.
+			if ledge_mantle.has_reached_lift_height(body.global_position):
+				return Vector3.ZERO
+			return Vector3.UP * ledge_mantle.traversal_speed
+		PlayerMantle.Phase.FORWARD:
+			var route_direction: Vector3 = ledge_mantle.get_forward_route_direction()
+			if route_direction.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+				return Vector3.ZERO
+			return route_direction * ledge_mantle.traversal_speed
+	return Vector3.ZERO
 
 
 func _perform_no_input_hang_jump(
