@@ -1,4 +1,4 @@
-class_name PlayerMovement
+class_name PlayerMotionSolver
 extends RefCounted
 
 
@@ -44,15 +44,8 @@ func _move_step_transaction(
 	support: PlayerSupport,
 	step_plan: PlayerStep.StepPlan
 ) -> Array[KinematicCollision3D]:
-	# Step displacement is kinematic configuration, not momentum. Movement is
-	# the sole owner of the transform and persistent vertical velocity while a
-	# step plan is active.
 	player.velocity.y = 0.0
 
-	# A step frame is transactional: prove the entire remaining lift and local
-	# edge crossing with the player's current collider before committing any
-	# upward progress. If the route is blocked, execute ordinary locomotion only;
-	# the StepPlan remains alive and will be retried next physics frame.
 	if not _is_step_route_clear(player, step_plan):
 		return _move_without_step_progress(player, delta, support)
 
@@ -76,15 +69,11 @@ func _move_step_transaction(
 				traveled_up
 				< step_plan.rise_distance - STEP_ROUTE_PROGRESS_TOLERANCE
 			):
-				# Geometry changed between validation and execution. Roll back the
-				# partial rise and fall back to a stable no-step move this frame.
 				player.global_transform = transaction_start
 				player.velocity.y = 0.0
 				return _move_without_step_progress(player, delta, support)
 			collisions.append(rise_collision)
 
-	# Horizontal locomotion remains exactly the motor's requested X/Z. The step
-	# route only contributes the separately committed vertical configuration.
 	collisions.append_array(_move_step_horizontal(player, delta, support))
 	return collisions
 
@@ -180,7 +169,7 @@ func _move_walkable_ground(
 	delta: float
 ) -> Array[KinematicCollision3D]:
 	var collisions: Array[KinematicCollision3D] = []
-	var active_horizontal_planes: Array[Vector3] = []
+	var active_contact_planes: Array[Vector3] = []
 	var remaining_horizontal := Vector3(
 		player.velocity.x,
 		0.0,
@@ -190,18 +179,20 @@ func _move_walkable_ground(
 		player.global_position + remaining_horizontal
 	)
 	var current_support_normal: Vector3 = support.support_normal
+	_append_unique_plane(active_contact_planes, current_support_normal)
 
-	# Ground locomotion is solved in XZ. Walkable terrain contributes only the
-	# temporary Y required to follow the support surface. Blocking contacts are
-	# accumulated for the whole move so a later wall cannot reintroduce motion
-	# into an earlier wall merely because collision order changed.
 	for _iteration: int in range(max_collision_iterations):
 		if remaining_horizontal.length_squared() <= MOTION_EPSILON_SQUARED:
 			break
 
-		var motion: Vector3 = ground_motion.get_surface_motion(
+		var preferred_motion: Vector3 = ground_motion.get_surface_motion(
 			remaining_horizontal,
 			current_support_normal
+		)
+		var motion: Vector3 = _resolve_ground_contact_motion(
+			preferred_motion,
+			remaining_horizontal,
+			active_contact_planes
 		)
 		if motion.length_squared() <= MOTION_EPSILON_SQUARED:
 			break
@@ -224,35 +215,33 @@ func _move_walkable_ground(
 				blocked_above = true
 
 			if support.is_walkable_surface(normal):
+				# A walkable contact can become the primary support for slope
+				# mapping, but it remains part of the simultaneous contact manifold.
+				# Never discard the previous walkable plane just because another
+				# floor-like plane was reported by the same capsule configuration.
+				_append_unique_plane(active_contact_planes, normal)
 				if normal.y > next_support_y:
 					next_support_y = normal.y
 					next_support_normal = normal
 				continue
 
+			# Ground locomotion keeps wall/steep-obstacle constraints horizontal.
+			# This preserves the established slope-following policy while allowing
+			# multiple walkable planes to retain their real 3D normals.
 			var horizontal_normal := Vector3(normal.x, 0.0, normal.z)
 			if horizontal_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 				continue
-			_append_unique_plane(
-				active_horizontal_planes,
-				horizontal_normal
-			)
+			_append_unique_plane(active_contact_planes, horizontal_normal)
 
 		if blocked_above:
 			break
 		if next_support_y > -INF:
 			current_support_normal = next_support_normal
 
-		# Resolve toward the original horizontal endpoint, not toward a remainder
-		# that may already contain a collision-generated deflection. This preserves
-		# the player's requested motion as the source of truth for every iteration.
-		var horizontal_to_destination := Vector3(
+		remaining_horizontal = Vector3(
 			desired_horizontal_destination.x - player.global_position.x,
 			0.0,
 			desired_horizontal_destination.z - player.global_position.z
-		)
-		remaining_horizontal = _resolve_horizontal_constraints(
-			horizontal_to_destination,
-			active_horizontal_planes
 		)
 
 	return collisions
@@ -266,11 +255,9 @@ func _move_free(
 	var collisions: Array[KinematicCollision3D] = []
 	var active_planes: Array[Vector3] = []
 
-	# Free movement has two independent physical owners:
-	# - X/Z is locomotion intent.
-	# - Y is ballistic/traversal intent.
-	# Contacts may constrain both, but a wall or rounded edge is not allowed to
-	# erase ballistic Y just because its raw collision normal has a Y component.
+	# X/Z is locomotion. Y is ballistic. During a fall, raw contacts are not
+	# allowed to invent support: only PlayerSupport may promote geometry into a
+	# 3D support constraint or terminate downward velocity.
 	var motion: Vector3 = player.velocity * delta
 	var desired_destination: Vector3 = player.global_position + motion
 
@@ -284,27 +271,57 @@ func _move_free(
 
 		collisions.append(collision)
 		var collision_normals: Array[Vector3] = _get_collision_normals(collision)
-		for normal: Vector3 in collision_normals:
-			_append_unique_plane(active_planes, normal)
-
-		# Landing is owned by PlayerSupport, not by raw movement normals. Refresh
-		# support at the collision pose so only a validated walkable support may
-		# terminate downward ballistic velocity.
+		var falling_before_collision: bool = (
+			player.velocity.y < -sqrt(MOTION_EPSILON_SQUARED)
+		)
+		var has_validated_support: bool = false
 		var landed_on_walkable_support: bool = false
-		if (
-			support != null
-			and player.velocity.y < -sqrt(MOTION_EPSILON_SQUARED)
-		):
+
+		if falling_before_collision and support != null:
 			support.update(player)
+			has_validated_support = support.has_support
 			landed_on_walkable_support = support.is_grounded()
 			if landed_on_walkable_support:
 				player.velocity.y = 0.0
+
+		if falling_before_collision:
+			_append_fall_collision_constraints(
+				active_planes,
+				player,
+				collision,
+				collision_normals,
+				support
+			)
+			if (
+				has_validated_support
+				and not landed_on_walkable_support
+			):
+				# A steep support plane has been validated independently from
+				# the raw contact manifold, so it may constrain full 3D motion.
+				_append_unique_plane(
+					active_planes,
+					support.support_normal
+				)
+		else:
+			for normal: Vector3 in collision_normals:
+				_append_unique_plane(active_planes, normal)
 
 		var desired_remaining: Vector3 = (
 			desired_destination - player.global_position
 		)
 		if landed_on_walkable_support and desired_remaining.y < 0.0:
 			desired_remaining.y = 0.0
+
+		if falling_before_collision and not has_validated_support:
+			# Unsupported contacts may constrain or redirect requested motion,
+			# but they cannot manufacture a longer displacement just to preserve
+			# ballistic Y. The stored velocity remains ballistic until support is
+			# independently validated; only realized displacement is constrained.
+			motion = _resolve_unsupported_fall_motion(
+				desired_remaining,
+				active_planes
+			)
+			continue
 
 		var resolution: Dictionary = _resolve_motion_with_vertical_priority(
 			desired_remaining,
@@ -319,6 +336,197 @@ func _move_free(
 			player.velocity.y = 0.0
 
 	return collisions
+
+
+func _append_fall_collision_constraints(
+	planes: Array[Vector3],
+	player: CharacterBody3D,
+	collision: KinematicCollision3D,
+	collision_normals: Array[Vector3],
+	support: PlayerSupport
+) -> void:
+	var found_lateral_plane: bool = false
+	for normal: Vector3 in collision_normals:
+		# A raw floor/support-like feature is only candidate support. If the
+		# independent support probe did not validate it, its tiny horizontal
+		# component must not turn fixed ballistic Y into invented lateral motion.
+		if (
+			support != null
+			and normal.length_squared() > MOTION_EPSILON_SQUARED
+			and support.is_support_surface(normal.normalized())
+		):
+			continue
+		if _append_fall_lateral_plane(planes, normal):
+			found_lateral_plane = true
+
+	if found_lateral_plane or collision == null:
+		return
+
+	# A convex edge can occasionally be reported with only the adjacent face's
+	# vertical normal. If that face was not validated as support, infer the
+	# lateral side from the contact point rather than allowing it to become a
+	# fake floor. This fallback is horizontal-only, so gravity cannot amplify it.
+	var contact_offset: Vector3 = player.global_position - collision.get_position()
+	contact_offset.y = 0.0
+	if contact_offset.length_squared() <= MOTION_EPSILON_SQUARED:
+		return
+	_append_fall_lateral_plane(planes, contact_offset)
+
+
+func _append_fall_lateral_plane(
+	planes: Array[Vector3],
+	normal: Vector3
+) -> bool:
+	if normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+
+	var normalized_normal: Vector3 = normal.normalized()
+	var horizontal_axis := Vector2(normalized_normal.x, normalized_normal.z)
+	if horizontal_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	var horizontal_direction: Vector2 = horizontal_axis.normalized()
+
+	for plane_index: int in range(planes.size()):
+		var existing_plane: Vector3 = planes[plane_index]
+		var existing_axis := Vector2(existing_plane.x, existing_plane.z)
+		if existing_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+			continue
+		if (
+			horizontal_direction.dot(existing_axis.normalized())
+			< SAME_PLANE_DOT
+		):
+			continue
+
+		# A modular seam may yield several feature normals for the same wall.
+		# Keep the most wall-like representative so top/bottom edge normals do
+		# not manufacture a vertical constraint that the macroscopic wall lacks.
+		if absf(normalized_normal.y) < absf(existing_plane.y):
+			planes[plane_index] = normalized_normal
+		return true
+
+	planes.append(normalized_normal)
+	return true
+
+
+func _resolve_unsupported_fall_motion(
+	desired_motion: Vector3,
+	planes: Array[Vector3]
+) -> Vector3:
+	if desired_motion.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	if planes.is_empty():
+		return desired_motion
+
+	# Project into the admissible contact half-spaces instead of holding Y fixed.
+	# Projection onto a unit-normal half-space can only remove motion magnitude,
+	# so gravity may produce a small physical slide on an angled lateral contact
+	# but can never be amplified into a larger horizontal displacement.
+	var resolved_motion: Vector3 = desired_motion
+	for _pass: int in range(max_collision_iterations):
+		var changed: bool = false
+		for plane: Vector3 in planes:
+			var inward_motion: float = resolved_motion.dot(plane)
+			if inward_motion >= -CONSTRAINT_EPSILON:
+				continue
+			resolved_motion -= plane * inward_motion
+			changed = true
+		if not changed:
+			return resolved_motion
+
+	# If a pathological set of feature normals has not converged within the same
+	# collision-iteration budget, stopping realized motion is safer than inventing
+	# displacement. Ballistic velocity itself is intentionally left untouched.
+	for plane: Vector3 in planes:
+		if resolved_motion.dot(plane) < -CONSTRAINT_EPSILON:
+			return Vector3.ZERO
+	return resolved_motion
+
+
+func _resolve_ground_contact_motion(
+	desired_motion: Vector3,
+	desired_horizontal: Vector3,
+	planes: Array[Vector3]
+) -> Vector3:
+	var resolved_motion: Vector3 = _resolve_contact_manifold_motion(
+		desired_motion,
+		planes
+	)
+
+	# Static contact resolution may redirect or remove locomotion, but it must
+	# never create extra horizontal travel. Scaling a feasible vector toward zero
+	# preserves every homogeneous contact half-space constraint.
+	var requested_horizontal_length: float = Vector2(
+		desired_horizontal.x,
+		desired_horizontal.z
+	).length()
+	var resolved_horizontal_length: float = Vector2(
+		resolved_motion.x,
+		resolved_motion.z
+	).length()
+	if (
+		resolved_horizontal_length
+		<= requested_horizontal_length + CONSTRAINT_EPSILON
+	):
+		return resolved_motion
+	if requested_horizontal_length <= sqrt(MOTION_EPSILON_SQUARED):
+		return Vector3.ZERO
+
+	return resolved_motion * (
+		requested_horizontal_length / resolved_horizontal_length
+	)
+
+
+func _resolve_contact_manifold_motion(
+	desired_motion: Vector3,
+	planes: Array[Vector3]
+) -> Vector3:
+	if desired_motion.length_squared() <= MOTION_EPSILON_SQUARED:
+		return Vector3.ZERO
+	if planes.is_empty() or _satisfies_contact_constraints(desired_motion, planes):
+		return desired_motion
+
+	# Project onto the convex cone formed by all unilateral contact half-spaces.
+	# In 3D the closest point can be the original request, one plane, a two-plane
+	# crease, or the origin when three independent constraints fully block it.
+	# Enumerating those active sets makes the result independent of contact order.
+	var best_motion: Vector3 = Vector3.ZERO
+	var best_distance_squared: float = desired_motion.length_squared()
+
+	for plane: Vector3 in planes:
+		var candidate: Vector3 = desired_motion - plane * desired_motion.dot(plane)
+		if not _satisfies_contact_constraints(candidate, planes):
+			continue
+		var distance_squared: float = candidate.distance_squared_to(desired_motion)
+		if distance_squared < best_distance_squared:
+			best_distance_squared = distance_squared
+			best_motion = candidate
+
+	for first_index: int in range(planes.size()):
+		for second_index: int in range(first_index + 1, planes.size()):
+			var crease: Vector3 = planes[first_index].cross(planes[second_index])
+			var crease_length_squared: float = crease.length_squared()
+			if crease_length_squared <= MOTION_EPSILON_SQUARED:
+				continue
+			crease /= sqrt(crease_length_squared)
+			var candidate: Vector3 = crease * desired_motion.dot(crease)
+			if not _satisfies_contact_constraints(candidate, planes):
+				continue
+			var distance_squared: float = candidate.distance_squared_to(desired_motion)
+			if distance_squared < best_distance_squared:
+				best_distance_squared = distance_squared
+				best_motion = candidate
+
+	return best_motion
+
+
+func _satisfies_contact_constraints(
+	motion: Vector3,
+	planes: Array[Vector3]
+) -> bool:
+	for plane: Vector3 in planes:
+		if motion.dot(plane) < -CONSTRAINT_EPSILON:
+			return false
+	return true
 
 
 func _resolve_horizontal_constraints(
@@ -354,10 +562,6 @@ func _resolve_motion_with_vertical_priority(
 			"vertical_blocked": false,
 		}
 
-	# First solve X/Z while keeping the requested Y exactly. A diagonal wall/edge
-	# contact can therefore add only the minimum lateral separation needed to let
-	# gravity or a jump continue. This is the mathematical expression of the
-	# ownership rule: lateral geometry cannot silently consume ballistic Y.
 	var fixed_vertical: Dictionary = _resolve_horizontal_for_fixed_vertical(
 		desired_motion,
 		planes
@@ -368,9 +572,6 @@ func _resolve_motion_with_vertical_priority(
 			"vertical_blocked": false,
 		}
 
-	# If no X/Z displacement can satisfy the manifold while preserving Y, the
-	# vertical motion is genuinely blocked by the geometry (for example a flat
-	# floor or ceiling). Only then may movement terminate ballistic Y.
 	var horizontal_only := Vector3(
 		desired_motion.x,
 		0.0,
@@ -397,8 +598,6 @@ func _resolve_horizontal_for_fixed_vertical(
 	var desired_horizontal := Vector2(desired_motion.x, desired_motion.z)
 	var fixed_y: float = desired_motion.y
 
-	# A purely vertical plane constraint cannot be repaired by X/Z. If it rejects
-	# this fixed Y, the caller must decide whether vertical motion is allowed to stop.
 	for plane: Vector3 in planes:
 		var horizontal_axis := Vector2(plane.x, plane.z)
 		var horizontal_length_squared: float = horizontal_axis.length_squared()
@@ -422,9 +621,6 @@ func _resolve_horizontal_for_fixed_vertical(
 			"motion": desired_motion,
 		}
 
-	# For a convex set of 2D half-spaces, the closest feasible point to the
-	# requested X/Z lies on one active boundary or at the intersection of two.
-	# Test those candidates directly so the result is independent of contact order.
 	var best_horizontal: Vector2 = Vector2.ZERO
 	var best_distance_squared: float = INF
 	var found_candidate: bool = false
@@ -540,9 +736,6 @@ func _append_unique_plane(
 		return
 	var normalized_normal: Vector3 = normal.normalized()
 	for existing_plane: Vector3 in planes:
-		# Same-facing near-parallel contacts describe the same constraint. Opposite
-		# normals are intentionally retained because together they can constrain a
-		# body between two opposing surfaces.
 		if normalized_normal.dot(existing_plane) >= SAME_PLANE_DOT:
 			return
 	planes.append(normalized_normal)

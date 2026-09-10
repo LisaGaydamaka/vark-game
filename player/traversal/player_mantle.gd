@@ -314,7 +314,7 @@ func update(
 	# its vertical target, lift motion pauses until the requested stance catches
 	# up; only then may the mantle cross forward beneath the ceiling.
 	if phase == Phase.LIFT:
-		crouch.update(player)
+		crouch.update(player, delta)
 
 	var remaining_distance: float = traversal_speed * delta
 

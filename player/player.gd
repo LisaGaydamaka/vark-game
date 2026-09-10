@@ -6,66 +6,10 @@ extends CharacterBody3D
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
 
 
-@export_category("Movement")
-@export var max_speed: float = 4.0
-@export var sprint_speed: float = 6.0
-@export var acceleration: float = 28.0
-@export var ground_deceleration: float = 15.0
-
-
-@export_category("Crouch")
-@export var crouch_height: float = 0.95
-@export var crouch_speed: float = 2.0
-
-
-@export_category("Jump")
-@export var jump_height: float = 0.75
-
-
-@export_category("Ledge Jump")
-@export var ledge_jump_horizontal_speed: float = 2.5
-@export var ledge_sprint_jump_horizontal_speed: float = 4.0
-
-
-@export_category("Air")
-@export var air_max_speed: float = 2.5
-@export var air_acceleration: float = 20.0
-@export var air_deceleration: float = 15.0
-
-
-@export_category("Surface")
-@export var max_walkable_slope: float = 45.0
-@export var support_check_distance: float = 0.05
-@export var static_friction_coefficient: float = 1.0
-@export var kinetic_friction_coefficient: float = 0.1
-
-
-@export_category("Gravity")
-@export var gravity: float = 12.0
-
-
-@export_category("Collision")
-@export var max_collision_iterations: int = 8
-
-
-@export_category("Step Up")
-@export var step_max_height: float = 0.5
-@export var step_up_acceleration: float = 100.0
-@export var step_up_max_speed: float = 30.0
-
-
-@export_category("Ledge Detection")
-@export var ledge_max_wall_tilt_degrees: float = 15.0
-@export var ledge_max_line_tilt_degrees: float = 70.0
-@export var ledge_max_approach_angle_degrees: float = 65.0
-
-
-@export_category("Ledge Corner")
-@export var ledge_corner_turn_speed_degrees: float = 720.0
-
-
-@export_category("Mantle")
-@export var mantle_speed: float = 4.0
+@export_category("Settings")
+@export var locomotion_settings: PlayerLocomotionSettings = PlayerLocomotionSettings.new()
+@export var stance_settings: PlayerStanceSettings = PlayerStanceSettings.new()
+@export var traversal_settings: PlayerTraversalSettings = PlayerTraversalSettings.new()
 
 
 @export_category("Look")
@@ -76,7 +20,8 @@ var player_input: PlayerInput
 var player_look: PlayerLook
 var support: PlayerSupport
 var motor: PlayerMotor
-var movement: PlayerMovement
+var velocity_state: PlayerVelocityState
+var motion_solver: PlayerMotionSolver
 var step: PlayerStep
 var crouch: PlayerCrouch
 var ledge_detector: PlayerLedgeDetectorLazy
@@ -85,7 +30,7 @@ var ledge_hang: PlayerLedgeHang
 var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
-var air_mantle_intent_active: bool = false
+var locomotion_controller: PlayerLocomotionController
 
 
 func _ready() -> void:
@@ -94,24 +39,21 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	var jump_pressed: bool = player_input.is_jump_just_pressed()
-	var jump_held: bool = player_input.is_jump_pressed()
-	var crouch_pressed: bool = player_input.is_crouch_just_pressed()
+	var command: PlayerCommand = player_input.sample()
+	velocity_state.apply_to_body(self)
 
 	if ledge_controller.is_active():
 		step.cancel()
 		ledge_controller.update(
-			jump_pressed,
-			crouch_pressed,
+			command.jump_pressed,
+			command.crouch_pressed,
 			delta
 		)
+		velocity_state.capture_body_as_controlled(self)
 	else:
-		_update_normal_movement(
-			jump_pressed,
-			jump_held,
-			crouch_pressed,
-			delta
-		)
+		locomotion_controller.update(command, delta)
+		if ledge_controller.is_active():
+			velocity_state.capture_body_as_controlled(self)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -120,45 +62,47 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _create_components() -> void:
 	player_input = PlayerInput.new()
+	velocity_state = PlayerVelocityState.new()
 	player_look = PlayerLook.new(
 		self,
 		head,
 		mouse_sensitivity
 	)
 	support = PlayerSupport.new(
-		max_walkable_slope,
-		support_check_distance,
+		locomotion_settings.max_walkable_slope,
+		locomotion_settings.support_check_distance,
 		collision_shape
 	)
 
 	motor = PlayerMotor.new(
-		max_speed,
-		acceleration,
-		ground_deceleration,
-		gravity,
-		static_friction_coefficient,
-		kinetic_friction_coefficient,
-		air_max_speed,
-		air_acceleration,
-		air_deceleration
+		locomotion_settings.acceleration,
+		locomotion_settings.ground_deceleration,
+		locomotion_settings.gravity,
+		locomotion_settings.static_friction_coefficient,
+		locomotion_settings.kinetic_friction_coefficient,
+		locomotion_settings.air_max_speed,
+		locomotion_settings.air_acceleration,
+		locomotion_settings.air_deceleration
 	)
 
-	movement = PlayerMovement.new(max_collision_iterations)
+	motion_solver = PlayerMotionSolver.new(
+		locomotion_settings.max_collision_iterations
+	)
 
 	step = PlayerStep.new(
-		step_max_height,
-		step_up_acceleration,
-		step_up_max_speed,
+		locomotion_settings.step_max_height,
+		locomotion_settings.step_up_acceleration,
+		locomotion_settings.step_up_max_speed,
 		collision_shape
 	)
 
 	ledge_detector = PlayerLedgeDetectorLazy.new(
-		jump_height,
-		gravity,
+		locomotion_settings.jump_height,
+		locomotion_settings.gravity,
 		head.position.y,
-		ledge_max_wall_tilt_degrees,
-		ledge_max_line_tilt_degrees,
-		ledge_max_approach_angle_degrees,
+		traversal_settings.ledge_max_wall_tilt_degrees,
+		traversal_settings.ledge_max_line_tilt_degrees,
+		traversal_settings.ledge_max_approach_angle_degrees,
 		collision_shape
 	)
 
@@ -166,30 +110,30 @@ func _create_components() -> void:
 		collision_shape,
 		head,
 		player_mesh,
-		crouch_height,
+		stance_settings.crouch_height,
 		ledge_detector
 	)
 
 	ledge_catch = PlayerLedgeCatch.new(
-		jump_height,
-		gravity,
+		locomotion_settings.jump_height,
+		locomotion_settings.gravity,
 		ledge_detector,
 		collision_shape
 	)
 
 	ledge_hang = PlayerLedgeHang.new(
-		max_speed,
-		acceleration,
+		locomotion_settings.max_speed,
+		locomotion_settings.acceleration,
 		ledge_detector
 	)
 
 	ledge_corner = PlayerLedgeCorner.new(
-		ledge_corner_turn_speed_degrees,
+		traversal_settings.ledge_corner_turn_speed_degrees,
 		ledge_detector
 	)
 
 	ledge_mantle = PlayerMantle.new(
-		mantle_speed,
+		traversal_settings.mantle_speed,
 		ledge_detector,
 		crouch
 	)
@@ -200,241 +144,34 @@ func _create_components() -> void:
 		player_input,
 		support,
 		motor,
-		movement,
+		motion_solver,
 		ledge_detector,
 		ledge_catch,
 		ledge_hang,
 		ledge_corner,
 		ledge_mantle,
 		player_look,
-		jump_height,
-		max_speed,
-		ledge_jump_horizontal_speed,
-		ledge_sprint_jump_horizontal_speed,
-		ledge_max_approach_angle_degrees,
-		gravity
+		locomotion_settings.jump_height,
+		locomotion_settings.max_speed,
+		traversal_settings.ledge_jump_horizontal_speed,
+		traversal_settings.ledge_sprint_jump_horizontal_speed,
+		traversal_settings.ledge_max_approach_angle_degrees,
+		locomotion_settings.gravity
 	)
 
-
-func _update_normal_movement(
-	jump_pressed: bool,
-	jump_held: bool,
-	crouch_pressed: bool,
-	delta: float
-) -> void:
-	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
-
-	# Crouch changes the live capsule shape, but it does not cancel an active
-	# step. A blocked step route may therefore become valid naturally as the
-	# capsule shrinks, without a cancel/reacquire cycle.
-	if crouch_pressed:
-		crouch.toggle()
-	crouch.update(self)
-
-	# A jump press arms mantle intent for that airborne attempt. Keeping Space
-	# held preserves the intent until release or landing, but never owns or gates
-	# grounded step-up. This gives jump->hold->mantle buffering without making
-	# held Space a persistent grounded traversal command.
-	#
-	# Support reports floor-like contact separately from whether that contact is
-	# walkable, so steep slopes can use slope physics without becoming grounded.
-	support.update(self)
-	var grounded: bool = support.is_grounded()
-	if jump_pressed:
-		air_mantle_intent_active = true
-	if not jump_held or (grounded and not jump_pressed):
-		air_mantle_intent_active = false
-	var airborne_mantle_intent: bool = (
-		jump_held
-		and air_mantle_intent_active
-	)
-	var view_forward: Vector3 = -head.global_transform.basis.z
-
-	ledge_controller.update_transition_guards()
-
-	var ground_mantle_requested: bool = (
-		jump_pressed
-		and grounded
-		and not input_direction.is_zero_approx()
-	)
-	var jump_accepted_before_move: bool = (
-		jump_pressed
-		and grounded
-		and not ground_mantle_requested
-	)
-
-	# A fresh jump/mantle press supersedes step traversal. Held Space on later
-	# frames never cancels or gates step-up.
-	if jump_pressed:
-		step.cancel()
-
-	var ground_target_speed: float = crouch.get_movement_speed(
-		max_speed,
-		crouch_speed
-	)
-	if (
-		grounded
-		and crouch.is_fully_standing()
-		and not input_direction.is_zero_approx()
-		and player_input.is_sprint_pressed()
-	):
-		ground_target_speed = sprint_speed
-
-	# While a step is active, horizontal locomotion keeps ground-style response
-	# even if the kinematic lift temporarily moves the capsule outside the support
-	# probe range. Step Y is not ballistic state and never enters PlayerMotor.
-	if step.is_active():
-		motor.update_step_horizontal(
-			self,
-			support,
-			input_direction,
-			ground_target_speed,
-			delta
-		)
-	else:
-		var use_air_control: bool = not support.has_support
-		motor.update(
-			self,
-			support,
-			input_direction,
-			ground_target_speed,
-			use_air_control,
-			delta
-		)
-
-	if jump_accepted_before_move:
-		step.cancel()
-		support.release_walkable_support(self)
-		motor.apply_jump(self, jump_height)
-
-	var step_plan: PlayerStep.StepPlan = step.prepare_plan(
+	locomotion_controller = PlayerLocomotionController.new(
 		self,
-		input_direction,
-		delta
-	)
-
-	var step_traversal_active: bool = step_plan != null
-	var airborne_detection_allowed: bool = (
-		not grounded and not step_traversal_active
-	)
-	var ledge_detection_allowed: bool = (
-		airborne_detection_allowed
-		or ground_mantle_requested
-	)
-	# Discover once from the pre-move pose. Post-move collision handling reuses
-	# these candidates and only filters/expands them against the actual contacts,
-	# avoiding a second full wall/top discovery pass in the same physics frame.
-	ledge_detector.update(
-		self,
+		head,
 		support,
-		ledge_detection_allowed,
-		input_direction,
-		view_forward
+		motor,
+		velocity_state,
+		motion_solver,
+		step,
+		crouch,
+		ledge_detector,
+		ledge_controller,
+		locomotion_settings.max_speed,
+		locomotion_settings.sprint_speed,
+		stance_settings.crouch_speed,
+		locomotion_settings.jump_height
 	)
-	if airborne_detection_allowed and not airborne_mantle_intent:
-		if ledge_controller.try_enter_hang_from_normal(delta):
-			step.cancel()
-			return
-		if (
-			ledge_detector.expand_current_candidates()
-			and ledge_controller.try_enter_hang_from_normal(delta)
-		):
-			step.cancel()
-			return
-
-	var contact_intent_direction: Vector3 = input_direction
-	if contact_intent_direction.is_zero_approx():
-		var horizontal_velocity := Vector3(velocity.x, 0.0, velocity.z)
-		if horizontal_velocity.length_squared() > 0.000001:
-			contact_intent_direction = horizontal_velocity.normalized()
-
-	var collisions: Array[KinematicCollision3D] = movement.move(
-		self,
-		delta,
-		support,
-		step_plan
-	)
-
-	# PlayerMovement refreshes support when downward motion lands. Consume the
-	# airborne mantle intent immediately on landing so held Space cannot turn a
-	# grounded step contact into a mantle/hang request in the landing frame.
-	var grounded_after_move: bool = support.is_grounded()
-	if grounded_after_move and not ground_mantle_requested:
-		air_mantle_intent_active = false
-	var air_mantle_requested: bool = (
-		not grounded_after_move
-		and jump_held
-		and air_mantle_intent_active
-	)
-
-	if (
-		not collisions.is_empty()
-		and not grounded_after_move
-		and not step_traversal_active
-	):
-		if air_mantle_requested:
-			if ledge_controller.try_enter_mantle_from_contacts(
-				contact_intent_direction,
-				collisions,
-				false,
-				true
-			):
-				step.cancel()
-				return
-			if (
-				ledge_detector.expand_current_candidates()
-				and ledge_controller.try_enter_mantle_from_contacts(
-					contact_intent_direction,
-					collisions,
-					false,
-					true
-				)
-			):
-				step.cancel()
-				return
-
-		if ledge_controller.try_enter_hang_from_normal(delta):
-			step.cancel()
-			return
-		if (
-			ledge_detector.expand_current_candidates()
-			and ledge_controller.try_enter_hang_from_normal(delta)
-		):
-			step.cancel()
-			return
-
-	if ground_mantle_requested and not collisions.is_empty():
-		if ledge_controller.try_enter_mantle_from_contacts(
-			input_direction,
-			collisions,
-			true,
-			false
-		):
-			step.cancel()
-			return
-		if (
-			ledge_detector.expand_current_candidates()
-			and ledge_controller.try_enter_mantle_from_contacts(
-				input_direction,
-				collisions,
-				true,
-				false
-			)
-		):
-			step.cancel()
-			return
-
-	if ground_mantle_requested:
-		step.cancel()
-		support.release_walkable_support(self)
-		motor.apply_jump(self, jump_height)
-		movement.move_vertical_velocity(self, delta)
-
-	step.update_after_move(self)
-	if not step.is_active():
-		step.try_start_from_contacts(
-			self,
-			support,
-			input_direction,
-			collisions
-		)

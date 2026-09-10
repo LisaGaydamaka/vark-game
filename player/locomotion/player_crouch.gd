@@ -92,9 +92,8 @@ func get_height_for_stance(stance: int) -> float:
 	return standing_height
 
 
-func update(player: CharacterBody3D) -> bool:
+func update(player: CharacterBody3D, delta: float) -> bool:
 	var current_height: float = capsule_shape.height
-	var delta: float = 1.0 / float(Engine.physics_ticks_per_second)
 	var max_height_change: float = TRANSITION_SPEED * delta
 
 	if requested_stance == Stance.CROUCHED:
@@ -189,9 +188,7 @@ func _apply_height(next_height: float) -> bool:
 		capsule_mesh.height = next_height
 		visual_mesh.position.y = visual_bottom_offset + next_height * 0.5
 
-	# Ledge geometry caches capsule height/offsets and eye height. Refresh those
-	# values immediately so traversal always uses the body's actual stance.
-	ledge_detector.eye_height = head.position.y
-	ledge_detector._cache_static_values()
-	ledge_detector.clear_candidate()
+	# Ledge reach and hang geometry depend on the live capsule and eye height.
+	# The detector owns refreshing its derived values and invalidating candidates.
+	ledge_detector.refresh_body_geometry(head.position.y)
 	return true

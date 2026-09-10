@@ -162,6 +162,19 @@ func _cache_static_values() -> void:
 	minimum_shimmy_wall_alignment = cos(deg_to_rad(SHIMMY_MAX_WALL_TURN_DEGREES))
 
 
+## Refresh cached detector geometry after the player's runtime body shape changes.
+## Candidate state is invalidated because reach and hang geometry depend on the
+## live capsule dimensions and eye height.
+func refresh_body_geometry(p_eye_height: float) -> void:
+	assert(
+		p_eye_height >= 0.0,
+		"PlayerLedgeDetector requires eye height to be non-negative."
+	)
+	eye_height = p_eye_height
+	_cache_static_values()
+	clear_candidate()
+
+
 func update(
 	player: CharacterBody3D,
 	support: PlayerSupport,
