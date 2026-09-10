@@ -75,7 +75,6 @@ func _create_components() -> void:
 	)
 
 	motor = PlayerMotor.new(
-		locomotion_settings.max_speed,
 		locomotion_settings.acceleration,
 		locomotion_settings.ground_deceleration,
 		locomotion_settings.gravity,
