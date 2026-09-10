@@ -15,6 +15,28 @@ func apply_to_body(body: CharacterBody3D) -> void:
 	body.velocity = get_velocity()
 
 
+func apply_controlled_to_body(body: CharacterBody3D) -> void:
+	body.velocity = controlled_velocity
+
+
+func capture_controlled_from_body(body: CharacterBody3D) -> void:
+	controlled_velocity = body.velocity
+
+
+func capture_controlled_from_composed_body(body: CharacterBody3D) -> void:
+	controlled_velocity = (
+		body.velocity
+		- support_velocity
+		- external_velocity
+	)
+
+
+func capture_body_as_controlled(body: CharacterBody3D) -> void:
+	controlled_velocity = body.velocity
+	support_velocity = Vector3.ZERO
+	external_velocity = Vector3.ZERO
+
+
 func set_controlled_velocity(value: Vector3) -> void:
 	controlled_velocity = value
 
