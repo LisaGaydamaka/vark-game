@@ -229,7 +229,7 @@ func _update_normal_movement(
 	# capsule shrinks, without a cancel/reacquire cycle.
 	if crouch_pressed:
 		crouch.toggle()
-	crouch.update(self)
+	crouch.update(self, delta)
 
 	# A jump press arms mantle intent for that airborne attempt. Keeping Space
 	# held preserves the intent until release or landing, but never owns or gates
