@@ -37,7 +37,7 @@ extends CharacterBody3D
 @export var max_walkable_slope: float = 45.0
 @export var support_check_distance: float = 0.05
 @export var static_friction_coefficient: float = 1.0
-@export var kinetic_friction_coefficient: float = 0.4
+@export var kinetic_friction_coefficient: float = 0.1
 
 
 @export_category("Gravity")
