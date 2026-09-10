@@ -21,7 +21,7 @@ var head: Node3D
 var player_input: PlayerInput
 var support: PlayerSupport
 var motor: PlayerMotor
-var movement: PlayerMovement
+var motion_solver: PlayerMotionSolver
 var ledge_detector: PlayerLedgeDetector
 var ledge_catch: PlayerLedgeCatch
 var ledge_hang: PlayerLedgeHang
@@ -53,7 +53,7 @@ func _init(
 	input_source: PlayerInput,
 	player_support: PlayerSupport,
 	player_motor: PlayerMotor,
-	player_movement: PlayerMovement,
+	player_motion_solver: PlayerMotionSolver,
 	detector: PlayerLedgeDetector,
 	catch_action: PlayerLedgeCatch,
 	hang_action: PlayerLedgeHang,
@@ -72,7 +72,7 @@ func _init(
 	player_input = input_source
 	support = player_support
 	motor = player_motor
-	movement = player_movement
+	motion_solver = player_motion_solver
 	ledge_detector = detector
 	ledge_catch = catch_action
 	ledge_hang = hang_action
@@ -512,7 +512,7 @@ func _finish_release_to_air(delta: float, apply_fall_velocity: bool) -> void:
 	_exit_traversal_state()
 	if apply_fall_velocity:
 		body.velocity = Vector3.DOWN * gravity * delta
-	movement.move(body, delta)
+	motion_solver.move(body, delta)
 	support.update(body)
 
 
