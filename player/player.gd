@@ -231,7 +231,6 @@ func _update_normal_movement(
 	delta: float
 ) -> void:
 	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
-	var jump_held: bool = player_input.is_jump_pressed()
 
 	# Step-up owns persistent Y while active. Clear that temporary vertical state
 	# before cancelling so another action hands control back to normal movement
@@ -241,13 +240,10 @@ func _update_normal_movement(
 		step.cancel()
 		crouch.toggle()
 	crouch.update(self)
-	if jump_held:
-		if step.is_active():
-			_step_jump_debug_event(
-				"STEP_CANCELLED_BY_HELD_JUMP",
-				""
-			)
-		step.cancel()
+
+	# Jump/mantle is edge-triggered. Holding Space after a press is not a
+	# persistent traversal command and therefore has no authority over stepping.
+	# This keeps input event semantics separate from traversal state ownership.
 
 	# Support reports floor-like contact separately from whether that contact is
 	# walkable, so steep slopes can use slope physics without becoming grounded.
@@ -307,13 +303,11 @@ func _update_normal_movement(
 		motor.apply_jump(self, jump_height)
 		_step_jump_debug_event("NORMAL_JUMP_APPLIED", "")
 
-	var step_assist_velocity: Vector3 = Vector3.ZERO
-	if not jump_held:
-		step_assist_velocity = step.update_before_move(
-			self,
-			input_direction,
-			delta
-		)
+	var step_assist_velocity: Vector3 = step.update_before_move(
+		self,
+		input_direction,
+		delta
+	)
 
 	var airborne_detection_allowed: bool = not grounded
 	var ledge_detection_allowed: bool = (
@@ -330,7 +324,7 @@ func _update_normal_movement(
 		input_direction,
 		view_forward
 	)
-	if airborne_detection_allowed and not jump_held:
+	if airborne_detection_allowed and not jump_pressed:
 		if ledge_controller.try_enter_hang_from_normal(delta):
 			step.cancel()
 			return
@@ -356,7 +350,7 @@ func _update_normal_movement(
 	_step_jump_debug_collisions(collisions)
 
 	if not collisions.is_empty() and not grounded:
-		if jump_held:
+		if jump_pressed:
 			if ledge_controller.try_enter_mantle_from_contacts(
 				contact_intent_direction,
 				collisions,
@@ -364,7 +358,7 @@ func _update_normal_movement(
 				true
 			):
 				_step_jump_debug_event(
-					"AIR_MANTLE_STARTED_WHILE_HELD",
+					"AIR_MANTLE_STARTED_ON_PRESS",
 					"expanded=false"
 				)
 				step.cancel()
@@ -379,7 +373,7 @@ func _update_normal_movement(
 				)
 			):
 				_step_jump_debug_event(
-					"AIR_MANTLE_STARTED_WHILE_HELD",
+					"AIR_MANTLE_STARTED_ON_PRESS",
 					"expanded=true"
 				)
 				step.cancel()
@@ -434,10 +428,7 @@ func _update_normal_movement(
 		)
 
 	step.update_after_move(self)
-	if (
-		not step.is_active()
-		and not jump_held
-	):
+	if not step.is_active():
 		if step.try_start_from_contacts(
 			self,
 			support,
