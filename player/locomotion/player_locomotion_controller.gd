@@ -13,7 +13,6 @@ var step: PlayerStep
 var crouch: PlayerCrouch
 var ledge_detector: PlayerLedgeDetectorLazy
 var ledge_controller: PlayerLedgeController
-var anomaly_sensor: PlayerLocomotionAnomalySensor = PlayerLocomotionAnomalySensor.new()
 
 var max_speed: float
 var sprint_speed: float
@@ -200,9 +199,6 @@ func update(
 		if horizontal_velocity.length_squared() > 0.000001:
 			contact_intent_direction = horizontal_velocity.normalized()
 
-	var movement_sample_start: Vector3 = body.global_position
-	var movement_requested_velocity: Vector3 = body.velocity
-	var movement_grounded_before_move: bool = support.is_grounded()
 	var collisions: Array[KinematicCollision3D] = []
 	if step_traversal_active or not support.has_support:
 		# Step transactions keep their explicit route semantics, and truly
@@ -219,18 +215,6 @@ func update(
 		collisions = contact_motion_solver.move(body, delta, support)
 	velocity_state.capture_controlled_from_composed_body(body)
 	velocity_state.apply_to_body(body)
-	anomaly_sensor.observe(
-		body,
-		support,
-		velocity_state,
-		input_direction,
-		movement_sample_start,
-		movement_requested_velocity,
-		delta,
-		collisions,
-		movement_grounded_before_move,
-		step_traversal_active
-	)
 
 	# The motion solver refreshes support when downward motion lands. Consume the
 	# airborne mantle intent immediately on landing so held Space cannot turn a
