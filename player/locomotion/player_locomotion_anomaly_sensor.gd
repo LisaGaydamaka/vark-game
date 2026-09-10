@@ -10,14 +10,13 @@ const JITTER_MIN_REALIZED_DISTANCE: float = 0.001
 const STABLE_REQUEST_DIRECTION_DOT: float = 0.8
 const JITTER_REALIZED_DIRECTION_DOT: float = -0.25
 const JITTER_SCORE_TO_REPORT: int = 2
-const REPORT_INTERVAL_FRAMES: int = 15
+const REPORT_INTERVAL_SECONDS: float = 0.5
 const SAME_NORMAL_DOT: float = 0.995
 
 
 var stuck_frames: int = 0
 var jitter_score: int = 0
-var anomaly_active: bool = false
-var last_report_frame: int = -REPORT_INTERVAL_FRAMES
+var report_elapsed_seconds: float = 0.0
 var previous_requested_horizontal: Vector3 = Vector3.ZERO
 var previous_realized_horizontal: Vector3 = Vector3.ZERO
 
@@ -113,34 +112,29 @@ func observe(
 
 	var stuck_detected: bool = stuck_frames >= STUCK_FRAMES_TO_REPORT
 	var jitter_detected: bool = jitter_score >= JITTER_SCORE_TO_REPORT
-	var anomaly_detected: bool = stuck_detected or jitter_detected
 	var physics_frame: int = Engine.get_physics_frames()
 
-	if anomaly_detected:
-		if (
-			not anomaly_active
-			or physics_frame - last_report_frame >= REPORT_INTERVAL_FRAMES
-		):
-			_print_report(
-				physics_frame,
-				stuck_detected,
-				jitter_detected,
-				body,
-				support,
-				velocity_state,
-				input_direction,
-				start_position,
-				requested_velocity,
-				requested_motion,
-				realized_motion,
-				progress_ratio,
-				collisions,
-				collision_normals,
-				walkable_normals
-			)
-			last_report_frame = physics_frame
+	report_elapsed_seconds += delta
+	if report_elapsed_seconds >= REPORT_INTERVAL_SECONDS:
+		_print_report(
+			physics_frame,
+			stuck_detected,
+			jitter_detected,
+			body,
+			support,
+			velocity_state,
+			input_direction,
+			start_position,
+			requested_velocity,
+			requested_motion,
+			realized_motion,
+			progress_ratio,
+			collisions,
+			collision_normals,
+			walkable_normals
+		)
+		report_elapsed_seconds = 0.0
 
-	anomaly_active = anomaly_detected
 	previous_requested_horizontal = requested_horizontal
 	previous_realized_horizontal = realized_horizontal
 
@@ -167,6 +161,8 @@ func _print_report(
 		reasons.append("STUCK")
 	if jitter_detected:
 		reasons.append("JITTER")
+	if reasons.is_empty():
+		reasons.append("NORMAL")
 
 	var contact: PlayerSupportContact = support.get_contact() if support != null else null
 	var support_description: String = "none"
