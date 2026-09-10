@@ -94,24 +94,17 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	var jump_pressed: bool = player_input.is_jump_just_pressed()
-	var jump_held: bool = player_input.is_jump_pressed()
-	var crouch_pressed: bool = player_input.is_crouch_just_pressed()
+	var command: PlayerCommand = player_input.sample()
 
 	if ledge_controller.is_active():
 		step.cancel()
 		ledge_controller.update(
-			jump_pressed,
-			crouch_pressed,
+			command.jump_pressed,
+			command.crouch_pressed,
 			delta
 		)
 	else:
-		_update_normal_movement(
-			jump_pressed,
-			jump_held,
-			crouch_pressed,
-			delta
-		)
+		_update_normal_movement(command, delta)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -217,12 +210,13 @@ func _create_components() -> void:
 
 
 func _update_normal_movement(
-	jump_pressed: bool,
-	jump_held: bool,
-	crouch_pressed: bool,
+	command: PlayerCommand,
 	delta: float
 ) -> void:
-	var input_direction: Vector3 = player_input.get_movement_direction(global_transform)
+	var jump_pressed: bool = command.jump_pressed
+	var jump_held: bool = command.jump_held
+	var crouch_pressed: bool = command.crouch_pressed
+	var input_direction: Vector3 = command.get_movement_direction(global_transform)
 
 	# Crouch changes the live capsule shape, but it does not cancel an active
 	# step. A blocked step route may therefore become valid naturally as the
@@ -276,7 +270,7 @@ func _update_normal_movement(
 		grounded
 		and crouch.is_fully_standing()
 		and not input_direction.is_zero_approx()
-		and player_input.is_sprint_pressed()
+		and command.sprint_held
 	):
 		ground_target_speed = sprint_speed
 
