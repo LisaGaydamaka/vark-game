@@ -8,8 +8,6 @@ const MOTION_EPSILON_SQUARED: float = 0.000001
 const VERTICAL_NORMAL_EPSILON: float = 0.0001
 const MIN_RISER_HORIZONTAL_COMPONENT: float = 0.05
 const MIN_INWARD_ALIGNMENT: float = 0.02
-const RISER_PROBE_HEIGHT_MARGIN_MULTIPLIER: float = 4.0
-const RISER_PROBE_FORWARD_MARGIN_MULTIPLIER: float = 4.0
 const TOP_PROBE_INSET_RADIUS_RATIO: float = 0.05
 const TOP_PROBE_VERTICAL_MARGIN_RADIUS_RATIO: float = 0.1
 const CROSSING_CLEARANCE_MARGIN_MULTIPLIER: float = 4.0
@@ -40,9 +38,6 @@ var max_step_speed: float
 
 var capsule_bottom_offset: float
 var capsule_radius: float
-var riser_probe_height: float
-var riser_probe_distance: float
-var riser_probe_forward_margin: float
 var top_probe_inset: float
 var top_probe_vertical_margin: float
 var crossing_clearance_margin: float
@@ -90,16 +85,6 @@ func _init(
 	capsule_radius = capsule_shape.radius
 	var capsule_height: float = capsule_shape.height
 	capsule_bottom_offset = collision_shape.position.y - capsule_height * 0.5
-	riser_probe_height = (
-		PROBE_SAFE_MARGIN * RISER_PROBE_HEIGHT_MARGIN_MULTIPLIER
-	)
-	riser_probe_distance = (
-		capsule_radius
-		+ PROBE_SAFE_MARGIN * RISER_PROBE_FORWARD_MARGIN_MULTIPLIER
-	)
-	riser_probe_forward_margin = (
-		PROBE_SAFE_MARGIN * RISER_PROBE_FORWARD_MARGIN_MULTIPLIER
-	)
 	top_probe_inset = maxf(
 		PROBE_SAFE_MARGIN * 4.0,
 		capsule_radius * TOP_PROBE_INSET_RADIUS_RATIO
@@ -202,8 +187,8 @@ func update_after_move(player: CharacterBody3D) -> void:
 		return
 
 	# Height completion alone does not finish a step. Keep ownership until the
-	# body actually crosses the classified riser plane so PlayerMotionSolver can keep
-	# validating the local crossing envelope every frame.
+	# body actually crosses the classified blocker plane so PlayerMotionSolver can
+	# keep validating the local crossing envelope every frame.
 	if has_crossed_edge(player.global_position):
 		cancel()
 		return
@@ -225,10 +210,10 @@ func try_start_from_contacts(
 	if support == null:
 		return false
 
-	# Step acquisition belongs exclusively to supported locomotion. Refresh at
-	# the contact pose so stale pre-move support cannot promote an airborne wall
-	# seam into a stair. Once a legitimate step is active, temporary support loss
-	# during its kinematic lift is expected and does not cancel the step.
+	# A step is a transition from a real walkable source support. Refresh at the
+	# contact pose so an airborne wall seam can never enter the step system.
+	# Once a legitimate step owns traversal, temporary support loss during its
+	# kinematic lift is expected and does not cancel it.
 	support.update(player)
 	if not support.is_grounded():
 		return false
@@ -237,11 +222,6 @@ func try_start_from_contacts(
 	if source_support_normal.y <= VERTICAL_NORMAL_EPSILON:
 		return false
 	var source_support_point: Vector3 = support.support_point
-	var source_support_height: float = _get_support_height_at_position(
-		source_support_point,
-		source_support_normal,
-		player.global_position
-	)
 
 	var horizontal_input := Vector3(
 		input_direction.x,
@@ -264,8 +244,7 @@ func try_start_from_contacts(
 				collision,
 				collision_index,
 				source_support_point,
-				source_support_normal,
-				source_support_height
+				source_support_normal
 			)
 			if candidate == null:
 				continue
@@ -290,43 +269,47 @@ func build_candidate_from_contact(
 	collision: KinematicCollision3D,
 	collision_index: int,
 	source_support_point: Vector3,
-	source_support_normal: Vector3,
-	source_support_height: float
+	source_support_normal: Vector3
 ) -> StepCandidate:
-	# The contact point tells us where locomotion was physically blocked. Probe
-	# the low geometry locally around that point instead of casting from the
-	# capsule center, which can miss a riser that touches the capsule off-center
-	# during a diagonal or sideways approach.
+	# The movement collision is the authoritative proof that locomotion was
+	# blocked. Do not demand a second hit near the source floor: doing so wrongly
+	# defines a step as a solid riser that reaches the ground and rejects valid
+	# undercut/floating obstacles. The contact supplies the blocker plane; the
+	# top probe independently proves a reachable walkable destination surface.
 	var contact_point: Vector3 = collision.get_position(collision_index)
 	var contact_normal: Vector3 = collision.get_normal(collision_index)
-	var riser_hit: Dictionary = find_riser(
-		player,
-		support,
+	var blocker: Dictionary = _classify_blocking_contact(
 		approach_direction,
 		contact_point,
-		contact_normal,
-		source_support_height
+		contact_normal
 	)
-	if riser_hit.is_empty():
+	if blocker.is_empty():
 		return null
 
-	var riser_point_value: Variant = riser_hit.get("point")
-	var wall_normal_value: Variant = riser_hit.get("wall_normal")
-	if not (riser_point_value is Vector3) or not (wall_normal_value is Vector3):
+	var blocker_point_value: Variant = blocker.get("point")
+	var wall_normal_value: Variant = blocker.get("wall_normal")
+	if not (blocker_point_value is Vector3) or not (wall_normal_value is Vector3):
 		return null
 
-	var riser_point: Vector3 = riser_point_value
+	var blocker_point: Vector3 = blocker_point_value
 	var wall_normal: Vector3 = wall_normal_value
 	var approach_alignment: float = approach_direction.dot(-wall_normal)
 	if approach_alignment <= MIN_INWARD_ALIGNMENT:
 		return null
 
+	# Evaluate the source support plane at the blocker, not at the player's
+	# center. This keeps the maximum step band geometrically correct on slopes.
+	var source_height_at_blocker: float = _get_support_height_at_position(
+		source_support_point,
+		source_support_normal,
+		blocker_point
+	)
 	var top_hit: Dictionary = find_top(
 		player,
 		support,
-		riser_point,
+		blocker_point,
 		wall_normal,
-		source_support_height
+		source_height_at_blocker
 	)
 	if top_hit.is_empty():
 		return null
@@ -343,19 +326,26 @@ func build_candidate_from_contact(
 	if intersection_sine_squared <= PLANE_INTERSECTION_MIN_SINE_SQUARED:
 		return null
 
-	# Reconstruct the actual riser/tread edge from their two planes.
+	# Reconstruct the physical blocker/top edge from their two planes. The
+	# blocker may be undercut or floating; only its actual blocking plane and the
+	# destination top matter for step geometry.
 	var wall_plane_distance: float = (
-		(top_point - riser_point).dot(wall_normal)
+		(top_point - blocker_point).dot(wall_normal)
 	)
 	var edge_point: Vector3 = (
 		top_point
 		- (wall_plane_distance / intersection_sine_squared)
 		* (wall_normal - top_normal * normal_dot)
 	)
-	# Step height is measured from the independently validated source support,
-	# never from an arbitrary body pose. This makes the geometry a real
-	# support-to-support transition rather than "wall seam near my feet".
-	var step_height: float = edge_point.y - source_support_height
+
+	# Measure the rise between support planes at the actual edge X/Z. This avoids
+	# both airborne seam false positives and slope-dependent height errors.
+	var source_height_at_edge: float = _get_support_height_at_position(
+		source_support_point,
+		source_support_normal,
+		edge_point
+	)
+	var step_height: float = edge_point.y - source_height_at_edge
 	if step_height <= PROBE_SAFE_MARGIN:
 		return null
 	if step_height > max_step_height + PROBE_SAFE_MARGIN:
@@ -374,122 +364,39 @@ func build_candidate_from_contact(
 	candidate.approach_alignment = approach_alignment
 	candidate.source_support_point = source_support_point
 	candidate.source_support_normal = source_support_normal
-	candidate.source_support_height = source_support_height
+	candidate.source_support_height = source_height_at_edge
 	return candidate
 
 
-func find_riser(
-	player: CharacterBody3D,
-	support: PlayerSupport,
+func _classify_blocking_contact(
 	approach_direction: Vector3,
 	contact_point: Vector3,
-	contact_normal: Vector3,
-	source_support_height: float
+	contact_normal: Vector3
 ) -> Dictionary:
-	var hit: Dictionary = _probe_riser_from_contact(
-		player,
-		support,
-		approach_direction,
-		contact_point,
-		approach_direction,
-		source_support_height
-	)
-	if not hit.is_empty():
-		return hit
-
-	# Rounded capsule contacts can give a diagonal normal. It is still useful as
-	# a fallback probe axis, but the raycast hit itself supplies the riser normal
-	# used for classification.
-	var horizontal_contact_normal := Vector3(
-		contact_normal.x,
-		0.0,
-		contact_normal.z
-	)
-	if horizontal_contact_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+	if contact_normal.length_squared() <= MOTION_EPSILON_SQUARED:
 		return {}
 
-	var inward_probe_direction: Vector3 = -horizontal_contact_normal.normalized()
-	if inward_probe_direction.dot(approach_direction) < 0.0:
-		inward_probe_direction = -inward_probe_direction
-
-	return _probe_riser_from_contact(
-		player,
-		support,
-		approach_direction,
-		contact_point,
-		inward_probe_direction,
-		source_support_height
-	)
-
-
-func _probe_riser_from_contact(
-	player: CharacterBody3D,
-	support: PlayerSupport,
-	approach_direction: Vector3,
-	contact_point: Vector3,
-	probe_direction: Vector3,
-	source_support_height: float
-) -> Dictionary:
-	var horizontal_probe := Vector3(
-		probe_direction.x,
-		0.0,
-		probe_direction.z
-	)
-	if horizontal_probe.length_squared() <= MOTION_EPSILON_SQUARED:
-		return {}
-	horizontal_probe = horizontal_probe.normalized()
-
-	var probe_anchor: Vector3 = contact_point
-	probe_anchor.y = source_support_height + riser_probe_height
-
-	var ray_from: Vector3 = (
-		probe_anchor - horizontal_probe * riser_probe_distance
-	)
-	var ray_to: Vector3 = (
-		probe_anchor + horizontal_probe * riser_probe_forward_margin
-	)
-
-	var query: PhysicsRayQueryParameters3D = prepare_ray_query(
-		player,
-		ray_from,
-		ray_to
-	)
-	var hit: Dictionary = (
-		player.get_world_3d().direct_space_state.intersect_ray(query)
-	)
-	if hit.is_empty():
-		return {}
-
-	var position_value: Variant = hit.get("position")
-	var normal_value: Variant = hit.get("normal")
-	if not (position_value is Vector3) or not (normal_value is Vector3):
-		return {}
-
-	var riser_normal: Vector3 = normal_value
-	if riser_normal.length_squared() <= MOTION_EPSILON_SQUARED:
-		return {}
-	riser_normal = riser_normal.normalized()
-
-	# A walkable face is a ramp/floor, not a stair riser.
-	if support.is_walkable_surface(riser_normal):
-		return {}
-
+	var normalized_contact: Vector3 = contact_normal.normalized()
 	var horizontal_normal := Vector3(
-		riser_normal.x,
+		normalized_contact.x,
 		0.0,
-		riser_normal.z
+		normalized_contact.z
 	)
-	if horizontal_normal.length() < MIN_RISER_HORIZONTAL_COMPONENT:
+	var horizontal_length: float = horizontal_normal.length()
+	if horizontal_length < MIN_RISER_HORIZONTAL_COMPONENT:
 		return {}
 
-	var wall_normal: Vector3 = horizontal_normal.normalized()
+	# Capsule contacts near an edge can have a Y component even when the
+	# macroscopic blocker is a vertical face. Step crossing is defined in X/Z,
+	# so canonicalize the actual blocking contact to its horizontal wall plane.
+	var wall_normal: Vector3 = horizontal_normal / horizontal_length
 	var alignment: float = approach_direction.dot(-wall_normal)
 	if alignment <= MIN_INWARD_ALIGNMENT:
 		return {}
 
 	return {
-		"point": position_value,
-		"normal": riser_normal,
+		"point": contact_point,
+		"normal": normalized_contact,
 		"wall_normal": wall_normal,
 	}
 
@@ -497,19 +404,22 @@ func _probe_riser_from_contact(
 func find_top(
 	player: CharacterBody3D,
 	support: PlayerSupport,
-	riser_point: Vector3,
+	blocker_point: Vector3,
 	wall_normal: Vector3,
-	source_support_height: float
+	source_support_height_at_blocker: float
 ) -> Dictionary:
-	# Probe just behind the proven low blocker. This proves that the obstacle is
-	# a step with walkable tread rather than an ordinary wall or continuous ramp.
-	var probe_center: Vector3 = riser_point - wall_normal * top_probe_inset
+	# Probe just inward from the actual blocking plane. The vertical search band
+	# is defined from the validated source support to max_step_height; it makes no
+	# assumption about whether solid geometry exists beneath the destination top.
+	var probe_center: Vector3 = blocker_point - wall_normal * top_probe_inset
 	var ray_from: Vector3 = probe_center
 	ray_from.y = (
-		source_support_height + max_step_height + top_probe_vertical_margin
+		source_support_height_at_blocker
+		+ max_step_height
+		+ top_probe_vertical_margin
 	)
 	var ray_to: Vector3 = probe_center
-	ray_to.y = source_support_height - top_probe_vertical_margin
+	ray_to.y = source_support_height_at_blocker - top_probe_vertical_margin
 
 	var query: PhysicsRayQueryParameters3D = prepare_ray_query(
 		player,
@@ -571,9 +481,9 @@ func _get_support_height_at_position(
 	support_normal: Vector3,
 	position: Vector3
 ) -> float:
-	# Evaluate the validated support plane directly below the player's X/Z.
-	# Step geometry is therefore anchored to the source surface itself rather
-	# than to capsule separation/safe-margin artifacts.
+	# Evaluate the validated support plane at arbitrary X/Z. Step geometry is
+	# therefore anchored to the source surface itself rather than body pose or
+	# capsule separation/safe-margin artifacts.
 	return support_point.y - (
 		support_normal.x * (position.x - support_point.x)
 		+ support_normal.z * (position.z - support_point.z)
