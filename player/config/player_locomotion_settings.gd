@@ -3,8 +3,8 @@ extends Resource
 
 
 @export_category("Movement")
-@export var max_speed: float = 4.0
-@export var sprint_speed: float = 6.0
+@export var max_speed: float = 3.0
+@export var sprint_speed: float = 4.5
 @export var acceleration: float = 28.0
 @export var ground_deceleration: float = 15.0
 
