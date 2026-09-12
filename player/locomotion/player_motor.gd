@@ -48,7 +48,6 @@ func update(
 	if use_air_control:
 		player.velocity.y -= gravity * delta
 		apply_air_horizontal_velocity(player, input_direction, delta)
-		constrain_horizontal_speed(player, ground_target_speed)
 		return
 
 	if support.walkable:
