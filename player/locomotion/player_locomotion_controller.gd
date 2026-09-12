@@ -213,12 +213,16 @@ func update(
 		# Any validated support enters one contact model. Primary support controls
 		# support policy only; every collision remains part of physical resolution.
 		collisions = contact_motion_solver.move(body, delta, support)
+
+	# Any completed movement transaction invalidates the pre-move support
+	# snapshot. Refresh unconditionally at the final pose so collision-free
+	# walk-off cannot leave grounded/support state stale for the rest of the frame.
+	support.update(body)
 	velocity_state.capture_controlled_from_composed_body(body)
 	velocity_state.apply_to_body(body)
 
-	# The motion solver refreshes support when downward motion lands. Consume the
-	# airborne mantle intent immediately on landing so held Space cannot turn a
-	# grounded step contact into a mantle/hang request in the landing frame.
+	# Consume airborne mantle intent immediately on landing so held Space cannot
+	# turn a grounded step contact into a mantle/hang request in the landing frame.
 	var grounded_after_move: bool = support.is_grounded()
 	if grounded_after_move and not ground_mantle_requested:
 		air_mantle_intent_active = false
@@ -290,6 +294,7 @@ func update(
 		support.release_walkable_support(body)
 		_apply_controlled_jump()
 		motion_solver.move_vertical_velocity(body, delta)
+		support.update(body)
 		velocity_state.capture_controlled_from_composed_body(body)
 		velocity_state.apply_to_body(body)
 
