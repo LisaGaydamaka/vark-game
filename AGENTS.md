@@ -1,67 +1,75 @@
 # Vark repository workflow
 
-This file is the process contract for AI-assisted work in this repository.
+This file is the operating contract for AI-assisted work in this repository. The user should be able to manage development through chat without manually maintaining repository documentation.
 
 ## Sources of truth
 
-- `docs/GAME_VISION.md`: product/design direction.
-- `docs/DEVELOPMENT_PLAN.md`: ordered roadmap, dependencies, acceptance criteria, and status.
-- `docs/REGRESSION_TEST_PLAN.md`: automated-test policy and protected invariants.
-- `docs/player_movement_regression_checklist.md`: broad manual movement/traversal checks.
+- `docs/GAME_VISION.md` — what Vark is: product, gameplay, presentation, and confirmed scope decisions.
+- `docs/DEVELOPMENT_PLAN.md` — what to build next: ordered roadmap, dependencies, item-specific acceptance criteria, and status.
+- `docs/TESTING.md` — how correctness is verified: test rules, commands, current automated coverage, manual regression checks, and CI policy.
+- Current code/tests — implementation truth.
 
-Current repository files take precedence over stale chat context. The user's latest explicit design instruction takes precedence over older documentation.
+The user's latest explicit instruction overrides stale repository documentation. When that happens, synchronize the affected document during the next authorized repository patch.
 
-## Roadmap work
+## Working on a roadmap item
 
-For a request such as `implement 2.3`, first read the matching roadmap item and the relevant vision/test sections, then inspect the current code and tests. Implement only that bounded item plus the minimum supporting architecture it genuinely requires. Do not silently bundle adjacent roadmap items or speculative future systems.
+For a request such as `implement 2.3`, read this file, the matching roadmap item, relevant vision/testing sections, and the current implementation before editing.
 
-Prefer root-cause fixes, clear ownership, and semantic APIs over duplicated logic, arbitrary thresholds, or workarounds. Do not change intended gameplay merely to make a test pass; fix an incorrect test invariant instead.
+Implement only the requested bounded item plus the minimum supporting architecture it genuinely requires. Do not silently bundle adjacent roadmap items or build speculative systems for distant features.
 
-## Tests
+Prefer root-cause fixes, clear ownership, semantic APIs, and reusable foundations where a real current need exists. Avoid duplicated logic, arbitrary thresholds, and workarounds that hide the actual problem.
 
-Automate objective, deterministic behavior that is expensive to rediscover manually. In particular, add or update regression coverage when fixing a reproducible gameplay bug, changing movement/collision/traversal, adding important state transitions, adding AI perception rules, or adding deterministic interaction, mission, persistence, inventory, or save/load logic.
+Do not change intended gameplay merely to make a test pass. If a test encodes the wrong invariant, correct the test.
 
-Subjective feel, pacing, readability, atmosphere, animation quality, and whether a mechanic feels like Vark are decided by the user's playtest feedback, not by automated assertions.
+## Testing and validation
 
-Tests should use real gameplay objects/physics where practical, minimal deterministic fixtures, semantic assertions, fixed inputs/transforms, physics-frame progression, and complete cleanup between cases. Existing relevant suites must continue passing.
+Use `docs/TESTING.md` for detailed testing rules.
 
-## Documentation
+As part of implementation, decide automatically whether objective automated coverage is warranted. Reproducible gameplay bugs should receive a regression test when they can reasonably be recreated deterministically. Subjective feel, pacing, readability, atmosphere, and artistic quality are accepted through the user's playtesting, not automated assertions.
 
-Update `GAME_VISION.md` only for confirmed design-direction changes. Update `DEVELOPMENT_PLAN.md` when roadmap scope, dependencies, acceptance criteria, or truthful implementation status changes. Update `REGRESSION_TEST_PLAN.md` when meaningful automated coverage or its protected invariant changes.
+Never claim Godot/runtime tests were run unless they actually were. If runtime execution is unavailable, provide the exact local command and manual scenario the user should run.
 
 Roadmap status meanings:
 
-- `[ ]`: not implemented.
-- `[~]`: implemented or substantially implemented but still awaiting planned validation/follow-up.
-- `[x]`: implementation has passed the required local automated checks and the user's manual/playtest acceptance criteria.
+- `[ ]` — not implemented.
+- `[~]` — implemented or substantially implemented but still awaiting required validation/follow-up.
+- `[x]` — required automated checks passed and the user accepted the relevant manual/playtest behavior.
 
 Do not mark newly uploaded gameplay code `[x]` before the user validates it.
 
-Do not create or maintain `PLAYTEST_NOTES.md`; subjective feedback stays in chat unless the user explicitly requests a document later.
+## Documentation maintenance
+
+Documentation maintenance is the agent's responsibility. Do not ask the user to edit documentation after implementation or testing.
+
+During each authorized development patch, update every affected living document automatically:
+
+- update `GAME_VISION.md` only when a confirmed product/design/scope decision changes;
+- update `DEVELOPMENT_PLAN.md` when roadmap scope, dependencies, acceptance criteria, ordering, or truthful status changes;
+- update `TESTING.md` when test commands, current automated coverage, manual regression coverage, or testing strategy changes.
+
+If the user reports validation or a design change without authorizing a repository write, remember the pending documentation change in the conversation and apply it with the next authorized coherent patch.
+
+Do not create `PLAYTEST_NOTES.md`. Subjective feedback remains in chat unless the user explicitly requests a document later.
+
+Avoid duplicate sources of truth. Do not create new persistent documentation when the information fits cleanly in an existing living document. Add specialized documents later only when a real production need cannot be represented clearly by the core set (for example, individual production mission documents).
 
 ## GitHub policy
 
-Repository writes require the user's explicit phrase `upload to gh` in the current request. Without it, GitHub work is read-only.
+Repository writes require the exact phrase `upload to gh` in the user's current request. Without it, GitHub work is read-only.
 
-Authorized writes go only to the existing `test` branch. Never write to `main` or another branch, and do not create helper branches. One authorization covers one coherent requested patch; after that patch is uploaded and verified, later writes require a new authorization.
+Authorized writes go only to the existing `test` branch. Never write to `main` or another branch and never create helper branches.
 
-Before a write, re-read the current `test` head and the current versions of files being modified. After a write, verify the final `test` head and compare it with the pre-write head to confirm the exact changed-file set.
+One `upload to gh` authorization covers one coherent requested patch. After that patch is uploaded and verified, further repository writes require a new authorization.
 
-Do not claim Godot/runtime tests were run unless they actually were. When runtime execution is unavailable, give the user the exact local automated command and manual playtest scenario required for acceptance.
+Before writing, re-read the current `test` head and current versions of files being changed. After writing, verify the final `test` head and compare it with the pre-write head to confirm the exact changed-file set.
 
-## Development loop
+## Normal development cycle
 
-1. User selects one roadmap item.
-2. Implement the bounded item.
-3. Add/update objective tests and relevant docs.
-4. Upload only when explicitly authorized.
-5. User runs automated tests locally.
-6. User playtests in Godot.
-7. User reports bugs or feel differences in chat.
-8. Fix/tune the requested issue.
-9. Mark the roadmap item complete only after required validation is accepted.
-10. Move to the next item.
-
-## Current movement constraint
-
-Wall dash is not part of Vark's planned movement set. Do not add or plan wall-dash behavior unless the user explicitly changes that decision.
+1. User selects a roadmap item.
+2. Agent inspects current docs/code/tests and implements the bounded item.
+3. Agent adds/updates appropriate tests and living docs.
+4. Agent uploads only if explicitly authorized.
+5. User runs local automated checks and playtests in Godot.
+6. User reports success, bugs, or feel differences in chat.
+7. Agent fixes/tunes as requested and keeps documentation truthful on the next authorized patch.
+8. Move on only when the current item has the required acceptance.
