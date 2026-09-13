@@ -1,212 +1,148 @@
 # Vark Development Plan
 
-This is the ordered implementation roadmap for Vark. The purpose is to make development incremental: pick one numbered item, implement only that bounded item, run objective tests, play it, tune or fix it from playtest feedback, then move to the next item.
+This is the ordered implementation roadmap for Vark. Repository workflow is defined in `AGENTS.md`; testing conventions and current regression coverage live in `docs/TESTING.md`.
 
-`GAME_VISION.md` is the design north star. `REGRESSION_TEST_PLAN.md` defines the automated safety net.
+Status: `[ ]` not implemented, `[~]` implemented but awaiting required validation/follow-up, `[x]` validated and accepted.
 
-## Working method
-
-For normal development, use this loop:
-
-1. Pick the next roadmap item.
-2. Ask for that item only, for example: `implement 2.4 upload to gh`.
-3. Implementation should include the minimum architecture needed for that item, not speculative systems for distant features.
-4. Add or update automated tests for objective behavior when appropriate.
-5. Run the relevant automated suite locally.
-6. Play the feature in Godot and judge feel, readability, and usefulness.
-7. Report what feels wrong in chat. Treat the feedback as a bug, tuning change, missing behavior, or design change as appropriate.
-8. Repeat until accepted.
-9. Move to the next roadmap item.
-
-Do not bundle neighboring roadmap items unless explicitly requested. A technically passing feature is not complete until the manual playtest criteria are also acceptable.
-
-## Status legend
-
-- `[x]` implemented and locally validated
-- `[~]` implemented but still needs planned validation / follow-up
-- `[ ]` not implemented
-
-## Global definition of done for an implementation item
-
-An item is done when:
-
-- its stated scope works without requiring unrelated future systems
-- relevant existing regression tests still pass
-- new objective behavior has automated coverage where practical
-- there are no known parser/runtime errors introduced by the item
-- the manual playtest checklist for the item is acceptable
-- the implementation does not violate `GAME_VISION.md`
-- any intentionally changed baseline behavior is reflected in the tests/documentation
+Each item should be implemented as a bounded step. Do not advance a milestone merely because its individual systems exist: its integration result must also be acceptable in play.
 
 ---
 
 # Milestone 1 — Close the player-controller foundation
 
-Goal: finish the reliable traversal foundation before shifting the main development focus to stealth. Do not keep expanding movement indefinitely.
+Goal: finish a reliable traversal foundation, then stop expanding movement and shift the main development focus to stealth.
 
 ## 1.1 Core locomotion stability `[x]`
 
-**Scope:** walk/run/sprint, crouch, jump, air control, stable support, collision response, steps, ledge traversal, mantle foundation.
+**Scope:** walk/run/sprint, crouch, jump, air control, support/collision response, steps, ledge traversal, and mantle foundation.
 
-**Dependencies:** none.
+**Depends:** none.
 
-**Automated:** current movement suite protects walk-off support, sprint-jump momentum, normal steps, floating/undercut steps, wall-seam falling, and multi-contact falling.
-
-**Manual:** use `docs/player_movement_regression_checklist.md` after player-controller changes.
-
-**Done when:** current movement baseline remains stable enough to build stealth gameplay on top of it.
+**Acceptance:** current movement regression suite remains green; broad movement/traversal manual checks remain acceptable.
 
 ## 1.2 Local automated movement regression barrier `[x]`
 
 **Scope:** headless Godot runner, failure aggregation, deterministic physics fixtures, nonzero exit on failure.
 
-**Dependencies:** 1.1.
+**Depends:** 1.1.
 
-**Automated:** `tests/movement/run_movement_tests.gd`.
-
-**Manual:** run the suite from the project root and confirm all movement tests pass.
-
-**Done when:** already achieved locally.
+**Acceptance:** `tests/movement/run_movement_tests.gd` passes locally and its intentional-failure mode exits nonzero.
 
 ## 1.3 Mantle landing-surface validity `[ ]` — recommended next
 
-**Scope:** separate broad ledge geometry detection from semantic mantle landing validity. Reject effectively vertical / non-walkable top surfaces as mantle destinations while preserving legitimate ledge detection and hanging behavior.
+**Scope:** separate broad ledge geometry detection from semantic mantle landing validity. Reject effectively vertical/non-walkable top surfaces as mantle destinations while preserving legitimate hanging and valid mantles.
 
-**Dependencies:** 1.1, 1.2.
+**Depends:** 1.1, 1.2.
 
-**Automated:** add at minimum a fixture where an almost-vertical candidate top is rejected and a normal mantle top succeeds. Include crouch-only mantle success if the change touches stance-aware clearance.
-
-**Manual:** mantle normal platforms, thin geometry already supported by the controller, awkward wall/top transitions, and crouch-clearance cases. Confirm valid mantles do not become harder or more magnetic.
-
-**Done when:** mantle acceptance is based on meaningful landing semantics rather than an arbitrary tiny upward-normal threshold, with regressions covered.
+**Acceptance:**
+- automated: almost-vertical/invalid mantle landing is rejected and a normal mantle top succeeds; include crouch-only mantle coverage if stance-aware clearance is touched;
+- manual: normal platforms, thin supported geometry, awkward wall/top transitions, and crouch-clearance cases still feel reliable and not overly magnetic.
 
 ## 1.4 Traversal regression expansion and determinism `[ ]`
 
-**Scope:** add focused tests for important ledge/mantle behavior that is currently protected mainly by manual testing. Run the suite repeatedly and remove timing-dependent assumptions.
+**Scope:** cover important ledge/mantle behaviors that are still protected mainly by manual testing and remove timing-dependent assumptions from the movement suite.
 
-**Dependencies:** 1.3.
+**Depends:** 1.3.
 
-**Automated:** valid mantle, invalid mantle, crouch-only mantle, and any ledge/corner bug that has previously been reproducible. Run the full movement suite repeatedly without intermittent failures.
-
-**Manual:** run the existing movement regression checklist once after test stabilization.
-
-**Done when:** traversal tests are deterministic and repeated local runs are consistently green.
+**Acceptance:** valid mantle, invalid mantle, crouch-only mantle where relevant, and reproducible ledge/corner regressions have focused deterministic coverage; repeated full-suite runs are consistently green; broad traversal manual checks remain acceptable.
 
 ## 1.5 Continuous movement tests in GitHub Actions `[ ]`
 
-**Scope:** pin the project’s Godot version in CI and run the same headless movement suite on pushes to `test` and pull requests.
+**Scope:** pin the project Godot version in CI and run the same authoritative local test command on pushes to `test` and pull requests.
 
-**Dependencies:** 1.4.
+**Depends:** 1.4.
 
-**Automated:** the CI job itself must fail when the local suite would fail.
+**Acceptance:** normal suite produces a passing CI check; intentional failure makes CI fail; workflow is stable before any required-check/branch-protection decision.
 
-**Manual:** intentionally trigger the runner’s failure mode once while validating the workflow, then restore normal behavior.
-
-**Done when:** the repository automatically reports pass/fail for the movement suite. Branch protection can be considered only after the check is stable.
+**Milestone gate:** movement/traversal is trustworthy enough that feature work can shift to stealth without continuing to add traversal abilities for their own sake.
 
 ---
 
 # Milestone 2 — Build the smallest complete stealth loop
 
-Goal: make Vark recognizably a stealth game as early as possible. Use one ugly, controlled stealth playground rather than a real mission.
+Goal: make Vark recognizably a stealth game in one controlled developer playground before building a production mission.
 
-Target loop: player moves through bright/dark space → guard sees or hears player → suspicion changes → guard investigates / alerts / searches → player can break contact and hide again.
+Target loop: bright/dark space → guard sees or hears player → suspicion/investigation → alert/search → player breaks contact and hides again.
 
 ## 2.1 Player light-exposure model `[ ]`
 
-**Scope:** compute a stable gameplay value representing how exposed the player is to relevant light. Keep rendering and gameplay policy separate enough that the value can be tested and consumed by AI/UI.
+**Scope:** compute a stable gameplay value representing player exposure to relevant light. Keep rendering and gameplay policy separate enough that AI/UI can consume the value.
 
-**Dependencies:** Milestone 1 foundation.
+**Depends:** Milestone 1 foundation.
 
-**Automated:** fixed dark/bright test cases, bounds of exposure value, occluded/non-contributing light cases where deterministic.
-
-**Manual:** walk through a simple light/dark test room and verify transitions correspond to what the player sees.
-
-**Done when:** exposure is stable, understandable, and suitable as input for guard vision and the light gem.
+**Acceptance:**
+- automated: fixed dark/bright cases, defined bounds, and deterministic occlusion/non-contribution rules;
+- manual: walking through a simple light/dark room produces transitions that correspond to what the player sees.
 
 ## 2.2 Light gem `[ ]`
 
-**Scope:** HUD representation of player light exposure with deliberately coarse, readable states rather than noisy frame-to-frame flicker.
+**Scope:** HUD representation of player exposure using deliberately readable states rather than noisy frame-to-frame flicker.
 
-**Dependencies:** 2.1.
+**Depends:** 2.1.
 
-**Automated:** exposure-to-display-state mapping.
-
-**Manual:** move through the stealth playground and verify the gem communicates useful stealth information without distracting from the world.
-
-**Done when:** the player can use the light gem to make meaningful hiding decisions.
+**Acceptance:**
+- automated: exposure-to-display-state mapping;
+- manual: the gem communicates useful stealth information without distracting from the world.
 
 ## 2.3 Guard state model `[ ]`
 
-**Scope:** establish explicit guard states and transition ownership before adding full perception. Minimum useful states: unaware/patrol, suspicious/investigating, alerted, searching, and recovery as needed by the final behavior.
+**Scope:** explicit guard state ownership before full perception. Minimum useful states: unaware/patrol, suspicious/investigating, alerted, searching, and recovery as required by the final behavior.
 
-**Dependencies:** none beyond basic NPC scene/movement foundation created as part of this item.
+**Depends:** basic NPC scene/movement foundation created as part of this item.
 
-**Automated:** legal state transitions, timers/decay where deterministic, no impossible direct transitions unless explicitly designed.
-
-**Manual:** use debug triggers in a test room to step through states and confirm animation/movement hooks do not fight state ownership.
-
-**Done when:** perception systems can report evidence to a clear state machine rather than directly scripting guard behavior ad hoc.
+**Acceptance:**
+- automated: legal transitions, deterministic timers/decay, and rejected impossible transitions where the model enforces them;
+- manual: debug-triggered state changes do not cause movement/animation/state ownership to fight itself.
 
 ## 2.4 Guard vision `[ ]`
 
-**Scope:** distance, view direction / field of view, world occlusion, target visibility, and integration with player light exposure. Vision should provide evidence to the guard state model rather than instantly owning all AI behavior.
+**Scope:** distance, view direction/FOV, world occlusion, target visibility, and integration with player light exposure. Vision supplies evidence to the guard state model rather than owning all AI behavior directly.
 
-**Dependencies:** 2.1, 2.3.
+**Depends:** 2.1, 2.3.
 
-**Automated:** visible target, outside-FOV target, occluded target, out-of-range target, and exposure-dependent detection progression.
-
-**Manual:** approach a guard from front/side/behind, use cover, move between dark and bright areas, and verify detection feels explainable rather than arbitrary.
-
-**Done when:** guard sight is predictable enough that the player can intentionally exploit darkness, cover, distance, and facing.
+**Acceptance:**
+- automated: visible, outside-FOV, occluded, out-of-range, and exposure-dependent cases;
+- manual: front/side/rear approaches, cover, and bright/dark movement feel explainable and predictable.
 
 ## 2.5 Player noise model `[ ]`
 
-**Scope:** define gameplay noise events emitted by player actions. Start with locomotion-relevant noise; keep event production separate from guard hearing policy.
+**Scope:** gameplay noise events emitted by player actions, beginning with locomotion-relevant noise. Event production stays separate from guard hearing policy.
 
-**Dependencies:** stable player movement.
+**Depends:** stable player movement.
 
-**Automated:** representative actions emit the expected noise class/intensity and silent actions do not emit unintended events.
-
-**Manual:** inspect/debug noise while walking, running/sprinting, crouching, landing, and interacting with representative surfaces if surface differences are introduced.
-
-**Done when:** player actions produce consistent, inspectable sound evidence for AI.
+**Acceptance:**
+- automated: representative actions emit expected noise classes/intensity and silent actions do not emit unintended events;
+- manual: walking, sprinting, crouching, landing, and any implemented surface differences produce understandable debug evidence.
 
 ## 2.6 Guard hearing `[ ]`
 
-**Scope:** guards receive relevant noise events using distance/environment rules and convert them into suspicion/investigation evidence.
+**Scope:** guards receive relevant noise using distance/environment rules and convert it into suspicion/investigation evidence.
 
-**Dependencies:** 2.3, 2.5.
+**Depends:** 2.3, 2.5.
 
-**Automated:** audible in-range event, inaudible event, distance falloff/threshold, and any deterministic occlusion/material rule that is actually part of the design.
-
-**Manual:** create noise behind/in front of a guard at several distances and confirm reactions are readable and useful for distraction gameplay.
-
-**Done when:** hearing complements vision and can drive investigation without feeling like omniscience.
+**Acceptance:**
+- automated: audible, inaudible, distance/strength threshold, and any deterministic occlusion/material rules actually implemented;
+- manual: noise at several distances produces readable reactions useful for distraction gameplay.
 
 ## 2.7 Suspicion, investigation, alert, search, and recovery `[ ]`
 
-**Scope:** combine sight/hearing evidence into coherent guard behavior. The player should be able to cause partial suspicion, trigger investigation, become fully detected, break line of sight, and eventually escape a search when appropriate.
+**Scope:** combine sight/hearing evidence into coherent guard behavior. Support partial suspicion, investigation, full detection, loss of target, search, and eventual recovery where appropriate.
 
-**Dependencies:** 2.3, 2.4, 2.6.
+**Depends:** 2.3, 2.4, 2.6.
 
-**Automated:** key state/evidence transitions and decay/recovery rules.
-
-**Manual:** play repeated detection/recovery scenarios and tune pacing from feedback; verify state indicators and audio cues communicate what the guard believes.
-
-**Done when:** one guard can support a complete stealth encounter rather than binary seen/not-seen behavior.
+**Acceptance:**
+- automated: key evidence/state transitions and deterministic recovery rules;
+- manual: repeated detection/recovery scenarios have understandable pacing and feedback.
 
 ## 2.8 Stealth playground vertical slice `[ ]`
 
-**Scope:** one small developer scene combining light, cover, one or more guards, patrol, sight, hearing, hiding, and search. This is a playtest scene, not production level art.
+**Scope:** one small developer scene combining light, cover, guards, patrol, sight, hearing, hiding, and search. It is a playtest scene, not production art.
 
-**Dependencies:** 2.1–2.7.
+**Depends:** 2.1–2.7.
 
-**Automated:** no new monolithic scene test required; rely on focused subsystem tests.
+**Acceptance:** focused subsystem tests stay green; repeated infiltration through different routes and deliberate mistakes already feels like a basic Vark stealth encounter.
 
-**Manual:** repeatedly infiltrate the room using different routes and deliberate mistakes. Evaluate whether information and guard behavior are understandable.
-
-**Done when:** Vark already feels like a basic stealth game in an ugly test room.
+**Milestone gate:** the stealth playground is understandable, playable, and accepted as the foundation for world interaction.
 
 ---
 
@@ -216,87 +152,63 @@ Goal: create one reusable interaction model, then add common world interactions 
 
 ## 3.1 Interactable focus and action contract `[ ]`
 
-**Scope:** determine what the player is targeting, expose available interaction, perform the action, and keep interaction ownership independent from individual object types.
+**Scope:** determine the targeted interactable, expose the available action, and dispatch interaction without individual objects reinventing targeting/input logic.
 
-**Dependencies:** player/camera foundation.
+**Depends:** player/camera foundation.
 
-**Automated:** focus selection, out-of-range rejection, blocked target rejection where applicable, and action dispatch.
-
-**Manual:** target nearby objects at awkward angles/ranges and verify interaction selection is stable and understandable.
-
-**Done when:** new interactables do not need to reinvent player targeting/input logic.
+**Acceptance:**
+- automated: focus selection, range rejection, blocked/invalid target rejection where designed, and one-time action dispatch;
+- manual: targeting nearby objects at awkward angles/ranges is stable and understandable.
 
 ## 3.2 Doors and windows `[ ]`
 
-**Scope:** open/close state, blocked movement behavior as needed, and interaction through 3.1. Lock/key behavior should be added only when a mission requires it.
+**Scope:** open/close state, collision behavior, and interaction through 3.1. Add lock/key behavior only when a mission needs it.
 
-**Dependencies:** 3.1.
+**Depends:** 3.1.
 
-**Automated:** state transitions and any lock rule introduced.
-
-**Manual:** interact from both sides, while moving/crouching, and around collision edges.
-
-**Done when:** doors/windows are reliable stealth-space elements rather than scripted props.
+**Acceptance:** automated state transitions and any introduced lock rule; manually usable from both sides while moving/crouching and around collision edges.
 
 ## 3.3 Containers, loot, and gems `[ ]`
 
-**Scope:** open container, expose/take contents, collect loot/gems, update inventory/mission totals as appropriate.
+**Scope:** open containers, expose/take contents, collect loot/gems, and update inventory/mission totals as appropriate. Introduce only the minimum inventory data model needed.
 
-**Dependencies:** 3.1; minimal inventory data model may be introduced here.
+**Depends:** 3.1.
 
-**Automated:** pickup ownership, removal from world, totals, duplicate-prevention.
-
-**Manual:** loot several objects/containers and verify feedback is clear.
-
-**Done when:** stealing objects can become a mission objective/statistic.
+**Acceptance:** automated ownership/removal/totals/duplicate prevention; manual looting feedback is clear.
 
 ## 3.4 Lights and candles `[ ]`
 
-**Scope:** turn supported lights on/off and extinguish candles through the common interaction model; changes must feed the gameplay light-exposure system where relevant.
+**Scope:** turn supported lights on/off and extinguish candles through the common interaction model; gameplay-relevant changes feed the light-exposure system.
 
-**Dependencies:** 2.1, 3.1.
+**Depends:** 2.1, 3.1.
 
-**Automated:** state change and resulting gameplay-light contribution where deterministic.
-
-**Manual:** alter lighting while hiding near guards and verify the stealth result matches visible changes.
-
-**Done when:** manipulating light is a real stealth tool.
+**Acceptance:** automated state/contribution changes where deterministic; manual stealth behavior matches the visible lighting change.
 
 ## 3.5 Small pickup and throw `[ ]`
 
-**Scope:** pick up a small object, hold it, throw it, and generate appropriate physical/noise consequences.
+**Scope:** pick up, hold, release/throw a small object and generate appropriate physical/noise consequences.
 
-**Dependencies:** 2.5, 3.1.
+**Depends:** 2.5, 3.1.
 
-**Automated:** held/world state transitions and noise event generation on representative impacts if deterministic.
-
-**Manual:** use thrown objects to distract a guard in the stealth playground.
-
-**Done when:** small objects form a usable distraction loop.
+**Acceptance:** automated held/world ownership and representative deterministic noise generation; manual thrown-object distraction works in the stealth playground.
 
 ## 3.6 Box carry / throw `[ ]`
 
-**Scope:** heavier movable-object interaction distinct from small held items only where physics/gameplay requires it.
+**Scope:** heavier movable-object interaction only where its physics/gameplay differs meaningfully from small held objects.
 
-**Dependencies:** 3.1, preferably 3.5.
+**Depends:** 3.1, preferably 3.5.
 
-**Automated:** ownership/release state and any deterministic constraints.
-
-**Manual:** carry, place, throw, block routes, and verify player collision remains stable.
-
-**Done when:** boxes can be intentionally manipulated without destabilizing locomotion.
+**Acceptance:** automated ownership/release constraints; manual carrying/placing/throwing around doors, slopes, and routes does not destabilize player collision.
 
 ## 3.7 Pickpocket `[ ]`
 
-**Scope:** steal eligible inventory from an NPC under valid proximity/position/state conditions.
+**Scope:** steal eligible NPC inventory under valid proximity/position/state conditions.
 
-**Dependencies:** 3.1, NPC foundation, inventory data.
+**Depends:** 3.1, NPC foundation, inventory data.
 
-**Automated:** eligibility and transfer rules.
+**Acceptance:** automated eligibility/transfer rules; manual use against moving/stationary unaware NPCs is readable and fair.
 
-**Manual:** approach moving/stationary unaware NPCs and verify the interaction is readable and fair.
-
-**Done when:** pickpocketing is a stealth action, not a generic front-facing loot prompt.
+**Milestone gate:** the player can manipulate the stealth environment through a coherent interaction language rather than one-off scripts.
 
 ---
 
@@ -306,189 +218,141 @@ Goal: let stealth actions create persistent local consequences before implementi
 
 ## 4.1 NPC life-state model `[ ]`
 
-**Scope:** conscious, unconscious, dead, plus required transitions and AI shutdown/cleanup rules.
+**Scope:** conscious, unconscious, dead, required transitions, and AI shutdown/cleanup ownership.
 
-**Dependencies:** guard foundation.
+**Depends:** guard foundation.
 
-**Automated:** legal transitions and state persistence in-session.
-
-**Manual:** transition guards between states and verify navigation/collision/interaction remain coherent.
-
-**Done when:** takedowns and bodies can rely on explicit state rather than destroying/replacing NPCs ad hoc.
+**Acceptance:** automated legal transitions/state persistence; manual navigation/collision/interaction remain coherent after state changes.
 
 ## 4.2 Stealth knockout `[ ]`
 
 **Scope:** fists ready on hold, knockout strike on release, valid stealth-takedown conditions, unconscious result.
 
-**Dependencies:** 4.1.
+**Depends:** 4.1.
 
-**Automated:** eligibility, hold/release action semantics, unconscious outcome.
-
-**Manual:** approach from intended positions, mistime attempts, test moving guards, and tune feel.
-
-**Done when:** nonlethal stealth removal is reliable and readable.
+**Acceptance:** automated eligibility/hold-release/outcome; manual positioning, moving-target cases, misses, and feel are acceptable.
 
 ## 4.3 Body carry / put down `[ ]`
 
 **Scope:** pick up eligible unconscious/dead bodies, carry them, put them down, and keep physics/collision stable.
 
-**Dependencies:** 3.1, 4.1.
+**Depends:** 3.1, 4.1.
 
-**Automated:** body ownership/state transitions.
-
-**Manual:** move bodies through doors, around corners, onto slopes, and into hiding places.
-
-**Done when:** hiding the consequence of a takedown becomes valid gameplay.
+**Acceptance:** automated ownership/state transitions; manual movement through doors, corners, slopes, and hiding spaces remains stable.
 
 ## 4.4 Stealth kill `[ ]`
 
 **Scope:** knife variant of the stealth takedown flow with lethal outcome and mission-stat consequence.
 
-**Dependencies:** 4.1, preferably 4.2 for shared attack structure.
+**Depends:** 4.1, preferably shared structure from 4.2.
 
-**Automated:** eligibility and dead outcome; lethal/nonlethal stats once available.
+**Acceptance:** automated eligibility/dead outcome and lethal/nonlethal statistics when available; manual lethal/nonlethal feedback is unmistakable.
 
-**Manual:** compare positioning/feedback with knockout and ensure the distinction is always clear.
-
-**Done when:** lethal choice is mechanically clear and recordable as a consequence.
+**Milestone gate:** the player can remove NPCs lethally or nonlethally and deal with bodies without requiring full combat.
 
 ---
 
 # Milestone 5 — One complete micro-mission
 
-Goal: prove the whole game loop with a short 5–10 minute mission before adding lots of extra mechanics.
+Goal: prove the whole game loop with one short 5–10 minute mission before adding many extra mechanics.
 
 ## 5.1 Objective model `[ ]`
 
-**Scope:** explicit objectives, completion/failure state as needed, optional objectives where useful.
+**Scope:** explicit objectives, completion/failure as needed, and optional objectives where useful.
 
-**Dependencies:** interaction and basic stealth loop.
+**Depends:** interaction and basic stealth loop.
 
-**Automated:** objective state transitions and duplicate-event safety.
-
-**Manual:** complete objectives in different valid orders if the mission permits it.
-
-**Done when:** mission progress is data-driven enough to support a real level.
+**Acceptance:** automated objective transitions and duplicate-event safety; manual valid completion orders work where the mission permits them.
 
 ## 5.2 Mission start, exit, and completion `[ ]`
 
-**Scope:** start state, gameplay state, valid exit/completion condition, transition to results.
+**Scope:** mission start/gameplay state, valid exit/completion condition, and transition to results.
 
-**Dependencies:** 5.1.
+**Depends:** 5.1.
 
-**Automated:** cannot complete before requirements; can complete when requirements are satisfied.
-
-**Manual:** enter/exit under several objective states.
-
-**Done when:** one mission has a full playable beginning and ending.
+**Acceptance:** automated prevention of premature completion and successful completion when requirements are met; manual entry/exit works across relevant objective states.
 
 ## 5.3 Mission statistics / end screen `[ ]`
 
-**Scope:** record and display the first useful statistics: loot, kills, knockouts, detection/alerts, objectives, plus other metrics only when meaningful.
+**Scope:** record/display useful first statistics such as loot, kills, knockouts, alerts/detections, and objectives.
 
-**Dependencies:** 4.x as relevant, 5.2.
+**Depends:** 4.x as relevant, 5.2.
 
-**Automated:** statistic counters and final snapshot.
-
-**Manual:** intentionally produce different mission outcomes and verify the results screen tells the truth.
-
-**Done when:** end-of-mission behavior can communicate how the player acted.
+**Acceptance:** automated counters/final snapshot; manual deliberately different playthroughs produce truthful results.
 
 ## 5.4 First micro-mission `[ ]`
 
-**Scope:** build one deliberately small mission using existing systems. Include at least an infiltration route, guard problem, valuable objective, optional action/consequence, and exit.
+**Scope:** one deliberately small mission with an infiltration route, guard problem, valuable objective, optional action/consequence, and exit.
 
-**Dependencies:** 2.x, enough of 3.x/4.x, 5.1–5.3.
+**Depends:** 2.x, enough of 3.x/4.x, 5.1–5.3.
 
-**Automated:** rely primarily on subsystem tests; add mission-state tests for objective/stat logic.
+**Acceptance:** subsystem/mission-state tests stay green; the mission can be completed several different ways and feels like a coherent short stealth game from start to results.
 
-**Manual:** complete the mission several different ways. Record feel feedback in chat rather than a repository playtest-notes document.
-
-**Done when:** the game can be played as a coherent short stealth experience from start to results screen.
+**Milestone gate:** the project functions as a tiny complete game, not just a collection of systems.
 
 ---
 
 # Milestone 6 — Cross-mission state and campaign structure
 
-Goal: support the design principle that later missions can change because of player actions.
+Goal: let later missions change because of player actions.
 
 ## 6.1 Persistent consequence model `[ ]`
 
-**Scope:** named campaign facts such as NPC alive/dead, important object taken/not taken, optional action completed, and other explicit consequences.
+**Scope:** named campaign facts such as NPC alive/dead, important object taken/not taken, optional actions, and other explicit consequences.
 
-**Dependencies:** 5.4.
+**Depends:** 5.4.
 
-**Automated:** set/read facts, serialize/deserialize once persistence exists, and deterministic branch conditions.
-
-**Manual:** finish the micro-mission with different outcomes and inspect the resulting campaign state.
-
-**Done when:** later content can query player actions without hard-coding previous scene internals.
+**Acceptance:** automated set/read and deterministic branch conditions; manual different micro-mission outcomes produce the expected campaign facts.
 
 ## 6.2 Save/load `[ ]`
 
-**Scope:** persist campaign facts plus the minimum other state needed by the mission structure. In-mission save design should be decided separately if required.
+**Scope:** persist campaign facts plus the minimum other state needed by mission structure. In-mission save design is a separate later decision if required.
 
-**Dependencies:** 6.1.
+**Depends:** 6.1.
 
-**Automated:** round-trip save/load and missing/versioned data behavior as the format evolves.
-
-**Manual:** restart the game and verify the next mission receives the intended prior consequences.
-
-**Done when:** consequences survive process restarts reliably.
+**Acceptance:** automated round-trip and chosen missing/versioned-data behavior; manual process restart preserves intended consequences.
 
 ## 6.3 Briefing / mission selection flow `[ ]`
 
-**Scope:** pre-mission video briefing and transition into a mission. Expand to multiple missions only when content exists.
+**Scope:** pre-mission video briefing and transition into a mission; expand to multiple missions only when content exists.
 
-**Dependencies:** mission framework.
+**Depends:** mission framework.
 
-**Automated:** state/selection logic where useful.
+**Acceptance:** deterministic state/selection logic is covered where useful; manually run briefing → mission → results → next step.
 
-**Manual:** run the entire briefing → mission → results → next-step flow.
-
-**Done when:** campaign structure exists around the gameplay scenes.
+**Milestone gate:** campaign flow can carry meaningful player consequences between missions.
 
 ---
 
 # Milestone 7 — Full combat
 
-Goal: add direct combat after stealth already works, so combat supports rather than defines the game.
+Goal: add direct combat after stealth works so combat supports rather than defines the game.
 
 ## 7.1 Basic melee exchange `[ ]`
 
 **Scope:** fist hit, knife hit, incoming NPC attack, health/damage/reaction foundation.
 
-**Dependencies:** NPC life state, player health.
+**Depends:** NPC life state, player health.
 
-**Automated:** damage/outcome rules and invulnerability/duplicate-hit rules if present.
-
-**Manual:** fight one NPC repeatedly and tune timing/readability.
-
-**Done when:** direct combat has a coherent minimal loop.
+**Acceptance:** automated damage/outcome and duplicate-hit/invulnerability rules if present; manual one-on-one combat is readable and coherent.
 
 ## 7.2 Block `[ ]`
 
 **Scope:** hold block to prevent supported attacks according to final combat rules.
 
-**Dependencies:** 7.1.
+**Depends:** 7.1.
 
-**Automated:** blockable vs non-blockable outcomes if such distinction exists.
-
-**Manual:** test timing and feedback against representative attacks.
-
-**Done when:** holding block behaves consistently and communicates success/failure.
+**Acceptance:** automated blockable/non-blockable outcomes where relevant; manual timing and feedback are clear.
 
 ## 7.3 Parry `[ ]`
 
 **Scope:** pressing block shortly before an incoming attack produces the designed parry result.
 
-**Dependencies:** 7.2.
+**Depends:** 7.2.
 
-**Automated:** timing-window boundary behavior using deterministic combat events.
+**Acceptance:** automate the chosen timing-window boundaries only after tuning makes them intentional; manually the parry is learnable and distinct from holding block.
 
-**Manual:** tune the window from playtest feel; do not encode subjective timing as a test until the chosen value is intentional.
-
-**Done when:** parry is learnable and distinct from holding block.
+**Milestone gate:** direct combat is functional without becoming the dominant or easiest answer to every stealth problem.
 
 ---
 
@@ -498,111 +362,81 @@ Goal: establish one reusable item architecture, then implement tactical tools in
 
 ## 8.1 Inventory/item architecture `[ ]`
 
-**Scope:** item data, acquisition, selection, quantity/use rules, HUD-selected-item integration.
+**Scope:** item data, acquisition, selection, quantity/use rules, and selected-item HUD integration.
 
-**Dependencies:** loot/inventory foundation from Milestone 3 may be extended here.
+**Depends:** loot/inventory foundation from Milestone 3 may be extended here.
 
-**Automated:** add/remove/select/use state and quantity rules.
-
-**Manual:** acquire and cycle representative items during normal movement.
-
-**Done when:** new tools do not each implement their own inventory system.
+**Acceptance:** automated add/remove/select/use/quantity rules; manual acquisition and cycling work during ordinary movement.
 
 ## 8.2 Healing potion `[ ]`
 
 **Scope:** consume item and restore health according to chosen rules.
 
-**Dependencies:** 7.1, 8.1.
+**Depends:** 7.1, 8.1.
 
-**Automated:** consumption and health clamp.
-
-**Manual:** use at different health values and verify feedback.
-
-**Done when:** first consumable validates the item architecture.
+**Acceptance:** automated consumption/health clamp; manual use at different health values has clear feedback.
 
 ## 8.3 Flashbang `[ ]`
 
 **Scope:** thrown/deployed flash effect and affected NPC response.
 
-**Dependencies:** 8.1, guard state model.
+**Depends:** 8.1, guard state model.
 
-**Automated:** effect eligibility/radius/line-of-effect rules that are deterministic.
-
-**Manual:** use during unaware, suspicious, and alerted guard states.
-
-**Done when:** flashbang creates a useful stealth/combat escape opportunity.
+**Acceptance:** deterministic effect eligibility/radius/line-of-effect rules are automated; manual use across representative guard states creates a useful tactical escape/disruption tool.
 
 ## 8.4 Bomb and mine `[ ]`
 
 **Scope:** explosive direct-use and placed variants using shared effect/damage foundations.
 
-**Dependencies:** 8.1, combat/damage.
+**Depends:** 8.1, combat/damage.
 
-**Automated:** placement/trigger/effect rules.
-
-**Manual:** test around geometry, NPCs, and the player.
-
-**Done when:** explosive tools are predictable and do not require separate ad hoc systems.
+**Acceptance:** automated placement/trigger/effect rules; manual behavior around geometry, NPCs, and player is predictable.
 
 ## 8.5 Gas bomb and gas mine `[ ]`
 
 **Scope:** gas direct-use and placed variants using shared status/area-effect logic.
 
-**Dependencies:** 8.1, NPC state model.
+**Depends:** 8.1, NPC state model.
 
-**Automated:** area/status eligibility and duration rules where deterministic.
+**Acceptance:** deterministic area/status eligibility/duration rules are automated; manual use has a clear tactical role distinct from explosives.
 
-**Manual:** test against representative guard states and spaces.
-
-**Done when:** gas tools have a clear tactical role distinct from explosives.
+**Milestone gate:** tools expand stealth tactics through one coherent inventory/effect architecture.
 
 ---
 
 # Milestone 9 — Remaining traversal only when level design needs it
 
-Do not build these just to complete a feature checklist. Introduce them when a real level route requires them.
+Do not build these simply to complete a feature list. Implement them when an actual mission route requires them.
 
 ## 9.1 Slide `[ ]`
 
-**Scope:** final design to be specified when a level needs slide traversal.
+**Scope:** final behavior specified when a real route needs slide traversal.
 
-**Dependencies:** current locomotion/crouch foundation.
+**Depends:** locomotion/crouch foundation and a level-design need.
 
-**Automated:** state transition, collision/clearance, velocity invariants chosen by the design.
-
-**Manual:** route-specific feel testing.
-
-**Done when:** slide enables a real level-design purpose and remains stable around collision geometry.
+**Acceptance:** automate chosen state/collision/velocity invariants; manual route-specific playtest proves the move serves the level.
 
 ## 9.2 Ladders `[ ]`
 
-**Scope:** enter, climb, stop, exit top/bottom, and interaction with ledges as needed.
+**Scope:** enter, climb, stop, exit top/bottom, and ledge interaction as needed.
 
-**Dependencies:** level needing ladders.
+**Depends:** a level needing ladders.
 
-**Automated:** enter/exit/state ownership and representative blocked-exit cases.
-
-**Manual:** climb from multiple approaches and transition at both ends.
-
-**Done when:** ladders are predictable traversal rather than special-case teleporting.
+**Acceptance:** automated enter/exit/state ownership and representative blocked-exit cases; manual approaches/transitions at both ends are predictable.
 
 ## 9.3 Swimming `[ ]`
 
-**Scope:** water entry/exit and swimming movement; breath/underwater systems only if the design later requires them.
+**Scope:** water entry/exit and swimming movement; breath/underwater systems only if later design requires them.
 
-**Dependencies:** level needing water traversal.
+**Depends:** a level needing water traversal.
 
-**Automated:** medium transition and core movement-state rules.
-
-**Manual:** enter/exit water around varied edges and tune feel.
-
-**Done when:** swimming supports a real mission route without destabilizing ordinary locomotion.
+**Acceptance:** automated medium transition/core state rules; manual varied water-edge entry/exit is stable and feels appropriate.
 
 ---
 
 # Milestone 10 — Presentation systems and content production
 
-These can be prototyped earlier when necessary, but full production work should follow proof of the core loop.
+These may be prototyped earlier when necessary, but full production work follows proof of the core loop.
 
 ## 10.1 Core HUD `[ ]`
 
@@ -610,11 +444,11 @@ Light gem, health, selected inventory item, and first-person held weapon/object 
 
 ## 10.2 Objectives/map/inventory/alignment/statistics menus `[ ]`
 
-Implement only the data that exists; avoid empty speculative menu systems.
+Implement only data that actually exists; avoid empty speculative menu systems.
 
 ## 10.3 Overhead dialogue and guard state indicators `[ ]`
 
-Typed lines over heads, suspicion/alert grunts, and question/exclamation feedback integrated with actual AI state.
+Typed lines over heads, suspicion/alert grunts, and question/exclamation feedback driven by actual AI state.
 
 ## 10.4 First-person cutscene framework `[ ]`
 
@@ -624,21 +458,13 @@ Block input, preserve first-person POV, show black top/bottom bars, and render s
 
 Apply the low-poly, hand-drawn, low-resolution, sun/moon visual direction to production assets and missions.
 
+**Milestone gate:** presentation supports the proven game rather than substituting for an unproven core loop.
+
 ---
 
-# Planning rules for future additions
+# Recommended immediate sequence
 
-When a new desired mechanic is proposed:
-
-1. Decide which existing milestone it serves.
-2. Prefer inserting it after its dependencies rather than appending it randomly.
-3. Define observable behavior before implementation.
-4. Decide which parts are objective/testable and which parts require playtest judgment.
-5. Avoid designing speculative architecture for more than the current item plus clear immediate dependencies.
-6. If a feature is removed from the game vision, remove it from this roadmap rather than leaving a dormant implementation task.
-
-# Recommended immediate next item
-
-`1.3 Mantle landing-surface validity`, followed by `1.4 Traversal regression expansion and determinism`, then `1.5 Continuous movement tests in GitHub Actions`.
-
-After that, shift the main development focus to Milestone 2 rather than adding more traversal features.
+1. `1.3 Mantle landing-surface validity`
+2. `1.4 Traversal regression expansion and determinism`
+3. `1.5 Continuous movement tests in GitHub Actions`
+4. Move to Milestone 2 instead of adding more traversal features.
