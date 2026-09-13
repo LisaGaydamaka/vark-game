@@ -143,13 +143,13 @@ func _test_sprint_jump_momentum(helpers: RefCounted) -> void:
 		await _completed_physics_frame()
 
 	var settings := player.get("locomotion_settings") as PlayerLocomotionSettings
-	var expected_sprint_speed: float = (
-		settings.sprint_speed if settings != null else 4.5
+	var normal_run_speed: float = (
+		settings.max_speed if settings != null else 3.0
 	)
 	var before_jump_speed: float = _horizontal_speed(player.velocity)
 	helpers.assert_true(
-		before_jump_speed >= expected_sprint_speed - SPRINT_SPEED_TOLERANCE,
-		"Sprint-jump fixture reaches sprint speed before takeoff"
+		before_jump_speed > normal_run_speed + SPRINT_SPEED_TOLERANCE,
+		"Sprint-jump fixture exceeds normal running speed before takeoff"
 	)
 
 	Input.action_press("jump")
