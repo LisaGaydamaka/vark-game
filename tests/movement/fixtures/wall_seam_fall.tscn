@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_lower"]
+size = Vector3(4, 7, 0.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_upper"]
+size = Vector3(4, 8, 0.5)
+
+[node name="WallSeamFallTest" type="Node3D"]
+
+[node name="LowerWall" type="StaticBody3D" parent="."]
+position = Vector3(0, -1.5, -0.25)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LowerWall"]
+shape = SubResource("BoxShape3D_lower")
+
+[node name="UpperWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 6, -0.25)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="UpperWall"]
+shape = SubResource("BoxShape3D_upper")
+
+[node name="SeamMarker" type="Node3D" parent="."]
+position = Vector3(0, 2, 0)
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 2.5, 0.24)
