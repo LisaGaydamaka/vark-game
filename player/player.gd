@@ -60,6 +60,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	player_look.handle_input(event)
 
 
+func is_grounded() -> bool:
+	return support != null and support.is_grounded()
+
+
 func _create_components() -> void:
 	player_input = PlayerInput.new()
 	velocity_state = PlayerVelocityState.new()
