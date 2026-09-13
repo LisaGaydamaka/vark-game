@@ -1,0 +1,20 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_platform"]
+size = Vector3(4, 0.5, 2)
+
+[node name="WalkOffEdgeTest" type="Node3D"]
+
+[node name="Platform" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.25, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Platform"]
+shape = SubResource("BoxShape3D_platform")
+
+[node name="PlatformEdge" type="Node3D" parent="."]
+position = Vector3(0, 0, -1)
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 0, -0.45)
