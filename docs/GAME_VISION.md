@@ -1,6 +1,6 @@
 # Vark Game Vision
 
-This document is the compact product and design north star for Vark. It is intentionally not an implementation plan. When code, tuning, or feature ideas conflict with this document, preserve the vision unless the design is explicitly changed.
+This document is the product and design north star for Vark. It describes what the game is trying to become, not how repository work is performed.
 
 ## Core identity
 
@@ -10,19 +10,19 @@ The game should feel systemic enough that the player can form a plan, improvise 
 
 ## Design pillars
 
-### 1. Stealth is the center of the game
+### Stealth is the center of the game
 
 Detection, light, sound, patrols, suspicion, hiding, route choice, distraction, and recovery from mistakes are more important than combat spectacle. Movement, interaction, combat, tools, UI, and level design should support stealth first.
 
-### 2. Player choice happens through action
+### Player choice happens through action
 
 There are no dialogue-choice branches as the main decision mechanism. Choices are expressed through behavior such as killing or sparing someone, taking or leaving an object, being detected or remaining unseen, and completing optional actions. Later missions may change because of those actions.
 
-### 3. Missions are authored stealth sandboxes
+### Missions are authored stealth sandboxes
 
 The game is divided into missions. A mission should provide multiple useful routes, readable spaces, opportunities for observation, stealth problems, optional actions, and consequences. Briefings, in-mission events, mission completion, statistics, and cross-mission state form the larger structure.
 
-### 4. Movement serves infiltration
+### Movement serves infiltration
 
 Movement should feel responsive, predictable, and physically trustworthy. The target movement set is:
 
@@ -40,9 +40,9 @@ Movement should feel responsive, predictable, and physically trustworthy. The ta
 
 Wall dash is not part of the planned movement set.
 
-Traversal should create routes and recovery options without turning the game into a high-speed movement game. Collision behavior should be stable enough that the player can trust narrow ledges, steps, walls, and drops.
+Traversal should create routes and recovery options without turning Vark into a high-speed movement game. New traversal abilities should exist because they serve stealth spaces and mission routes, not merely to expand the move list.
 
-### 5. The world should be readable, stylized, and low-fi
+### The world should be readable, stylized, and low-fi
 
 Environment direction:
 
@@ -55,7 +55,7 @@ Environment direction:
 Character direction:
 
 - low-poly solid models
-- PS1-era simplicity, but cartoon proportions rather than realism
+- PS1-era simplicity with cartoon proportions rather than realism
 - hand-drawn textures
 - 2D facial animation
 
@@ -65,7 +65,7 @@ The low-fi presentation is an art direction, not an excuse for unclear gameplay 
 
 The city is happy, sunlit, and culturally centered on worship of the sun. Its visual language uses gold, pressed ornaments, decorative solar imagery, and bright civic presentation.
 
-The protagonist is in conflict with that culture and adopts a contrasting moon-associated identity. The sun/moon contrast should be visible in architecture, decoration, color relationships, symbols, UI motifs where appropriate, and character presentation without overwhelming gameplay readability.
+The protagonist is in conflict with that culture and adopts a contrasting moon-associated identity. The sun/moon contrast should appear in architecture, decoration, symbols, UI motifs where appropriate, and character presentation without overwhelming gameplay readability.
 
 ## Narrative presentation
 
@@ -120,7 +120,7 @@ Planned interactions include:
 - turn lights on/off
 - extinguish candles
 
-These should share a common interaction foundation rather than becoming unrelated one-off systems.
+These interactions should feel like parts of one coherent world rather than unrelated scripted exceptions.
 
 ### Combat and takedowns
 
@@ -168,16 +168,10 @@ Menu targets include:
 
 UI should expose information the player needs for stealth decisions without becoming visually dominant.
 
-## Development guardrails
+## Experience guardrails
 
-- Prefer a small complete stealth loop over a large collection of disconnected mechanics.
-- Build generic foundations before adding many individual variants: one interaction framework before many interactables, one item architecture before many tools, one mission-state model before many consequences.
-- Do not add movement abilities merely because they could be interesting; add them because the game or a level needs them.
-- Objective behavior should be protected by automated regression tests when practical.
-- Subjective feel is decided by playtesting, not by tests.
-- When a reproducible gameplay bug is fixed, add a regression test if the behavior can reasonably be automated.
 - Preserve systemic clarity: the player should be able to learn why an action succeeded or failed.
-
-## Source-of-truth rule
-
-`DEVELOPMENT_PLAN.md` decides what to build next. `REGRESSION_TEST_PLAN.md` decides what objective behavior must remain protected. This document decides what the game is trying to become.
+- Prefer stealth problem-solving and readable consequences over spectacle.
+- Movement and combat should support infiltration rather than overpower it.
+- Build missions around useful choices, routes, observation, and environmental interaction.
+- Keep the visual identity strong without sacrificing gameplay readability.
