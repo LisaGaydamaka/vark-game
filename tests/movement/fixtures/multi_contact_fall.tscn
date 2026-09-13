@@ -1,0 +1,26 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_wall_z"]
+size = Vector3(6, 12, 0.5)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_wall_x"]
+size = Vector3(0.5, 12, 6)
+
+[node name="MultiContactFallTest" type="Node3D"]
+
+[node name="WallZ" type="StaticBody3D" parent="."]
+position = Vector3(0, 4, -0.25)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="WallZ"]
+shape = SubResource("BoxShape3D_wall_z")
+
+[node name="WallX" type="StaticBody3D" parent="."]
+position = Vector3(-0.25, 4, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="WallX"]
+shape = SubResource("BoxShape3D_wall_x")
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0.24, 3, 0.24)
