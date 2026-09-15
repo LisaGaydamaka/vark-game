@@ -2,7 +2,7 @@
 
 This document is the single source of truth for how Vark is verified. It records testing conventions, authoritative local commands, automated coverage that actually exists, broad manual regression checks, and CI policy.
 
-Planned tests for unimplemented features belong in the matching item of `DEVELOPMENT_PLAN.md`; this document should not pretend future coverage already exists.
+Planned tests for unimplemented features belong in the matching roadmap item and future-fixture sections below; this document must not pretend future coverage already exists.
 
 ---
 
@@ -10,15 +10,15 @@ Planned tests for unimplemented features belong in the matching item of `DEVELOP
 
 Automate objective, deterministic behavior that is costly or annoying to rediscover manually.
 
-When a reproducible gameplay bug is fixed, keep a regression test if the bug can reasonably be recreated in a deterministic fixture.
+When a reproducible gameplay bug is fixed, keep a regression test if it can reasonably be recreated deterministically.
 
-Do not automate subjective feel, pacing, readability, atmosphere, animation quality, level fun, or artistic judgment. Those are accepted through playtesting and feedback in chat.
+Do not automate subjective feel, pacing, readability, atmosphere, animation quality, level fun, or artistic judgment. Those remain playtest/user acceptance.
 
-Do not add tests merely to increase test count. Every automated test should protect a meaningful invariant or previously broken behavior.
+Do not add tests merely to increase test count. Every automated test should protect a meaningful invariant, failure boundary, or previously broken behavior.
 
-Systemic features require **integrated proof**, not only isolated unit proof. A door is not complete because it animates; a save system is not complete because it serializes data; an acoustic system is not complete because a distance check passes.
+Systemic features require **integrated proof**, not only isolated unit proof. A door is not complete because it animates; a save system is not complete because it serializes data; an acoustic system is not complete because one distance check passes.
 
-For cross-cutting systems, test ownership and failure boundaries as aggressively as happy paths. A restore that fails safely is part of save correctness; a torn-down world that cannot affect its replacement is part of lifecycle correctness; a snapshot whose fields all describe the same semantic instant is part of save correctness.
+For cross-cutting systems, test ownership and failure boundaries as aggressively as happy paths. A restore that fails safely is part of save correctness; a torn-down world that cannot affect its replacement is part of lifecycle correctness; a detached snapshot that cannot mutate with the live world is part of save correctness.
 
 ---
 
@@ -26,41 +26,31 @@ For cross-cutting systems, test ownership and failure boundaries as aggressively
 
 - **LOCKED** behavior should receive regression protection where deterministic.
 - **TARGET** behavior may be tested during prototyping, but tests must not accidentally make an unvalidated design permanent.
-- **OPEN** behavior should first use focused fixtures to discover the correct model; once accepted, convert the meaningful invariants into regressions.
+- **OPEN** behavior should first use focused fixtures to discover the correct model; once accepted, convert meaningful invariants into regressions.
 
 ---
 
 # Player-controller testing contract
 
-The current player movement/look/traversal **behavior and feel are accepted and LOCKED**.
+Current player movement/look/traversal **behavior and feel are accepted and LOCKED**. Implementation is not frozen.
 
-The controller's implementation is **not** frozen.
+Refactors may change input sampling, command routing, pause/cutscene/UI gating, component ownership, mouse capture, internal scene/class structure, and test-input injection, provided accepted player-facing behavior remains.
 
-Refactors may change:
+Tests protect semantic results, not private call order.
 
-- how Godot input is sampled
-- command routing
-- pause/cutscene/UI gating
-- component ownership
-- mouse-capture ownership
-- internal class/scene structure
-- test-input injection
-
-provided the same accepted player-facing behavior remains.
-
-Tests therefore protect semantic results, not private call order.
-
-For large controller/input refactors, prefer a command/behavior trace approach:
+For large locomotion/input refactors, prefer command/behavior traces:
 
 ```text
 same initial fixture
 + same semantic locomotion command sequence
-≈ same position/velocity/stance/traversal/support/look result
+≈ same position/velocity/stance/traversal/support result
 ```
 
-Use intentional numeric tolerances where floating-point/physics behavior requires them. Do not demand meaningless byte-identical internal state.
+Use intentional numeric tolerances where physics requires them.
 
-The locomotion trace is not the universal input API. Interaction, combat, and inventory should receive separate semantic domains as they become real; tests should prove application-level gating without requiring the locomotion controller to understand menus/cutscenes.
+The locomotion trace is not a universal input API. Interaction, combat, and inventory use separate world-gameplay intent domains as they become real.
+
+The one-frame-per-gameplay-tick contract applies to **world gameplay intent**, not every input path. Accepted mouse-look response may remain event-driven and should not be forced into physics-tick latency merely for architectural uniformity. UI/menu input is application input and may operate independently of world simulation.
 
 ---
 
@@ -69,30 +59,35 @@ The locomotion trace is not the universal input API. Interaction, combat, and in
 1. Prefer real gameplay objects and real Godot physics where practical.
 2. Keep fixtures minimal: only the actors/geometry needed to reproduce the behavior.
 3. Assert semantic gameplay state rather than private helper call order.
-4. Use fixed transforms, fixed input/commands, physics-frame progression, and deterministic configuration.
+4. Use fixed transforms, fixed gameplay intent/commands, physics-frame progression, and deterministic configuration.
 5. Avoid real-time sleeps, render-FPS dependence, uncontrolled randomness, and broad timing windows that hide instability.
 6. Release simulated input and free fixture/world-session state between tests.
 7. Assert the original regression boundary, not merely an eventual outcome.
-8. Do not freeze temporary tuning into tests unless the value/relationship is an intentional design contract.
-9. Existing relevant suites must remain green when behavior is intentionally unchanged.
-10. A flaky test or flaky system must be stabilized before it becomes a CI gate.
-11. Test integrated state transitions at subsystem boundaries where bugs are likely to appear: world teardown/replacement, restore/startup, doors/nav/sound, perception/knowledge, authored IDs/reimport, props/support.
+8. Do not freeze temporary tuning unless it is an intentional design contract.
+9. Existing relevant suites remain green when behavior is intentionally unchanged.
+10. Stabilize flaky tests/systems before making them CI gates.
+11. Test integrated boundaries likely to fail: world replacement, restore/startup, doors/nav/sound, perception/knowledge, authored IDs/reimport, props/support.
 12. Prefer explicit test maps/fixtures for spatial systems over hidden hard-coded geometry assumptions.
-13. Save/load tests must assert coherent snapshot capture, absence of duplicate consequences, failed-transaction safety, and compatibility refusal—not only equality of serialized fields.
-14. Performance fixtures should report measured cost/scale and the reference tool/runtime environment; do not invent premature micro-budgets without measurement.
-15. Event-system tests must assert ordering and lifecycle behavior rather than relying on incidental signal/call-stack order.
-16. Persistence tests must distinguish authored-present, authored-removed, and runtime-created objects whenever those cases exist while keeping authored-removed as state of an authored identity rather than a third identity kind.
-17. Input tests must distinguish continuous held state from one-frame edge intent and prove disabled domains do not replay stale edges on resume.
-18. Save-capture tests must verify one immutable snapshot is copied at a stable semantic boundary; asynchronous/deferred file encoding must not read live gameplay objects after capture.
-19. Candidate-load tests must prove the active/frozen old world and non-playing candidate cannot both participate in authoritative gameplay services.
+13. Save/load tests assert coherent detached capture, no duplicate consequences, failed-transaction safety, slot ordering, and compatibility refusal—not merely serialized-field equality.
+14. Performance fixtures report measured cost/scale and reference environment; do not invent premature micro-budgets.
+15. Event tests assert emitted-order FIFO, lifecycle behavior, synchronous drain, and runaway-cascade handling rather than incidental signal/call-stack order.
+16. Do not assert a global deterministic order for unrelated physics discoveries unless gameplay explicitly defines a semantic tie-breaker.
+17. Persistence tests distinguish authored-present, authored-removed, and runtime-created cases while keeping authored-removed as state of authored identity.
+18. Gameplay-input tests distinguish continuous held state from one-frame edges and prove disabled domains do not replay stale edges.
+19. Save-capture tests prove snapshot data is detached/value-owned: mutating live state after capture cannot mutate the captured snapshot.
+20. World-session tests prove shared authored/config Resources and autoload/application state do not become accidental mutable mission-state bridges across sessions.
+21. Durable semantic mutation must be tested at the controlled gameplay-step/consequence boundary. Engine callbacks outside it may update presentation or enqueue future work, not race persistent gameplay truth.
+22. Gameplay-time tests use world simulation time, not wall-clock elapsed time through pause/load.
+23. Long-running saveable behavior is tested through explicit semantic stage/progress/remaining-time state, not serialized engine timers/coroutine stacks.
+24. Each semantic fact has one authoritative owner; tests should not require generic mission facts to mirror system-owned state.
 
-Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, objective-complete, audible, supported, restoring, world-session generation, stable-boundary state, or persistence identity.
+Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, objective complete, audible, supported, restoring, world generation, stable-boundary state, gameplay time, or persistence identity.
 
 ---
 
 # Current local automated barrier
 
-Run from the project root:
+Run from project root:
 
 ```powershell
 godot --headless --path . --script res://tests/movement/run_movement_tests.gd
@@ -106,17 +101,17 @@ Harness failure-path check:
 godot --headless --path . --script res://tests/movement/run_movement_tests.gd -- --intentional-failure
 ```
 
-Expected result: nonzero exit code and the intentional failure reported.
+Expected result: nonzero exit code and intentional failure reported.
 
 The movement runner currently:
 
 - executes real Godot physics;
 - uses the real `Player.tscn` where player behavior is under test;
-- aggregates failures rather than stopping at the first assertion;
+- aggregates failures rather than stopping at first assertion;
 - exits `0` on success and nonzero on failure;
 - releases simulated input between fixtures.
 
-When more than one real test suite exists, add one authoritative `tests/run_all_tests.gd` (or equivalent) and make local full-regression/CI use that entry point.
+When more than one real suite exists, add one authoritative `tests/run_all_tests.gd` (or equivalent) and make local full-regression/CI use that entry point.
 
 ---
 
@@ -126,314 +121,270 @@ The following coverage exists now.
 
 ## Framework sanity
 
-Confirms the runner and assertion collector execute and report normally.
+Confirms the runner/assertion collector execute and report normally.
 
 ## Walk-off edge support refresh
 
-Protects against grounded/support state remaining stale for one frame after a collision-free move off an edge. Once the capsule is physically clear of the platform on a completed movement frame, the player must already be airborne.
+Protects against grounded/support state remaining stale for one frame after a collision-free move off an edge.
 
 ## Sprint-jump inherited momentum
 
-Protects against airborne movement clamping inherited sprint speed down to ordinary run/air speed. The fixture first proves the player is moving faster than normal running speed, then verifies takeoff preserves that inherited horizontal speed within the intended tolerance.
+Protects against airborne movement clamping inherited sprint speed down to ordinary run/air speed.
 
 ## Normal step
 
-Protects ordinary grounded step acquisition and crossing using real player movement and collision geometry.
+Protects ordinary grounded step acquisition/crossing using real movement/collision geometry.
 
 ## Floating / undercut step
 
-Protects a valid support-to-support step where the blocker does not extend down to the source floor. Step logic must not require an artificial floor-connected riser.
+Protects a valid support-to-support step where the blocker does not extend to the source floor.
 
 ## Wall-seam unsupported fall
 
-Protects against modular wall seams or convex contacts cancelling unsupported vertical falling motion or manufacturing ground support.
+Protects against wall seams/convex contacts cancelling unsupported falling motion or manufacturing ground support.
 
 ## Multi-contact fall
 
-Protects against simultaneous wall contacts manufacturing support or cancelling unsupported downward motion.
+Protects against simultaneous wall contacts manufacturing support or cancelling downward motion.
 
-No other future-system coverage described below should be reported as existing until the tests are actually implemented.
+No future-system coverage below should be reported as existing until actually implemented.
 
 ---
 
 # Required future fixture strategy
 
-These fixture requirements become active when the corresponding systems are implemented.
+These requirements become active when corresponding systems are implemented.
 
 ## Controller behavior-trace fixture
 
-Purpose: permit internal input/controller refactors without changing accepted feel.
+Protect representative locomotion traces for walk/start/stop, sprint, crouch, jump/sprint-jump, representative step, ledge catch/hang/release, and representative shimmy/corner/mantle where deterministic.
 
-Protect representative traces for:
+Compare semantic results, not private component internals.
 
-- walk/start/stop
-- sprint
-- crouch
-- jump/sprint-jump
-- representative step
-- ledge catch/hang/release
-- representative shimmy/corner/mantle where deterministic
-
-The trace should compare semantic state, not private component internals.
+Protect accepted mouse-look response separately where needed; do not make event-driven look wait for a gameplay/physics frame simply to fit locomotion trace machinery.
 
 ## World-session lifetime fixture
 
-Purpose: prove application ownership is complete across startup, pause, teardown, restart, load replacement, and promotion.
-
-Protect:
+Phase 1 proves ownership across startup, pause, stop, teardown, restart, and ordinary replacement:
 
 - BUILDING/non-playing startup produces no ordinary gameplay consequences;
-- a session becomes PLAYING only through application ownership;
+- session becomes PLAYING only through application ownership;
+- application can stop/freeze ordinary world gameplay coherently;
 - teardown stops/discards world-owned event queues, gameplay timers, registries, and representative deferred work;
-- a stale callback/event/timer from the old session cannot mutate the replacement session;
+- stale callbacks/events/timers from old session cannot mutate replacement;
 - restart creates fresh world state;
-- pause follows one explicit simulation policy, not just input suppression;
-- quickload freezes/stops ordinary gameplay in the old world while an isolated candidate is restored;
-- candidate registries/events/timers remain candidate-local before promotion;
-- old and candidate worlds never both produce authoritative gameplay consequences;
-- candidate failure leaves one coherent application-owned recovery state and leaks no work into the old/current/next world.
+- pause follows one explicit simulation policy, not only input suppression;
+- shared authored/config Resources do not carry mutable runtime state from one world session into another;
+- autoload/application owners do not accidentally retain mission-local mutable state after replacement.
 
-A generation/session-token implementation may be tested if used, but protect the semantic outcome rather than the token itself.
+Phase 1 does **not** need a simultaneous old/candidate world fixture.
 
-## Input-domain fixture
+When Phase 4 implements real restore, extend this fixture to the chosen restore topology. If old and restored worlds overlap in memory, prove their mutable world-scoped services/resources remain isolated and they never both produce authoritative gameplay consequences. If restore uses sole-world replacement after prevalidation, prove failure reaches the defined coherent recovery state.
+
+## Gameplay-input-domain fixture
 
 Prove:
 
-- accepted locomotion behavior is preserved through the semantic input boundary;
-- application ownership can suppress gameplay input without private locomotion changes;
-- as domains arrive, interaction/combat/inventory input is not forced through the locomotion `PlayerCommand` object;
-- one semantic input frame maps to one gameplay simulation tick;
-- held state may persist only while physically/currently held and permitted;
-- pressed/released edge intent exists for one semantic frame only;
-- pause/UI/cutscene/teardown/world-replacement gating clears transient edges rather than replaying stale one-frame gameplay intents on resume.
+- accepted locomotion behavior survives the gameplay-input boundary;
+- application ownership suppresses gameplay intent without private locomotion changes;
+- interaction/combat/inventory are not forced through locomotion `PlayerCommand`;
+- one **gameplay intent** frame maps to one gameplay simulation tick;
+- held gameplay state persists only while physically/currently held and permitted;
+- pressed/released gameplay intent exists for one frame only;
+- pause/UI/cutscene/teardown/world-replacement gating clears transient gameplay edges rather than replaying them;
+- mouse look retains accepted response/feel and is not inadvertently quantized/delayed by the gameplay-frame refactor;
+- UI/menu input continues to work when world gameplay simulation is paused.
+
+## Gameplay-time fixture
+
+As timed gameplay appears, prove:
+
+- ordinary gameplay time advances with permitted world simulation;
+- pausing for real wall-clock time does not advance guard search, mechanism progress, stagger, deployable arming, delayed mission actions, or other ordinary gameplay durations;
+- time spent loading/restoring does not silently advance restored gameplay durations;
+- save/restore preserves meaningful stage/progress/remaining simulation time where required;
+- no test depends on serializing `Timer` objects or coroutine stacks.
 
 ## Persistent-ID/reimport fixture
 
-Prove:
+Prove persistent IDs are unique, ordinary map move/reorder/reimport preserves identity, duplication receives distinct identity, generated/repaired IDs persist to authoritative source, repeated validation does not rewrite valid source or churn IDs, repair does not create import/rewrite loops, stale generated data cannot overwrite newer authored edits, semantic `content_id` duplicates are rejected, and missing semantic references report clearly.
 
-- persistent IDs are unique;
-- ordinary map move/reorder/reimport preserves identity;
-- duplicate authored entities receive distinct identities;
-- generated/repaired IDs are persisted back to the authoritative authored source and survive another reimport;
-- running validation/import again on an already-valid source does not rewrite it or churn IDs;
-- ID repair/writeback does not create an import/rewrite loop;
-- a stale generated/imported representation cannot overwrite a newer authoritative authored edit;
-- semantic `content_id` duplicates are rejected;
-- missing semantic references report clearly.
+## Gameplay-event / controlled-mutation / stable-boundary fixture
 
-## Gameplay-event/stable-boundary fixture
+Before mission logic or save capture depends on the path, prove:
 
-Before mission logic or save capture depends on the event path, prove:
-
-- semantic events are owned by the current world session;
-- emitted events process FIFO at the chosen controlled gameplay point;
-- the same emitted sequence produces deterministic ordering;
-- events emitted while processing append rather than recursively reordering dispatch;
+- semantic events are current-world-owned;
+- emitted events process FIFO at the chosen controlled point;
+- the same emitted sequence produces the same handling order;
+- nested emissions append rather than recursively reorder dispatch;
 - normal dispatch is disabled while BUILDING, RESTORING, and TEARING_DOWN;
-- queued/stale events from a torn-down world cannot affect a replacement world;
-- one completed semantic gameplay step drains its defined consequence pass before the stable gameplay boundary is reported;
-- save capture requested mid-step occurs only after that stable boundary, not during a half-processed event/consequence state.
+- stale events from torn-down worlds cannot affect replacement;
+- handlers participating in the current drain finish synchronously and cannot suspend/`await` then later pretend to belong to the completed step;
+- an intentionally self-sustaining event/rule loop is caught by a development runaway-cascade guard with a useful trace rather than hanging indefinitely;
+- engine callbacks outside the controlled pass cannot directly race durable semantic state across the stable boundary; representative callbacks enqueue future semantic work instead;
+- the current consequence pass completes before the stable gameplay boundary is reported;
+- save requested mid-step occurs only after that true stable boundary.
 
-Do not freeze a broad event framework; freeze only these required semantics.
+Do not freeze a broad event/scheduler framework; freeze only these semantics.
+
+## Semantic-state ownership fixture
+
+As mission facts/objectives/possession/statistics appear, verify representative facts have one owner:
+
+- door state comes from door ownership, not mirrored generic facts;
+- actor life/awareness comes from actor/perception ownership;
+- possession comes from possession/inventory ownership;
+- objective state comes from objective ownership;
+- run counters come from `MissionRunState`/statistics;
+- mission facts hold mission-defined variables/latched meanings rather than generic mirrors.
+
+Where a derived/latched mission fact intentionally duplicates information, test its distinct semantic meaning instead of treating it as the primary system state.
 
 ## Acoustic fixture
 
-Use a tiny authored map containing at minimum:
+Use a tiny authored map with open room, doorway, closed door, separated room, and L-shaped/corner corridor.
 
-- open room
-- doorway
-- closed door
-- separated room
-- L-shaped/corner corridor
-
-Protect deterministic propagation relationships once the accepted acoustic model exists, such as:
-
-- open connection transmits more than closed door;
-- closed solid separation does not behave like open air;
-- connected around-corner space can transmit according to the accepted model;
-- audibility affects both guard hearing and world-space speech presentation consistently.
-
-If the accepted model requires authored rooms/portals/zones/topology, the fixture/workflow must also prove ordinary mapper edit/reimport does not require fragile generated-output repair.
-
-Do not freeze arbitrary numeric falloff values before they are accepted.
+Protect accepted deterministic relationships only after the acoustic model is chosen. If topology is authored, include normal mapper edit/reimport proof.
 
 ## Gameplay-light fixture
 
-Use a small chamber for:
-
-- darkness
-- partial light
-- full light
-- behind/around occluder
-- edge of influence
-- multiple relevant lights
-
-Automate only objective accepted relationships. Final subjective correspondence between rendered scene and light-gem feel still requires playtest.
+Use a small chamber for dark/partial/full/occluded/edge/multiple-light cases. Automate only accepted objective relationships; subjective correspondence still needs playtest.
 
 ## Door integration fixture
 
-The same ordinary door should eventually be exercised for:
-
-- interaction
-- collision
-- open/closed state
-- lock/key state
-- sight obstruction
-- acoustic transmission
-- NPC/nav traversal
-- physical obstruction by prop where deterministic
-- semantic events
-- save/load state
+The same ordinary door eventually participates in interaction, collision, open/closed/lock state, sight, acoustics, NPC/nav, prop obstruction, semantic events, and save/load.
 
 Avoid separate fake door models per subsystem.
 
 ## Thief-style prop fixture
 
-This behavior is LOCKED and deserves deterministic regression protection.
-
-At minimum cover:
+This LOCKED behavior deserves deterministic regression protection.
 
 ### Stable edge support
 
-A settled box with valid support, even if visibly overhanging an edge, does not topple, rotate, slide, or fall merely because realistic torque would make it unstable.
+A settled box with valid support may overhang without toppling/rotating/sliding/falling from realistic torque.
 
 ### Stable stack
 
-A settled stack remains stationary without wobble, drift, rolling, or spontaneous rotation.
+A settled stack remains stationary without wobble/drift/rolling/rotation.
 
 ### Support removal
 
-Given:
-
-```text
-C supported by B
-B supported by A
-A supported by world
-```
-
-removing A causes the unsupported supported-group above to fall until supported.
-
-The group must not explode, scatter, or topple as a side effect of unrestricted rigid-body simulation.
+Given `C supported by B`, `B supported by A`, `A supported by world`, removing A causes unsupported objects above to fall until supported without exploding/scattering/toppling merely from unrestricted rigid-body behavior.
 
 ### Drop/throw/settle
 
-A held object may be dropped/thrown, move/collide, then return to the settled stationary contract.
+Held object may be dropped/thrown, collide/move, then returns to settled stationary contract rather than indefinite rolling/sliding/spinning.
 
-It must not continue indefinite rolling/sliding/spinning after the accepted settling condition.
+### Held ordinary prop interaction contract
+
+Prove a held ordinary prop uses intended first-person held presentation, cannot be freely rotated, and suppresses ordinary world interaction through central interaction/input ownership. Doors/switches/loot should not each need private `is_holding_prop` logic.
 
 ### Save/load
 
-A settled or transient representative prop state restores coherently without gaining extra motion.
+Settled/transient representative prop state restores coherently without extra motion.
 
 ## Nav/reimport fixture
 
-Prove a representative imported map can:
-
-- build/rebuild navigation
-- spawn one NPC
-- patrol
-- use/route through an ordinary door
-- survive a normal map edit/reimport workflow
-
-This exists early to discover toolchain/nav incompatibility before large AI systems depend on it.
+Imported map → NPC patrol → ordinary door use → map edit/reimport → nav rebuild remains supported.
 
 ## Save snapshot/restore transaction fixture
 
-Save and restore must be tested as semantic transactions, not merely data serialization.
+Save/restore is tested as semantic transaction, not dictionary serialization.
 
 ### Capture
 
 Prove:
 
-- a save request may be made during ordinary active/transient gameplay;
-- capture waits only until the next defined stable gameplay boundary rather than waiting for the world to become idle;
-- current semantic event/consequence processing for the completed step is drained before capture;
-- every save-owning system contributes to one immutable in-memory snapshot representing the same semantic instant;
-- gameplay may resume after that snapshot copy is complete;
-- later encoding/file writing consumes the immutable snapshot and does not continue querying mutable live gameplay objects.
+- save request may happen during ordinary active/transient gameplay;
+- capture waits only to next stable semantic boundary, not world idle;
+- current semantic event/consequence processing has drained first;
+- every owner contributes to one detached in-memory snapshot for the same semantic instant;
+- snapshot contains no live Node/Object/RID/callback/signal/shared mutable runtime Resource references;
+- mutable Arrays/Dictionaries/other data in snapshot are not shared with live gameplay state;
+- after capture, deliberately mutate corresponding live objects/containers and prove snapshot remains unchanged;
+- later encoding/writing consumes only detached snapshot data;
+- rapid repeated saves to one slot cannot allow an older requested snapshot to commit over a newer request;
+- quickload uses latest fully committed save and ignores in-progress temporary writes.
 
-A deterministic fixture should deliberately mutate several systems around a save request—such as door state/event, guard awareness, player/prop motion—and prove the restored result corresponds to one coherent boundary rather than a mixture of adjacent ticks.
+Use a deterministic fixture where several systems change around the save request and prove restored result is one completed semantic instant.
 
 ### Restore
 
-During restore, ordinary gameplay consequences must be suppressed until state application/reconciliation/validation are complete.
+During restore and `after_restore`/world-ready reconciliation, ordinary consequences remain suppressed until validation is complete and gameplay is enabled.
 
-Deterministic tests should cover as systems exist:
+As systems exist, cover:
 
-- save header contains `save_format_version`, `mission_id`, and `mission_content_revision`;
-- unsupported save-format version refuses clearly;
-- unsupported mission-content revision refuses clearly;
+- header contains `save_format_version`, `mission_id`, `mission_content_revision`;
+- unsupported format/revision refuses clearly;
+- an intentionally incompatible structural/spatial mission change is refused when old transforms/state cannot be restored safely;
 - mission restart creates fresh state;
 - save → restore round trip;
-- authored removals/tombstones are applied before semantic state is applied to surviving objects;
-- runtime-persistent objects are recreated/registered before their semantic state is applied;
-- player transform/velocity/stance/relevant traversal state;
-- door state/open fraction/lock state;
-- prop state/support/transient motion;
-- NPC semantic awareness/goal state;
-- mission facts/objectives;
-- mission-script custom state;
-- no duplicate one-shot rule execution;
-- no duplicate objective transitions;
-- no duplicate loot/stat changes;
-- no duplicate alarms/dialogue/events caused by loading;
-- quickload prevents the old world from continuing ordinary gameplay while the candidate is restored;
-- candidate world services remain isolated until promotion;
-- a deliberately forced restore failure never promotes a partially restored candidate world;
-- a failed candidate cannot leak stale events/timers/deferred work into the current/next session;
-- a deliberately failed durable write does not intentionally replace the previous valid save with incomplete data.
+- authored removals before state application to survivors;
+- runtime-persistent recreation/registration before state application;
+- player/door/prop/NPC/objective/fact/script/run-stat state;
+- no duplicate one-shot rules/objectives/loot/stats/alarms/dialogue/events;
+- `after_restore` cannot emit ordinary gameplay consequences merely because it reconciles state;
+- load/restart/mission-transition application operations do not race one another;
+- if old/restored worlds overlap, old gameplay is frozen and mutable state/services do not leak;
+- if restore uses sole-world replacement, forced deep failure reaches the defined safe recovery state;
+- failed partial restore leaves no stale events/timers/deferred work in current/next session;
+- failed durable write preserves previous valid save;
+- gameplay durations resume from saved simulation progress, not wall-clock time spent loading.
 
 ## Removed-authored persistence fixture
 
-Once authored objects can permanently disappear (for example collected loot), prove:
-
-- the authored object's `persistent_id` is represented as removed/tombstoned state rather than creating a third identity kind;
-- save after removal → restore keeps it absent;
-- reloading does not grant duplicate loot/value or replay the collection consequence;
-- absence is not inferred only from the current scene tree.
+Once authored objects can disappear permanently, prove tombstone state, absence after restore, no duplicate loot/value/consequence replay, and no inference of permanent removal merely from current tree absence.
 
 ## Runtime-created persistence fixture
 
-Once a runtime-created object must survive save/load (for example a deployable), prove:
+Once a runtime-created object must survive save/load, prove:
 
-- it receives a runtime persistent identity distinct from authored instances;
-- save captures enough spawn/type provenance to recreate the correct object;
-- semantic state is restored only after recreation/registration;
-- duplicate/repeated restore does not create multiple copies;
-- its lifecycle obeys normal world teardown/replacement ownership.
+- runtime identity is distinct from authored identity;
+- saved type/spawn provenance uses a stable semantic identifier rather than fragile scene/class filename;
+- unknown saved type fails clearly;
+- enough provenance exists to recreate correct object;
+- semantic state applies only after recreation/registration;
+- repeated restore does not duplicate copies;
+- lifecycle obeys world teardown/replacement ownership.
 
 ## Actor-state compatibility fixture
 
-Before final combat exists, prove conscious/unconscious/dead states do not require replacing the guard identity/event/save model.
-
-In particular, changing an actor into unconscious/dead/body behavior must preserve the same persistent identity and semantic actor reference even if runtime nodes/presentation are reorganized internally.
+Before final combat, prove conscious/unconscious/dead/body behavior retains the same persistent identity/semantic actor reference even if runtime presentation nodes change.
 
 ## Crude hostile compatibility fixture
 
-Before stealth architecture is hardened, exercise one deliberately crude hostile path:
+Before stealth architecture hardens, exercise:
 
 ```text
 attack intent
 → semantic hostile effect
 → actor/life-state consequence
-→ gameplay event and gameplay sound
-→ other AI/perception reaction where applicable
+→ gameplay event + gameplay sound
+→ relevant AI/perception reaction
 → save
 → restore
 ```
 
-The test protects reuse of the real input-domain, actor, event, world-session, perception, and persistence contracts. It must not lock combat damage numbers, timings, animations, weapon feel, or Phase 9 design.
+Protect reuse of gameplay-intent, controlled-mutation, gameplay-time, actor, event, world-session, perception, and persistence contracts without locking combat tuning/feel.
 
 ## Mission fact/rule fixture
 
-Once the rule system exists:
+Once rule system exists, cover:
 
 - fact type/default/scope validation;
 - invalid fact assignment rejection/reporting;
-- deterministic rule ordering relative to the gameplay-event queue;
-- one-shot vs repeat behavior;
-- rule state persistence through save/load;
+- facts do not become generic mirrors of system-owned truth;
+- deterministic rule ordering relative to event queue;
+- one-shot/repeat behavior;
+- explicit semantic state for delayed/long-running rules;
+- save/load of rule state without coroutine/timer serialization;
+- runaway event/rule cascade diagnostics;
 - missing entity references report clearly.
+
+## Mission-run statistics fixture
+
+Once the first run statistic exists, prove one semantic owner supplies counters/results. Loot collection, and later kills/knockouts/alerts/objectives/time, extend the same ownership instead of accumulating private duplicate counters for later UI scraping.
 
 ---
 
@@ -441,9 +392,7 @@ Once the rule system exists:
 
 Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`.
 
-The checklist below is the broad integration pass for changes that could affect accepted player behavior. It is not required after every unrelated docs or gameplay change.
-
-As new major systems become real, add concise manual regression sections here only when they provide broad integration value.
+The checklist below is the broad integration pass for changes that could affect accepted player behavior. It is not required after every unrelated docs/gameplay change.
 
 ---
 
@@ -452,154 +401,146 @@ As new major systems become real, add concise manual regression sections here on
 ## Project load / player scene
 
 - [ ] Project reopens without new missing-script, parser, global-class, UID, or player-code errors.
-- [ ] `Player.tscn` loads and spawns normally.
-- [ ] No unexpected resource/UID churn appears after a normal project rescan.
+- [ ] `Player.tscn` loads/spawns normally.
+- [ ] No unexpected resource/UID churn appears after normal project rescan.
 
 ## Input and look
 
-- [ ] Move in all four directions and diagonally.
-- [ ] Mouse look and mouse capture/release behave normally.
-- [ ] Combined movement, jump, crouch, and sprint inputs do not create stale one-frame states.
-- [ ] After input-router refactors, pause/UI/cutscene ownership suppresses gameplay input without changing resumed gameplay feel.
+- [ ] Move in all four directions/diagonally.
+- [ ] Mouse look and mouse capture/release retain accepted response/feel after input-router changes.
+- [ ] Mouse look does not gain obvious physics-tick quantization/latency merely because gameplay intent is tick-framed.
+- [ ] Combined movement/jump/crouch/sprint does not create stale one-frame states.
+- [ ] Pause/UI/cutscene ownership suppresses world gameplay input without breaking UI input or resumed gameplay feel.
 - [ ] Interaction/combat/inventory domains, once present, do not alter ordinary locomotion command semantics.
-- [ ] Press/release actions performed while their domain is disabled do not fire later when gameplay resumes.
+- [ ] Press/release actions performed while their gameplay domain is disabled do not fire later on resume.
 
-## Pause / world ownership
+## Pause / world ownership / gameplay time
 
 When Phase 1 exists:
 
-- [ ] Pausing suppresses ordinary gameplay simulation according to the defined application policy, not only player input.
-- [ ] Resume does not cause queued/stale gameplay intents, timers, or events to burst unexpectedly.
-- [ ] Restart/mission replacement does not visibly receive effects from the previous world session.
+- [ ] Pause suppresses ordinary gameplay simulation according to application policy, not only player input.
+- [ ] Meaningful gameplay durations do not advance while ordinary world simulation is paused.
+- [ ] Resume does not burst stale intents/timers/events.
+- [ ] Restart/mission replacement does not receive effects/state from previous world session.
+- [ ] Mutable runtime state is not accidentally shared through authored Resources/autoloads across a restart.
 
 ## Ground, support, slopes, and falling
 
 - [ ] Move/sprint/start/stop normally on flat ground.
-- [ ] Move up, down, and across representative walkable slopes; standing still does not slide unexpectedly.
-- [ ] Land normally from jumps and longer falls.
-- [ ] Narrow beams/edges support the capsule when physically valid.
-- [ ] Rubbing walls, modular seams, and convex edges while falling does not stick, launch, or create fake support.
+- [ ] Move on representative walkable slopes without unexpected standing slide.
+- [ ] Land normally from jumps/longer falls.
+- [ ] Narrow beams/edges support capsule when physically valid.
+- [ ] Walls/seams/convex edges while falling do not stick/launch/create fake support.
 
 ## Steps
 
-- [ ] Climb representative valid steps straight-on, diagonally, and while strafing onto them.
-- [ ] Strafing along a riser without inward motion does not spuriously start a step.
-- [ ] Wall seams near foot height are not treated as steps.
-- [ ] Jumping/falling into step geometry does not create an airborne step.
-- [ ] Steps from slopes/other valid source support do not introduce unexpected height changes.
-- [ ] Representative heights up to the configured maximum work.
-- [ ] Blocked overhead/crossing routes do not force the capsule through geometry.
+- [ ] Climb valid steps straight-on/diagonally/strafe.
+- [ ] Strafing along a riser without inward motion does not spuriously step.
+- [ ] Wall seams near foot height are not steps.
+- [ ] Airborne collision with step geometry does not create airborne step.
+- [ ] Representative heights up to configured maximum work.
+- [ ] Blocked overhead/crossing routes do not force capsule through geometry.
 
 ## Crouch, sprint, jump, and air control
 
-- [ ] Crouch/stand repeatedly; standing remains blocked under low clearance until space exists.
-- [ ] Crouch movement and sprint movement remain distinct and usable.
-- [ ] Jump from standstill, ordinary movement, and sprinting.
-- [ ] Jump releases support cleanly and ascent is not immediately re-grounded.
-- [ ] Air steering, reversal, and landing remain coherent.
-- [ ] Held/released jump does not leave stale mantle-intent behavior across attempts.
+- [ ] Crouch/stand repeatedly; low clearance blocks standing until space exists.
+- [ ] Crouch/sprint movement remain distinct.
+- [ ] Jump from standstill, movement, sprint.
+- [ ] Jump releases support cleanly.
+- [ ] Air steering/reversal/landing remain coherent.
+- [ ] Held/released jump does not leave stale mantle intent.
 
 ## Ledge grab / hang / traversal
 
-- [ ] Grab a normal ledge from a jump and while falling alongside valid geometry.
+- [ ] Grab normal ledge from jump/fall.
 - [ ] Hang without unexpected support/step transitions.
-- [ ] Shimmy both directions and traverse representative supported corners.
-- [ ] Directional, sprint-directional, and no-input hang jumps release cleanly.
-- [ ] Jump/drop/failed catch/failed mantle suppression prevents immediate illegitimate regrab/retry but later legitimate attempts still work.
+- [ ] Shimmy both directions and supported corners.
+- [ ] Directional/sprint-directional/no-input hang jumps release cleanly.
+- [ ] Suppression prevents illegitimate immediate regrab but later legitimate attempts work.
 
 ## Mantle
 
-- [ ] Ground-requested mantle starts from the same accepted contact/intent situations as the current controller.
-- [ ] Airborne jump-hold mantle buffering behaves as currently accepted.
-- [ ] Mantle a normal wide platform and supported thin geometry as currently accepted.
-- [ ] Crouch-clearance mantle cases behave as currently accepted.
-- [ ] Successful mantle does not sink, stick, fall through, snap backward, or preserve unintended player velocity.
-- [ ] Walking/jumping from the resulting support works normally.
+- [ ] Ground-requested mantle starts from accepted situations.
+- [ ] Airborne jump-hold mantle buffering remains accepted.
+- [ ] Mantle normal wide/supported thin geometry as accepted.
+- [ ] Crouch-clearance cases remain accepted.
+- [ ] Successful mantle does not sink/stick/fall/snap/preserve unintended velocity.
 
 ## Velocity / collision integration
 
-- [ ] Traversal entry/release does not leave stale locomotion velocity.
-- [ ] Valid landings terminate downward controlled velocity only after support is actually validated.
-- [ ] Unsupported collision response does not create displacement longer than requested motion or turn tiny downward motion into a large sideways launch.
+- [ ] Traversal entry/release leaves no stale locomotion velocity.
+- [ ] Valid landings terminate downward controlled velocity only after support validation.
+- [ ] Unsupported collision does not produce outsized sideways launch/displacement.
 
-If the user explicitly reopens and changes a player movement/traversal behavior, update this checklist and automated regressions to the newly accepted contract rather than preserving obsolete behavior.
+If the user explicitly reopens player movement/traversal behavior, update automated/manual contracts to the newly accepted behavior rather than preserving obsolete rules.
 
 ---
 
 # Future integrated manual acceptance
 
-When these systems exist, their phase gates should include representative playtests.
-
 ## Acoustic/speech
 
-- [ ] Footsteps/impacts are intuitively affected by doors/openings/connected spaces.
-- [ ] Stopping and listening provides useful positional information.
-- [ ] Typed speech remains visible above an NPC through visual cover when it should be audible.
-- [ ] Distant/marginal speech presentation fades as intended.
-- [ ] Inaudible speech is not shown.
-- [ ] If acoustic topology is mapper-authored, normal map editing/reimport remains understandable and low-friction.
+- [ ] Footsteps/impacts respond intuitively to doors/openings/connected spaces.
+- [ ] Stopping/listening gives useful positional information.
+- [ ] Typed speech remains visible through visual cover when acoustically audible.
+- [ ] Distant/marginal speech fades as intended; inaudible speech is hidden.
+- [ ] Mapper-authored acoustic topology, if used, remains low-friction through edit/reimport.
 
 ## Gameplay lighting
 
-- [ ] Light gem agrees intuitively with what the player sees across dark/partial/full/occluded cases.
-- [ ] Decorative visual brightness does not accidentally create wrong stealth exposure.
-- [ ] Switching/extinguishing a gameplay light updates exposure coherently.
+- [ ] Light gem agrees intuitively with dark/partial/full/occluded cases.
+- [ ] Decorative brightness does not accidentally define stealth exposure.
+- [ ] Switching/extinguishing gameplay light updates exposure coherently.
 
 ## Thief-style props
 
-- [ ] Edge-supported props look intentionally stable rather than "broken physics."
+- [ ] Edge-supported props look intentionally stable.
 - [ ] Stacks remain motionless while supported.
-- [ ] Pulling a lower support causes upper supported objects to fall without the stack exploding/scattering.
-- [ ] Dropped/thrown props settle cleanly and stop.
+- [ ] Removing lower support makes upper supported objects fall without exploding/scattering.
+- [ ] Dropped/thrown props settle and stop.
 - [ ] Props remain useful for stacking/climbing/door obstruction.
+- [ ] Held ordinary props use intended first-person presentation, cannot be freely rotated, and suppress ordinary world interaction without per-object special cases.
 
 ## Save/load
 
-- [ ] Quicksave can be requested during ordinary active/transient gameplay and completes without requiring the world to become idle.
-- [ ] A loaded quicksave reflects one coherent gameplay instant rather than mixed before/after state across doors, AI, objectives, props, etc.
-- [ ] Representative transient states restore coherently.
-- [ ] Loading does not visibly replay objective/loot/alarm/dialogue consequences.
-- [ ] The old world does not visibly continue simulating while quickload constructs/restores the candidate world.
-- [ ] Restored world resumes from the saved state rather than briefly simulating a fresh start first.
-- [ ] An incompatible mission-content revision produces a clear refusal rather than a partially wrong world.
-- [ ] A failed load leaves the application in a coherent recoverable state.
-- [ ] A failed save attempt does not intentionally destroy the previous valid quicksave.
+- [ ] Quicksave can be requested during ordinary active/transient gameplay without waiting for world idle.
+- [ ] Loaded save reflects one coherent instant rather than mixed before/after state.
+- [ ] Representative transient/timed states restore coherently and do not advance merely because real time passed during loading.
+- [ ] Loading/`after_restore` does not visibly replay objective/loot/stat/alarm/dialogue consequences.
+- [ ] Repeated rapid saves leave the latest requested successfully committed state as the quicksave.
+- [ ] Quickload never reads an in-progress temporary save.
+- [ ] Application remains coherent when save/load/restart requests happen close together.
+- [ ] Incompatible mission-content revision produces clear refusal rather than partially wrong world.
+- [ ] Failed load reaches coherent recovery state for chosen restore topology.
+- [ ] Failed save attempt preserves previous valid quicksave.
 
 ## Combat
 
-Before combat becomes LOCKED, playtest:
+Before combat becomes LOCKED, playtest one guard, two guards, tight corridor, open room, stealth-to-combat transition, lethal assault, nonlethal assault, and retreat/break contact.
 
-- [ ] one guard
-- [ ] two guards
-- [ ] tight corridor
-- [ ] open room
-- [ ] stealth-to-combat transition
-- [ ] lethal assault
-- [ ] nonlethal assault
-- [ ] retreat/break contact
-
-Subjective combat feel is accepted by the user, not inferred from the earlier crude architecture-compatibility proof or deterministic tests.
+Subjective combat feel is accepted by the user, not inferred from crude architecture proof/tests.
 
 ---
 
 # Performance-testing policy
 
-Do not wait for the final representative mission before checking expensive-system scaling.
+Do not wait for final representative mission before checking expensive-system scaling.
 
-When each system becomes real, add a focused stress fixture and record representative measurements for:
+As systems become real, record representative measurements for:
 
 - gameplay exposure with many relevant lights;
 - many guards performing vision checks;
 - many semantic sounds/hearing receivers;
 - nav/path updates around changing doors;
-- mission-event/rule bursts;
-- save snapshot capture time, encoded size, and durable-write time as separate measurements where useful;
+- mission-event/rule bursts including cascade diagnostics;
+- **synchronous detached snapshot capture time**;
+- encoded save size and durable-write time separately;
 - prop support checks;
-- runtime-created persistent objects if/when they become real.
+- runtime-created persistent objects when real.
 
-Record the exact supported Godot/runtime configuration and enough reference-machine information to make later comparisons meaningful.
+Record exact supported Godot/runtime configuration and enough reference-machine information for meaningful comparisons.
 
-The purpose is early architectural warning, not premature optimization.
+If synchronous snapshot capture becomes expensive, optimize semantic state/copying. Do not weaken coherent capture by reading live gameplay asynchronously across multiple ticks.
 
 The later production-scale mission remains the final realistic performance proof.
 
@@ -607,35 +548,35 @@ The later production-scale mission remains the final realistic performance proof
 
 # CI policy
 
-Add GitHub Actions only after the local suite it will run is deterministic.
+Add GitHub Actions only after the local suite it runs is deterministic.
 
-Under the repository's current GitHub workflow, `test` is the integration branch and authorized changes are written directly to it. Therefore CI on `test` is **post-push integration validation**, not a fictional pre-push safety gate.
+Under current repository workflow, `test` is the direct-write integration branch. CI on `test` is therefore **post-push integration validation**, not a fictional pre-push gate.
 
 CI should:
 
-- use the exact supported project Godot/runtime configuration;
+- use exact supported project Godot/runtime configuration;
 - run headlessly;
 - call the same authoritative command used locally;
-- run immediately on pushes to `test` and on pull requests if pull requests are used for other repository workflows;
+- run immediately on pushes to `test` and on PRs if used by other workflows;
 - fail on nonzero test exit.
 
-When multiple suites exist, CI should call one all-tests entry point rather than duplicating suite commands in workflow YAML.
+When multiple suites exist, CI calls one all-tests entry point rather than duplicating suite commands in workflow YAML.
 
-A newly uploaded implementation commit is not accepted merely because it reached `test`. Keep the corresponding roadmap work `[~]` until the relevant CI/local automated validation is green and required manual/user validation is accepted.
+A newly uploaded implementation commit is not accepted merely because it reached `test`. Keep roadmap work `[~]` until relevant CI/local automated validation is green and required manual/user validation is accepted.
 
-Do not describe a `test` status check as a pre-merge/pre-push protection requirement while repository policy forbids helper branches and writes directly to `test`. If repository workflow changes later, CI protection policy may be revisited explicitly.
+Do not describe a `test` status check as pre-merge/pre-push protection while policy writes directly to `test` and forbids helper branches.
 
 ---
 
 # Maintenance
 
-The agent updates this file automatically during authorized repository patches when:
+Update this file during authorized repository patches when:
 
 - meaningful automated regression coverage is added/removed/changed;
-- the authoritative test command changes;
+- authoritative test command changes;
 - a new real suite is introduced;
 - broad manual regression coverage changes;
 - CI/testing strategy materially changes;
 - an OPEN/TARGET system becomes LOCKED and needs permanent verification rules.
 
-Do not turn this file into a line-by-line mirror of test code. It should describe the verification contract at the behavior level.
+Do not turn this file into a line-by-line mirror of test code. It describes verification contracts at the behavior/ownership boundary.
