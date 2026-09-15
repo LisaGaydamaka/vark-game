@@ -408,11 +408,13 @@ Under current repository policy, `test` is the direct-write integration branch. 
 
 **Manual:** none for CI infrastructure beyond confirming the successful run/report; user confirmation has been received.
 
-## 0.6 Traversal regression expansion `[ ]`
+## 0.6 Traversal regression expansion `[~]`
 
 Add deterministic coverage where practical for ledge catch, hang, shimmy, supported corners, mantle, release, and suppression/regrab.
 
 Do not invent synthetic geometry merely to make a test convenient if it does not represent accepted player behavior. Build minimal fixtures around the real ledge state machine and real `Player.tscn`.
+
+The authoritative movement barrier now includes a minimal real-physics ledge fixture using the real `Player.tscn`. It protects normal falling catch → stable hang → crouch release, two-way shimmy plus a supported right-angle corner, a no-input hang mantle onto the valid top, and drop/regrab suppression followed by a later legitimate regrab.
 
 **Done when:** representative accepted ledge catch/hang/release, shimmy/corner, mantle, and suppression/regrab behavior has deterministic protection where practical.
 
@@ -1350,7 +1352,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Implement `0.6` traversal regression expansion with real deterministic ledge/mantle fixtures.
+1. Finish `0.6` by running the focused ledge/mantle manual checklist; after successful user validation and green CI, mark it `[x]` during the next authorized patch.
 2. Implement `0.7` semantic behavior-trace protection over representative accepted locomotion/traversal sequences.
 3. Only after the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
 4. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.

@@ -2,6 +2,9 @@ extends SceneTree
 
 
 const TestHelpers = preload("res://tests/movement/test_helpers.gd")
+const TraversalRegressions = preload(
+	"res://tests/movement/traversal_regressions.gd"
+)
 const WalkOffEdgeFixture = preload(
 	"res://tests/movement/fixtures/walk_off_edge.tscn"
 )
@@ -52,6 +55,9 @@ func _run_tests() -> void:
 	await _test_floating_step(helpers)
 	await _test_wall_seam_fall(helpers)
 	await _test_multi_contact_fall(helpers)
+
+	var traversal_regressions: RefCounted = TraversalRegressions.new(self)
+	await traversal_regressions.run(helpers)
 
 	if INTENTIONAL_FAILURE_ARG in OS.get_cmdline_user_args():
 		helpers.assert_true(false, "Intentional failure path")

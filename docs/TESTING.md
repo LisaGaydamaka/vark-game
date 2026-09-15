@@ -180,6 +180,22 @@ Protects against wall seams/convex contacts cancelling unsupported falling motio
 
 Protects against simultaneous wall contacts manufacturing support or cancelling downward motion.
 
+## Ledge catch / hang / release
+
+A real `Player.tscn` falls into an ordinary wide ledge, enters the production catch transition, settles into a stable unsupported hang, and drops cleanly through the normal crouch release path.
+
+## Shimmy / supported corner
+
+The same real-player fixture shimmies in both directions and deliberately releases/re-presses endpoint intent to traverse a supported physical right-angle corner, finishing attached to the adjoining ledge face.
+
+## Mantle
+
+From the real hanging state, a no-direction jump request traverses the production mantle path onto the valid ledge top and finishes grounded without stale traversal velocity.
+
+## Drop/regrab suppression
+
+Dropping from a hang cannot immediately recatch the same local ledge while the player remains in its suppression region. After leaving that region, returning to the same approach permits a later legitimate catch/hang again.
+
 No future-system coverage below should be reported as existing until actually implemented.
 
 ---
