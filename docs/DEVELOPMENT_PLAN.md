@@ -8,575 +8,812 @@ Each item should be implemented as a bounded step. Do not advance a milestone me
 
 The final systems-development goal is not merely that every mechanic exists. Vark is ready to hand to mission developers and plot writers only when those systems form a stable content-authoring platform that can be used without modifying core gameplay code.
 
+## Current implementation baseline
+
+The project currently has a substantial accepted player controller, movement regression tests, FuncGodot/TrenchBroom geometry import, static graybox maps, and a movement-oriented test scene. It does not yet have a production game shell, active gameplay-lighting setup, NPCs, navigation, interactable world objects, pickups, inventory, mission runtime, campaign state, combat, menus/game-flow screens, narrative systems, or production content-authoring tools.
+
+Development must therefore grow one playable game vertically rather than building many isolated systems and integrating them at the end.
+
+## Roadmap rules
+
+- The current movement and climbing behavior is frozen. Future systems adapt to it; they do not redesign or retune it unless the user explicitly reopens that scope.
+- Introduce temporary UI, audio, debug feedback, and validation when a system first needs them. Final polish may come later, but feedback and diagnosability may not.
+- Expose provisional level-authoring hooks as real gameplay entities appear. Milestone 12 stabilizes those interfaces; it must not be the first time designers can place gameplay objects.
+- Build generic architecture from concrete needs demonstrated by the playground and vertical-slice missions. Do not build a universal scripting language, giant inventory framework, or custom editor before real content proves it is needed.
+- Reuse semantic events/state between gameplay, statistics, missions, campaign consequences, UI, and debugging rather than maintaining duplicate truth.
+- Every major milestone ends in an integrated playable result.
+
 ---
 
-# Milestone 1 — Close the player-controller foundation
+# Milestone 1 — Freeze the player and establish the real application shell
 
-Goal: finish a reliable traversal foundation, then stop expanding movement and shift the main development focus to stealth.
+Goal: protect the accepted player behavior and stop treating a development scene as the whole application.
 
-## 1.1 Core locomotion stability `[x]`
+## 1.1 Existing player locomotion and traversal `[x]`
 
-**Scope:** walk/run/sprint, crouch, jump, air control, support/collision response, steps, ledge traversal, and mantle foundation.
+**Scope:** accept the currently implemented normal locomotion, sprint, crouch, jump/air control, support/collision response, steps, ledge grab/hang/traversal/corners, and mantle behavior as the movement contract.
 
-**Depends:** none.
-
-**Acceptance:** current movement regression suite remains green; broad movement/traversal manual checks remain acceptable.
+**Acceptance:** current accepted movement feel remains unchanged.
 
 ## 1.2 Local automated movement regression barrier `[x]`
 
-**Scope:** headless Godot runner, failure aggregation, deterministic physics fixtures, nonzero exit on failure.
+**Scope:** keep the existing headless movement runner, deterministic physics fixtures, failure aggregation, and nonzero failure exit.
 
-**Depends:** 1.1.
+**Acceptance:** `tests/movement/run_movement_tests.gd` remains the authoritative current automated barrier and its intentional-failure mode still fails correctly.
 
-**Acceptance:** `tests/movement/run_movement_tests.gd` passes locally and its intentional-failure mode exits nonzero.
+## 1.3 Traversal regression protection `[ ]`
 
-## 1.3 Mantle landing-surface validity `[ ]` — recommended next
+**Scope:** add focused deterministic coverage for representative existing ledge grab, hang, shimmy/corner traversal, mantle, release/drop, and regrab-suppression behavior where practical. Tests protect accepted behavior; they do not define new movement behavior.
 
-**Scope:** separate broad ledge geometry detection from semantic mantle landing validity. Reject effectively vertical/non-walkable top surfaces as mantle destinations while preserving legitimate hanging and valid mantles.
+**Depends:** 1.1–1.2.
 
-**Depends:** 1.1, 1.2.
+**Acceptance:** repeated suite runs are stable and later gameplay changes can detect accidental traversal breakage without requiring movement redesign.
 
-**Acceptance:**
-- automated: almost-vertical/invalid mantle landing is rejected and a normal mantle top succeeds; include crouch-only mantle coverage if stance-aware clearance is touched;
-- manual: normal platforms, thin supported geometry, awkward wall/top transitions, and crouch-clearance cases still feel reliable and not overly magnetic.
+## 1.4 Application bootstrap and game-flow owner `[ ]`
 
-## 1.4 Traversal regression expansion and determinism `[ ]`
+**Scope:** create the actual F5 application root with clear ownership for the current world, player, UI layer, and top-level game-flow transitions. Add a minimal functional main-menu/dev-entry screen so normal application startup no longer depends on running a development scene directly.
 
-**Scope:** cover important ledge/mantle behaviors that are still protected mainly by manual testing and remove timing-dependent assumptions from the movement suite.
+**Acceptance:** F5 starts Vark through one stable root; entering and leaving the current gameplay world is controlled by the game-flow layer rather than arbitrary scene scripts.
 
-**Depends:** 1.3.
+## 1.5 Pause and input-ownership foundation `[ ]`
 
-**Acceptance:** valid mantle, invalid mantle, crouch-only mantle where relevant, and reproducible ledge/corner regressions have focused deterministic coverage; repeated full-suite runs are consistently green; broad traversal manual checks remain acceptable.
-
-## 1.5 Continuous movement tests in GitHub Actions `[ ]`
-
-**Scope:** pin the project Godot version in CI and run the same authoritative local test command on pushes to `test` and pull requests.
+**Scope:** establish pause/back behavior, mouse capture/release, and the distinction between gameplay input and UI input. Add a minimal pause screen with Resume and Return-to-Main-Menu behavior; settings may remain a placeholder until real settings exist.
 
 **Depends:** 1.4.
 
-**Acceptance:** normal suite produces a passing CI check; intentional failure makes CI fail; workflow is stable before any required-check/branch-protection decision.
+**Acceptance:** opening UI does not continue moving/looking the player, resuming restores input correctly, and leaving gameplay returns through the game-flow owner.
 
-**Milestone gate:** movement/traversal is trustworthy enough that feature work can shift to stealth without continuing to add traversal abilities for their own sake.
+## 1.6 Collision/query conventions `[ ]`
 
----
+**Scope:** establish the minimum collision/query categories future systems need, such as world, player, NPC, physical/interactable object, and trigger/query-only layers. Do not allocate speculative layers.
 
-# Milestone 2 — Build the smallest complete stealth loop
+**Acceptance:** later interaction, AI vision, triggers, and props can use a documented shared layer contract without changing player movement behavior.
 
-Goal: make Vark recognizably a stealth game in one controlled developer playground before building a production mission.
+## 1.7 TrenchBroom/map source baseline `[~]`
 
-Target loop: bright/dark space → guard sees or hears player → suspicion/investigation → alert/search → player breaks contact and hides again.
+**Scope:** retain the existing FuncGodot/TrenchBroom pipeline and define ownership conventions: `.map` is authored level geometry source, imported/generated representation is not manually maintained, and development maps are separated conceptually from future production missions.
 
-## 2.1 Player light-exposure model `[ ]`
+**Acceptance:** a small source-map edit can be reimported predictably without hand-fixing generated scene content.
 
-**Scope:** compute a stable gameplay value representing player exposure to relevant light. Keep rendering and gameplay policy separate enough that AI/UI can consume the value.
+## 1.8 Repository/content hygiene `[ ]`
 
-**Depends:** Milestone 1 foundation.
+**Scope:** audit tracked autosaves, generated/imported files, large experimental maps, and future binary-asset handling before content production expands. Preserve genuine authored source; remove only files whose ownership is understood.
 
-**Acceptance:**
-- automated: fixed dark/bright cases, defined bounds, and deterministic occlusion/non-contribution rules;
-- manual: walking through a simple light/dark room produces transitions that correspond to what the player sees.
+**Acceptance:** repository conventions no longer encourage committing editor autosaves or ambiguous generated content, and large-source handling has an explicit policy.
 
-## 2.2 Light gem `[ ]`
+## 1.9 Continuous tests in GitHub Actions `[ ]`
 
-**Scope:** HUD representation of player exposure using deliberately readable states rather than noisy frame-to-frame flicker.
+**Scope:** pin the project Godot version and run the same authoritative local regression command on pushes to `test` and pull requests. Once a second real suite exists, introduce one authoritative `tests/run_all_tests.gd` or equivalent and make both local full-regression and CI use it.
 
-**Depends:** 2.1.
+**Depends:** 1.3.
 
-**Acceptance:**
-- automated: exposure-to-display-state mapping;
-- manual: the gem communicates useful stealth information without distracting from the world.
+**Acceptance:** normal suite passes in CI; intentional failure proves the workflow fails; the check remains non-required until stable and non-flaky.
 
-## 2.3 Guard state model `[ ]`
-
-**Scope:** explicit guard state ownership before full perception. Minimum useful states: unaware/patrol, suspicious/investigating, alerted, searching, and recovery as required by the final behavior.
-
-**Depends:** basic NPC scene/movement foundation created as part of this item.
-
-**Acceptance:**
-- automated: legal transitions, deterministic timers/decay, and rejected impossible transitions where the model enforces them;
-- manual: debug-triggered state changes do not cause movement/animation/state ownership to fight itself.
-
-## 2.4 Guard vision `[ ]`
-
-**Scope:** distance, view direction/FOV, world occlusion, target visibility, and integration with player light exposure. Vision supplies evidence to the guard state model rather than owning all AI behavior directly.
-
-**Depends:** 2.1, 2.3.
-
-**Acceptance:**
-- automated: visible, outside-FOV, occluded, out-of-range, and exposure-dependent cases;
-- manual: front/side/rear approaches, cover, and bright/dark movement feel explainable and predictable.
-
-## 2.5 Player noise model `[ ]`
-
-**Scope:** gameplay noise events emitted by player actions, beginning with locomotion-relevant noise. Event production stays separate from guard hearing policy.
-
-**Depends:** stable player movement.
-
-**Acceptance:**
-- automated: representative actions emit expected noise classes/intensity and silent actions do not emit unintended events;
-- manual: walking, sprinting, crouching, landing, and any implemented surface differences produce understandable debug evidence.
-
-## 2.6 Guard hearing `[ ]`
-
-**Scope:** guards receive relevant noise using distance/environment rules and convert it into suspicion/investigation evidence.
-
-**Depends:** 2.3, 2.5.
-
-**Acceptance:**
-- automated: audible, inaudible, distance/strength threshold, and any deterministic occlusion/material rules actually implemented;
-- manual: noise at several distances produces readable reactions useful for distraction gameplay.
-
-## 2.7 Suspicion, investigation, alert, search, and recovery `[ ]`
-
-**Scope:** combine sight/hearing evidence into coherent guard behavior. Support partial suspicion, investigation, full detection, loss of target, search, and eventual recovery where appropriate.
-
-**Depends:** 2.3, 2.4, 2.6.
-
-**Acceptance:**
-- automated: key evidence/state transitions and deterministic recovery rules;
-- manual: repeated detection/recovery scenarios have understandable pacing and feedback.
-
-## 2.8 Guard navigation and patrol authoring `[ ]`
-
-**Scope:** establish the first stable content-facing way to make guards move through authored spaces. Support patrol routes, route order/loop behavior, waits or pauses where needed, navigation to investigation/search targets, and clear ownership when AI state interrupts or resumes patrol. Keep the data model minimal and based on real stealth-playground needs rather than designing the final mission-authoring tool in advance.
-
-**Depends:** 2.3 and the navigation/movement foundation needed by guard behavior.
-
-**Acceptance:**
-- automated: deterministic route progression/state ownership where practical, including interruption/resume rules and invalid/unreachable target handling that has a stable objective contract;
-- manual: a guard follows an authored patrol, leaves it to investigate/search, and returns to sensible behavior without route/state conflicts; navigation failures are observable rather than silently freezing the guard.
-
-## 2.9 Stealth playground vertical slice `[ ]`
-
-**Scope:** one small developer scene combining light, cover, guards, authored patrols, sight, hearing, hiding, investigation, search, and recovery. It is a playtest scene, not production art.
-
-**Depends:** 2.1–2.8.
-
-**Acceptance:** focused subsystem tests stay green; repeated infiltration through different routes and deliberate mistakes already feels like a basic Vark stealth encounter.
-
-**Milestone gate:** the stealth playground is understandable, playable, and accepted as the foundation for world interaction, with guards driven by authored patrol/navigation data rather than hard-coded scene behavior.
+**Milestone gate:** Vark starts as an actual application, pause/input ownership works, the accepted player is protected rather than redesigned, and project/map foundations are ready for new gameplay.
 
 ---
 
-# Milestone 3 — Interaction backbone
+# Milestone 2 — Build a small real gameplay laboratory
 
-Goal: create one reusable interaction model, then add common world interactions as small implementations of it.
+Goal: stop developing future systems against an empty/static movement test environment. Create the smallest lit world with real reusable objects and known scale.
 
-## 3.1 Interactable focus and action contract `[ ]`
+## 2.1 Clean gameplay playground `[ ]`
 
-**Scope:** determine the targeted interactable, expose the available action, and dispatch interaction without individual objects reinventing targeting/input logic.
+**Scope:** create a compact purpose-built graybox containing a bright area, dark area, hallway, doorway, cover, a future patrol loop, and a small interaction area. Keep the large movement test scene separate.
 
-**Depends:** player/camera foundation.
+**Acceptance:** the new scene is fast to run and easy to modify for gameplay-system tests without disturbing movement regression fixtures.
 
-**Acceptance:**
-- automated: focus selection, range rejection, blocked/invalid target rejection where designed, and one-time action dispatch;
-- manual: targeting nearby objects at awkward angles/ranges is stable and understandable.
+## 2.2 World scale and clearance metrics `[ ]`
 
-## 3.2 Doors and windows `[ ]`
+**Scope:** document/prove practical dimensions for ordinary doors, corridors, guard placeholders, cover, and props against the frozen player body and traversal behavior.
 
-**Scope:** open/close state, collision behavior, and interaction through 3.1. Add lock/key behavior only when a mission needs it.
+**Acceptance:** representative graybox architecture fits the existing player without requiring controller retuning.
+
+## 2.3 Active lighting baseline `[ ]`
+
+**Scope:** add actual visible authored lighting and meaningful darkness using the minimum light types needed by the playground. This is rendering/environment setup, not yet the stealth-exposure calculation.
+
+**Acceptance:** the playground contains clearly readable bright, partially lit, and dark spaces with working shadows/occlusion suitable for later stealth tests.
+
+## 2.4 Reusable static prop `[ ]`
+
+**Scope:** create the first non-map reusable world-object scene with placeholder mesh/material and collision.
+
+**Acceptance:** it can be placed repeatedly without special scene wiring and behaves as ordinary world geometry where intended.
+
+## 2.5 Reusable physical prop `[ ]`
+
+**Scope:** create a simple dynamic physics prop that can fall, collide, settle, and later become pickup/throw content.
+
+**Acceptance:** it remains physically stable around the player and playground geometry without altering locomotion behavior.
+
+## 2.6 Early asset-pipeline spike `[ ]`
+
+**Scope:** prove one representative external model, texture/material, and audio asset can enter the project with intentional import settings. This is a pipeline proof, not production art.
+
+**Acceptance:** future art/audio work has a known import path and scale convention rather than relying only on built-in primitives.
+
+**Milestone gate:** Vark has a small lit gameplay space, known physical scale, reusable props, and a proven basic content-import path.
+
+---
+
+# Milestone 3 — Interaction vertical slice
+
+Goal: establish one reusable player/world interaction language and immediately prove it on several different object types.
+
+## 3.1 Interaction input and focus `[ ]`
+
+**Scope:** add the interaction input and camera-based target selection with range, occlusion, and valid-target filtering.
+
+**Acceptance:** automated focus/range/blocked-target behavior where deterministic; manual targeting is stable at ordinary and awkward viewing angles.
+
+## 3.2 Interactable action contract `[ ]`
+
+**Scope:** define one semantic interface for objects to expose whether they can be used, what action is available, and what happens when activated. Individual objects must not poll raw player input themselves.
 
 **Depends:** 3.1.
 
-**Acceptance:** automated state transitions and any introduced lock rule; manually usable from both sides while moving/crouching and around collision edges.
+**Acceptance:** at least two different object types can use the same interaction dispatch without special cases in the player.
 
-## 3.3 Containers, loot, and gems `[ ]`
+## 3.3 Temporary interaction prompt `[ ]`
 
-**Scope:** open containers, expose/take contents, collect loot/gems, and update inventory/mission totals as appropriate. Introduce only the minimum inventory data model needed.
+**Scope:** add simple functional feedback such as `Open`, `Take`, or `Use` for the currently focused action.
 
-**Depends:** 3.1.
+**Acceptance:** prompt truth follows actual focus/action availability and disappears immediately when the target becomes invalid.
 
-**Acceptance:** automated ownership/removal/totals/duplicate prevention; manual looting feedback is clear.
+## 3.4 Door `[ ]`
 
-## 3.4 Lights and candles `[ ]`
+**Scope:** create the first reusable door with open/closed state, collision behavior, and interaction through 3.2. Lock/key behavior waits for a concrete need.
 
-**Scope:** turn supported lights on/off and extinguish candles through the common interaction model; gameplay-relevant changes feed the light-exposure system.
+**Acceptance:** state transitions are deterministic; manual use from both sides and around edges does not destabilize the player.
 
-**Depends:** 2.1, 3.1.
+## 3.5 Switchable light `[ ]`
 
-**Acceptance:** automated state/contribution changes where deterministic; manual stealth behavior matches the visible lighting change.
+**Scope:** create an interactable visible light that can be switched on/off through the same interaction contract.
 
-## 3.5 Small pickup and throw `[ ]`
+**Acceptance:** visible lighting state changes reliably and later stealth-light logic has a clean state to consume.
 
-**Scope:** pick up, hold, release/throw a small object and generate appropriate physical/noise consequences.
+## 3.6 Collectible loot object `[ ]`
 
-**Depends:** 2.5, 3.1.
+**Scope:** create the first collectible world object with stable ownership transfer: world instance → collected/value state → world removal. Keep mission valuables separate from future usable inventory.
 
-**Acceptance:** automated held/world ownership and representative deterministic noise generation; manual thrown-object distraction works in the stealth playground.
+**Acceptance:** duplicate collection is impossible, value/ownership changes once, and temporary feedback makes collection observable.
 
-## 3.6 Box carry / throw `[ ]`
+## 3.7 Held physical object: pickup and put-down `[ ]`
 
-**Scope:** heavier movable-object interaction only where its physics/gameplay differs meaningfully from small held objects.
+**Scope:** let the player take control of a supported physical prop, hold it, and put it down without yet requiring throwing/noise gameplay.
 
-**Depends:** 3.1, preferably 3.5.
+**Acceptance:** world/held ownership is unambiguous and putting objects down near walls/doors does not break the player controller.
 
-**Acceptance:** automated ownership/release constraints; manual carrying/placing/throwing around doors, slopes, and routes does not destabilize player collision.
+## 3.8 Provisional TrenchBroom gameplay exposure `[ ]`
 
-## 3.7 Pickpocket `[ ]`
+**Scope:** expose the real gameplay objects that already exist—at minimum door, switchable light, basic prop, and loot—through provisional Vark/TrenchBroom authoring conventions. Add validation for the properties actually required now.
 
-**Scope:** steal eligible NPC inventory under valid proximity/position/state conditions.
+**Acceptance:** a small map can place/configure these objects without manual private-node wiring in Godot. The contract may still evolve before production lock.
 
-**Depends:** 3.1, NPC foundation, inventory data.
-
-**Acceptance:** automated eligibility/transfer rules; manual use against moving/stationary unaware NPCs is readable and fair.
-
-**Milestone gate:** the player can manipulate the stealth environment through a coherent interaction language rather than one-off scripts.
+**Milestone gate:** a graybox level can contain authored gameplay objects that the player can understand and manipulate through one interaction system.
 
 ---
 
-# Milestone 4 — NPC consequences and stealth takedowns
+# Milestone 4 — NPC and stealth vertical slice
 
-Goal: let stealth actions create persistent local consequences before implementing full combat.
+Goal: create the first real guard and the smallest complete stealth loop inside the playground.
 
-## 4.1 NPC life-state model `[ ]`
+## 4.1 Placeholder NPC actor `[ ]`
 
-**Scope:** conscious, unconscious, dead, required transitions, and AI shutdown/cleanup ownership.
+**Scope:** create a reusable NPC scene with primitive/placeholder visuals, obvious facing direction, collision, stable actor identity, and visual presentation separated from gameplay ownership.
 
-**Depends:** guard foundation.
+**Acceptance:** the actor can exist idle in the playground without player/NPC collision instability.
 
-**Acceptance:** automated legal transitions/state persistence; manual navigation/collision/interaction remain coherent after state changes.
+## 4.2 Navigation foundation `[ ]`
 
-## 4.2 Stealth knockout `[ ]`
-
-**Scope:** fists ready on hold, knockout strike on release, valid stealth-takedown conditions, unconscious result.
+**Scope:** create the navigation environment and NPC movement layer needed to receive a destination, turn/move, stop, report arrival, and report unreachable targets.
 
 **Depends:** 4.1.
 
-**Acceptance:** automated eligibility/hold-release/outcome; manual positioning, moving-target cases, misses, and feel are acceptable.
+**Acceptance:** deterministic navigation-state behavior is covered where practical; the NPC can reach representative playground destinations without guard-state logic.
 
-## 4.3 Body carry / put down `[ ]`
+## 4.3 Patrol route `[ ]`
 
-**Scope:** pick up eligible unconscious/dead bodies, carry them, put them down, and keep physics/collision stable.
+**Scope:** support authored route points, order/loop behavior, waits where needed, and clear interruption/resume ownership. Expose the provisional patrol authoring path alongside the NPC.
 
-**Depends:** 3.1, 4.1.
+**Acceptance:** one NPC follows a placed patrol repeatedly and reports invalid/unreachable route data rather than silently freezing.
 
-**Acceptance:** automated ownership/state transitions; manual movement through doors, corners, slopes, and hiding spaces remains stable.
+## 4.4 Guard state and evidence model `[ ]`
 
-## 4.4 Stealth kill `[ ]`
+**Scope:** establish explicit ownership for unaware/patrol, suspicious, investigating, alerted, searching, and recovery behavior. Perception systems produce evidence; they do not directly own all AI behavior.
 
-**Scope:** knife variant of the stealth takedown flow with lethal outcome and mission-stat consequence.
+**Acceptance:** key transitions/timers are deterministic and debug-driven state changes do not cause movement/state systems to fight each other.
 
-**Depends:** 4.1, preferably shared structure from 4.2.
+## 4.5 Gameplay-light source and player exposure `[ ]`
 
-**Acceptance:** automated eligibility/dead outcome and lethal/nonlethal statistics when available; manual lethal/nonlethal feedback is unmistakable.
+**Scope:** define which visible lights contribute to stealth gameplay and compute a stable player-exposure value from contribution, range/distance, enabled state, and world occlusion. Keep rendering from being the sole source of gameplay truth.
 
-**Milestone gate:** the player can remove NPCs lethally or nonlethally and deal with bodies without requiring full combat.
+**Depends:** 2.3, 3.5.
+
+**Acceptance:** fixed bright/dark/occluded cases are deterministic; manual movement through the playground roughly matches what the player sees.
+
+## 4.6 Temporary light gem `[ ]`
+
+**Scope:** show player exposure immediately through a simple readable HUD representation. Final art comes later.
+
+**Acceptance:** mapping from exposure to displayed state is deterministic and useful during playtesting.
+
+## 4.7 Guard vision `[ ]`
+
+**Scope:** implement range, FOV, world occlusion, semantic player visibility targets, and exposure-dependent evidence.
+
+**Depends:** 4.4–4.5.
+
+**Acceptance:** visible, outside-FOV, occluded, out-of-range, and exposure-dependent cases are covered; manual approaches feel explainable.
+
+## 4.8 Player gameplay-noise model `[ ]`
+
+**Scope:** emit semantic noise from the accepted player behavior—normal movement, sprint, landing, and later extendable actions—without changing locomotion to make noise easier to implement.
+
+**Acceptance:** representative actions emit expected semantic noise and silent/non-triggering cases do not create unintended events.
+
+## 4.9 Placeholder movement audio `[ ]`
+
+**Scope:** add audible placeholder feedback for movement/noise-relevant actions. Audible SFX and AI gameplay-noise strength are separate systems but should correspond intelligibly.
+
+**Acceptance:** the player can hear the broad difference between relevant movement events while AI tuning remains based on semantic noise data.
+
+## 4.10 Guard hearing `[ ]`
+
+**Scope:** convert relevant gameplay-noise events into hearing evidence using distance and only the environmental rules actually needed now.
+
+**Depends:** 4.4, 4.8.
+
+**Acceptance:** audible/inaudible and distance/strength cases are deterministic; manual distraction behavior is understandable.
+
+## 4.11 Investigation, alert/pursuit, search, and recovery `[ ]`
+
+**Scope:** turn sight/hearing evidence into coherent action: investigate evidence, react to confirmed detection, pursue while contact is valid, search last-known areas after losing the player, and recover when appropriate. Until health/combat exists, detection may use a temporary caught/failure outcome where needed.
+
+**Depends:** 4.2–4.4, 4.7, 4.10.
+
+**Acceptance:** repeated detection/loss/recovery scenarios have understandable state ownership and pacing.
+
+## 4.12 Guard debugging/inspection `[ ]`
+
+**Scope:** provide development-only visibility into current guard state, evidence, perception results, navigation target/failure, and patrol state. Build diagnostics now rather than waiting for production handoff.
+
+**Acceptance:** common failures such as `did not see`, `did not hear`, or `cannot reach target` can be diagnosed without stepping through core AI code.
+
+## 4.13 Basic multi-guard communication `[ ]`
+
+**Scope:** after one guard works, add the minimum understandable communication needed for several guards to coexist without magical global knowledge.
+
+**Acceptance:** a confirmed alert can influence another nearby/relevant guard according to explicit rules while isolated guards remain ignorant when they should.
+
+## 4.14 Stealth-playground vertical slice `[ ]`
+
+**Scope:** integrate active lighting, patrols, cover, sight, hearing, investigation, detection, loss of sight, search, and recovery with several routes.
+
+**Acceptance:** the player can deliberately hide, make noise, cause investigation, get spotted, break contact, hide again, and observe a readable search/recovery loop.
+
+**Milestone gate:** Vark is recognizably a stealth game before mission/campaign complexity is added.
 
 ---
 
-# Milestone 5 — One complete micro-mission
+# Milestone 5 — Mission framework and first true vertical slice
 
-Goal: prove the whole game loop with one short 5–10 minute mission before adding many extra mechanics, and prove that mission behavior can be assembled from reusable data/events rather than mission-specific core-code branches.
+Goal: prove mission architecture early, before takedowns, combat, and many tools make the system harder to change.
 
-## 5.1 Objective model `[ ]`
+## 5.1 Stable content IDs `[ ]`
 
-**Scope:** explicit objectives, completion/failure as needed, and optional objectives where useful.
+**Scope:** give mission-referenceable actors/objects semantic IDs independent of scene-tree paths and detect duplicates clearly.
 
-**Depends:** interaction and basic stealth loop.
+**Acceptance:** moving/renaming private scene nodes does not break mission references; duplicate IDs fail validation explicitly.
 
-**Acceptance:** automated objective transitions and duplicate-event safety; manual valid completion orders work where the mission permits them.
+## 5.2 Runtime content registry `[ ]`
 
-## 5.2 Mission start, exit, and completion `[ ]`
-
-**Scope:** mission start/gameplay state, valid exit/completion condition, and transition to results.
+**Scope:** resolve stable IDs to live runtime objects through one owned interface rather than ad-hoc scene searches.
 
 **Depends:** 5.1.
 
-**Acceptance:** automated prevention of premature completion and successful completion when requirements are met; manual entry/exit works across relevant objective states.
+**Acceptance:** valid/invalid lookup behavior is deterministic and missing references are diagnosable.
 
-## 5.3 Mission statistics / end screen `[ ]`
+## 5.3 MissionDefinition and MissionState `[ ]`
 
-**Scope:** record/display useful first statistics such as loot, kills, knockouts, alerts/detections, and objectives.
+**Scope:** separate authored mission configuration from mutable runtime state. MissionDefinition contains stable mission metadata/configuration; MissionState owns active objectives, mission-local facts, and other mission-scoped runtime truth.
 
-**Depends:** 4.x as relevant, 5.2.
+**Acceptance:** restarting a mission creates fresh runtime state from the same definition without mutating authored resources.
 
-**Acceptance:** automated counters/final snapshot; manual deliberately different playthroughs produce truthful results.
+## 5.4 Generic objective model `[ ]`
 
-## 5.4 Mission event / condition / action model `[ ]`
+**Scope:** represent objectives as stable named state—such as inactive, active, completed, failed—rather than making a subclass for every goal type.
 
-**Scope:** create a deliberately small data-driven way for authored gameplay events to react to mission state without requiring bespoke core gameplay code for every story beat. Start only with event sources, conditions, and actions required by the micro-mission. Examples may include trigger entered, objective completed, item taken, NPC life state, or campaign fact as conditions/events, and objective updates, fact changes, actor enable/disable, dialogue/cutscene requests, or mission completion as actions. Do not build a general-purpose scripting language.
+**Depends:** 5.3.
 
-**Depends:** 5.1–5.3 and the relevant systems being referenced.
+**Acceptance:** objective transitions and duplicate completion/failure handling are deterministic.
 
-**Acceptance:**
-- automated: deterministic condition evaluation/action dispatch, one-shot/repeat semantics where configured, invalid-reference handling, and duplicate-event safety;
-- manual: at least one optional micro-mission consequence and one presentation/gameplay response are authored through the generic model rather than a mission-specific code branch.
+## 5.5 Authorable trigger volumes `[ ]`
 
-## 5.5 First micro-mission `[ ]`
+**Scope:** add reusable spatial triggers with stable IDs and provisional TrenchBroom authoring support.
 
-**Scope:** one deliberately small mission with an infiltration route, guard problem, valuable objective, optional action/consequence, and exit. Use the real mission/objective/event interfaces rather than temporary one-off scripting wherever those interfaces exist.
+**Acceptance:** player/NPC entry behavior is deterministic and trigger references validate cleanly.
 
-**Depends:** 2.x, enough of 3.x/4.x, and 5.1–5.4.
+## 5.6 Semantic gameplay event stream `[ ]`
 
-**Acceptance:** subsystem/mission-state tests stay green; the mission can be completed several different ways and feels like a coherent short stealth game from start to results; its optional consequence demonstrates the reusable event model.
+**Scope:** publish meaningful events from real systems, such as loot taken, trigger entered, door opened, guard alerted, and objective changed. Gameplay objects report what happened; they do not know which mission objective cares.
 
-**Milestone gate:** the project functions as a tiny complete game, not just a collection of systems, and the first real mission logic is assembled from reusable mission-facing contracts.
+**Acceptance:** event payloads use semantic IDs/data and duplicate/one-frame ownership is explicit.
 
----
+## 5.7 Event → condition → action mission rules `[ ]`
 
-# Milestone 6 — Cross-mission state and campaign structure
+**Scope:** create a deliberately constrained typed rule system: one triggering event, optional read-only conditions, and queued actions that change mission/world state. Start only with vocabulary required by the first mission. No arbitrary method calls and no general-purpose scripting language.
 
-Goal: let later missions change because of player actions.
+**Depends:** 5.1–5.6.
 
-## 6.1 Persistent consequence model `[ ]`
+**Acceptance:** deterministic matching/condition/action order, explicit once/repeatable behavior, invalid-reference reporting, and no recursive half-updated state during rule execution.
 
-**Scope:** named campaign facts such as NPC alive/dead, important object taken/not taken, optional actions, and other explicit consequences. Use stable content-facing identifiers rather than fragile scene-tree paths for facts intended to survive mission edits.
+## 5.8 Mission lifecycle: start, exit, completion `[ ]`
 
-**Depends:** 5.5.
+**Scope:** establish mission entry, active gameplay, valid exit/completion conditions, and transition to results through the top-level game-flow owner.
 
-**Acceptance:** automated set/read and deterministic branch conditions; manual different micro-mission outcomes produce the expected campaign facts.
+**Acceptance:** premature exit is rejected where required and successful completion produces exactly one final mission outcome.
 
-## 6.2 Save/load `[ ]`
+## 5.9 Mission statistics and results snapshot `[ ]`
 
-**Scope:** persist campaign facts plus the minimum other state needed by mission structure. In-mission save design is a separate later decision if required.
+**Scope:** track the meaningful statistics currently available—initially loot, alerts/detections, objectives, and later extensible kills/knockouts—preferably from the same semantic events used elsewhere.
 
-**Depends:** 6.1.
+**Acceptance:** deliberately different playthroughs produce truthful final snapshots without UI maintaining separate state.
 
-**Acceptance:** automated round-trip and chosen missing/versioned-data behavior; manual process restart preserves intended consequences.
+## 5.10 Functional objectives and results screens `[ ]`
 
-## 6.3 Briefing / mission selection flow `[ ]`
+**Scope:** add an in-mission objectives screen and a simple mission-results screen now. These are functional development UI, not final presentation.
 
-**Scope:** pre-mission video briefing and transition into a mission; expand to multiple missions only when content exists.
+**Acceptance:** opening objectives pauses/takes input according to the screen policy; results display the actual finalized mission state/statistics.
 
-**Depends:** mission framework.
+## 5.11 First 5–10 minute graybox mission `[ ]`
 
-**Acceptance:** deterministic state/selection logic is covered where useful; manually run briefing → mission → results → next step.
+**Scope:** build one small mission using only systems that really exist: multiple infiltration routes, light/dark stealth, patrol guards, a door, loot/objective, optional route/action where useful, and an exit. Use stable IDs, objective state, triggers/events/rules, and results rather than a mission-specific gameplay script.
 
-**Milestone gate:** campaign flow can carry meaningful player consequences between missions using stable mission/campaign identifiers rather than scene-specific implementation details.
+**Acceptance:** start → briefing placeholder/dev entry → mission → objective → exit → results works repeatedly; the mission can be completed through more than one reasonable stealth route and feels like a coherent tiny game.
 
----
-
-# Milestone 7 — Full combat
-
-Goal: add direct combat after stealth works so combat supports rather than defines the game.
-
-## 7.1 Basic melee exchange `[ ]`
-
-**Scope:** fist hit, knife hit, incoming NPC attack, health/damage/reaction foundation.
-
-**Depends:** NPC life state, player health.
-
-**Acceptance:** automated damage/outcome and duplicate-hit/invulnerability rules if present; manual one-on-one combat is readable and coherent.
-
-## 7.2 Block `[ ]`
-
-**Scope:** hold block to prevent supported attacks according to final combat rules.
-
-**Depends:** 7.1.
-
-**Acceptance:** automated blockable/non-blockable outcomes where relevant; manual timing and feedback are clear.
-
-## 7.3 Parry `[ ]`
-
-**Scope:** pressing block shortly before an incoming attack produces the designed parry result.
-
-**Depends:** 7.2.
-
-**Acceptance:** automate the chosen timing-window boundaries only after tuning makes them intentional; manually the parry is learnable and distinct from holding block.
-
-**Milestone gate:** direct combat is functional without becoming the dominant or easiest answer to every stealth problem.
+**Milestone gate:** the project is a complete small stealth game and the mission architecture has been proven before larger feature expansion.
 
 ---
 
-# Milestone 8 — Inventory items and tools
+# Milestone 6 — Deepen the stealth sandbox through the real mission
 
-Goal: establish one reusable item architecture, then implement tactical tools individually.
+Goal: add the environmental and NPC-consequence systems that make a Thief-like sandbox richer, integrating each one into the existing mission instead of building disconnected demos.
 
-## 8.1 Inventory/item architecture `[ ]`
+## 6.1 Guard-door integration `[ ]`
 
-**Scope:** item data, acquisition, selection, quantity/use rules, and selected-item HUD integration.
+**Scope:** guards can traverse/use supported doors during patrol, investigation, pursuit, and recovery without navigation/state conflicts.
 
-**Depends:** loot/inventory foundation from Milestone 3 may be extended here.
+**Acceptance:** representative patrol/investigation routes through doors remain reliable for both player and guard use.
 
-**Acceptance:** automated add/remove/select/use/quantity rules; manual acquisition and cycling work during ordinary movement.
+## 6.2 Physical-object throwing `[ ]`
 
-## 8.2 Healing potion `[ ]`
+**Scope:** extend held props with deliberate throw/release behavior.
 
-**Scope:** consume item and restore health according to chosen rules.
+**Acceptance:** ownership transfers cleanly, throw behavior is physically stable, and player collision remains unaffected after release.
 
-**Depends:** 7.1, 8.1.
+## 6.3 Object-impact noise and audio `[ ]`
 
-**Acceptance:** automated consumption/health clamp; manual use at different health values has clear feedback.
+**Scope:** physical impacts create appropriate semantic gameplay-noise events plus audible placeholder SFX.
 
-## 8.3 Flashbang `[ ]`
+**Depends:** 4.10, 6.2.
 
-**Scope:** thrown/deployed flash effect and affected NPC response.
+**Acceptance:** thrown-object distraction works in the real mission and guard reactions remain explainable.
 
-**Depends:** 8.1, guard state model.
+## 6.4 Containers `[ ]`
 
-**Acceptance:** deterministic effect eligibility/radius/line-of-effect rules are automated; manual use across representative guard states creates a useful tactical escape/disruption tool.
+**Scope:** reusable openable containers that expose/take contents through the interaction/loot systems.
 
-## 8.4 Bomb and mine `[ ]`
+**Acceptance:** contents cannot be duplicated/lost through repeated open/close/use cycles.
 
-**Scope:** explosive direct-use and placed variants using shared effect/damage foundations.
+## 6.5 Candles / extinguishable lights `[ ]`
 
-**Depends:** 8.1, combat/damage.
+**Scope:** create the first extinguishable-light specialization and feed its state into visible lighting and gameplay exposure.
 
-**Acceptance:** automated placement/trigger/effect rules; manual behavior around geometry, NPCs, and player is predictable.
+**Acceptance:** extinguishing produces consistent rendering, exposure, and interaction state.
 
-## 8.5 Gas bomb and gas mine `[ ]`
+## 6.6 NPC possessions and pickpocket `[ ]`
 
-**Scope:** gas direct-use and placed variants using shared status/area-effect logic.
+**Scope:** give NPCs eligible carried valuables/items and allow stealing them under deliberate proximity/position/state rules.
 
-**Depends:** 8.1, NPC state model.
+**Acceptance:** transfer eligibility and ownership are deterministic; manual use against moving/stationary unaware guards is readable and fair.
 
-**Acceptance:** deterministic area/status eligibility/duration rules are automated; manual use has a clear tactical role distinct from explosives.
+## 6.7 NPC life-state model `[ ]`
 
-**Milestone gate:** tools expand stealth tactics through one coherent inventory/effect architecture.
+**Scope:** conscious, unconscious, and dead state with explicit AI shutdown, collision, interaction, and later statistics ownership.
 
----
+**Acceptance:** legal transitions are deterministic and state persists correctly after navigation/AI stops.
 
-# Milestone 9 — Remaining traversal only when level design needs it
+## 6.8 Stealth knockout `[ ]`
 
-Do not build these simply to complete a feature list. Implement them when an actual route or confirmed production requirement needs them. Before final content handoff, explicitly decide which of these abilities are part of the supported authoring palette; any still-deferred ability is out of scope for mission developers until implemented and validated.
+**Scope:** implement the intended hold-to-ready/release fist stealth knockout flow using 6.7.
 
-## 9.1 Slide `[ ]`
+**Acceptance:** eligibility/outcome is deterministic; manual positioning and moving-target cases are understandable.
 
-**Scope:** final behavior specified when a real route needs slide traversal.
+## 6.9 Body physics and carry/put-down `[ ]`
 
-**Depends:** locomotion/crouch foundation and a level-design need.
+**Scope:** make unconscious/dead bodies coherent world objects and allow carrying/putting them down through the established interaction ownership model.
 
-**Acceptance:** automate chosen state/collision/velocity invariants; manual route-specific playtest proves the move serves the level.
+**Acceptance:** doors, corners, slopes, and hiding spaces do not destabilize player/body collision.
 
-## 9.2 Ladders `[ ]`
+## 6.10 Stealth kill `[ ]`
 
-**Scope:** enter, climb, stop, exit top/bottom, and ledge interaction as needed.
+**Scope:** knife stealth-takedown variant with lethal outcome and semantic/statistics events.
 
-**Depends:** a level needing ladders.
+**Acceptance:** lethal/nonlethal outcomes are unmistakable and share common eligibility/state architecture where appropriate.
 
-**Acceptance:** automated enter/exit/state ownership and representative blocked-exit cases; manual approaches/transitions at both ends are predictable.
+## 6.11 Body discovery and guard response `[ ]`
 
-## 9.3 Swimming `[ ]`
+**Scope:** guards can perceive relevant bodies and convert discovery into the same evidence/state architecture rather than bespoke AI branches.
 
-**Scope:** water entry/exit and swimming movement; breath/underwater systems only if later design requires them.
+**Acceptance:** visible body discovery causes the intended reaction; hidden/occluded bodies do not produce magical knowledge.
 
-**Depends:** a level needing water traversal.
+## 6.12 Re-integrate the vertical-slice mission `[ ]`
 
-**Acceptance:** automated medium transition/core state rules; manual varied water-edge entry/exit is stable and feels appropriate.
+**Scope:** update the existing mission to exercise throwing/distraction, environmental light control, loot/containers, pickpocket, takedowns, and body consequences where they improve the level.
 
----
+**Acceptance:** new systems are added through reusable interfaces/rules without turning the mission into custom core-code glue.
 
-# Milestone 10 — Presentation systems and production foundations
-
-These may be prototyped earlier when necessary, but full production work follows proof of the core loop. The goal is to make the proven systems presentable and expose the content-facing hooks that Milestone 11 will stabilize for production authors.
-
-## 10.1 Core HUD `[ ]`
-
-Light gem, health, selected inventory item, and first-person held weapon/object presentation.
-
-## 10.2 Objectives/map/inventory/alignment/statistics menus `[ ]`
-
-Implement only data that actually exists; avoid empty speculative menu systems.
-
-## 10.3 Overhead dialogue and guard state indicators `[ ]`
-
-Typed lines over heads, suspicion/alert grunts, and question/exclamation feedback driven by actual AI state. Keep dialogue content separable from the presentation implementation so later writer-facing authoring does not require editing the UI code.
-
-## 10.4 First-person cutscene framework `[ ]`
-
-Block input, preserve first-person POV, show black top/bottom bars, and render subtitles in the lower bar. Cutscene content/sequencing should be invokable through stable content-facing identifiers rather than requiring mission code to manipulate presentation internals directly.
-
-## 10.5 Final environment/character art pipeline `[ ]`
-
-Apply the low-poly, hand-drawn, low-resolution, sun/moon visual direction to production assets and establish the real import/export conventions that content production will use.
-
-**Milestone gate:** presentation supports the proven game and exposes clean hooks for authored dialogue/cutscenes/assets rather than substituting for an unproven core loop.
+**Milestone gate:** the core stealth sandbox supports environmental manipulation, valuables, nonlethal/lethal removal, bodies, and guard consequences in one mission.
 
 ---
 
-# Milestone 11 — Content-production handoff
+# Milestone 7 — Campaign state, persistence, and campaign screens
 
-Goal: turn the completed gameplay systems into a stable authoring platform for mission developers and plot writers. The project is not considered systems-complete until a person who did not build the core gameplay code can author a representative mission and narrative content without modifying core system scripts.
+Goal: connect missions into a real campaign flow only after one complete mission exists.
 
-Do not build this milestone as a speculative editor framework early in development. Its interfaces should be extracted from the systems and micro-mission that already exist.
+## 7.1 Persistence-scope decision `[ ]`
 
-## 11.1 Stable mission-authoring contract `[ ]`
+**Scope:** explicitly decide which implemented state survives between missions/process restarts—campaign facts, mission outcomes, usable inventory/tools, health, loot totals, and any other real systems. Do not design save data for features that do not exist yet.
 
-**Scope:** define and stabilize the content-facing structure of a mission: stable mission ID, player start, objectives, exits, statistics, relevant NPC/content IDs, briefing/results metadata, persistent consequences, and transition targets. Internal implementation may continue to evolve, but authored missions should not depend on fragile scene paths, private nodes, or undocumented signal wiring.
+**Acceptance:** every persisted field has one clear owner and reason to survive.
 
-**Depends:** Milestones 5–6 and the core systems that production missions will use.
+## 7.2 CampaignState and persistent facts `[ ]`
 
-**Acceptance:**
-- automated: stable-ID/reference behavior and deterministic mission-state contracts are covered where practical;
-- manual: create a second tiny mission shell from scratch using only supported content-facing interfaces, without copying hidden implementation wiring from the first micro-mission.
+**Scope:** create cross-mission state separate from MissionState, using stable named facts for meaningful outcomes.
 
-## 11.2 TrenchBroom gameplay entity and placement pipeline `[ ]`
+**Acceptance:** set/read/branch semantics are deterministic and mission-local facts cannot accidentally leak into campaign state.
 
-**Scope:** expose the gameplay objects mission developers actually need through consistent TrenchBroom/Godot authoring conventions. The supported set should be based on the real production palette and may include player starts, mission exits, doors/windows, lights, loot/containers, NPC spawns, patrol points/routes, triggers, objective-related markers, and other proven interactables. Properties should be understandable and validated rather than requiring scene-tree surgery or knowledge of private gameplay nodes.
+## 7.3 Mission progression / routing `[ ]`
 
-**Depends:** 11.1 and the implemented gameplay systems being exposed.
+**Scope:** represent current/next mission and conditional progression. Add mission selection only if the actual campaign structure needs free selection.
 
-**Acceptance:**
-- automated/tooling validation where practical for imported properties and required references;
-- manual: a mission developer can place and configure the representative gameplay entities in a fresh map and obtain the intended runtime behavior without editing core gameplay scripts.
+**Acceptance:** progression resolves deterministically from campaign state and invalid destinations are reported clearly.
 
-## 11.3 Narrative and authored-event interface `[ ]`
+## 7.4 Campaign-aware mission rules `[ ]`
 
-**Scope:** stabilize the writer/content-facing representation for briefing content, overhead dialogue, subtitles, first-person cutscene sequences, conditional story events, and persistent narrative consequences. Reuse the mission event/condition/action model rather than creating a second disconnected scripting path. Use stable dialogue/event/fact identifiers suitable for later localization/content editing.
+**Scope:** extend the existing rule vocabulary with only the campaign-state conditions/actions now required, such as reading or setting a campaign fact.
 
-**Depends:** 5.4, Milestone 6, 10.3, and 10.4.
+**Acceptance:** no second narrative/campaign scripting path is introduced.
 
-**Acceptance:**
-- automated: deterministic event/condition references and missing/invalid content identifiers are covered where practical;
-- manual: a writer/content developer can add a dialogue exchange, subtitle/cutscene sequence, and one conditional consequence using supported data/interfaces without editing guard, player, mission-state, or presentation-system code.
+## 7.5 Versioned safe save/load `[ ]`
 
-## 11.4 Designer debugging and inspection tools `[ ]`
+**Scope:** serialize the decided campaign/persistent state with a versioned format, defined missing/invalid-data behavior, and safe write strategy.
 
-**Scope:** provide development-only inspection that lets content authors answer why gameplay did or did not react. Include the systems that actually need debugging at production scale, such as player light exposure, emitted noise, guard state/evidence/target, vision/hearing information, patrol/navigation target or failure, objective state, mission/campaign facts, and trigger/event activation.
+**Acceptance:** automated round trip; manual process restart preserves intended consequences; corrupt/missing data follows the chosen recovery policy.
 
-**Depends:** the corresponding systems already exist.
+## 7.6 New Game / Continue / reset flow `[ ]`
 
-**Acceptance:** a mission developer can diagnose representative failures—guard cannot reach patrol point, player is unexpectedly visible, trigger did not fire, objective/fact has wrong state—using in-game/editor diagnostics without opening the core AI/player implementation.
+**Scope:** evolve the early main menu into functional New Game and Continue behavior using the real persistence layer.
 
-## 11.5 Content validation and failure reporting `[ ]`
+**Acceptance:** New Game creates clean campaign state, Continue loads valid state, and reset/return-to-menu behavior does not retain stale runtime mission data.
 
-**Scope:** detect common authoring mistakes early and report them clearly. Validate the real content contracts introduced by 11.1–11.3, such as duplicate stable IDs, missing objective/actor/dialogue references, invalid mission transition targets, malformed patrol definitions, unresolved campaign facts where the format requires declaration, and required entity properties. Prefer explicit validation errors over silent runtime failure.
+## 7.7 Functional mission-briefing screen `[ ]`
 
-**Depends:** 11.1–11.3.
+**Scope:** add the campaign transition from results/progression into a briefing screen and then into the next mission. Use placeholder media/content initially; final video presentation comes later.
 
-**Acceptance:** representative deliberately broken content produces actionable validation errors that identify the offending mission/entity/reference; valid content passes without noise.
+**Acceptance:** results → campaign update → briefing → mission works through the game-flow owner with correct input/mouse state.
 
-## 11.6 Representative-scale integration and performance `[ ]`
+## 7.8 Two-mission consequence proof `[ ]`
 
-**Scope:** build an intentionally ugly production-scale integration/stress level containing representative amounts of guards, navigation, lights, interactables, loot, objectives, triggers/events, and mission geometry. Profile the real bottlenecks rather than optimizing hypothetical ones. Verify that perception, navigation, physics, mission state, and debugging tools remain usable at expected production scale.
+**Scope:** build a second tiny graybox mission and prove that an action/outcome in Mission A changes Mission B after quitting and restarting the executable.
 
-**Depends:** the core gameplay systems and 11.1–11.5 authoring interfaces.
+**Acceptance:** cross-mission difference comes from persistent campaign state, not hand-coded knowledge of the previous scene.
 
-**Acceptance:**
-- automated regression barrier remains green;
-- no known systemic correctness failure appears only at representative scale;
-- performance is measured and acceptable for the intended target or concrete bottlenecks are fixed before handoff;
-- mission-authoring/debug workflows remain responsive enough for normal production work.
+## 7.9 Alignment decision `[ ]`
 
-## 11.7 Template mission, authoring guide, and handoff exercise `[ ]`
+**Scope:** decide whether `alignment` is a real gameplay/campaign system. If yes, define its semantics and ownership before UI. If no, remove it from the product target rather than building an empty screen.
 
-**Scope:** create one clean template/example mission that demonstrates the supported production grammar and, only now that the interfaces are real, create `docs/CONTENT_AUTHORING.md` for mission developers and writers. The guide should document actual stable workflows, supported entities/data, debugging/validation, and extension boundaries; it must not become a duplicate implementation manual.
+**Milestone gate:** Vark supports a coherent multi-mission loop with persistence, New Game/Continue, briefing transitions, and at least one proven cross-mission consequence.
 
-**Depends:** 11.1–11.6.
+---
 
-**Acceptance:** perform the final handoff exercise with a fresh representative mission. A developer familiar with Godot/TrenchBroom but not Vark's core code must be able to author, using supported tools/data:
-- player start and valid mission exit;
-- multiple infiltration routes;
-- light/dark stealth space;
-- multiple guards with authored patrols;
-- doors/interactables and loot;
-- required and optional objective/consequence behavior;
-- dialogue or another narrative event;
-- mission results/statistics;
-- a persistent fact that can affect later content;
-without modifying core gameplay scripts.
+# Milestone 8 — Usable inventory and first tactical tool
 
-A writer/content developer must be able to add or change briefing text/content references, dialogue, subtitles, conditional narrative events, cutscene content supported by the framework, and persistent narrative consequences without needing to understand player locomotion, perception internals, or guard-state implementation.
+Goal: establish usable inventory separately from valuables, prove it with one stealth-focused tool, and introduce its UI at the same time.
 
-**Milestone gate — systems development complete:** mission developers and plot writers can begin real production work against stable authoring contracts. New core programming after this point should primarily be bug fixes, deliberate new capabilities requested by content needs, performance work, or explicitly approved design changes—not routine bespoke code required to make each mission function.
+## 8.1 Inventory/item data model `[ ]`
+
+**Scope:** stable item definition, acquisition, quantity, removal, and ownership for usable items. Mission loot/value remains a separate concept.
+
+**Acceptance:** add/remove/quantity behavior is deterministic and duplicate ownership rules are explicit.
+
+## 8.2 Selection/equip/use lifecycle `[ ]`
+
+**Scope:** player can cycle/select a usable item and invoke its supported use behavior without individual items owning raw input.
+
+**Acceptance:** selection remains valid as quantities change and zero-quantity items follow the chosen rule consistently.
+
+## 8.3 Selected-item HUD and functional inventory screen `[ ]`
+
+**Scope:** add a small gameplay HUD element for the current item and an inventory overlay/screen driven by the same inventory data.
+
+**Acceptance:** opening inventory follows pause/input-ownership rules and HUD/screen never maintain duplicate item truth.
+
+## 8.4 Throwable/deployable item foundation `[ ]`
+
+**Scope:** create the shared use/throw/deploy/effect hooks needed by tactical tools, reusing physical/object systems where appropriate.
+
+**Acceptance:** the framework has one concrete user before further abstraction.
+
+## 8.5 Flashbang `[ ]`
+
+**Scope:** implement the first complete tactical inventory tool and relevant guard response.
+
+**Acceptance:** deterministic eligibility/radius/line-of-effect rules where applicable; manual use creates a useful stealth escape/disruption option in the vertical-slice mission.
+
+**Milestone gate:** usable inventory is real, understandable through UI, and proven by one meaningful stealth tool.
+
+---
+
+# Milestone 9 — Health, direct combat, death flow, and combat balance
+
+Goal: add combat after stealth works so combat becomes a consequence-management option rather than the foundation of the game.
+
+## 9.1 Health and damage contract `[ ]`
+
+**Scope:** establish player/NPC health/damage ownership, hit outcomes, and life-state integration where relevant.
+
+**Acceptance:** deterministic damage/clamp/death-or-knockout outcomes and no duplicate damage from one logical hit.
+
+## 9.2 Temporary/finalizable health HUD `[ ]`
+
+**Scope:** expose player health immediately through functional HUD feedback; final art waits for presentation polish.
+
+**Acceptance:** HUD reflects gameplay health state rather than storing its own value.
+
+## 9.3 Death/recovery game-flow `[ ]`
+
+**Scope:** define what happens when the player dies using the actual save/retry policy. Add a functional death screen and valid recovery/return path without inventing an unrelated checkpoint system.
+
+**Depends:** 7.5, 9.1.
+
+**Acceptance:** death takes input ownership correctly and recovery cannot resume stale half-dead mission state.
+
+## 9.4 Basic melee attack foundation `[ ]`
+
+**Scope:** attack input/state, hit validation, attack ownership, and duplicate-hit protection.
+
+**Acceptance:** one attack produces at most the intended hit outcome and misses remain misses.
+
+## 9.5 Ordinary fist combat `[ ]`
+
+**Scope:** direct fist strikes with the intended multi-hit-to-knockout behavior, distinct from stealth knockout.
+
+**Acceptance:** deterministic hit/outcome rules; manual exchange remains readable.
+
+## 9.6 Knife combat `[ ]`
+
+**Scope:** direct lethal knife attack, distinct from stealth kill.
+
+**Acceptance:** lethal outcome/statistics are consistent across combat and stealth paths.
+
+## 9.7 Guard combat behavior `[ ]`
+
+**Scope:** connect alert/pursuit to actual NPC attack behavior, spacing, and recovery without replacing the existing stealth state model.
+
+**Acceptance:** one-on-one combat is coherent and guards do not oscillate between navigation/attack owners.
+
+## 9.8 Block `[ ]`
+
+**Scope:** held block prevents supported attacks according to final combat rules.
+
+**Acceptance:** blockable/non-blockable outcomes are deterministic; feedback is readable.
+
+## 9.9 Parry `[ ]`
+
+**Scope:** timed block produces the designed parry result. Do not freeze subjective timing into regression tests until tuned and accepted.
+
+**Acceptance:** final accepted timing boundaries are automated only after playtesting makes them intentional.
+
+## 9.10 Rebalance the vertical-slice mission `[ ]`
+
+**Scope:** replay the real mission with combat available and adjust encounter/system balance only where needed so stealth remains the preferred core problem-solving language.
+
+**Acceptance:** direct combat works but does not trivially invalidate stealth routes, light, sound, distractions, or guard consequences.
+
+**Milestone gate:** health, death/recovery, fist/knife combat, guard attacks, block, and parry work inside the existing stealth game without becoming its dominant solution.
+
+---
+
+# Milestone 10 — Remaining planned tools and shared effects
+
+Goal: complete the planned item set by extending proven inventory/effect foundations rather than creating one-off scripts.
+
+## 10.1 Healing potion `[ ]`
+
+**Scope:** consume an inventory item and restore player health according to chosen rules.
+
+**Acceptance:** consumption/quantity/health clamp are deterministic and feedback is clear.
+
+## 10.2 Explosion effect foundation `[ ]`
+
+**Scope:** shared spatial damage/noise/effect behavior required by explosive tools.
+
+**Acceptance:** radius/line-of-effect/self-effect rules are deterministic where intended.
+
+## 10.3 Bomb `[ ]`
+
+**Scope:** direct/deployed explosive tool using 10.2.
+
+**Acceptance:** predictable behavior around geometry, player, and NPCs.
+
+## 10.4 Mine placement/trigger foundation and mine `[ ]`
+
+**Scope:** reusable placed-item ownership/arming/trigger behavior, proven with the explosive mine.
+
+**Acceptance:** placement/trigger/cleanup are deterministic and do not duplicate effects.
+
+## 10.5 Gas/status-effect foundation `[ ]`
+
+**Scope:** shared area/status behavior needed by gas tools, integrated with NPC life/state ownership.
+
+**Acceptance:** eligibility/duration/cleanup rules are deterministic where gameplay contracts require them.
+
+## 10.6 Gas bomb and gas mine `[ ]`
+
+**Scope:** implement the direct and placed gas variants using the shared inventory, area/status, and mine foundations.
+
+**Acceptance:** they have a clear tactical role distinct from explosive tools and do not bypass state ownership.
+
+## 10.7 Tool integration pass `[ ]`
+
+**Scope:** exercise all implemented tools in the vertical-slice mission and verify inventory UI, guard reactions, mission statistics/consequences, and audio/debug feedback remain coherent.
+
+**Milestone gate:** the planned tool set expands stealth tactics through common architecture rather than isolated item scripts.
+
+---
+
+# Milestone 11 — Product UX, narrative presentation, audio, and art-production foundations
+
+Goal: finish the player-facing product around systems that already work. Functional UI/feedback already exists from earlier milestones; this milestone stabilizes and presents it as a coherent game.
+
+## 11.1 UI navigation/style framework `[ ]`
+
+**Scope:** unify focus/navigation, screen stacking, transitions, controller/keyboard behavior as relevant, and shared visual conventions without changing the established game-flow ownership.
+
+## 11.2 Final main menu, pause, and settings `[ ]`
+
+**Scope:** finish main-menu and pause UX and implement only settings that actually function, such as audio, mouse sensitivity, display/video, and controls as supported.
+
+**Acceptance:** settings are reachable from appropriate contexts and do not contain dead controls.
+
+## 11.3 Final gameplay HUD `[ ]`
+
+**Scope:** integrate light gem, health, selected item, interaction feedback, and held-object/weapon presentation into one readable HUD.
+
+## 11.4 Objectives, inventory, and statistics screens `[ ]`
+
+**Scope:** replace development UI with coherent production screens driven by the existing objective/inventory/statistics state.
+
+## 11.5 Mission-map contract and screen `[ ]`
+
+**Scope:** decide what a Vark mission map actually is—authored image/data, floors, player/objective markers as appropriate—and define what mission content must provide.
+
+**Acceptance:** at least one real mission supplies and displays its map through the content contract.
+
+## 11.6 Alignment presentation `[ ]`
+
+**Scope:** only if 7.9 retained alignment as a real system. Otherwise this item is removed rather than implemented as empty UI.
+
+## 11.7 Production audio foundation/pass `[ ]`
+
+**Scope:** establish audio buses/categories and replace/extend placeholders for footsteps/movement, object impacts, doors/interactions, guard vocals, combat/tools, ambience, UI, and dialogue/voice where used. Gameplay noise remains separate from audible presentation.
+
+## 11.8 Overhead dialogue and guard-state indicators `[ ]`
+
+**Scope:** typed lines above characters plus suspicion/alert grunts and `?` / `!` feedback driven by actual AI state.
+
+## 11.9 Subtitle and first-person cutscene framework `[ ]`
+
+**Scope:** keep the mission world loaded, take input ownership, preserve first-person POV, show cinematic bars/subtitles, play a content-addressable sequence, and restore gameplay safely.
+
+## 11.10 Final briefing presentation `[ ]`
+
+**Scope:** upgrade the functional briefing screen to the intended pre-mission video/content presentation while preserving established campaign flow.
+
+## 11.11 Character visual/animation contract `[ ]`
+
+**Scope:** separate gameplay actor state from replaceable visual models/animation. Add hooks for movement, guard states, combat, unconscious/dead state, interactions, and first-person held items without animation owning gameplay truth.
+
+## 11.12 2D facial-animation framework `[ ]`
+
+**Scope:** establish the intended character-face presentation in a way compatible with dialogue/cutscenes and low-poly character assets.
+
+## 11.13 Environment/character production asset pipeline `[ ]`
+
+**Scope:** finalize the low-poly, hand-drawn, low-resolution material/model/import conventions and TrenchBroom environment workflow that art/content production will actually use.
+
+**Milestone gate:** the proven gameplay is presented as a coherent product, all required screens/states exist, and artists/writers can supply content without changing core gameplay ownership.
+
+---
+
+# Milestone 12 — Production authoring handoff
+
+Goal: stabilize the systems into a reliable platform for mission developers and plot writers. This milestone consolidates interfaces proven earlier; it is not the first time gameplay entities or mission rules are authored.
+
+## 12.1 Stable mission package contract `[ ]`
+
+**Scope:** define the production structure and ownership of a mission: source map, MissionDefinition, mission-specific narrative data/references, map presentation data, assets, metadata, and transition information.
+
+**Acceptance:** a fresh mission shell can be created without copying undocumented private wiring from the first vertical slice.
+
+## 12.2 Production TrenchBroom gameplay entity set `[ ]`
+
+**Scope:** stabilize the provisional entities accumulated during development—player start, mission exit, guard, patrol point/route, doors/windows, lights/candles, loot/containers, props, triggers, and other proven interactables—with understandable properties and validation.
+
+**Acceptance:** representative gameplay can be placed/configured in a fresh map without editing private Godot scene internals.
+
+## 12.3 Mission-rule/data authoring UX `[ ]`
+
+**Scope:** make objectives, events, conditions, actions, mission facts, and stable references practical to author. Start from typed Godot Resources/Inspector workflows already proven; build custom editor tooling only where real use shows the default workflow is inadequate.
+
+## 12.4 Narrative authoring model `[ ]`
+
+**Scope:** stabilize writer/content-facing data for briefing content, overhead dialogue, subtitles, cutscene sequences, conditional narrative events, and persistent consequences. Reuse the mission/campaign event architecture and stable localization-friendly identifiers rather than a second story scripting system.
+
+**Acceptance:** a writer/content developer can add/change representative narrative content without editing player, guard, mission-state, or presentation-system code.
+
+## 12.5 Consolidated designer debugging tools `[ ]`
+
+**Scope:** provide coherent development inspection for player exposure, gameplay noise, guard state/evidence/target, vision/hearing, patrol/navigation, interaction focus, objectives, mission facts, campaign facts, and event/rule execution.
+
+**Acceptance:** representative authoring failures can be diagnosed without opening core AI/player code.
+
+## 12.6 Content validation and failure reporting `[ ]`
+
+**Scope:** validate duplicate stable IDs, missing actor/objective/dialogue references, invalid mission transitions, malformed patrols, missing required entity properties, and other real content contracts. Prefer actionable errors over silent runtime failure.
+
+**Acceptance:** deliberately broken representative content identifies the offending mission/entity/reference; valid content passes without noisy false positives.
+
+## 12.7 Representative-scale integration/stress mission `[ ]`
+
+**Scope:** build an intentionally utilitarian production-scale mission containing representative guard count, navigation, lights, props/interactables, loot, objectives, triggers/events, UI/narrative hooks, and realistic geometry size.
+
+**Acceptance:** no known systemic correctness issue appears only at representative scale and authoring/debug workflows remain usable.
+
+## 12.8 Performance pass `[ ]`
+
+**Scope:** profile the representative-scale mission and fix demonstrated bottlenecks in perception, navigation, physics, lighting/gameplay exposure, mission state, or presentation. Do not optimize hypothetical problems earlier.
+
+**Acceptance:** measured performance is acceptable for the intended target or remaining blockers are explicitly resolved before handoff.
+
+## 12.9 Template mission `[ ]`
+
+**Scope:** create one clean non-story reference mission demonstrating the supported production grammar and intended combinations of systems.
+
+## 12.10 `docs/CONTENT_AUTHORING.md` `[ ]`
+
+**Scope:** only now document the stable workflows, supported entities/data, mission/narrative authoring, debugging, validation, map/UI content, and extension boundaries. Do not duplicate implementation internals.
+
+## 12.11 External handoff exercise `[ ]`
+
+**Scope:** a developer familiar with Godot/TrenchBroom but not Vark's core code creates a fresh representative mission using supported tools/data, including multiple routes, light/dark stealth, several guards/patrols, doors/interactables, loot, objectives, an optional consequence, narrative event, exit, results/statistics, and a persistent cross-mission consequence. A writer/content developer adds or changes briefing, dialogue, subtitles, cutscene content, conditional narrative events, and persistent narrative consequences without learning player/AI internals.
+
+**Acceptance:** the representative mission/narrative work is completed without modifying core gameplay scripts or relying on undocumented signal/node wiring.
+
+**Milestone gate — systems development complete:** mission developers and plot writers can begin production against stable authoring contracts. New core programming after this point should primarily be bug fixes, proven performance needs, deliberate capabilities requested by content, or explicitly approved design changes—not routine bespoke code required to make every mission work.
 
 ---
 
 # Recommended immediate sequence
 
-1. `1.3 Mantle landing-surface validity`
-2. `1.4 Traversal regression expansion and determinism`
-3. `1.5 Continuous movement tests in GitHub Actions`
-4. Move to Milestone 2 instead of adding more traversal features.
-
-The long-term endpoint is Milestone 11: a proven, validated content-authoring platform ready for mission and plot production.
+1. `1.3 Traversal regression protection` — protect the accepted controller without changing its behavior.
+2. `1.4 Application bootstrap and game-flow owner`.
+3. `1.5 Pause and input-ownership foundation`.
+4. `1.6 Collision/query conventions`.
+5. `1.7–1.8 TrenchBroom/source and repository hygiene`.
+6. `1.9 CI` once the protected movement suite is deterministic.
+7. Build Milestone 2's small lit gameplay laboratory.
+8. Continue vertically through interaction → NPC/stealth → first real mission rather than returning to movement feature work.
