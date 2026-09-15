@@ -103,7 +103,25 @@ After a fresh clone, after deleting `.godot/`, or whenever Godot's generated pro
 godot --headless --path . --import
 ```
 
-Then run the authoritative movement barrier from project root:
+Then run the authoritative full regression barrier from project root:
+
+```powershell
+godot --headless --path . --script res://tests/run_all_tests.gd
+```
+
+Expected result: exit code `0` and `ALL TEST SUITES PASSED`.
+
+The all-tests runner invokes the independent application and movement suites through clean headless Godot subprocesses. The import bootstrap is not required before every ordinary local test run when the project has already been imported successfully; it exists so a clean checkout follows the same reproducible startup path used by CI.
+
+Focused application ownership command:
+
+```powershell
+godot --headless --path . --script res://tests/application/run_application_tests.gd
+```
+
+Expected result: exit code `0` and `ALL APPLICATION TESTS PASSED`.
+
+Focused movement command:
 
 ```powershell
 godot --headless --path . --script res://tests/movement/run_movement_tests.gd
@@ -111,15 +129,15 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd
 
 Expected result: exit code `0` and `ALL MOVEMENT TESTS PASSED`.
 
-The import bootstrap is not required before every ordinary local test run when the project has already been imported successfully; it exists so a clean checkout follows the same reproducible startup path used by CI.
-
-Harness failure-path check:
+Movement harness failure-path check:
 
 ```powershell
 godot --headless --path . --script res://tests/movement/run_movement_tests.gd -- --intentional-failure
 ```
 
 Expected result: nonzero exit code and intentional failure reported.
+
+The application suite currently verifies the configured F5 application entry point, current development world/player/UI ownership, current/stale session identity checks, and the exclusive top-level-operation guard. It does not claim Phase 1.2 stop/teardown/replacement coverage.
 
 The movement runner currently:
 
@@ -129,7 +147,7 @@ The movement runner currently:
 - exits `0` on success and nonzero on failure;
 - releases simulated input between fixtures.
 
-Every new movement regression must be added to the movement runner (directly or through a suite it invokes), so the authoritative command and CI actually execute it. When more than one independent real suite exists, add one authoritative `tests/run_all_tests.gd` (or equivalent), switch local full-regression and CI to that entry point in the same patch, and keep individual suite commands only for focused diagnosis.
+Every new deterministic regression must be reachable from the appropriate focused suite and the authoritative all-tests barrier so local full-regression and CI actually execute it.
 
 ---
 
@@ -151,6 +169,10 @@ If relevant CI exists but its result cannot be retrieved/verified, report it as 
 # Current automated coverage
 
 The following coverage exists now.
+
+## Application root ownership
+
+The real `Application.tscn` is instantiated through the application regression suite. Coverage verifies that F5 is configured to launch the application root, the application owns the current development world, current player, and persistent UI root, the active session identity rejects a stale/foreign identity, and overlapping top-level world operations are rejected by one application owner. Actual world stop/freeze/teardown/replacement behavior remains Phase 1.2 coverage rather than being implied by this fixture.
 
 ## Framework sanity
 
@@ -212,7 +234,7 @@ These requirements become active when corresponding systems are implemented.
 
 ## World-session lifetime fixture
 
-Phase 1 proves ownership across startup, pause, stop, teardown, restart, and ordinary replacement:
+Phase 1.1 now proves application boot ownership, current session identity, and one exclusive top-level-operation guard. Phase 1.2 and the rest of Phase 1 must extend that seam across startup, pause, stop, teardown, restart, and ordinary replacement:
 
 - BUILDING/non-playing startup produces no ordinary gameplay consequences;
 - session becomes PLAYING only through application ownership;
@@ -659,7 +681,7 @@ The later production-scale mission remains the final realistic performance proof
 
 # CI policy
 
-GitHub Actions exists for the deterministic movement barrier.
+GitHub Actions exists for the authoritative regression barrier.
 
 Under current repository workflow, `test` is the direct-write integration branch. CI on `test` is therefore **post-push integration validation**, not a fictional pre-push gate.
 
@@ -668,11 +690,12 @@ The current CI barrier:
 - runs on the pinned `ubuntu-24.04` GitHub-hosted runner;
 - installs Godot `4.7.2` without .NET or export templates;
 - performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
-- runs the same authoritative movement command used locally;
+- runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
+- executes the independent application ownership suite and movement suite through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;
-- fails on a nonzero movement-test exit.
+- fails when the all-tests process returns nonzero.
 
-When multiple suites exist, CI calls one all-tests entry point rather than duplicating suite commands in workflow YAML.
+The GitHub Actions job is named `Regression suite`. Focused suite commands remain available for diagnosis, but CI uses the single all-tests entry point rather than duplicating suite commands in workflow YAML.
 
 A newly uploaded implementation commit is not accepted merely because it reached `test`. Keep roadmap work `[~]` until relevant CI/local automated validation is green and required manual/user validation is accepted.
 
