@@ -42,6 +42,8 @@ When a system touches an existing integration spine such as doors, save/load, in
 
 Cross-cutting architecture is not considered stable until the relevant `FOUNDATION_CONTRACT.md` gate has been exercised. In particular, do not harden stealth APIs before the crude hostile/combat compatibility proof demonstrates that the same actor/input/event/perception/persistence model can support active hostile interaction.
 
+When save/load work begins, preserve the foundation's stable gameplay boundary: semantic save capture represents one completed simulation/event instant, and restore establishes object existence before applying semantic state. Do not add per-system ad hoc save timing.
+
 Do not change intended gameplay merely to make a test pass. If a test encodes the wrong invariant, correct the test.
 
 ## Player-controller rule
@@ -72,6 +74,8 @@ Roadmap status meanings:
 
 Do not mark newly uploaded gameplay code `[x]` before the user validates it.
 
+Under the current direct-write workflow, `test` is an **integration branch**. CI on `test` is post-push validation, not a pre-push gate. Newly uploaded implementation work remains `[~]` until the relevant CI/local automated checks pass and required user validation is accepted.
+
 ## Documentation maintenance
 
 Documentation maintenance is the agent's responsibility. Do not ask the user to edit documentation after implementation or testing.
@@ -99,6 +103,8 @@ One `upload to gh` authorization covers one coherent requested patch. After that
 
 Before writing, re-read the current `test` head and current versions of files being changed. After writing, verify the final `test` head and compare it with the pre-write head to confirm the exact changed-file set.
 
+Because writes intentionally go directly to `test`, repository policy must not pretend CI has validated a commit before it lands there. CI should run immediately after the push when available; failed CI means the integration commit is not accepted and requires correction before the roadmap item advances.
+
 ## Normal development cycle
 
 1. User selects a roadmap item.
@@ -110,7 +116,7 @@ Before writing, re-read the current `test` head and current versions of files be
 7. Record concise `Done when`, `Automated`, and `Manual` acceptance for the implemented item.
 8. Update living docs to reflect what is now LOCKED, still TARGET, or still OPEN.
 9. Agent uploads only if explicitly authorized.
-10. User runs local automated checks and playtests in Godot.
-11. User reports success, bugs, or feel differences in chat.
+10. CI on `test` runs when configured; the uploaded implementation remains `[~]` until automated validation is green.
+11. User runs required local automated checks/playtests that are not replaced by CI and reports success, bugs, or feel differences in chat.
 12. Agent fixes/tunes as requested and keeps documentation truthful on the next authorized patch.
 13. Move on only when the current item has the required acceptance.

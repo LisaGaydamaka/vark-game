@@ -42,6 +42,26 @@ Exact names may change. The invariants may not.
 
 A system is not lifecycle-safe merely because `_ready()` succeeds.
 
+## Quickload replacement rule
+
+A quickload is an application-owned world replacement, not ordinary gameplay running two worlds at once.
+
+When loading from an active world:
+
+```text
+load request
+→ stop/freeze ordinary gameplay and gameplay input in the current world
+→ validate save compatibility
+→ build and restore an isolated non-playing candidate world
+→ validate/reconcile candidate
+→ on success: tear down old world, then promote candidate
+→ on failure: tear down candidate and follow one application-owned recovery path
+```
+
+Candidate registries, event queues, timers, deferred work, and other world-scoped services remain candidate-local until promotion. The old world and candidate must never both behave as authoritative `PLAYING` worlds.
+
+A failed candidate may not leak registrations, events, timers, callbacks, or other state into the old/current/next world.
+
 ---
 
 # 2. Input ownership
@@ -63,11 +83,15 @@ The semantic frame may contain small domains such as locomotion, look, interacti
 
 Pause, UI, menus, sequences, and gameplay explicitly arbitrate which domains currently receive input.
 
+One semantic input frame belongs to one gameplay simulation tick. Continuous state such as movement direction or `block_held` may remain true across frames while physically held. Edge intent such as `interact_pressed`, `attack_pressed`, or `attack_released` exists for that semantic frame only.
+
+When an input domain becomes disabled because of pause, UI ownership, a sequence, teardown, or world replacement, transient edge intent for that domain is cleared rather than stored and replayed later. Resuming gameplay must not produce ghost presses/releases from an inactive period.
+
 Accepted movement/look/traversal behavior remains unchanged by this refactor.
 
 ---
 
-# 3. Gameplay-event semantics
+# 3. Gameplay-event semantics and stable simulation boundary
 
 Vark uses semantic gameplay facts rather than private implementation signals for cross-system consequences.
 
@@ -89,6 +113,20 @@ system emits semantic event
 → normal gameplay dispatch is disabled during BUILDING, RESTORING, and TEARING_DOWN
 ```
 
+The canonical semantic simulation boundary is conceptually:
+
+```text
+consume one semantic input frame
+→ perform the gameplay/physics step
+→ enqueue semantic gameplay facts
+→ drain the current semantic event/consequence pass deterministically
+→ reach STABLE GAMEPLAY BOUNDARY
+```
+
+A stable gameplay boundary means the semantic consequences belonging to that completed step have been processed according to the event contract. Save snapshot capture and other operations that require one coherent instant occur only at this boundary.
+
+This does not require a general scheduler or new gameplay framework. It is a timing/ownership rule so saves, events, rules, and later combat cannot disagree about which gameplay instant they represent.
+
 This is not an author-facing programming language. The later mission-rule system consumes proven semantic events rather than replacing this foundation.
 
 ---
@@ -97,7 +135,18 @@ This is not an author-facing programming language. The later mission-rule system
 
 Persistence identity is not a node path, transform, import order, generated name, or geometry hash.
 
-There are two persistence categories.
+There are **two identity kinds**:
+
+1. authored persistent identity;
+2. runtime-created persistent identity.
+
+There are **three persistence cases**:
+
+1. authored instance is present;
+2. authored instance has been permanently removed;
+3. runtime-created persistent instance exists.
+
+A removed-authored tombstone is state about an authored identity, not a third identity namespace.
 
 ## Authored instances
 
@@ -108,6 +157,8 @@ The ID must survive ordinary move/reorder/reimport operations.
 Duplicating an authored entity must create a distinct ID.
 
 If an ID is generated or repaired, the corrected identity must be persisted back to the authoritative source. Repairing only generated/imported output is insufficient because the next reimport would reproduce the error.
+
+Identity writeback/repair must be idempotent: a valid authored source is not rewritten merely because it was imported again. The workflow must not create import/rewrite loops or overwrite newer authored edits with stale generated data.
 
 Missing or duplicate IDs fail closed with useful diagnostics.
 
@@ -131,9 +182,17 @@ If an authored object can be permanently collected, destroyed, consumed, or othe
 
 A tombstone/removed-ID representation is sufficient until real content proves a richer model necessary.
 
+## Actor life-state identity
+
+A persistent actor does not become a new persistent entity merely because its life state changes.
+
+A guard transitioning among `conscious`, `unconscious`, and `dead`, including presentation/runtime changes needed to behave as a movable body, keeps the same authored/runtime persistent identity and semantic actor identity.
+
+An implementation may replace or reorganize runtime nodes for presentation/physics if later proven useful, but that is an internal detail: mission references, statistics, save state, body discovery, and life-state events still refer to the same persistent actor.
+
 ---
 
-# 5. Semantic save ownership
+# 5. Semantic save ownership and transactions
 
 Stateful systems own their meaningful save state.
 
@@ -165,6 +224,70 @@ which persistent instances exist or are removed?
 what meaningful state does each owner have?
 ```
 
+## Coherent snapshot capture
+
+A save request made during ordinary active gameplay is fulfilled at the next stable gameplay boundary defined by the event/simulation contract.
+
+Conceptually:
+
+```text
+player requests save at any ordinary gameplay time
+→ finish the current semantic simulation/event pass
+→ reach stable gameplay boundary
+→ synchronously capture all save-owning semantic state into one immutable in-memory snapshot
+→ resume ordinary gameplay
+→ encode/write that immutable snapshot
+```
+
+The snapshot must represent one coherent semantic instant. Do not let individual systems capture opportunistically across different gameplay ticks while the world continues to mutate.
+
+File serialization/write latency must not require keeping the whole gameplay world frozen after the immutable snapshot has been captured. Background/deferred encoding is allowed only if it consumes the immutable snapshot rather than live gameplay objects.
+
+Pending semantic gameplay facts that belong to the completed simulation step must not be silently lost between state capture and event consequences. Prefer capturing after the current deterministic event pass has drained rather than serializing an arbitrary half-processed event queue.
+
+## Restore object-existence order
+
+Restore establishes **what exists** before applying **what state it has**.
+
+The default conceptual order is:
+
+```text
+validate save header/content compatibility
+→ create isolated candidate mission world while non-playing
+→ instantiate authored entities
+→ register authored persistent/semantic identities
+→ apply removed-authored tombstones/removal set
+→ recreate runtime-persistent instances
+→ register runtime persistent/semantic identities
+→ apply semantic snapshots to surviving/recreated owners
+→ restore player/MissionState/mission-script state
+→ resolve/reconcile references and derived state
+→ validate restored candidate
+→ mark candidate ready
+→ tear down old world if one exists
+→ atomically promote candidate as authoritative
+→ enable AI, events, rules, perception, and gameplay updates
+→ after_restore/world_ready hook
+→ resume gameplay
+```
+
+If validation, state application, or reconciliation fails, the candidate does not enter `PLAYING`; it is torn down cleanly and a useful error is reported. A failed load must not leave a half-restored authoritative world.
+
+During restore, ordinary consequences must not fire merely because state is being reconstructed:
+
+- NPC decisions;
+- objective evaluation;
+- mission rules;
+- perception;
+- gameplay sound emission;
+- door-change consequences;
+- loot consequences;
+- alarm propagation.
+
+Loading a save must not itself become gameplay.
+
+Durable save-file writes should use a temporary/new file and replace the previous valid save only after the new write is complete and validated enough to commit. A failed/interrupted write should not destroy the last valid quicksave.
+
 ---
 
 # 6. Save compatibility
@@ -183,6 +306,16 @@ mission_content_revision
 
 `mission_content_revision` describes the authored mission content against which persistent IDs and semantic references were saved.
 
+`MissionDefinition` owns the mission's explicit `mission_content_revision` (or an equivalent single authoritative mission metadata field).
+
+Increment the content revision when an authored-content change makes existing in-mission saves semantically unsafe, including representative cases such as:
+
+- changing/removing persistent entity identities in a way old snapshots cannot resolve safely;
+- changing the meaning of save-relevant semantic/content IDs;
+- changing authored save-state assumptions so old state would be interpreted incorrectly.
+
+Ordinary art, geometry, text, or tuning edits that remain semantically save-compatible do not require a revision bump merely because a file changed.
+
 During development, the correct simple policy is acceptable:
 
 ```text
@@ -197,6 +330,8 @@ Do not build migration machinery before a real migration is required.
 # 7. Save-anywhere policy
 
 Ordinary active gameplay quicksave/quickload is a fundamental Vark behavior.
+
+A save request may wait until the next stable gameplay boundary—normally the next completed semantic simulation tick—without violating save-anywhere. The player is not required to wait for doors, AI, traversal, combat, or props to become idle.
 
 Transient implementation details must not become broad save restrictions.
 
@@ -241,7 +376,7 @@ Do not create separate fake doors, guards, or props for each subsystem.
 
 The same ordinary door should progressively survive interaction, collision, sight, acoustics, NPC traversal, persistence, and prop obstruction.
 
-The same guard should progressively survive perception, navigation, life state, events, persistence, and crude hostile interaction.
+The same guard should progressively survive perception, navigation, life state/body presentation, events, persistence, and crude hostile interaction **without changing persistent identity when life state changes**.
 
 ---
 
@@ -308,6 +443,8 @@ If the TrenchBroom map owns a player-start transform, `MissionDefinition` should
 
 Apply the same rule to future authored spatial entities: choose one authoritative source and reference it semantically elsewhere.
 
+Persistent-ID repair/writeback must respect the same principle: update the authoritative authored source through an idempotent workflow; never treat generated/imported output as the durable source and never allow an import cycle to repeatedly rewrite a valid map.
+
 ---
 
 # 14. Acceptance contract
@@ -338,12 +475,17 @@ The numbered roadmap remains authoritative, but the following gates prevent late
 
 Before Phase 4 save/restore is considered complete, prove:
 
-- authored identity survives the real create/duplicate/reimport workflow;
+- authored identity survives the real create/duplicate/reimport workflow and repair/writeback is idempotent;
 - runtime-persistent identity exists if the current slice creates persistent runtime objects;
 - removed authored objects can be represented if the slice permits permanent removal/collection;
+- actor life-state/body representation does not change persistent actor identity;
 - world teardown/restart/quickload does not leave stale ownership;
-- event ordering/lifecycle semantics are defined;
-- mission content revision compatibility is explicit.
+- candidate-load isolation prevents old and candidate worlds from both acting authoritative;
+- one semantic input frame has deterministic tick/edge lifetime;
+- event ordering/lifecycle semantics and the stable gameplay boundary are defined;
+- save capture produces one coherent immutable snapshot at that boundary;
+- restore establishes object existence/removal/runtime recreation before semantic state application;
+- mission content revision ownership/bump/refusal policy is explicit.
 
 Before Phase 5 stealth hardening is considered complete, additionally prove the crude combat compatibility path against the same actor/input/event/perception/save architecture.
 
