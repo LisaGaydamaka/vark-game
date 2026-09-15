@@ -18,6 +18,8 @@ Do not add tests merely to increase test count. Every automated test should prot
 
 An automated test does not count as coverage merely because a test file exists. It must be reachable from the appropriate authoritative local/CI entry point. When a second independent suite appears, introduce/update one all-tests entry point and make local full-regression/CI use it in the same coherent patch.
 
+If a roadmap/fixture contract expects a named deterministic case “where practical” and that case cannot currently be automated credibly, record the exact case, why trustworthy automation is not practical yet, and the focused manual/integrated acceptance that covers the gap. Do not silently omit the case or weaken `Done when:`.
+
 Systemic features require **integrated proof**, not only isolated unit proof. A door is not complete because it animates; a save system is not complete because it serializes data; an acoustic system is not complete because one distance check passes.
 
 For cross-cutting systems, test ownership and failure boundaries as aggressively as happy paths. A restore that fails safely is part of save correctness; a torn-down world that cannot affect its replacement is part of lifecycle correctness; a detached snapshot that cannot mutate with the live world is part of save correctness.
@@ -128,6 +130,21 @@ The movement runner currently:
 - releases simulated input between fixtures.
 
 Every new movement regression must be added to the movement runner (directly or through a suite it invokes), so the authoritative command and CI actually execute it. When more than one independent real suite exists, add one authoritative `tests/run_all_tests.gd` (or equivalent), switch local full-regression and CI to that entry point in the same patch, and keep individual suite commands only for focused diagnosis.
+
+---
+
+# Automated acceptance evidence outside CI
+
+A green authoritative CI run proves only what that barrier actually executes.
+
+Every required `Automated:` criterion that is not continuously covered by CI must either:
+
+- have a documented command/fixture/workflow that a fresh agent can rerun; or
+- when it is inherently a one-time authoring/tool workflow proof rather than a useful continuous CI gate, have the procedure, observed result, and relevant supported tool/runtime/environment recorded in the roadmap/testing documentation when it is accepted.
+
+Do not use unrelated green CI as a substitute for these checks.
+
+If relevant CI exists but its result cannot be retrieved/verified, report it as unverified and keep any CI-dependent roadmap item `[~]`; never infer success from the absence of a visible failure.
 
 ---
 
@@ -450,6 +467,8 @@ The checklist below is the broad integration pass for changes that could affect 
 
 A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit unrelated global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
 
+When `Manual:` requires a specialized validator, name the role explicitly (user/playtester, Windows operator, mapper, writer, cold author, external developer, etc.). The implementing agent may prepare the fixture/procedure but cannot self-certify an independent-human validation requirement.
+
 ---
 
 # Player manual regression checklist
@@ -657,6 +676,7 @@ Update this file during authorized repository patches when:
 - authoritative test command changes;
 - a new real suite is introduced;
 - broad manual regression coverage changes;
+- acceptance-evidence strategy for non-CI checks materially changes;
 - CI/testing strategy materially changes;
 - an OPEN/TARGET system becomes LOCKED and needs permanent verification rules.
 

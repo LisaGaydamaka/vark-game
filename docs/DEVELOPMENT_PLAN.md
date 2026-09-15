@@ -46,6 +46,8 @@ Manual:
 
 These may live directly in the item or be inherited unambiguously from its phase gate, `TESTING.md`, or `FOUNDATION_CONTRACT.md`. Confirm the three acceptance lines before implementation begins or as part of the implementation patch rather than deciding completion after the code already exists. If a check is not warranted, say so explicitly. `[x]` is allowed only after required automated checks pass and required user validation is accepted.
 
+When `Manual:` requires a specific kind of validator, name that role rather than treating every manual criterion as interchangeable. User/playtester, Windows operator, mapper, writer, cold author, and external developer are different acceptance roles. In particular, the implementing agent cannot self-certify the independent-human purpose of 8.7, 11.6, or 15.2; it prepares the workflow and the reported external result closes the criterion.
+
 ---
 
 # Current implementation baseline
@@ -360,24 +362,25 @@ Accepted behavior includes ground movement, sprint, crouch, jump, air movement, 
 
 Keep the deterministic headless movement suite. Tests protect accepted behavior, not current internal architecture.
 
-## 0.3 Repository cleanup `[~]`
+## 0.3 Repository cleanup `[x]`
 
-Established policy so far:
+Established policy:
 
 - `maps/autosave/` is generated TrenchBroom recovery material, has been removed from tracked content, and is ignored;
 - `.godot/` and other current Godot-generated local state remain ignored;
 - top-level `maps/*.map` files are treated as authored/development map source unless deliberately retired;
 - tracked `.map.import` sidecars are generated import metadata rather than authored mission truth and must not receive irreplaceable manual edits; keep the current sidecars until the FuncGodot import/reimport workflow explicitly proves they can be removed safely;
 - do not blanket-place text `.map` source in Git LFS merely because a map becomes large; evaluate LFS for future large binary assets where Git text diffs are not useful;
-- existing `test.map`, `test2.map`, and `test3.map` remain development/graybox source for now.
+- existing `test.map`, `test2.map`, and `test3.map` remain development/graybox source for now;
+- `maps/level export2.map` remains tracked and is conservatively classified as authored/development map source. Its filename and roughly 29.5 MB size are not evidence that it is obsolete. Retain it unless a future explicit content-ownership decision deliberately retires/reclassifies it; do not delete, rename, or LFS-migrate it by inference.
 
-One cleanup decision remains intentionally open: `maps/level export2.map` is a roughly 29.5 MB tracked map whose ownership/name does not prove whether it is required authored source or an obsolete export. Do not delete, rename, or LFS-migrate it without an explicit content-ownership decision. Close 0.3 when that file is classified and any resulting cleanup is applied.
+No destructive cleanup is implied by the conservative `level export2.map` classification. Future retirement/reclassification of that source is a separate explicit content decision, not unfinished Phase 0 cleanup.
 
-**Done when:** generated recovery/local state is excluded, remaining tracked map/import files have explicit source/generated ownership, and the large map is intentionally classified.
+**Done when:** generated recovery/local state is excluded and all remaining tracked map/import files have explicit source/generated ownership. Satisfied by the policy above.
 
-**Automated:** current clean checkout/import/CI remains green after any cleanup.
+**Automated:** the clean-checkout import/current authoritative movement CI remained green after the repository cleanup already applied; this classification patch does not delete or transform map content.
 
-**Manual:** confirm the role of `maps/level export2.map` before destructive cleanup.
+**Manual:** none. The ambiguous large map is retained rather than destructively changed.
 
 ## 0.4 Tool/runtime contract `[~]`
 
@@ -1347,26 +1350,25 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `0.3` by classifying `maps/level export2.map` and applying only the cleanup implied by that ownership decision.
-2. Finish `0.4` by confirming the project opens/runs normally on the declared Windows x64 desktop baseline; after successful user validation, mark it `[x]` during the next authorized patch.
-3. Implement `0.6` traversal regression expansion with real deterministic ledge/mantle fixtures.
-4. Implement `0.7` semantic behavior-trace protection over representative accepted locomotion/traversal sequences.
-5. Only after the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
-6. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
-7. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-8. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-9. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-10. Phase 4 crude hostile compatibility.
-11. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-12. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-13. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-14. early cold-author review.
-15. Phase 9 establish real vitality/damage ownership while prototyping combat.
-16. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-17. Phase 11 stabilize **world/gameplay** production APIs only.
-18. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-19. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-20. production scaling/handoff.
+1. Finish `0.4` by confirming the project opens/runs normally on the declared Windows x64 desktop baseline; after successful user validation, mark it `[x]` during the next authorized patch.
+2. Implement `0.6` traversal regression expansion with real deterministic ledge/mantle fixtures.
+3. Implement `0.7` semantic behavior-trace protection over representative accepted locomotion/traversal sequences.
+4. Only after the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
+5. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
+6. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+7. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+8. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+9. Phase 4 crude hostile compatibility.
+10. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+11. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+12. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+13. early cold-author review.
+14. Phase 9 establish real vitality/damage ownership while prototyping combat.
+15. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+16. Phase 11 stabilize **world/gameplay** production APIs only.
+17. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+18. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+19. production scaling/handoff.
 
 The most important sequencing rules are:
 

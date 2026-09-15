@@ -721,7 +721,7 @@ The grammar must remain intentionally small.
 
 It must **not** grow into a second programming language with arbitrary loops, locals, nested general control flow, or unrestricted object manipulation.
 
-Procedural/unusual mission logic uses GDScript through a stable public mission API.
+The finished production game exposes procedural/unusual mission logic through stable public mission extension APIs. During systems development, the roadmap may keep those APIs provisional/supportable until representative mission use proves them; mission content must not depend on private core internals in the meantime.
 
 Mission facts should be declared with a simple schema containing at least key, type, default, and scope so typos and implicit incompatible values do not silently become game logic.
 
