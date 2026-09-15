@@ -4,13 +4,14 @@
 ;
 ; Format:
 ;   [section] ; section goes between []
-;   param=value ; assign values to parameters
+;   param=value
 
 config_version=5
 
 [application]
 
 config/name="VARK GAME"
+run/main_scene="res://application/Application.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
