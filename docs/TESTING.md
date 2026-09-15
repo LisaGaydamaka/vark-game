@@ -196,6 +196,12 @@ From the real hanging state, a no-direction jump request traverses the productio
 
 Dropping from a hang cannot immediately recatch the same local ledge while the player remains in its suppression region. After leaving that region, returning to the same approach permits a later legitimate catch/hang again.
 
+## Controller behavior traces
+
+The authoritative movement barrier also drives fixed real-player command sequences and samples one read-only semantic movement snapshot instead of private controller/component call order. The traces protect representative walk startup/sustain/stop, crouch movement and stance changes, ordinary jump and sprint-jump takeoff, a real step crossing, and ledge catch/hang/shimmy/release/corner/mantle transitions. Checkpoints assert position, velocity, support class, stance, and traversal state with explicit numeric tolerances where physics requires them.
+
+Mouse look is deliberately not quantized into these physics traces; accepted event-driven look cadence remains protected by the player-controller contract and is exercised separately when the Phase 1 input/view boundary is introduced.
+
 No future-system coverage below should be reported as existing until actually implemented.
 
 ---
@@ -203,14 +209,6 @@ No future-system coverage below should be reported as existing until actually im
 # Required future fixture strategy
 
 These requirements become active when corresponding systems are implemented.
-
-## Controller behavior-trace fixture
-
-Protect representative locomotion traces for walk/start/stop, sprint, crouch, jump/sprint-jump, representative step, ledge catch/hang/release, and representative shimmy/corner/mantle where deterministic.
-
-Compare semantic results, not private component internals.
-
-Protect accepted mouse-look response separately where needed; do not make event-driven look wait for a gameplay/physics frame simply to fit locomotion trace machinery. Also prove the current event-driven view pose can be sampled/captured coherently at a stable gameplay boundary without changing accepted input response.
 
 ## World-session lifetime fixture
 

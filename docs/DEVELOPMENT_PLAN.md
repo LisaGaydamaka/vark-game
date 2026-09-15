@@ -408,7 +408,7 @@ Under current repository policy, `test` is the direct-write integration branch. 
 
 **Manual:** none for CI infrastructure beyond confirming the successful run/report; user confirmation has been received.
 
-## 0.6 Traversal regression expansion `[~]`
+## 0.6 Traversal regression expansion `[x]`
 
 Add deterministic coverage where practical for ledge catch, hang, shimmy, supported corners, mantle, release, and suppression/regrab.
 
@@ -420,13 +420,15 @@ The authoritative movement barrier now includes a minimal real-physics ledge fix
 
 **Automated:** the authoritative movement barrier includes those fixtures and remains green in CI.
 
-**Manual:** run the existing ledge/mantle checklist and confirm the protected cases still feel like the accepted controller before marking `[x]`.
+**Manual:** passed — the user confirmed the focused ledge/mantle checklist after the traversal-regression patch; the protected cases still feel like the accepted controller.
 
-## 0.7 Behavior-trace protection for controller refactors `[ ]`
+## 0.7 Behavior-trace protection for controller refactors `[~]`
 
 Before major input/controller plumbing changes, add enough semantic trace coverage to show equivalent locomotion command sequences preserve accepted behavior within intended numeric tolerances.
 
 Representative traces should cover walk/start/stop, crouch, ordinary jump/sprint-jump, a step, and representative traversal transitions once 0.6 fixtures exist. Record/assert observable semantic results such as position/velocity/stance/support/traversal state, not private helper call order.
+
+The authoritative movement barrier now drives fixed command sequences through the real `Player.tscn` and samples a read-only semantic movement snapshot containing position, velocity, support class, stance, and traversal state. The trace covers walk startup/sustain/stop, crouch movement and stance transitions, ordinary jump and sprint-jump takeoff, representative step crossing, and ledge catch/hang/shimmy/release/corner/mantle checkpoints with explicit numeric tolerances. It does not quantize or otherwise change mouse-look timing.
 
 Do not force mouse-look timing into a physics-tick trace if doing so would change accepted look response. Protect look behavior and stable-boundary pose capture separately where appropriate.
 
@@ -1352,24 +1354,23 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `0.6` by running the focused ledge/mantle manual checklist; after successful user validation and green CI, mark it `[x]` during the next authorized patch.
-2. Implement `0.7` semantic behavior-trace protection over representative accepted locomotion/traversal sequences.
-3. Only after the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
-4. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
-5. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-6. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-7. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-8. Phase 4 crude hostile compatibility.
-9. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-10. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-11. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-12. early cold-author review.
-13. Phase 9 establish real vitality/damage ownership while prototyping combat.
-14. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-15. Phase 11 stabilize **world/gameplay** production APIs only.
-16. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-17. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-18. production scaling/handoff.
+1. Finish `0.7` post-push validation: the semantic behavior traces must remain green in the authoritative `Movement regressions` job; after green CI, reconcile `0.7` to `[x]` during the next authorized patch.
+2. After the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
+3. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
+4. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+5. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+6. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+7. Phase 4 crude hostile compatibility.
+8. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+9. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+10. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+11. early cold-author review.
+12. Phase 9 establish real vitality/damage ownership while prototyping combat.
+13. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+14. Phase 11 stabilize **world/gameplay** production APIs only.
+15. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+16. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+17. production scaling/handoff.
 
 The most important sequencing rules are:
 

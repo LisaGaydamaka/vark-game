@@ -64,6 +64,46 @@ func is_grounded() -> bool:
 	return support != null and support.is_grounded()
 
 
+## Read-only player-facing movement state used by regression traces.
+##
+## Tests intentionally consume this semantic boundary rather than reaching into
+## the current controller/component graph, so later input/controller refactors
+## can preserve behavior without preserving today's ownership structure.
+func get_movement_semantic_state() -> Dictionary:
+	var support_state: String = "airborne"
+	if support != null and support.has_support:
+		support_state = "grounded" if support.walkable else "steep"
+
+	var stance_state: String = "uninitialized"
+	if crouch != null:
+		if crouch.is_fully_crouched():
+			stance_state = "crouched"
+		elif crouch.is_fully_standing():
+			stance_state = "standing"
+		else:
+			stance_state = "transitioning"
+
+	var traversal_state: String = "normal"
+	if ledge_controller != null:
+		match ledge_controller.state:
+			PlayerLedgeController.State.CATCHING:
+				traversal_state = "catching"
+			PlayerLedgeController.State.HANGING:
+				traversal_state = "hanging"
+			PlayerLedgeController.State.CORNERING:
+				traversal_state = "cornering"
+			PlayerLedgeController.State.MANTLING:
+				traversal_state = "mantling"
+
+	return {
+		"position": global_position,
+		"velocity": velocity,
+		"support": support_state,
+		"stance": stance_state,
+		"traversal": traversal_state,
+	}
+
+
 func _create_components() -> void:
 	player_input = PlayerInput.new()
 	velocity_state = PlayerVelocityState.new()
