@@ -2,7 +2,7 @@ class_name VarkApplication
 extends Node
 
 
-const PLAYER_GROUP: StringName = &"vark_player"
+const WORLD_SESSION_SCRIPT = preload("res://application/world_session.gd")
 
 
 enum TopLevelOperation {
@@ -19,11 +19,13 @@ enum TopLevelOperation {
 @onready var world_host: Node = $WorldHost
 @onready var ui_root: CanvasLayer = $UIRoot
 
+var current_session: Node = null
 var current_world: Node = null
 var current_player: Node = null
 var current_ui: CanvasLayer = null
-var current_session_id: int = 0
 var active_top_level_operation: int = TopLevelOperation.NONE
+
+var _last_session_id: int = 0
 
 
 func _ready() -> void:
@@ -32,11 +34,23 @@ func _ready() -> void:
 
 
 func get_current_session_id() -> int:
-	return current_session_id
+	if current_session == null:
+		return 0
+	return int(current_session.get("session_id"))
+
+
+func get_current_session_state() -> int:
+	if current_session == null:
+		return WORLD_SESSION_SCRIPT.State.EMPTY
+	return int(current_session.get("state"))
 
 
 func is_current_session(session_id: int) -> bool:
-	return session_id > 0 and session_id == current_session_id
+	return (
+		session_id > 0
+		and current_session != null
+		and session_id == int(current_session.get("session_id"))
+	)
 
 
 func try_begin_top_level_operation(operation: int) -> bool:
@@ -63,38 +77,129 @@ func has_active_top_level_operation() -> bool:
 	return active_top_level_operation != TopLevelOperation.NONE
 
 
+func stop_current_world() -> bool:
+	if current_session == null:
+		return false
+	return bool(current_session.call("stop_gameplay"))
+
+
+func start_current_world() -> bool:
+	if current_session == null:
+		return false
+	return bool(current_session.call("begin_play"))
+
+
+func restart_current_world() -> bool:
+	if not try_begin_top_level_operation(TopLevelOperation.RESTART):
+		return false
+
+	var scene: PackedScene = default_world_scene
+	if current_session != null:
+		scene = current_session.get("world_scene") as PackedScene
+
+	var succeeded: bool = _replace_world(scene)
+	var finished: bool = finish_top_level_operation(TopLevelOperation.RESTART)
+	assert(finished, "VarkApplication lost ownership of the restart operation.")
+	return succeeded
+
+
+func transition_to_world(scene: PackedScene) -> bool:
+	if scene == null:
+		return false
+	if not try_begin_top_level_operation(TopLevelOperation.MISSION_TRANSITION):
+		return false
+
+	var succeeded: bool = _replace_world(scene)
+	var finished: bool = finish_top_level_operation(TopLevelOperation.MISSION_TRANSITION)
+	assert(finished, "VarkApplication lost ownership of the mission transition operation.")
+	return succeeded
+
+
+func exit_current_world() -> bool:
+	if not try_begin_top_level_operation(TopLevelOperation.EXIT):
+		return false
+
+	_teardown_current_session()
+	var finished: bool = finish_top_level_operation(TopLevelOperation.EXIT)
+	assert(finished, "VarkApplication lost ownership of the exit operation.")
+	return true
+
+
 func _boot_default_world() -> void:
 	assert(
 		default_world_scene != null,
 		"VarkApplication requires a default world scene for initial development boot."
 	)
 	assert(
-		current_world == null,
-		"VarkApplication may install only one initial world during Phase 1.1."
+		current_session == null,
+		"VarkApplication may install only one initial world."
 	)
-
-	current_session_id += 1
-	current_world = default_world_scene.instantiate()
-	world_host.add_child(current_world)
-	current_player = _find_session_player(current_world)
 	assert(
-		current_player != null,
-		"The current Vark world must expose exactly one node in the vark_player group."
+		_install_world(default_world_scene),
+		"VarkApplication failed to build the default world session."
 	)
 
 
-func _find_session_player(world: Node) -> Node:
-	var found_player: Node = null
-	if world.is_in_group(PLAYER_GROUP):
-		found_player = world
+func _replace_world(scene: PackedScene) -> bool:
+	if scene == null:
+		return false
 
-	for node: Node in world.find_children("*", "", true, false):
-		if not node.is_in_group(PLAYER_GROUP):
-			continue
-		assert(
-			found_player == null,
-			"A Vark world may expose only one node in the vark_player group."
-		)
-		found_player = node
+	_teardown_current_session()
+	return _install_world(scene)
 
-	return found_player
+
+func _install_world(scene: PackedScene) -> bool:
+	if scene == null or current_session != null:
+		return false
+
+	_last_session_id += 1
+	var session: Node = WORLD_SESSION_SCRIPT.new()
+	session.name = "WorldSession"
+	world_host.add_child(session)
+
+	if not bool(session.call("build", _last_session_id, scene)):
+		world_host.remove_child(session)
+		session.free()
+		return false
+
+	current_session = session
+	_sync_current_references()
+
+	if not bool(current_session.call("begin_play")):
+		_teardown_current_session()
+		return false
+
+	return true
+
+
+func _teardown_current_session() -> void:
+	if current_session == null:
+		current_world = null
+		current_player = null
+		return
+
+	if int(current_session.get("state")) == WORLD_SESSION_SCRIPT.State.PLAYING:
+		current_session.call("stop_gameplay")
+
+	current_session.call("teardown")
+	if current_session.get_parent() == world_host:
+		world_host.remove_child(current_session)
+	current_session.free()
+
+	current_session = null
+	current_world = null
+	current_player = null
+
+
+func _sync_current_references() -> void:
+	if current_session == null:
+		current_world = null
+		current_player = null
+		return
+
+	current_world = current_session.get("world") as Node
+	current_player = current_session.get("player") as Node
+	assert(
+		current_world != null and current_player != null,
+		"A built Vark world session must expose its world and player."
+	)

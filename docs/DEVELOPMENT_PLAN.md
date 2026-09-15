@@ -71,6 +71,7 @@ The project currently contains:
 - FuncGodot
 - TrenchBroom `.map` import
 - existing graybox/test maps
+- an application root with explicit current-world/session ownership
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -79,7 +80,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: application flow, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: complete application flow/input arbitration, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -446,7 +447,7 @@ Do not force mouse-look timing into a physics-tick trace if doing so would chang
 
 Goal: turn the movement project into a controlled application without changing accepted player feel and without baking gameplay side effects into node startup/teardown.
 
-## 1.1 Application root `[~]`
+## 1.1 Application root `[x]`
 
 Create stable ownership for game flow, current mission/world session, player, UI, and transitions.
 
@@ -454,15 +455,15 @@ F5 should launch the Vark application rather than an arbitrary development scene
 
 Top-level load/restart/mission-transition/exit operations have one application owner and cannot race each other as competing subsystem transitions. Future world-bound requests must carry/verify their source session rather than implicitly operating on whatever world happens to be current later.
 
-The project now boots through `res://application/Application.tscn`. The application owns a persistent world host and UI root, installs the current development `VarkTest` world, resolves the current player through a semantic player marker, exposes the current session identity for future source-session checks, and provides one exclusive top-level operation guard. Actual stop/freeze/teardown/replacement mechanics remain Phase 1.2 rather than being pulled into this item.
+The project now boots through `res://application/Application.tscn`. The application owns a persistent world host and UI root, installs the current development `VarkTest` world, resolves the current player through a semantic player marker, exposes the current session identity for future source-session checks, and provides one exclusive top-level operation guard.
 
 **Done when:** F5 launches the application root; that root owns the current world, player, persistent UI root, session identity, and exclusive top-level operation state without changing accepted player behavior.
 
-**Automated:** the application regression suite verifies the configured F5 main scene, current world/player/UI ownership, current/stale session identity checks, and rejection of overlapping top-level operations. The authoritative all-tests barrier also runs the existing movement/behavior traces unchanged.
+**Automated:** passed — the application regression suite verifies the configured F5 main scene, current world/player/UI ownership, current/stale session identity checks, and rejection of overlapping top-level operations, and the authoritative all-tests CI barrier remained green.
 
-**Manual:** Windows x64 user/playtester — press F5 and confirm the application opens the current `VarkTest` world/player normally and ordinary movement/mouse-look startup and response still feel unchanged.
+**Manual:** passed — the user confirmed on Windows x64 that F5 opens the current `VarkTest` world/player normally and ordinary movement/mouse-look startup and response feel unchanged.
 
-## 1.2 World-session lifecycle, stop, replacement, and teardown `[ ]`
+## 1.2 World-session lifecycle, stop, replacement, and teardown `[~]`
 
 Create the smallest application-owned lifecycle that permits a mission world to exist before normal gameplay consequences are enabled and guarantees old-world work cannot leak into a replacement.
 
@@ -480,6 +481,16 @@ At minimum prove:
 Phase 1 does **not** need to prove simultaneous old/candidate mission worlds or build a multi-world isolation framework. It must provide the stop/teardown/replacement ownership that Phase 4 can use to discover the simplest safe restore topology.
 
 Use a small session/generation token only if needed to reject stale work.
+
+The application now creates a concrete `WorldSession` for each world instance. A session builds in a disabled `READY` state, enters `PLAYING` only through application permission, can be stopped/resumed coherently, and tears its world down synchronously before restart/mission-transition replacement becomes authoritative. Session IDs are monotonic at the application level and stale IDs stop matching immediately after replacement or exit. The persistent application UI remains outside session lifetime.
+
+World-scoped Nodes/services are owned beneath the `WorldSession`, so their timers/deferred callbacks die with the old session. The regression uses representative real `Timer` and deferred work to prove stop freezes session-owned timer processing and teardown prevents both timer/deferred work from the old session firing into the replacement. No empty registry, semantic event queue, or general scheduler framework is created here: those real systems remain Phase 2.6/3.2 work, but their lifetime owner is now established as the session. The shared authored `PackedScene` remains configuration while each restart gets a fresh runtime world instance.
+
+**Done when:** the application can build a non-playing world session, explicitly enter/stop/resume play, restart or transition only after tearing down the old session, exit to a coherent no-world state, preserve persistent UI/config ownership, and reject stale session identity/work after replacement.
+
+**Automated:** the application suite covers direct `READY → PLAYING → STOPPED → EMPTY` lifecycle behavior, application-controlled stop/resume, fresh restart and mission transition, synchronous old-session teardown, stale session-ID rejection, session-owned timer/deferred-work cancellation on teardown, fresh runtime state with shared authored configuration, and coherent exit. The authoritative all-tests barrier must also keep the movement/behavior traces green in post-push CI.
+
+**Manual:** Windows x64 user/playtester — press F5 and confirm the current `VarkTest` world starts normally and ordinary movement/mouse-look startup and response still feel unchanged after the new session wrapper. No player-facing restart/menu control is introduced by 1.2; restart/transition/exit lifecycle behavior is deterministic automated coverage until 1.5–1.6 expose user/development flow.
 
 ## 1.3 Gameplay-input boundary, domains, view pose, and frame lifetime `[ ]`
 
@@ -1362,25 +1373,24 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `1.1` by confirming the post-push `Regression suite` is green and running the focused Windows F5 startup/player check; after acceptance, mark it `[x]` during the next authorized patch.
-2. Implement `1.2` world-session lifecycle, stop/freeze, teardown/replacement ownership, and stale-work rejection without building save candidate infrastructure.
-3. Implement `1.3` gameplay-input boundary/view-pose ownership and gesture cancellation, then `1.4` pause/gameplay-time ownership.
-4. Complete the minimal application/menu and development-launch work in `1.5`–`1.6` only after those ownership boundaries are proven.
-5. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
-6. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-7. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-8. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-9. Phase 4 crude hostile compatibility.
-10. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-11. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-12. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-13. early cold-author review.
-14. Phase 9 establish real vitality/damage ownership while prototyping combat.
-15. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-16. Phase 11 stabilize **world/gameplay** production APIs only.
-17. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-18. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-19. production scaling/handoff.
+1. Finish `1.2` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms F5 still starts the current development world with accepted movement/mouse-look response; reconcile `1.2` to `[x]` during the next authorized patch.
+2. Implement `1.3` gameplay-input boundary/view-pose ownership and gesture cancellation, then `1.4` pause/gameplay-time ownership.
+3. Complete the minimal application/menu and development-launch work in `1.5`–`1.6` only after those ownership boundaries are proven.
+4. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
+5. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+6. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+7. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+8. Phase 4 crude hostile compatibility.
+9. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+10. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+11. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+12. early cold-author review.
+13. Phase 9 establish real vitality/damage ownership while prototyping combat.
+14. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+15. Phase 11 stabilize **world/gameplay** production APIs only.
+16. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+17. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+18. production scaling/handoff.
 
 The most important sequencing rules are:
 

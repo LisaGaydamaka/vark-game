@@ -137,7 +137,7 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 
 Expected result: nonzero exit code and intentional failure reported.
 
-The application suite currently verifies the configured F5 application entry point, current development world/player/UI ownership, current/stale session identity checks, and the exclusive top-level-operation guard. It does not claim Phase 1.2 stop/teardown/replacement coverage.
+The application suite verifies the configured F5 application entry point, current development world/player/UI ownership, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/stop/resume, restart/transition/exit teardown, fresh replacement, and stale session-owned timer/deferred-work rejection.
 
 The movement runner currently:
 
@@ -172,7 +172,15 @@ The following coverage exists now.
 
 ## Application root ownership
 
-The real `Application.tscn` is instantiated through the application regression suite. Coverage verifies that F5 is configured to launch the application root, the application owns the current development world, current player, and persistent UI root, the active session identity rejects a stale/foreign identity, and overlapping top-level world operations are rejected by one application owner. Actual world stop/freeze/teardown/replacement behavior remains Phase 1.2 coverage rather than being implied by this fixture.
+The real `Application.tscn` is instantiated through the application regression suite. Coverage verifies that F5 is configured to launch the application root, the application owns the current development world, current player, persistent UI root, active session identity, and one exclusive top-level-operation guard.
+
+## World-session lifecycle and replacement
+
+The production `WorldSession` path is exercised directly and through the application. A session builds with processing disabled in `READY`, enters `PLAYING` only through explicit permission, stops coherently in `STOPPED`, and tears down to `EMPTY` with world/player/session references invalidated. The application can stop/resume the current session, restart or mission-transition through stop → synchronous teardown → fresh replacement, and exit to a coherent no-world state while persistent UI remains application-owned.
+
+The lifecycle regression attaches representative `Timer` and deferred work beneath the real session owner. A stopped session freezes the timer; restarting tears the old session down before yielding, and neither the old timer nor deferred callback can fire afterward. A control probe under the current replacement proves the same work executes normally while its session is alive. The replacement receives a fresh runtime world instance and session ID while reusing the authored `PackedScene` only as configuration, so runtime metadata/state does not leak through the shared authored resource or persistent application owner.
+
+No production registry, semantic event queue, or general scheduler is invented by this fixture. Those systems remain future roadmap work; when introduced, the tested lifetime contract requires their mutable state/work to be owned by the current `WorldSession` rather than application/autoload state.
 
 ## Framework sanity
 
@@ -234,17 +242,13 @@ These requirements become active when corresponding systems are implemented.
 
 ## World-session lifetime fixture
 
-Phase 1.1 now proves application boot ownership, current session identity, and one exclusive top-level-operation guard. Phase 1.2 and the rest of Phase 1 must extend that seam across startup, pause, stop, teardown, restart, and ordinary replacement:
+Phase 1.1–1.2 now prove application boot ownership, current session identity, one exclusive top-level-operation guard, non-playing build, explicit entry to play, coherent stop/resume, synchronous teardown, restart/ordinary replacement, exit, fresh runtime state, stale-work rejection, and separation between persistent application/authored configuration and session runtime state.
 
-- BUILDING/non-playing startup produces no ordinary gameplay consequences;
-- session becomes PLAYING only through application ownership;
-- application can stop/freeze ordinary world gameplay coherently;
-- teardown stops/discards world-owned event queues, gameplay timers, registries, and representative deferred work;
-- stale callbacks/events/timers from old session cannot mutate replacement;
-- restart creates fresh world state;
-- pause follows one explicit simulation policy, not only input suppression;
-- shared authored/config Resources do not carry mutable runtime state from one world session into another;
-- autoload/application owners do not accidentally retain mission-local mutable state after replacement.
+The remaining Phase 1 work extends that proven seam rather than replacing it:
+
+- Phase 1.3 makes gameplay-input domains/session gating explicit and clears/cancels stale intent/gestures during teardown/replacement;
+- Phase 1.4 defines pause simulation/gameplay-time ownership and proves ordinary gameplay durations do not advance while paused;
+- future registries, semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive.
 
 Phase 1 does **not** need a simultaneous old/candidate world fixture.
 
@@ -691,7 +695,7 @@ The current CI barrier:
 - installs Godot `4.7.2` without .NET or export templates;
 - performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
 - runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
-- executes the independent application ownership suite and movement suite through that entry point;
+- executes the independent application ownership/lifecycle suite and movement suite through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;
 - fails when the all-tests process returns nonzero.
 
