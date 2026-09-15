@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  movement-regressions:
-    name: Movement regressions
+  regression-suite:
+    name: Regression suite
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -36,5 +36,5 @@ jobs:
       - name: Import project
         run: godot --headless --path . --import
 
-      - name: Run movement regression suite
-        run: godot --headless --path . --script res://tests/movement/run_movement_tests.gd
+      - name: Run regression suites
+        run: godot --headless --path . --script res://tests/run_all_tests.gd
