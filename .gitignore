@@ -1,4 +1,7 @@
-# Godot 4+ specific ignores
+# Godot 4+ generated state
 .godot/
 /android/
 *.tmp
+
+# TrenchBroom editor autosaves are generated recovery files, not authored mission source.
+/maps/autosave/
