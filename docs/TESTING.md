@@ -10,11 +10,13 @@ Planned tests for unimplemented features belong in the matching roadmap item and
 
 Automate objective, deterministic behavior that is costly or annoying to rediscover manually.
 
-When a reproducible gameplay bug is fixed, keep a regression test if it can reasonably be recreated deterministically.
+When a reproducible gameplay bug is fixed, keep a regression test if it can reasonably be recreated deterministically. Prefer a regression that exercises the real production failure path and would fail against the pre-fix behavior rather than one that only proves a new helper works.
 
 Do not automate subjective feel, pacing, readability, atmosphere, animation quality, level fun, or artistic judgment. Those remain playtest/user acceptance.
 
 Do not add tests merely to increase test count. Every automated test should protect a meaningful invariant, failure boundary, or previously broken behavior.
+
+An automated test does not count as coverage merely because a test file exists. It must be reachable from the appropriate authoritative local/CI entry point. When a second independent suite appears, introduce/update one all-tests entry point and make local full-regression/CI use it in the same coherent patch.
 
 Systemic features require **integrated proof**, not only isolated unit proof. A door is not complete because it animates; a save system is not complete because it serializes data; an acoustic system is not complete because one distance check passes.
 
@@ -84,6 +86,8 @@ The one-frame-per-gameplay-tick contract applies to **world gameplay intent**, n
 26. Compatibility tests distinguish global `save_format_version` semantic compatibility from authored `mission_content_revision` compatibility.
 27. Runtime-persistence tests prove restored IDs remain reserved and cannot collide with later runtime-created objects.
 28. Campaign-progression tests, once campaign state exists, must prove completion consequences are applied exactly once and stale in-mission saves cannot silently load against an already-advanced campaign baseline.
+29. New deterministic tests must be wired into the authoritative suite/entry point that actually runs locally and in CI; orphan test files are not coverage.
+30. For deterministic bug regressions, verify the test exercises the original production boundary and, where practical, would fail against the pre-fix behavior.
 
 Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, objective complete, audible, supported, restoring, world generation, stable-boundary state, gameplay time, player view pose, or persistence identity.
 
@@ -123,7 +127,7 @@ The movement runner currently:
 - exits `0` on success and nonzero on failure;
 - releases simulated input between fixtures.
 
-When more than one real suite exists, add one authoritative `tests/run_all_tests.gd` (or equivalent) and make local full-regression/CI use that entry point.
+Every new movement regression must be added to the movement runner (directly or through a suite it invokes), so the authoritative command and CI actually execute it. When more than one independent real suite exists, add one authoritative `tests/run_all_tests.gd` (or equivalent), switch local full-regression and CI to that entry point in the same patch, and keep individual suite commands only for focused diagnosis.
 
 ---
 
@@ -444,6 +448,8 @@ Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`.
 
 The checklist below is the broad integration pass for changes that could affect accepted player behavior. It is not required after every unrelated docs/gameplay change.
 
+A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit unrelated global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
+
 ---
 
 # Player manual regression checklist
@@ -586,6 +592,14 @@ When campaign flow exists:
 
 ---
 
+# Supported-platform validation
+
+Windows x64 desktop is the supported development/export target. The Ubuntu GitHub Actions environment is a headless automated validation environment, not proof of Windows-specific runtime/export behavior.
+
+Changes that materially affect renderer/rendering-device configuration, Windows-specific APIs, filesystem/path behavior, native/plugin integration, export/startup behavior, executable packaging, or other target-specific behavior require an appropriate Windows x64 check. When the agent cannot execute that check directly, it must hand the user a focused Windows validation instead of treating Linux CI as equivalent.
+
+---
+
 # Performance-testing policy
 
 Do not wait for final representative mission before checking expensive-system scaling.
@@ -628,6 +642,8 @@ The current CI barrier:
 When multiple suites exist, CI calls one all-tests entry point rather than duplicating suite commands in workflow YAML.
 
 A newly uploaded implementation commit is not accepted merely because it reached `test`. Keep roadmap work `[~]` until relevant CI/local automated validation is green and required manual/user validation is accepted.
+
+When job logs are available, validation includes checking for newly introduced parser/script errors, resource/UID/import failures, invalid references, and other meaningful project regressions even if the process exits successfully. Known harmless external/deprecation noise should be distinguished rather than treated as a project failure.
 
 Do not describe a `test` status check as pre-merge/pre-push protection while policy writes directly to `test` and forbids helper branches.
 

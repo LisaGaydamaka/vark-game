@@ -620,7 +620,9 @@ Separate gameplay-significant sound from presentation audio before acoustic prop
 
 ## 3.4 Ordinary door micro-proof `[ ]`
 
-Prove interaction, collision/obstruction, open/closed presentation, vision blocking relationship, acoustic hook, NPC/nav hook, semantic events, and semantic state capture/apply.
+Prove interaction, collision/obstruction, open/closed presentation, vision-blocking relationship, acoustic integration seam, NPC/navigation integration seam, semantic events, and semantic state capture/apply.
+
+At this step, prove the **door-side contracts/seams** needed by later acoustics and NPC/navigation use. Do not pull the primitive guard/navigation implementation from 3.7 into 3.4 merely to exercise that future consumer. The first real guard/nav proof in 3.7 must exercise this same ordinary door seam; if that integration exposes a defect, correct the seam rather than inventing a second door/nav model.
 
 Do not build keys/locks/barred behavior yet unless required by the proof.
 
@@ -653,7 +655,9 @@ Prototype until footsteps, impacts, NPC reactions, and speech audibility behave 
 
 ## 3.7 Primitive guard/nav micro-proof `[ ]`
 
-One NPC spawns from authored content, follows a simple patrol, navigates imported geometry, reacts to the ordinary door, and survives normal map reimport/nav rebuild.
+One NPC spawns from authored content, follows a simple patrol, navigates imported geometry, reacts to the ordinary door through the door-side NPC/navigation seam established in 3.4, and survives normal map reimport/nav rebuild.
+
+This step is the first real consumer proof of the 3.4 door/nav seam. Reuse the same ordinary door contract; do not add a second guard-specific door model merely to make navigation work.
 
 ## 3.8 Gameplay exposure micro-proof `[ ]`
 
