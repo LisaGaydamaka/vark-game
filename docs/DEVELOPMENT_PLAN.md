@@ -382,11 +382,11 @@ No destructive cleanup is implied by the conservative `level export2.map` classi
 
 **Manual:** none. The ambiguous large map is retained rather than destructively changed.
 
-## 0.4 Tool/runtime contract `[~]`
+## 0.4 Tool/runtime contract `[x]`
 
 The supported baseline is now explicitly documented: Windows x64 desktop, Godot 4.7.2, Jolt, FuncGodot 2025.12, TrenchBroom 2026.2 Win64, Forward+ desktop/D3D12 on Windows, and the `ubuntu-24.04` CI validation runner.
 
-The platform decision is closed. Before `[x]`, confirm the project opens/runs normally on the declared Windows x64 development target with this baseline. Future tool/runtime upgrades must update this baseline intentionally rather than silently drifting versions.
+The platform decision is closed. The project has been successfully opened/run on the declared Windows x64 development target with this baseline. Future tool/runtime upgrades must update this baseline intentionally rather than silently drifting versions.
 
 Do not create a broad platform matrix yet; Windows x64 desktop is the one supported development/export target.
 
@@ -394,7 +394,7 @@ Do not create a broad platform matrix yet; Windows x64 desktop is the one suppor
 
 **Automated:** CI proves Godot 4.7.2 clean-checkout import plus the authoritative movement barrier on the pinned Ubuntu runner.
 
-**Manual:** open/run the project on Windows x64 desktop and confirm normal project/player startup after this baseline declaration; repeat this check after material runtime/renderer/toolchain changes.
+**Manual:** passed — the user confirmed Godot 4.7.2 opens the project and `VarkTest` runs normally on Windows x64 desktop after this baseline declaration; repeat this check after material runtime/renderer/toolchain changes.
 
 ## 0.5 Continuous integration for the existing barrier `[x]`
 
@@ -1350,25 +1350,24 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `0.4` by confirming the project opens/runs normally on the declared Windows x64 desktop baseline; after successful user validation, mark it `[x]` during the next authorized patch.
-2. Implement `0.6` traversal regression expansion with real deterministic ledge/mantle fixtures.
-3. Implement `0.7` semantic behavior-trace protection over representative accepted locomotion/traversal sequences.
-4. Only after the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
-5. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
-6. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-7. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-8. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-9. Phase 4 crude hostile compatibility.
-10. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-11. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-12. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-13. early cold-author review.
-14. Phase 9 establish real vitality/damage ownership while prototyping combat.
-15. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-16. Phase 11 stabilize **world/gameplay** production APIs only.
-17. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-18. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-19. production scaling/handoff.
+1. Implement `0.6` traversal regression expansion with real deterministic ledge/mantle fixtures.
+2. Implement `0.7` semantic behavior-trace protection over representative accepted locomotion/traversal sequences.
+3. Only after the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
+4. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
+5. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+6. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+7. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+8. Phase 4 crude hostile compatibility.
+9. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+10. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+11. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+12. early cold-author review.
+13. Phase 9 establish real vitality/damage ownership while prototyping combat.
+14. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+15. Phase 11 stabilize **world/gameplay** production APIs only.
+16. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+17. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+18. production scaling/handoff.
 
 The most important sequencing rules are:
 
