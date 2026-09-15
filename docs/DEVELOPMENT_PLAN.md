@@ -71,7 +71,7 @@ The project currently contains:
 - FuncGodot
 - TrenchBroom `.map` import
 - existing graybox/test maps
-- post-push GitHub Actions validation for the current movement barrier
+- post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
 
@@ -263,7 +263,7 @@ A pending save request is cancelled if its source session stops before capture; 
 
 The snapshot contains no live Nodes/RIDs/callbacks/shared mutable gameplay containers or shared mutable runtime Resources. Mutating live gameplay after capture must not mutate the snapshot.
 
-Writes to the same save slot are serialized or generation-ordered so an older request cannot commit after a newer one. Quickload reads the latest fully committed save, never a temporary/in-progress write.
+Writes to the same save slot are serialized or generation-ordered so an older request cannot commit after a newer request. Quickload reads the latest fully committed save, never a temporary/in-progress write.
 
 ## Restore
 
@@ -398,13 +398,13 @@ Do not create a broad platform matrix yet; Windows x64 desktop is the one suppor
 
 ## 0.5 Continuous integration for the existing barrier `[x]`
 
-The existing authoritative movement barrier runs in GitHub Actions on every `test` push and on pull requests if used. CI performs a clean-checkout Godot import before executing the same authoritative movement command used locally.
+The authoritative regression barrier runs in GitHub Actions on every `test` push and on pull requests if used. CI performs a clean-checkout Godot import before executing the all-tests entry point, which includes the existing movement barrier.
 
 Under current repository policy, `test` is the direct-write integration branch. CI is post-push validation, not pre-push protection. Newly uploaded implementation work remains `[~]` until relevant CI/local checks pass and required user validation is accepted.
 
 **Done when:** a clean checkout on the pinned runner imports successfully and the movement suite is executed automatically after a `test` push.
 
-**Automated:** the `Movement regressions` GitHub Actions job passes; the current barrier has already completed successfully after the clean-import bootstrap was added.
+**Automated:** the `Regression suite` GitHub Actions job passes; it includes the authoritative movement barrier.
 
 **Manual:** none for CI infrastructure beyond confirming the successful run/report; user confirmation has been received.
 
@@ -422,7 +422,7 @@ The authoritative movement barrier now includes a minimal real-physics ledge fix
 
 **Manual:** passed — the user confirmed the focused ledge/mantle checklist after the traversal-regression patch; the protected cases still feel like the accepted controller.
 
-## 0.7 Behavior-trace protection for controller refactors `[~]`
+## 0.7 Behavior-trace protection for controller refactors `[x]`
 
 Before major input/controller plumbing changes, add enough semantic trace coverage to show equivalent locomotion command sequences preserve accepted behavior within intended numeric tolerances.
 
@@ -434,7 +434,7 @@ Do not force mouse-look timing into a physics-tick trace if doing so would chang
 
 **Done when:** the Phase 1 input/controller refactor can compare the same semantic command sequences before/after without depending on the current internal component call graph.
 
-**Automated:** representative traces execute through the authoritative barrier with explicit numeric tolerances where physics requires them.
+**Automated:** passed — representative traces execute through the authoritative barrier with explicit numeric tolerances and completed successfully in post-push CI.
 
 **Manual:** none beyond the movement/traversal manual acceptance already required when a refactor could affect player feel.
 
@@ -446,13 +446,21 @@ Do not force mouse-look timing into a physics-tick trace if doing so would chang
 
 Goal: turn the movement project into a controlled application without changing accepted player feel and without baking gameplay side effects into node startup/teardown.
 
-## 1.1 Application root `[ ]`
+## 1.1 Application root `[~]`
 
 Create stable ownership for game flow, current mission/world session, player, UI, and transitions.
 
 F5 should launch the Vark application rather than an arbitrary development scene.
 
 Top-level load/restart/mission-transition/exit operations have one application owner and cannot race each other as competing subsystem transitions. Future world-bound requests must carry/verify their source session rather than implicitly operating on whatever world happens to be current later.
+
+The project now boots through `res://application/Application.tscn`. The application owns a persistent world host and UI root, installs the current development `VarkTest` world, resolves the current player through a semantic player marker, exposes the current session identity for future source-session checks, and provides one exclusive top-level operation guard. Actual stop/freeze/teardown/replacement mechanics remain Phase 1.2 rather than being pulled into this item.
+
+**Done when:** F5 launches the application root; that root owns the current world, player, persistent UI root, session identity, and exclusive top-level operation state without changing accepted player behavior.
+
+**Automated:** the application regression suite verifies the configured F5 main scene, current world/player/UI ownership, current/stale session identity checks, and rejection of overlapping top-level operations. The authoritative all-tests barrier also runs the existing movement/behavior traces unchanged.
+
+**Manual:** Windows x64 user/playtester — press F5 and confirm the application opens the current `VarkTest` world/player normally and ordinary movement/mouse-look startup and response still feel unchanged.
 
 ## 1.2 World-session lifecycle, stop, replacement, and teardown `[ ]`
 
@@ -1354,23 +1362,25 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `0.7` post-push validation: the semantic behavior traces must remain green in the authoritative `Movement regressions` job; after green CI, reconcile `0.7` to `[x]` during the next authorized patch.
-2. After the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
-3. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
-4. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-5. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-6. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-7. Phase 4 crude hostile compatibility.
-8. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-9. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-10. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-11. early cold-author review.
-12. Phase 9 establish real vitality/damage ownership while prototyping combat.
-13. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-14. Phase 11 stabilize **world/gameplay** production APIs only.
-15. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-16. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-17. production scaling/handoff.
+1. Finish `1.1` by confirming the post-push `Regression suite` is green and running the focused Windows F5 startup/player check; after acceptance, mark it `[x]` during the next authorized patch.
+2. Implement `1.2` world-session lifecycle, stop/freeze, teardown/replacement ownership, and stale-work rejection without building save candidate infrastructure.
+3. Implement `1.3` gameplay-input boundary/view-pose ownership and gesture cancellation, then `1.4` pause/gameplay-time ownership.
+4. Complete the minimal application/menu and development-launch work in `1.5`–`1.6` only after those ownership boundaries are proven.
+5. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
+6. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+7. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+8. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+9. Phase 4 crude hostile compatibility.
+10. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+11. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+12. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+13. early cold-author review.
+14. Phase 9 establish real vitality/damage ownership while prototyping combat.
+15. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+16. Phase 11 stabilize **world/gameplay** production APIs only.
+17. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+18. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+19. production scaling/handoff.
 
 The most important sequencing rules are:
 
