@@ -24,23 +24,20 @@ The game is divided into missions. A mission should provide multiple useful rout
 
 ### Movement serves infiltration
 
-Movement should feel responsive, predictable, and physically trustworthy. The target movement set is:
+Movement should feel responsive, predictable, and physically trustworthy. The current movement and climbing behavior is accepted as the supported movement contract and is no longer a feature-expansion area. The supported set is the behavior already implemented by the player controller:
 
-- walk
-- run
+- normal ground locomotion
 - sprint
 - crouch
-- slide
-- jump
-- ledge grab
-- ledge shimmy / ledge traversal
+- jump and air control
+- step traversal
+- ledge grab and hang
+- ledge shimmy / ledge traversal, including supported corners
 - mantle / climb up from ledges
-- ladders
-- swimming
 
-Wall dash is not part of the planned movement set.
+No new movement or climbing abilities are planned unless that scope is explicitly reopened. Slide, ladders, swimming, and wall dash are not part of the planned movement set.
 
-Traversal should create routes and recovery options without turning Vark into a high-speed movement game. New traversal abilities should exist because they serve stealth spaces and mission routes, not merely to expand the move list.
+Future gameplay, levels, art, props, doors, and mission geometry should be built around the accepted player movement contract rather than changing movement to accommodate later systems.
 
 ### The world should be readable, stylized, and low-fi
 
@@ -148,23 +145,39 @@ Planned items include:
 
 Tools should create understandable tactical effects that interact with stealth, NPC state, space, and mission consequences.
 
-## UI target
+## UI and game-flow target
+
+Vark needs both top-level game screens and in-mission overlays. Functional versions should appear as soon as the underlying state exists; final visual treatment can come later.
+
+Top-level flow should support:
+
+- main menu
+- New Game / Continue once campaign persistence exists
+- settings
+- mission briefing
+- mission loading / transition as needed
+- mission gameplay
+- mission-complete results / statistics
+- transition to the next campaign step
+
+In-mission UI should support:
+
+- pause
+- objectives
+- map
+- inventory / gems as appropriate to the final data model
+- statistics where useful
+- alignment only if alignment is later defined and retained as a real gameplay system
 
 In-game HUD target:
 
 - light gem
 - health
 - currently selected inventory item
+- interaction feedback where needed
 - 3D weapon / held object in hand where appropriate
 
-Menu targets include:
-
-- objectives
-- map
-- gems / inventory
-- alignment
-- statistics
-- possible glossary or related supporting information if later confirmed useful
+First-person cutscenes are a gameplay mode, not a separate menu screen: they keep the mission world loaded while temporarily taking input ownership and showing cinematic/subtitle presentation.
 
 UI should expose information the player needs for stealth decisions without becoming visually dominant.
 
