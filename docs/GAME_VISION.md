@@ -6,11 +6,21 @@ It describes what the finished base game must allow the player to do, how its co
 
 It does not define the setting, story, protagonist, factions, final enemy roster, individual missions, final textures, final UI art, specific mission maps, or other content that belongs to mission designers, writers, and artists.
 
-The goal of systems development is to create a stable, flexible game platform from which those people can build the actual campaign without rewriting the core player, stealth, interaction, combat, mission, or game-flow systems.
+The goal of systems development is to create Vark itself first and, from gameplay patterns proven in representative missions, stabilize the reusable platform needed for production. The finished platform must let mission creators build campaign content without rewriting core gameplay systems.
 
 ---
 
-# Core identity
+# Decision-state legend
+
+- **LOCKED** — confirmed product rule or accepted player-facing behavior. Internal code may still change.
+- **TARGET** — intended design that must be proven in playable integration before it becomes a permanent contract.
+- **OPEN** — the problem is known, but the correct implementation/behavior should be discovered through a focused prototype.
+
+Unless a section says otherwise, explicit product decisions in this vision are requirements. Exact tuning values and algorithms that have not yet been playtested remain TARGET or OPEN.
+
+---
+
+# Core identity — LOCKED
 
 Vark is a first-person immersive stealth/action game built around authored sandbox missions.
 
@@ -29,9 +39,7 @@ Four broad styles must naturally be possible:
 
 These are not menu-selected classes. They emerge from what the player actually does.
 
-Stealth is normally safer.
-
-Direct violence is normally faster and easier in the immediate situation, especially against isolated ordinary enemies, but creates more noise, risk, bodies, alerts, and opportunities for campaign consequences.
+Stealth is normally safer. Direct violence is normally faster and easier in the immediate situation, especially against isolated ordinary enemies, but creates more noise, risk, bodies, alerts, and opportunities for campaign consequences.
 
 The intended campaign philosophy is similar to Dishonored: lethal solutions may be tactically easier while restraint and nonlethal solutions may lead to better long-term outcomes.
 
@@ -41,13 +49,25 @@ Choice is primarily expressed through action rather than dialogue menus.
 
 ---
 
-# Player movement
+# Player movement — LOCKED behavior, mutable implementation
 
-The existing player controller is the movement contract.
+The existing player controller is the movement/feel contract.
 
-It is already accepted and must not be redesigned, retuned, or expanded as part of normal future gameplay development.
+Its **player-facing behavior is frozen**. Its internal implementation is not.
 
-The supported movement is whatever the accepted player controller on the current project implements, including:
+Future work may refactor:
+
+- direct Godot input polling
+- command routing
+- pause/cutscene/UI input gating
+- mouse ownership/capture
+- scene/component structure
+- internal state ownership
+- test input injection
+
+provided the accepted behavior and feel remain unchanged.
+
+The supported movement is whatever the accepted player controller currently implements, including:
 
 - normal ground movement
 - sprint
@@ -59,18 +79,19 @@ The supported movement is whatever the accepted player controller on the current
 - ledge traversal / shimmy
 - supported ledge corners
 - mantle / climb-up
+- mouse look
 
-Future level geometry, props, doors, encounters, AI, and tools must adapt to this controller.
+Future level geometry, props, doors, encounters, AI, and tools must adapt to this behavior.
 
 The game must not add movement abilities simply because a later level would be easier to design around them.
 
-Abilities such as swimming, ladders, wall dashes, slides, or other traversal systems are not part of the base game unless that scope is deliberately reopened later.
+Swimming, ladders, wall dashes, slides, or other traversal systems are not part of the base game unless that scope is deliberately reopened.
 
-The exact movement values and behavior live in the player controller and its accepted regression tests rather than being duplicated in this document.
+Exact movement values live in the controller and accepted regressions rather than being duplicated here.
 
 ---
 
-# Basic gameplay rhythm
+# Basic gameplay rhythm — LOCKED
 
 Vark does not impose one mandatory pace.
 
@@ -82,15 +103,15 @@ Both are legitimate gameplay.
 
 The normal sandbox rhythm is:
 
-observe the environment → choose an approach → act → world and NPCs react → continue the plan or improvise → complete objectives → leave the mission.
+> observe → choose an approach → act → world/NPCs react → continue or improvise → complete objectives → leave
 
-Getting detected is therefore normally a change in the situation, not a game-over state.
+Detection is normally a change in the situation, not an automatic game-over state.
 
 ---
 
-# Stealth model
+# Stealth model — LOCKED direction
 
-The default stealth model follows the player-facing behavior of Thief 1 & 2.
+The default player-facing stealth model follows Thief 1 & 2.
 
 Stealth has two primary sensory channels:
 
@@ -103,15 +124,13 @@ The player must be able to understand why an NPC reacted.
 
 ---
 
-# Visibility and darkness
+# Visibility and darkness — LOCKED outcome, OPEN algorithm
 
 Illumination is a real gameplay property.
 
 The player's current exposure is communicated through a permanent light-gem style HUD indicator.
 
-A dark light gem means the player is difficult to see.
-
-A bright light gem means the player is exposed.
+A dark light gem means the player is difficult to see. A bright light gem means the player is exposed.
 
 Visibility depends primarily on:
 
@@ -128,19 +147,19 @@ An NPC extremely close to the player, directly facing the player, or otherwise r
 
 Movement makes a partially visible player easier to notice than remaining still.
 
-Visual exposure should change smoothly enough that the player can deliberately move between safe darkness, partial exposure, and obvious illumination.
-
-World geometry blocks vision.
-
-Doors, walls, large props, and other opaque objects can therefore be used as visual cover.
+World geometry and closed opaque doors block vision.
 
 Mission authors may create NPCs with unusual perception, but ordinary guards use the common stealth model.
 
+The exact exposure algorithm is **OPEN** until a representative lighting test space proves it. Rendered brightness and gameplay exposure are related but are not required to be the same computation. Decorative emissives or artistic darkness must not accidentally define stealth rules.
+
+The system must be tested against dark, partially lit, fully lit, occluded, edge-of-light, and multiple-light cases until the light gem and what the player sees agree intuitively.
+
 ---
 
-# Light sources
+# Light sources — LOCKED capabilities
 
-Lights can contribute to both visual presentation and player stealth exposure.
+Lights may contribute to both visual presentation and player stealth exposure.
 
 A light may be:
 
@@ -157,9 +176,7 @@ The game must clearly distinguish actual gameplay darkness from merely dark-look
 
 ---
 
-# Sound stealth
-
-Sound follows the same basic role as in Thief 1 & 2.
+# Sound stealth — LOCKED outcome, OPEN propagation implementation
 
 The player does not need a separate HUD noise meter.
 
@@ -169,17 +186,9 @@ Player movement noise depends on both movement and surface.
 
 As a general relationship:
 
-crouched careful movement < normal movement < sprinting / hard landings.
+> crouched careful movement < normal movement < sprinting / hard landings
 
-Different materials create meaningfully different footsteps.
-
-Soft surfaces are safer.
-
-Hard, resonant, or loose surfaces are more dangerous.
-
-Examples of surface categories may include carpet, grass, wood, stone, tile, metal, gravel, water, or any mission-specific material.
-
-Mission authors may assign appropriate noise behavior to new surface types.
+Different materials create meaningfully different footsteps. Soft surfaces are safer. Hard, resonant, or loose surfaces are more dangerous.
 
 Other actions can also generate gameplay noise, including:
 
@@ -192,46 +201,51 @@ Other actions can also generate gameplay noise, including:
 - tools
 - alarms
 - scripted machinery
+- NPC speech/reactions when relevant
 
-NPC hearing responds to the gameplay significance of the sound, not merely the volume coming from the player's speakers.
+NPC hearing responds to gameplay-significant sound, not merely speaker volume.
 
 Distance and intervening architecture matter.
 
-Walls and closed doors reduce or block sound appropriately.
+Walls and closed doors reduce or block transmission appropriately. Open doorways and connected spaces transmit sound more freely.
 
-Open doorways and connected spaces allow sound to propagate more freely.
+A simple distance radius is insufficient as the final stealth model. A single straight ray is also not sufficient for spaces where sound should travel through openings and around connected geometry.
 
-Objects can therefore be intentionally thrown to create distractions.
+The exact propagation architecture is **OPEN** until proven in a test map containing at minimum:
 
-NPCs themselves make useful positional sounds through movement, interactions, grunts, machinery, and other mission-defined activity so that careful listening reveals information about spaces the player cannot currently see.
+- one open room
+- one separated room
+- an open doorway
+- a closed door
+- an L-shaped/corner corridor
 
-Audio must remain important enough that stopping and listening is a meaningful stealth technique.
+The final solution may use acoustic spaces/portals, zones, an acoustic graph, or another model, but it must produce intuitive Thief-like results.
+
+Objects can be intentionally thrown to create distractions.
+
+NPC movement, interactions, nonverbal vocal reactions, machinery, and other mission-defined sounds should provide useful positional information so that stopping and listening remains a meaningful stealth technique.
 
 ---
 
-# NPC awareness
+# NPC awareness — LOCKED behavior shape
 
 Ordinary guards use a predictable escalating awareness model similar to Thief 1 & 2.
 
-The exact hidden numeric values are implementation details. The player-facing behavior is what matters.
+The exact hidden numeric values are implementation/tuning details.
 
 ## Unaware
 
-The NPC follows its ordinary authored behavior.
-
-It may patrol, stand guard, sit, sleep, operate something, or perform another mission-defined routine.
+The NPC follows ordinary authored behavior: patrol, stand guard, sit, sleep, operate something, or another mission-defined routine.
 
 ## Mild suspicion
 
-The NPC has received weak evidence: a questionable sound, a partial glimpse, or another small irregularity.
+The NPC has weak evidence: a questionable sound, partial glimpse, or another small irregularity.
 
-The NPC communicates uncertainty but has not confirmed an intruder.
+It communicates uncertainty but has not confirmed an intruder.
 
 It may briefly react without abandoning its ordinary route.
 
 A `?` indicator and a short nonverbal vocal reaction communicate this state.
-
-Any actual words are displayed as text above the NPC rather than spoken aloud.
 
 If no further evidence appears, suspicion decays.
 
@@ -241,29 +255,25 @@ Stronger or repeated evidence causes the NPC to stop normal behavior and investi
 
 The NPC moves toward a relevant location, looks around, searches nearby space, and attempts to determine what caused the disturbance.
 
-Search behavior must be understandable and spatially related to the evidence.
-
-The NPC does not magically know the player's current location.
+Search behavior must be spatially related to the evidence. The NPC does not magically know the player's current position.
 
 A search can eventually end if no further evidence is found.
 
 ## Confirmed alert
 
-Clear identification of the player causes a confirmed alert.
+Clear identification of the player causes confirmed alert.
 
 An `!` indicator communicates this state.
 
-An armed hostile NPC can pursue and attack.
+An armed hostile NPC may pursue and attack, warn nearby relevant NPCs, and activate mission-defined alarms.
 
-It may call or otherwise alert nearby relevant NPCs and may activate a mission-defined alarm.
-
-If the player escapes, breaks contact, and hides successfully, the NPC searches based on the last useful information it had rather than tracking the player through walls.
+If the player escapes and hides successfully, the NPC searches from the last useful information it had rather than tracking through walls.
 
 Eventually it can return toward a lower alert state.
 
 ---
 
-# NPC knowledge
+# NPC knowledge — LOCKED
 
 NPC knowledge is local.
 
@@ -271,54 +281,57 @@ NPCs do not automatically share perfect global knowledge.
 
 A guard who has not seen, heard, been warned about, or otherwise received information about the player should not behave as if it knows where the player is.
 
-Mission logic may deliberately spread an alarm or alert through a building, faction, machine, magical system, or other mechanism when the mission calls for it.
+Mission logic may deliberately spread an alarm or alert through a building, faction, machine, magical system, or another authored mechanism.
 
-That is an authored event, not automatic omniscience.
+That is an event/system, not automatic omniscience.
 
 ---
 
-# NPC role
+# NPC role — LOCKED direction
 
 Ordinary NPCs are primarily **predictable stealth puzzle pieces**.
 
 Their routes and common behavior should be learnable through observation.
 
-Predictability is more important than attempting to simulate every detail of realistic human behavior.
+Predictability is more important than simulating every detail of realistic human behavior.
 
-Search behavior may contain enough variation to avoid looking robotic, but normal patrol behavior should not randomly invalidate a plan that was based on careful observation.
+Search behavior may contain enough variation to avoid looking robotic, but normal patrol behavior should not randomly invalidate a plan based on careful observation.
 
-The ordinary guard archetype supplies the reusable senses, awareness, navigation, combat, life state, interaction, possessions, and mission-event hooks.
+The ordinary guard archetype supplies reusable senses, awareness, navigation, combat, life state, interaction, possessions, and mission-event hooks.
 
-Mission creators may then script additional behavior.
+Mission creators may then script behaviors such as:
 
-Supported scripted behaviors must be capable of including things such as:
-
-- conversations
-- greetings
-- sleeping
-- eating
-- sitting
+- conversations and greetings
+- sleeping/eating/sitting
 - using doors
 - operating machinery
-- carrying keys or valuables
-- responding to missing valuables
-- responding to opened containers
-- responding to extinguished lights
-- responding to blood
+- carrying keys/valuables
+- reacting to missing valuables/opened containers/extinguished lights/blood
 - discovering bodies
 - raising alarms
 
-These behaviors are capabilities available to mission authors. They do not all need to run on every NPC in every mission.
+These are capabilities, not mandatory behavior for every NPC.
 
 ---
 
-# Dialogue and NPC communication
+# Dialogue and NPC communication — LOCKED
 
 Vark does not use conventional fully voiced dialogue.
 
-Normal character speech is displayed as typed text above the speaking character.
+Normal character speech is displayed as typed text **above the speaking NPC in world space**.
 
-This includes:
+The text is intentionally allowed to remain visible through walls, doors, props, and other visual cover **when the player is supposed to hear that speech**. Dialogue readability is governed by audibility, not visual line of sight.
+
+Therefore:
+
+- clearly audible speech appears normally;
+- marginal/distant speech may appear partially transparent;
+- speech outside the player's intended audible range is not displayed;
+- visual occlusion by itself does not hide audible speech text.
+
+The speech presentation should remain anchored to the speaking NPC even when that NPC is behind cover, because the text substitutes for the informational content that voiced guard barks would otherwise provide.
+
+Actual words may include:
 
 - conversations
 - greetings
@@ -336,19 +349,19 @@ Voice acting is minimal and primarily nonverbal:
 - alarm sounds
 - other short vocal reactions
 
-Suspicion and confirmed detection are also reinforced visually with `?` and `!` indicators.
+Suspicion and confirmed detection are also reinforced visually with `?` and `!`.
 
-The player should therefore receive the informational function of Thief-style guard barks without requiring large amounts of recorded dialogue.
+The acoustic/hearing system determines whether speech is audible enough to display. This means dialogue-through-walls must use the same spatial sound logic as stealth listening rather than a separate arbitrary visibility rule.
 
 ---
 
-# Interaction model
+# Interaction model — LOCKED
 
 The world uses one consistent interaction language.
 
 There is one primary world-interaction button.
 
-The object currently targeted near the center of the player's view can become interactable when:
+The object targeted near the center of the player's view can become interactable when:
 
 - it is within range
 - it is not blocked
@@ -358,31 +371,20 @@ Interactable objects visibly highlight.
 
 There is no permanent central crosshair.
 
-Interaction should manipulate the actual world state rather than merely showing abstract menu actions wherever a physical interaction can reasonably exist.
+Interaction should manipulate actual world state rather than abstract menu actions wherever a physical interaction can reasonably exist.
 
-Examples include:
-
-- opening a door
-- opening a drawer
-- opening a container
-- pressing a switch
-- taking loot
-- taking a key
-- taking an inventory item
-- extinguishing a candle
-- picking up an object
-- picking up a body
+Examples include doors, drawers, containers, switches, loot, keys, inventory items, extinguishable lights, movable props, and bodies.
 
 ---
 
-# Doors
+# Doors — LOCKED capabilities, integration spine
 
 The base door archetype supports:
 
 - unlocked doors
 - locked doors
 - keys
-- barred or otherwise externally restricted doors
+- barred/externally restricted doors
 - NPC use
 - open and closed states
 
@@ -390,89 +392,125 @@ Lockpicking is not part of the base game.
 
 The normal base door is not destructible.
 
-Special breakable doors can be created by a mission as special content using the general world/effect systems, but destructibility is not a property every normal door needs.
+Doors physically animate between open and closed states. The player does not need a special mechanic for holding a normal door at an arbitrary partial angle.
 
-Doors physically animate between open and closed states.
-
-The player does not control the exact opening speed or deliberately hold a normal door at an arbitrary partial angle as a special stealth mechanic.
-
-The player may see through any actual geometric opening around or through a door.
-
-There is no special keyhole-peeking mode.
+There is no keyhole-peeking mode.
 
 Closed opaque doors block vision.
 
-Doors affect sound transmission in the same intuitive way as other separating architecture.
+Doors affect sound transmission intuitively.
 
-Using a door produces appropriate audible feedback and may produce gameplay noise where appropriate.
+Using a door produces appropriate audible feedback/gameplay noise.
 
-Ordinary NPCs can use doors when their authored behavior requires it.
+Ordinary NPCs can use doors when authored behavior requires it.
 
-NPCs do not automatically treat an ordinary open door as suspicious.
+NPCs do not automatically treat an ordinary open door as suspicious, though a mission may make door state meaningful.
 
-A mission can specifically make door state meaningful if desired.
+Physical objects may obstruct doors. Suitable props can therefore wedge/hold a doorway.
 
-Physical objects may obstruct a door.
-
-Doors should respect relevant physical obstruction rather than universally ignoring props.
-
-This allows situations such as holding or wedging a doorway with a suitable physical object.
+Because doors touch interaction, collision, sound, vision, navigation, NPC use, save/load, mission events, and physical obstruction, the ordinary door is a core integration spine for system development.
 
 ---
 
-# Containers and physical searching
+# Containers and physical searching — LOCKED
 
 Containers may physically open and expose their contents.
 
-Drawers, lids, cabinets, and similar mechanisms should visibly change state when opened where the content uses such an object.
+Drawers, lids, cabinets, and similar mechanisms should visibly change state where the content uses such an object.
 
-Loot or inventory items inside them can then be taken normally.
+Loot or inventory items inside can then be taken normally.
 
-Mission authors are free to create simpler containers when a full moving mechanism is unnecessary.
+Mission authors may create simpler containers when a full moving mechanism is unnecessary.
 
 ---
 
-# Loot
+# Loot — LOCKED
 
 Loot is an abstract collected resource once taken.
 
-When the player successfully picks up a loot object, the world object disappears and its value/count is recorded.
+When collected, the world object disappears and its value/count is recorded.
 
-Loot does not need to remain as a physical object in the player's hands after collection.
+Its meaning between missions—score, purchasing power, objective resource, campaign resource, etc.—is content policy.
 
-The meaning of loot between missions—score, purchasing power, an objective requirement, campaign resource, or something else—is campaign/content policy rather than a fundamental world rule.
-
-The core game must nevertheless support Thief-style loot collection and mission statistics.
+The core game supports Thief-style loot collection and mission statistics.
 
 ---
 
-# Physical objects
+# Physical objects — LOCKED Thief-style contract
 
-Supported movable objects exist as physical world objects while placed in the mission.
+Supported movable props follow **Thief 1 & 2-style object behavior**, not a continuously active general rigid-body simulation.
 
-Their ordinary behavior follows the object model of Thief 1 & 2 rather than a continuously active rigid-body simulation.
+The intended rule is deliberately stylized:
+
+> **Supported objects stay exactly where they are. Unsupported objects fall until supported.**
+
+A settled object does not:
+
+- topple because its center of mass is near an edge;
+- slowly slide on a slope;
+- roll;
+- spin;
+- wobble;
+- drift;
+- react to background physics merely because a realistic rigid body would.
+
+A box may visibly overhang an edge and remain there if it still has valid support. Realistic torque is not a gameplay rule.
 
 Supported physical objects:
 
-- do not fall by themselves
-- do not begin moving by themselves
 - can be picked up
 - can be dropped
 - can be thrown
-- can strike other objects or actors
+- can strike objects or actors
 - can create impact sounds
 - can obstruct spaces
 - can be stacked
+- can be climbed on where suitable
 
-An object remains where the mission creator placed it until something explicitly acts on it.
+An object remains where the mission creator placed it until something explicitly acts on it or its support disappears.
 
-The player can deliberately move an object by picking it up, dropping it, or throwing it.
+## Support and stacks
 
-Thrown objects travel through the world and can collide with actors or geometry.
+Settled objects maintain meaningful support relationships.
 
-Thrown objects can injure characters when the impact is sufficient.
+Example:
 
-Physical objects can therefore be used as:
+```text
+Box C supported by Box B
+Box B supported by Box A
+Box A supported by World
+```
+
+If Box A is removed, the unsupported stack above it falls until support is found.
+
+The stack should not explode, topple, scatter, or break apart merely because the lower support vanished. Where practical, an unsupported connected stack/group falls while preserving its relative arrangement until it lands/supports again, matching the simple visual behavior expected from Thief-like props.
+
+Removing support is therefore different from applying a violent explicit impact/effect.
+
+## Held, thrown, unsupported, and settled states
+
+The implementation should behave conceptually like:
+
+```text
+settled/placed
+→ held
+→ thrown or dropped
+→ unsupported/moving
+→ settling
+→ settled/placed
+```
+
+Thrown/dropped objects may move through the world and collide, but they should not enter indefinite realistic rigid-body simulation. Angular tumbling/toppling is not a default behavior.
+
+Once motion resolves, the object becomes settled again.
+
+Large carried objects are presented in a first-person held position on the same presentation plane as the player's hands rather than as freely simulated bodies floating in front of the camera.
+
+The player cannot freely rotate a held ordinary world object.
+
+The player cannot use ordinary world interactions while carrying a physical object.
+
+Physical props can be used as:
 
 - distractions
 - improvised weapons
@@ -481,57 +519,37 @@ Physical objects can therefore be used as:
 - door obstructions
 - mission-specific puzzle elements
 
-Boxes and other suitable props can be stacked and climbed on.
-
-This is intentional emergent gameplay, not an exploit that should be prevented.
-
-Large carried objects are presented in a first-person held position on the same presentation plane as the player's hands rather than appearing as freely simulated objects floating in the world in front of the camera.
-
-The player cannot freely rotate a held world object.
-
-The player cannot use ordinary world interactions while carrying a physical object.
-
-Dropping or throwing the object returns it to its world-object state at its resulting position.
-
-Objects do not subsequently roll, slide, topple, fall, or otherwise move merely because of continuous background physics unless a particular mission-specific object explicitly implements such behavior.
+Special mission-specific objects may deliberately implement different physical behavior, but ordinary props obey this contract.
 
 ---
 
-# World reaction rules
+# World reaction rules — LOCKED direction
 
-Vark does not require a universal simulation for every imaginable physical phenomenon.
+Vark does not require a universal simulation for every physical phenomenon.
 
-Instead, it provides a small set of reusable world behaviors from which mission creators can build special cases.
+Instead it provides a small set of reusable behaviors from which mission creators can build special cases.
 
 ## Destruction
 
 The world is not universally destructible.
 
-Only objects explicitly designed to take damage or break do so.
+Only explicitly damageable/breakable objects break.
 
-Normal architecture and normal doors are not assumed to be breakable.
-
-Explosions and impacts can affect actors and objects that are configured to respond to them.
-
-This allows mission authors to create breakable windows, special doors, machinery, lamps, or other destructible objects without making the entire world destructible.
+Normal architecture and normal doors are not assumed breakable.
 
 ## Fire
 
 There is no mandatory global fire-spreading simulation.
 
-Fire can damage or activate objects that are authored to respond to it.
+Fire can damage/activate authored responders.
 
 Open flames may be extinguished by water effects.
 
-Mission-specific flammable or spreading-fire behavior may be created when required.
-
 ## Gas
 
-Gas is an area effect rather than a full fluid simulation.
+Gas is an area effect rather than full fluid simulation.
 
-A gas effect occupies an understandable region of space and can reach valid targets through connected open space, including open doorways.
-
-Closed solid geometry prevents inappropriate magical transmission.
+It occupies an understandable region and can reach valid targets through connected open space. Closed solid geometry prevents inappropriate transmission.
 
 ## Explosions
 
@@ -543,29 +561,23 @@ Normal nonbreakable doors do not automatically explode apart.
 
 ## Mines and deployables
 
-A mine or similar deployable exists physically in the world after being used.
-
-It can be placed on a suitable surface, arm, and react when its trigger conditions are met.
-
-Mission-specific deployables can reuse the same basic behavior.
+A mine or similar deployable exists physically in the world after use, can be placed on a suitable surface, arm, and react when trigger conditions are met.
 
 ## Physical obstruction
 
-Props may obstruct doors, actors, projectiles, and paths where their collision naturally does so.
+Props may obstruct doors, actors, projectiles, and paths where collision naturally does so.
 
 NPCs do not have a generic "trip over loose object" behavior.
 
-Special stumbling or trap behavior can be scripted for a mission if desired.
-
 ---
 
-# Inventory and usable items
+# Inventory and usable items — LOCKED direction
 
 World props, loot, and usable inventory items are distinct concepts.
 
-The game supports Thief-style inventory selection and use without requiring every carried item to remain physically simulated in the world.
+The game supports Thief-style inventory selection/use without requiring every carried inventory item to remain physically simulated.
 
-The basic item grammar must be flexible enough to support:
+The item grammar must be flexible enough for:
 
 - keys
 - mission items
@@ -573,521 +585,214 @@ The basic item grammar must be flexible enough to support:
 - healing items
 - thrown tools
 - projectiles
-- deployable tools / traps
+- deployable tools/traps
 - area-effect tools
-- special mission-authored tools
+- mission-authored special tools
 
-The core game does not need to declare a permanent universal list of bombs, arrows, gadgets, potions, or supernatural abilities.
+Specific item lists belong to campaign/mission content.
 
-Specific items belong to campaign and mission content.
-
-The underlying item/effect system must be flexible enough that common Thief-like or immersive-sim tools can be created without rewriting the player or inventory system.
-
-A mission or campaign may decide:
-
-- starting equipment
-- item quantities
-- which items are available
-- whether equipment can be purchased
-- whether unused equipment persists
-- whether items carry between missions
-
-Those are content-level rules.
+A campaign may decide starting equipment, quantities, availability, purchasing, persistence, and carryover.
 
 ---
 
-# Bodies and life states
+# Bodies and life states — LOCKED
 
-Characters have at minimum three meaningful life states:
+Characters have at minimum:
 
 - conscious
 - unconscious
 - dead
 
-Unconscious and dead characters become body objects that can be interacted with and moved.
+Unconscious/dead characters become body objects that can be interacted with and moved.
 
-The player can:
+The player can pick up, carry, put down, and hide bodies.
 
-- pick up a body
-- carry it
-- put it down
-- hide it
+Carrying a body reduces mobility somewhat but does not completely immobilize the player.
 
-Carrying a body reduces player mobility somewhat, but does not completely immobilize the player.
-
-An unconscious character remains unconscious for the rest of the mission unless a particular mission deliberately defines a special exception.
+An unconscious character remains unconscious for the mission unless special content defines an exception.
 
 Ordinary NPCs do not wake unconscious NPCs by default.
 
-Dead characters remain dead.
-
-Bodies may be detected by NPC perception when that evidence response is enabled for the mission.
-
-A mission can make discovered bodies influence searches, alarms, objectives, statistics, or campaign consequences.
+Bodies may be detected by perception and may influence searches, alarms, objectives, statistics, or campaign consequences when authored.
 
 ---
 
-# Combat
+# Combat — TARGET until validated in play
 
-Combat supports both lethal and nonlethal play.
+Combat supports lethal and nonlethal play.
 
-The player can enter combat deliberately or reach it as a consequence of failed stealth.
+The current intended grammar is a **TARGET**, not yet a LOCKED accepted-feel contract.
 
-One ordinary guard is generally manageable in direct combat.
+One ordinary guard should be manageable in direct combat; two should be substantially harder; larger groups increasingly dangerous.
 
-Two guards are substantially more difficult because they can pressure the player at the same time.
+The player can run away and break contact. Escaping does not erase NPC awareness, and combat produces enough noise to attract relevant nearby NPCs.
 
-Larger groups become increasingly dangerous.
+## Target stealth knockout
 
-The player can attempt to run away and break contact.
+No blackjack. In a valid stealth-takedown context, hold attack to ready a fist; release to strike and immediately knock out an eligible unaware ordinary NPC.
 
-Escaping combat does not erase NPC awareness. Alerted NPCs continue searching afterward.
+## Target stealth kill
 
-Combat produces enough noise to attract other nearby NPCs.
+Same basic hold/release interaction with knife; release in a valid stealth context to immediately kill an eligible unaware ordinary NPC.
 
-The core combat rules are deliberately small and consistent.
+## Target block/parry/stagger grammar
 
----
+- holding block stops ordinary blockable attacks;
+- pressing block shortly before impact parries;
+- successful parry staggers the attacker;
+- a non-staggered ordinary NPC defends against normal player knife/blunt attacks;
+- knife against staggered NPC = instant kill;
+- blunt against staggered NPC = successful hit; several successful hits produce knockout;
+- taking damage does not require mandatory player stagger.
 
-# Stealth knockout
+Exact timings, health, damage, stagger duration, and blunt-hit count are balance values.
 
-There is no blackjack.
+Before this combat grammar becomes LOCKED it must be playtested against:
 
-The player performs a stealth knockout with her fists.
+- one guard
+- two guards
+- tight corridor
+- open room
+- actively attacking enemies
+- lethal assault
+- nonlethal assault
+- transition from stealth into open combat
 
-While the attack button is held in the appropriate stealth-takedown context, the character raises a clenched fist and holds it ready.
-
-When the player releases the attack, she strikes the NPC with the fist.
-
-Against an eligible unaware ordinary NPC from a valid stealth position, the hit immediately knocks the NPC unconscious.
-
-The result is nonlethal.
-
----
-
-# Stealth kill
-
-The stealth kill uses the same basic hold-and-release interaction as the stealth knockout.
-
-Instead of raising a fist, the player readies the knife.
-
-When the attack is released against an eligible unaware ordinary NPC from a valid stealth position, the player strikes with the knife and immediately kills the NPC.
+If the target grammar does not produce good play in those situations, it should be revised before being frozen.
 
 ---
 
-# Block
-
-Holding the block input blocks all ordinary incoming attacks that can be blocked.
-
-The player can continue holding block instead of timing each incoming attack individually.
-
-Blocking protects the player but does not create the offensive opening produced by a parry.
-
----
-
-# Parry
-
-Pressing block shortly before an incoming NPC attack connects performs a parry.
-
-A successful parry makes the attacking NPC stagger.
-
-The stagger creates an opening during which the NPC cannot successfully block or parry the player's follow-up attack.
-
----
-
-# Knife hit
-
-A normal knife attack against an NPC who is **not staggered** is defended against.
-
-The NPC blocks or parries the knife attack.
-
-A knife attack against a **staggered** NPC is an instant kill.
-
-The intended direct lethal combat rhythm is therefore:
-
-enemy attacks → player parries → enemy staggers → player uses knife → enemy dies.
-
----
-
-# Blunt hit
-
-A normal blunt/fist attack against an NPC who is **not staggered** is defended against.
-
-The NPC blocks or parries the attack.
-
-A blunt attack against a **staggered** NPC lands successfully.
-
-A successful blunt hit does not immediately knock the NPC unconscious.
-
-After several successful blunt hits, the NPC is knocked unconscious.
-
-The intended direct nonlethal combat rhythm is therefore:
-
-enemy attacks → player parries → enemy staggers → player lands blunt hit → repeat until knockout.
-
----
-
-# Combat states
-
-The important ordinary combat distinction is therefore:
-
-**not staggered**
-
-- NPC can attack
-- NPC can block
-- NPC can parry
-- ordinary player knife/blunt attacks do not simply land
-
-**staggered**
-
-- NPC temporarily cannot block or parry effectively
-- knife hit causes immediate death
-- blunt hit lands and contributes toward knockout
-
-The exact stagger duration, number of blunt hits required for knockout, attack timing, player health, and enemy damage are balance values rather than defining product rules.
-
-They should be tuned without changing this basic combat grammar.
-
-Taking damage does not produce a mandatory player stagger.
-
----
-
-# Weapon presentation
-
-The player's active combat option remains visibly presented in first person rather than being automatically hidden after every action.
-
-First-person hands, knife, and held objects are presentation elements tied to real gameplay state.
-
-Final meshes, textures, animations, and art may be replaced later without changing the underlying rules.
-
----
-
-# Lethal and nonlethal play
-
-Lethality and aggression are separate decisions.
-
-The player can:
-
-- silently kill isolated targets
-- silently knock targets out
-- openly fight lethally
-- openly fight nonlethally
-- avoid targets entirely
-
-The game systems must record relevant outcomes such as kills and knockouts so mission and campaign content can react.
-
-The baseline design should generally make lethal force more immediately convenient than achieving the same result nonlethally.
-
-The cost of that convenience is primarily systemic and narrative rather than an arbitrary immediate punishment.
-
-Writers and mission creators determine the actual consequences.
-
----
-
-# Mission structure
+# Mission structure — LOCKED
 
 Vark consists of authored missions rather than one mandatory open world.
 
 A mission is a self-contained playable sandbox with objectives, an entry state, world state, and one or more possible completion/exit conditions.
 
-A mission may contain any combination of:
+A mission may contain geometry, lighting, surfaces, NPCs, patrols, routines, doors, containers, props, loot, keys, items, mechanisms, triggers, objectives, narrative events, cutscenes, hazards, rules, exits, statistics, and campaign consequences.
 
-- geometry
-- lights and darkness
-- NPCs
-- patrols
-- scripted NPC routines
-- doors
-- containers
-- movable props
-- loot
-- keys
-- inventory items
-- environmental mechanisms
-- triggers
-- objectives
-- optional objectives
-- narrative events
-- cutscenes
-- mission-specific hazards
-- mission-specific rules
-- exits
-- statistics
-- campaign consequences
-
-A good mission usually offers multiple useful ways of approaching its problems, but the core systems must not prescribe an exact number of entrances, paths, enemies, objectives, or solutions.
-
-Mission design determines those things.
+A good mission usually offers multiple useful approaches, but the core systems do not prescribe exact entrances, paths, enemies, objectives, or solutions.
 
 ---
 
-# Mission variation from previous choices
+# Mission variation and campaign state — LOCKED
 
-Missions are allowed to change according to actions and outcomes from previous missions.
+Persistent campaign state may alter later missions, including:
 
-Two players reaching the same nominal mission do not necessarily need to receive an identical version of it.
-
-Persistent campaign state may alter things such as:
-
-- which NPCs are alive or present
-- which NPCs are friendly or hostile
-- available patrols
-- amount or placement of security
-- open or closed routes
-- available entrances
-- available equipment
+- NPC presence/allegiance
+- patrols/security
+- routes/entrances
+- equipment
 - world objects
 - objectives
-- optional objectives
 - dialogue
-- scripted events
-- cutscenes
-- available information
-- mission starting conditions
-- mission ending conditions
-
-These variations are authored by mission creators.
-
-They are not a separate "difficulty" system.
-
-The mission changes because of what happened in the campaign, not because the player selected an easier or harder mode.
-
----
-
-# No difficulty setting
-
-Vark has **no difficulty setting**.
-
-There is no Easy / Normal / Hard selection.
-
-The player does not choose a difficulty when starting the campaign or a mission.
-
-The intended rules of stealth, combat, movement, interaction, and the physical world are part of the game itself and do not change according to a difficulty option.
-
-Challenge comes from:
-
-- mission design
-- enemy placement
-- patrols
-- geometry
-- lighting
-- sound-producing surfaces
-- available resources
-- objectives
-- consequences of earlier choices
-- the player's chosen approach
-
-Individual missions may naturally be easier or harder than other missions.
-
-A mission may also become easier, harder, or simply different because of campaign state.
-
-Mission creators are free to make optional objectives or unusual constraints, but these are actual mission content rather than difficulty presets.
-
----
-
-# Mission rules
-
-Mission creators need a general way to express:
-
-**when something happens, optionally check some conditions, then cause one or more things to happen.**
-
-The game world must expose meaningful events such as:
-
-- player enters an area
-- door changes state
-- item is taken
-- loot is collected
-- NPC changes awareness
-- NPC dies
-- NPC is knocked out
-- body is discovered
-- alarm is raised
-- light changes state
-- objective changes
-- interaction occurs
-- mission fact changes
-
-Mission rules must be able to use those events to:
-
-- change objectives
-- change mission facts
-- alter the world
-- activate or disable entities
-- change NPC behavior
-- start scripted sequences
-- display dialogue
-- begin a cutscene
-- trigger an alarm
-- allow or prevent an exit
-- finish or fail a mission
-- record a campaign consequence
-
-The exact technical representation of these rules is outside the scope of this document.
-
-From a mission creator's perspective they should be practical to author without changing the core systems.
-
----
-
-# Special mission behavior
-
-Not every possible immersive-sim feature must exist in every mission or in the base entity set.
-
-Things such as:
-
-- unusual enemy types
-- monsters
-- cameras
-- automated security
-- turrets
-- magical sensors
-- special traps
-- unusual machinery
-- unique puzzle devices
-- mission-specific environmental hazards
-- unique weapons or tools
-- special NPC behaviors
-
-are mission content rather than mandatory global systems.
-
-The core game should provide enough generic interaction, perception, damage/effect, event, mission-rule, and actor hooks that a mission programmer can implement a special feature when required.
-
-Special mission code may extend the game.
-
-It should not require rewriting the player controller, ordinary guard AI, inventory, mission lifecycle, or other core systems.
-
----
-
-# Objectives and failure
-
-Objectives have clear active, completed, and failed states.
-
-Objectives may:
-
-- exist from mission start
-- appear during the mission
-- become optional
-- complete through world events
-- fail through world events
-- depend on campaign state
-
-Detection does not automatically fail a mission.
-
-An alarm does not automatically fail a mission.
-
-Killing a civilian does not automatically fail a mission.
-
-Killing an objective target does not automatically fail a mission.
-
-Any of those things can fail a specific mission or objective if that mission explicitly says so.
-
-If the player makes an objective impossible, the game may continue until the mission's rules declare failure or the player chooses to reload.
-
-This allows mission designers to decide which actions matter instead of imposing universal failure rules.
-
----
-
-# Saving and loading
-
-The player can save during ordinary active gameplay.
-
-Quick save and quick load are fundamental tools and are available through F5/F9 during normal gameplay.
-
-Saving/loading may be temporarily unavailable during states where restoring arbitrary gameplay state would be inappropriate, such as an active noninteractive cutscene or a top-level transition.
-
-The game does not shame or restrict the player for using quick save and quick load frequently.
-
-Whether the player improvises through mistakes or reloads for a cleaner result is the player's choice.
-
-Player death leads to loading a save or otherwise returning to a valid recovery/load state.
-
-The base game does not use a checkpoint-only philosophy.
-
----
-
-# Navigation and mission maps
-
-Navigation follows the philosophy of Thief 1 & 2.
-
-A mission can provide an authored map through the map screen.
-
-The map is mission content rather than a universal automatically generated GPS system.
-
-The core game does not require:
-
-- automatic complete mapping
-- exact live player position
-- enemy markers
-- objective arrows
-- route guidance
-
-Mission creators decide what their map contains and how accurate or incomplete it is.
-
-A mission can provide no useful map, a rough sketch, a floor plan, multiple floor images, annotated plans, or a more specialized map if the content calls for it.
-
-Navigation should remain primarily spatial and observational rather than waypoint-driven.
-
----
-
-# Statistics
-
-The mission results screen records what actually happened rather than judging the player with one mandatory global score.
-
-The core statistics system must support common Thief-style facts such as:
-
-- loot collected and available
-- kills
-- knockouts
-- detections / significant alerts
-- objectives completed
-- mission time
-
-Missions may add additional useful statistics such as secrets, bodies discovered, alarms, pockets picked, optional objectives, special collectibles, or other mission-specific facts.
-
-Campaign logic can use statistics and mission facts where appropriate.
-
-A universal letter grade or playstyle rank is not required.
-
----
-
-# Campaign state and consequences
+- scripted events/cutscenes
+- starting/ending conditions
+- mission order/endings
+
+These are authored consequences, not a difficulty system.
 
 Mission-local state and campaign-persistent state are separate.
 
-The campaign can remember meaningful actions and outcomes from earlier missions.
+---
 
-Examples include:
+# No difficulty setting — LOCKED
 
-- a person being alive or dead
-- a person being rescued or abandoned
-- an object being stolen or left behind
-- a faction being helped or harmed
-- an optional action being completed
-- a lethal or nonlethal outcome
-- an alarm or major event occurring
-- some other mission-specific fact
+Vark has no Easy / Normal / Hard selection.
 
-Later missions may read those facts and change:
+Stealth, combat, movement, interaction, and world rules do not change through a difficulty option.
 
-- objectives
-- NPC presence
-- patrols
-- dialogue
-- available routes
-- security
-- resources
-- mission events
-- narrative scenes
-- mission starting state
-- mission order
-- endings
+Challenge comes from authored content, resources, consequences, and the player's approach.
 
-The core platform supplies the memory and branching capability.
-
-Writers and mission creators decide which facts matter and exactly how strongly later content reacts.
+Optional constraints are mission content, not difficulty presets.
 
 ---
 
-# Game flow
+# Mission rules — LOCKED scope, TARGET grammar
+
+Mission creators need a convenient way to express:
+
+> when an event happens, optionally check conditions, then perform actions
+
+The data rule layer may react to semantic events such as area entry, door state change, item/loot collection, NPC awareness/life-state changes, body discovery, alarms, light changes, objective changes, interactions, and fact changes.
+
+It may change objectives/facts/world state, activate entities, influence NPC behavior, start sequences/dialogue, trigger alarms, gate exits, finish/fail missions, and record campaign consequences.
+
+The grammar must remain intentionally small.
+
+It must **not** grow into a second programming language with arbitrary loops, locals, nested general control flow, or unrestricted object manipulation.
+
+Procedural/unusual mission logic uses GDScript through a stable public mission API.
+
+Mission facts should be declared with a simple schema containing at least key, type, default, and scope so typos and implicit incompatible values do not silently become game logic.
+
+---
+
+# Special mission behavior — LOCKED extensibility goal
+
+Special enemies, cameras, security systems, traps, machinery, hazards, unique tools, and unusual NPC behavior are mission content rather than mandatory universal systems.
+
+The core game should provide enough generic interaction, perception, damage/effect, event, mission-rule, and actor hooks that special content can be implemented without rewriting unrelated core systems.
+
+---
+
+# Objectives and failure — LOCKED
+
+Objectives have active, completed, and failed states.
+
+Objectives may exist from mission start, appear later, become optional, complete/fail through world events, and depend on campaign state.
+
+Detection, alarms, civilian kills, or killing an objective target do not automatically fail every mission.
+
+Any of those may fail a specific mission/objective if that mission explicitly says so.
+
+---
+
+# Saving and loading — LOCKED player-facing rule
+
+The player can save during ordinary active gameplay.
+
+F5/F9 quicksave/quickload are fundamental tools.
+
+Saving/loading may be unavailable only in states where restoring arbitrary gameplay state is intentionally inappropriate, such as an active noninteractive cutscene or top-level transition.
+
+The game does not shame or restrict frequent saving/loading.
+
+The base game is not checkpoint-only.
+
+Because ordinary gameplay quicksave is fundamental, each stateful system must define meaningful restore semantics for transient states rather than assuming saves only occur while everything is idle.
+
+---
+
+# Navigation and mission maps — LOCKED
+
+Mission maps are authored content, not universal automatically generated GPS.
+
+The core game does not require exact live position, enemy markers, objective arrows, or route guidance.
+
+A mission may provide no map, a sketch, floor plan(s), annotated plans, or specialized map content.
+
+Navigation remains primarily spatial and observational.
+
+---
+
+# Statistics — LOCKED
+
+The mission results screen records what happened rather than assigning one mandatory global grade.
+
+Core statistics include:
+
+- loot collected/available
+- kills
+- knockouts
+- detections/significant alerts
+- objectives completed
+- mission time
+
+Missions may add other statistics/facts.
+
+---
+
+# Game flow — LOCKED direction
 
 The basic campaign flow is:
 
@@ -1095,57 +800,43 @@ The basic campaign flow is:
 2. New Game / Continue
 3. pre-mission briefing
 4. mission gameplay
-5. optional in-mission scripted sequences or cutscenes
+5. optional in-mission scripted sequences/cutscenes
 6. mission completion
-7. mission results / statistics
-8. campaign consequences and progression
-9. next briefing or next campaign state
+7. mission results/statistics
+8. campaign consequences/progression
+9. next briefing/campaign state
 
-The game must also support:
+The game also supports pause, objectives, map, inventory, settings, and save/load.
 
-- pause
-- objectives
-- map
-- inventory
-- statistics where useful
-- settings
-- save/load
-
-There is no difficulty-selection screen or difficulty option.
+There is no difficulty-selection screen.
 
 ---
 
-# Cutscenes
+# First-person cutscenes — LOCKED direction
 
-In-mission cutscenes remain inside the first-person mission world.
+In-mission cutscenes remain in the first-person mission world.
 
-The game temporarily takes input control.
+The game temporarily owns input.
 
-Cinematic black bars appear.
+Cinematic black bars and lower-area subtitles may appear.
 
-Subtitles appear in the lower presentation area.
+The camera may be sequence-controlled while preserving first-person perspective.
 
-The camera may be controlled by the sequence while retaining the sense that this is the player's first-person viewpoint.
-
-Afterward normal gameplay resumes safely.
-
-A mission creator can determine what actors, actions, dialogue, animation, and events occur during the sequence.
+Normal gameplay resumes safely afterward.
 
 ---
 
-# HUD
+# HUD — LOCKED direction
 
-The permanent gameplay HUD should remain restrained.
+The permanent gameplay HUD is restrained.
 
-The base HUD needs to communicate gameplay information that the player cannot reliably obtain otherwise.
-
-The core HUD includes:
+Core presentation includes:
 
 - light gem / visibility
 - health
-- currently selected usable item
+- selected usable item
 - interaction feedback when relevant
-- first-person weapon / hands / held-object presentation
+- first-person weapon/hands/held-object presentation
 
 There is no permanent crosshair.
 
@@ -1153,90 +844,52 @@ Mission-specific HUD elements may be added when genuinely necessary.
 
 ---
 
-# Audio presentation
+# Audio presentation — LOCKED
 
 Sound is a core gameplay information channel.
 
-The audio presentation must support strong positional understanding of:
-
-- footsteps
-- NPC movement
-- object impacts
-- doors
-- machinery
-- combat
-- tools
-- alarms
-- ambient sources
+Audio must support useful positional understanding of footsteps, NPC movement, impacts, doors, machinery, combat, tools, alarms, and ambient sources.
 
 Surface differences and distance must be audible enough to be useful.
 
-A player listening carefully should often be able to infer the location or movement of an NPC without seeing it.
+Music/ambience must not obscure critical stealth information.
 
-Music and ambience may support atmosphere but must not obscure important stealth information.
+Full spoken dialogue is not normal presentation; typed world-space speech carries the words.
 
-Full spoken dialogue is not part of the normal presentation.
-
-Final sound assets may be replaced later without changing the gameplay noise model.
+Final sound assets may be replaced without changing gameplay noise semantics.
 
 ---
 
-# Visual presentation
+# Visual presentation — LOCKED direction
 
-The game world uses a readable low-fi first-person visual language inspired by Thief 1 & 2.
+The game uses a readable low-fi first-person visual language inspired by Thief 1 & 2 and compatible with brush-based TrenchBroom construction.
 
-The environment is fundamentally compatible with brush-based TrenchBroom level construction.
+Gameplay-important distinctions must remain clear:
 
-Gameplay-important distinctions must remain visually clear:
+- bright vs dark
+- interactable vs non-interactable
+- conscious vs unconscious/dead
+- ordinary vs suspicious/alert NPC
+- usable doors/mechanisms
+- held/equipped state
 
-- bright versus dark areas
-- interactable versus non-interactable objects
-- conscious versus unconscious/dead actors
-- ordinary versus suspicious/alert NPC state
-- usable doors and mechanisms
-- relevant held/equipped items
+Final textures, characters, architecture theme, UI art, setting, and atmosphere belong to production content.
 
-Exact final textures, character models, architectural theme, menu artwork, UI sprites, setting, and atmosphere belong to later art/content production.
-
-Replacing those assets must not require redesigning gameplay systems.
-
-Placeholder presentation is acceptable during systems development as long as the necessary gameplay information is readable.
+Replacing presentation assets must not require redesigning gameplay systems.
 
 ---
 
 # Content intentionally left undefined
 
-This systems vision deliberately does not define:
-
-- the protagonist's story
-- the world or historical period
-- factions
-- plot
-- individual missions
-- exact architecture
-- final enemy roster
-- specific special enemies
-- exact equipment list
-- mission-specific security systems
-- final map artwork
-- final textures
-- final character designs
-- final menu artwork
-- final UI styling
-- final music
-- exact briefing content
-- exact cutscene content
-- exact endings
+The systems vision deliberately does not define the protagonist/story, setting/period, factions, plot, individual missions, exact architecture, final enemy roster, exact equipment list, mission-specific security, final maps/textures/characters/UI/music, exact briefings/cutscenes, or endings.
 
 Those are production content.
-
-The systems must be flexible enough to support them.
 
 ---
 
 # Things not required as default core features
 
-The following do not need to exist as universal default systems merely because a future mission might want something similar:
+The following do not need to exist universally merely because a future mission might want something similar:
 
 - special security devices
 - cameras
@@ -1249,51 +902,29 @@ The following do not need to exist as universal default systems merely because a
 - breakable normal doors
 - lockpicking
 - procedural missions
-- special traversal abilities beyond the accepted player controller
+- traversal abilities beyond the accepted controller
 - unusual enemy archetypes
 
-A mission programmer may create special versions when a mission requires them.
-
-The important requirement is that the core platform makes extension possible without forcing changes to unrelated systems.
+Mission-specific code may add special versions.
 
 ---
 
-# Mission-author freedom
+# Mission-author freedom — LOCKED goal
 
-A mission creator owns the content of the mission.
+Within stable core rules, mission creators should be able to decide:
 
-Within the stable core rules they should be able to decide:
-
-- level geometry
-- routes
-- lighting
-- surface materials
-- loot placement
-- objectives
-- fail conditions
-- NPC placement
-- patrol routes
-- NPC routines
-- dialogue
-- keys
-- door states
-- containers
-- props
-- available tools
-- alarms
-- scripted reactions
-- cutscenes
-- map
-- briefing
-- statistics
-- mission consequences
-- campaign consequences
-- variations caused by previous campaign choices
+- geometry/routes
+- lighting/surfaces
+- loot/objectives/fail conditions
+- NPC placement/patrols/routines/dialogue
+- keys/doors/containers/props
+- tools/alarms/reactions
+- cutscenes/maps/briefings/statistics
+- mission/campaign consequences
+- variations from previous choices
 - special programmed content
 
-The core game provides the grammar.
-
-The mission creator writes the sentence.
+The core game provides the grammar. The mission creator writes the sentence.
 
 ---
 
@@ -1301,44 +932,32 @@ The mission creator writes the sentence.
 
 Vark is ready to hand to mission creators when a developer who understands Godot and TrenchBroom but does not understand Vark's private core code can create a new mission containing, at minimum:
 
-- a player start
-- a brush-built navigable environment
-- bright and dark spaces
+- player start and brush-built navigable environment
+- bright/dark spaces
 - different sound-producing surfaces
-- ordinary guards
-- patrols
-- suspicion, investigation, detection, pursuit, search, and recovery
+- ordinary guards/patrols
+- suspicion, investigation, detection, pursuit, search, recovery
 - NPC state feedback
-- doors
-- keys
-- containers
+- doors/keys/containers
 - switchable/extinguishable lights
 - loot
-- movable and throwable physical objects
-- stealth knockouts
-- stealth kills
-- direct lethal combat
-- direct nonlethal combat
-- blocking
-- parrying
-- stagger
+- Thief-style movable/throwable physical objects
+- stealth knockouts/kills
+- direct lethal/nonlethal combat
+- blocking/parrying/stagger
 - bodies
 - inventory items
-- objectives
-- triggers and mission reactions
-- typed NPC dialogue
+- objectives/triggers/mission reactions
+- typed audible NPC dialogue
 - first-person scripted sequences
-- a mission map
-- mission completion and exit
-- end statistics
-- saving and loading
+- mission map
+- completion/exit/results
+- active-gameplay saving/loading
 - persistent campaign facts
-- a later mission whose content changes because of a previous player choice
+- a later mission changed by a previous player choice
 
-and can do so without modifying the core player, movement, stealth, ordinary NPC, inventory, mission-state, campaign-state, or game-flow code.
+and do so without modifying core player behavior, movement, stealth, ordinary NPC, inventory, mission-state, campaign-state, or game-flow systems.
 
-The same creator must also be able to add a mission-specific scripted object, unusual NPC behavior, hazard, puzzle, security system, or tool when necessary while interacting cleanly with the existing world and mission rules.
+The same creator must be able to add mission-specific scripted objects, NPC behavior, hazards, puzzles, security systems, or tools through stable extension APIs.
 
-At that point Vark is no longer a collection of mechanics.
-
-It is a reusable immersive-sim game platform ready for missions, plot, art, and campaign production.
+At that point Vark is a reusable immersive-sim game platform ready for full mission, plot, art, and campaign production.

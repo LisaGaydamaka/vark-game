@@ -2,34 +2,86 @@
 
 This document is the single source of truth for how Vark is verified. It records testing conventions, authoritative local commands, automated coverage that actually exists, broad manual regression checks, and CI policy.
 
-Planned tests for unimplemented features belong in the matching item of `DEVELOPMENT_PLAN.md`; this document should not duplicate speculative future coverage.
+Planned tests for unimplemented features belong in the matching item of `DEVELOPMENT_PLAN.md`; this document should not pretend future coverage already exists.
 
-## Testing principle
+---
 
-Automate objective, deterministic behavior that is costly or annoying to rediscover manually. When a reproducible gameplay bug is fixed, keep a regression test if the bug can reasonably be recreated in a deterministic fixture.
+# Testing principle
+
+Automate objective, deterministic behavior that is costly or annoying to rediscover manually.
+
+When a reproducible gameplay bug is fixed, keep a regression test if the bug can reasonably be recreated in a deterministic fixture.
 
 Do not automate subjective feel, pacing, readability, atmosphere, animation quality, level fun, or artistic judgment. Those are accepted through playtesting and feedback in chat.
 
-Do not add tests merely to increase test count. Every automated test should protect a meaningful invariant or a previously broken behavior.
+Do not add tests merely to increase test count. Every automated test should protect a meaningful invariant or previously broken behavior.
 
-The current player movement and climbing behavior is an accepted, frozen gameplay contract. New movement/traversal tests should protect representative existing behavior against regressions; they must not be used as justification to redesign, retune, or add movement/climbing behavior unless that scope is explicitly reopened.
+Systemic features require **integrated proof**, not only isolated unit proof. A door is not complete because it animates; a save system is not complete because it serializes data; an acoustic system is not complete because a distance check passes.
 
-## Test design rules
+---
+
+# Decision-state relationship
+
+- **LOCKED** behavior should receive regression protection where deterministic.
+- **TARGET** behavior may be tested during prototyping, but tests must not accidentally make an unvalidated design permanent.
+- **OPEN** behavior should first use focused fixtures to discover the correct model; once accepted, convert the meaningful invariants into regressions.
+
+---
+
+# Player-controller testing contract
+
+The current player movement/look/traversal **behavior and feel are accepted and LOCKED**.
+
+The controller's implementation is **not** frozen.
+
+Refactors may change:
+
+- how Godot input is sampled
+- command routing
+- pause/cutscene/UI gating
+- component ownership
+- mouse-capture ownership
+- internal class/scene structure
+- test-input injection
+
+provided the same accepted player-facing behavior remains.
+
+Tests therefore protect semantic results, not private call order.
+
+For large controller/input refactors, prefer a command/behavior trace approach:
+
+```text
+same initial fixture
++ same semantic input/command sequence
+≈ same position/velocity/stance/traversal/support/look result
+```
+
+Use intentional numeric tolerances where floating-point/physics behavior requires them. Do not demand meaningless byte-identical internal state.
+
+---
+
+# Test design rules
 
 1. Prefer real gameplay objects and real Godot physics where practical.
 2. Keep fixtures minimal: only the actors/geometry needed to reproduce the behavior.
 3. Assert semantic gameplay state rather than private helper call order.
-4. Use fixed transforms, fixed input, physics-frame progression, and deterministic configuration.
+4. Use fixed transforms, fixed input/commands, physics-frame progression, and deterministic configuration.
 5. Avoid real-time sleeps, render-FPS dependence, uncontrolled randomness, and broad timing windows that hide instability.
 6. Release simulated input and free fixture state between tests.
 7. Assert the original regression boundary, not merely an eventual outcome.
 8. Do not freeze temporary tuning into tests unless the value/relationship is an intentional design contract.
 9. Existing relevant suites must remain green when behavior is intentionally unchanged.
-10. A flaky test or flaky system must be stabilized before it is used as a CI gate.
+10. A flaky test or flaky system must be stabilized before it becomes a CI gate.
+11. Test integrated state transitions at subsystem boundaries where bugs are likely to appear: restore/startup, doors/nav/sound, perception/knowledge, authored IDs/reimport, props/support.
+12. Prefer explicit test maps/fixtures for spatial systems over hidden hard-coded geometry assumptions.
+13. Save/load tests must assert absence of duplicate consequences, not only equality of serialized fields.
+14. Performance fixtures should report measured cost/scale and catch catastrophic regressions; do not invent premature micro-budgets without measurement.
 
-Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, or objective-complete without taking control of implementation internals.
+Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, objective-complete, audible, supported, or restoring.
 
-## Current local automated barrier
+---
+
+# Current local automated barrier
 
 Run from the project root:
 
@@ -57,55 +109,232 @@ The movement runner currently:
 
 When more than one real test suite exists, add one authoritative `tests/run_all_tests.gd` (or equivalent) and make local full-regression/CI use that entry point.
 
-## Current automated coverage
+---
 
-### Framework sanity
+# Current automated coverage
+
+The following coverage exists now.
+
+## Framework sanity
 
 Confirms the runner and assertion collector execute and report normally.
 
-### Walk-off edge support refresh
+## Walk-off edge support refresh
 
 Protects against grounded/support state remaining stale for one frame after a collision-free move off an edge. Once the capsule is physically clear of the platform on a completed movement frame, the player must already be airborne.
 
-### Sprint-jump inherited momentum
+## Sprint-jump inherited momentum
 
 Protects against airborne movement clamping inherited sprint speed down to ordinary run/air speed. The fixture first proves the player is moving faster than normal running speed, then verifies takeoff preserves that inherited horizontal speed within the intended tolerance.
 
-### Normal step
+## Normal step
 
 Protects ordinary grounded step acquisition and crossing using real player movement and collision geometry.
 
-### Floating / undercut step
+## Floating / undercut step
 
 Protects a valid support-to-support step where the blocker does not extend down to the source floor. Step logic must not require an artificial floor-connected riser.
 
-### Wall-seam unsupported fall
+## Wall-seam unsupported fall
 
 Protects against modular wall seams or convex contacts cancelling unsupported vertical falling motion or manufacturing ground support.
 
-### Multi-contact fall
+## Multi-contact fall
 
 Protects against simultaneous wall contacts manufacturing support or cancelling unsupported downward motion.
 
-## Manual regression policy
+No other future-system coverage described below should be reported as existing until the tests are actually implemented.
 
-Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`. The checklist below is a broader integration pass for changes that could affect the accepted player controller/traversal contract; it is not required after every small unrelated change.
+---
 
-As new major systems become real, add concise manual regression sections here only when they provide broad integration value. Do not create a separate checklist document for every feature.
+# Required future fixture strategy
 
-### Project load / player scene
+These fixture requirements become active when the corresponding systems are implemented.
+
+## Controller behavior-trace fixture
+
+Purpose: permit internal input/controller refactors without changing accepted feel.
+
+Protect representative traces for:
+
+- walk/start/stop
+- sprint
+- crouch
+- jump/sprint-jump
+- representative step
+- ledge catch/hang/release
+- representative shimmy/corner/mantle where deterministic
+
+The trace should compare semantic state, not private component internals.
+
+## Persistent-ID/reimport fixture
+
+Prove:
+
+- persistent IDs are unique;
+- ordinary map move/reorder/reimport preserves identity;
+- duplicate authored entities receive distinct identities;
+- semantic `content_id` duplicates are rejected;
+- missing semantic references report clearly.
+
+## Acoustic fixture
+
+Use a tiny authored map containing at minimum:
+
+- open room
+- doorway
+- closed door
+- separated room
+- L-shaped/corner corridor
+
+Protect deterministic propagation relationships once the accepted acoustic model exists, such as:
+
+- open connection transmits more than closed door;
+- closed solid separation does not behave like open air;
+- connected around-corner space can transmit according to the accepted model;
+- audibility affects both guard hearing and world-space speech presentation consistently.
+
+Do not freeze arbitrary numeric falloff values before they are accepted.
+
+## Gameplay-light fixture
+
+Use a small chamber for:
+
+- darkness
+- partial light
+- full light
+- behind/around occluder
+- edge of influence
+- multiple relevant lights
+
+Automate only objective accepted relationships. Final subjective correspondence between rendered scene and light-gem feel still requires playtest.
+
+## Door integration fixture
+
+The same ordinary door should eventually be exercised for:
+
+- interaction
+- collision
+- open/closed state
+- lock/key state
+- sight obstruction
+- acoustic transmission
+- NPC/nav traversal
+- physical obstruction by prop where deterministic
+- save/load state
+
+Avoid separate fake door models per subsystem.
+
+## Thief-style prop fixture
+
+This behavior is LOCKED and deserves deterministic regression protection.
+
+At minimum cover:
+
+### Stable edge support
+
+A settled box with valid support, even if visibly overhanging an edge, does not topple, rotate, slide, or fall merely because realistic torque would make it unstable.
+
+### Stable stack
+
+A settled stack remains stationary without wobble, drift, rolling, or spontaneous rotation.
+
+### Support removal
+
+Given:
+
+```text
+C supported by B
+B supported by A
+A supported by world
+```
+
+removing A causes the unsupported supported-group above to fall until supported.
+
+The group must not explode, scatter, or topple as a side effect of unrestricted rigid-body simulation.
+
+### Drop/throw/settle
+
+A held object may be dropped/thrown, move/collide, then return to the settled stationary contract.
+
+It must not continue indefinite rolling/sliding/spinning after the accepted settling condition.
+
+### Save/load
+
+A settled or transient representative prop state restores coherently without gaining extra motion.
+
+## Nav/reimport fixture
+
+Prove a representative imported map can:
+
+- build/rebuild navigation
+- spawn one NPC
+- patrol
+- use/route through an ordinary door
+- survive a normal map edit/reimport workflow
+
+This exists early to discover toolchain/nav incompatibility before large AI systems depend on it.
+
+## Save/restore fixture
+
+Restore must be tested as a lifecycle, not merely data serialization.
+
+During restore, ordinary gameplay consequences must be suppressed until state application is complete.
+
+Deterministic tests should cover as systems exist:
+
+- mission restart creates fresh state;
+- save → restore round trip;
+- player transform/velocity/stance/relevant traversal state;
+- door state/open fraction/lock state;
+- prop state/support/transient motion;
+- NPC semantic awareness/goal state;
+- mission facts/objectives;
+- mission-script custom state;
+- no duplicate one-shot rule execution;
+- no duplicate objective transitions;
+- no duplicate loot/stat changes;
+- no duplicate alarms/dialogue/events caused by loading.
+
+## Mission fact/rule fixture
+
+Once the rule system exists:
+
+- fact type/default/scope validation;
+- invalid fact assignment rejection/reporting;
+- deterministic event/rule ordering;
+- one-shot vs repeat behavior;
+- rule state persistence through save/load;
+- missing entity references report clearly.
+
+---
+
+# Manual regression policy
+
+Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`.
+
+The checklist below is the broad integration pass for changes that could affect accepted player behavior. It is not required after every unrelated docs or gameplay change.
+
+As new major systems become real, add concise manual regression sections here only when they provide broad integration value.
+
+---
+
+# Player manual regression checklist
+
+## Project load / player scene
 
 - [ ] Project reopens without new missing-script, parser, global-class, UID, or player-code errors.
 - [ ] `Player.tscn` loads and spawns normally.
 - [ ] No unexpected resource/UID churn appears after a normal project rescan.
 
-### Input and look
+## Input and look
 
 - [ ] Move in all four directions and diagonally.
 - [ ] Mouse look and mouse capture/release behave normally.
 - [ ] Combined movement, jump, crouch, and sprint inputs do not create stale one-frame states.
+- [ ] After input-router refactors, pause/UI/cutscene ownership suppresses gameplay input without changing resumed gameplay feel.
 
-### Ground, support, slopes, and falling
+## Ground, support, slopes, and falling
 
 - [ ] Move/sprint/start/stop normally on flat ground.
 - [ ] Move up, down, and across representative walkable slopes; standing still does not slide unexpectedly.
@@ -113,7 +342,7 @@ As new major systems become real, add concise manual regression sections here on
 - [ ] Narrow beams/edges support the capsule when physically valid.
 - [ ] Rubbing walls, modular seams, and convex edges while falling does not stick, launch, or create fake support.
 
-### Steps
+## Steps
 
 - [ ] Climb representative valid steps straight-on, diagonally, and while strafing onto them.
 - [ ] Strafing along a riser without inward motion does not spuriously start a step.
@@ -123,7 +352,7 @@ As new major systems become real, add concise manual regression sections here on
 - [ ] Representative heights up to the configured maximum work.
 - [ ] Blocked overhead/crossing routes do not force the capsule through geometry.
 
-### Crouch, sprint, jump, and air control
+## Crouch, sprint, jump, and air control
 
 - [ ] Crouch/stand repeatedly; standing remains blocked under low clearance until space exists.
 - [ ] Crouch movement and sprint movement remain distinct and usable.
@@ -132,7 +361,7 @@ As new major systems become real, add concise manual regression sections here on
 - [ ] Air steering, reversal, and landing remain coherent.
 - [ ] Held/released jump does not leave stale mantle-intent behavior across attempts.
 
-### Ledge grab / hang / traversal
+## Ledge grab / hang / traversal
 
 - [ ] Grab a normal ledge from a jump and while falling alongside valid geometry.
 - [ ] Hang without unexpected support/step transitions.
@@ -140,7 +369,7 @@ As new major systems become real, add concise manual regression sections here on
 - [ ] Directional, sprint-directional, and no-input hang jumps release cleanly.
 - [ ] Jump/drop/failed catch/failed mantle suppression prevents immediate illegitimate regrab/retry but later legitimate attempts still work.
 
-### Mantle
+## Mantle
 
 - [ ] Ground-requested mantle starts from the same accepted contact/intent situations as the current controller.
 - [ ] Airborne jump-hold mantle buffering behaves as currently accepted.
@@ -149,15 +378,87 @@ As new major systems become real, add concise manual regression sections here on
 - [ ] Successful mantle does not sink, stick, fall through, snap backward, or preserve unintended player velocity.
 - [ ] Walking/jumping from the resulting support works normally.
 
-### Velocity / collision integration
+## Velocity / collision integration
 
 - [ ] Traversal entry/release does not leave stale locomotion velocity.
 - [ ] Valid landings terminate downward controlled velocity only after support is actually validated.
 - [ ] Unsupported collision response does not create displacement longer than requested motion or turn tiny downward motion into a large sideways launch.
 
-If the user explicitly reopens and changes a player movement/traversal behavior, update this checklist and its automated regressions to describe the newly accepted contract rather than preserving obsolete behavior.
+If the user explicitly reopens and changes a player movement/traversal behavior, update this checklist and automated regressions to the newly accepted contract rather than preserving obsolete behavior.
 
-## CI policy
+---
+
+# Future integrated manual acceptance
+
+When these systems exist, their phase gates should include representative playtests.
+
+## Acoustic/speech
+
+- [ ] Footsteps/impacts are intuitively affected by doors/openings/connected spaces.
+- [ ] Stopping and listening provides useful positional information.
+- [ ] Typed speech remains visible above an NPC through visual cover when it should be audible.
+- [ ] Distant/marginal speech presentation fades as intended.
+- [ ] Inaudible speech is not shown.
+
+## Gameplay lighting
+
+- [ ] Light gem agrees intuitively with what the player sees across dark/partial/full/occluded cases.
+- [ ] Decorative visual brightness does not accidentally create wrong stealth exposure.
+- [ ] Switching/extinguishing a gameplay light updates exposure coherently.
+
+## Thief-style props
+
+- [ ] Edge-supported props look intentionally stable rather than "broken physics."
+- [ ] Stacks remain motionless while supported.
+- [ ] Pulling a lower support causes upper supported objects to fall without the stack exploding/scattering.
+- [ ] Dropped/thrown props settle cleanly and stop.
+- [ ] Props remain useful for stacking/climbing/door obstruction.
+
+## Save/load
+
+- [ ] Quicksave/quickload works during ordinary active gameplay.
+- [ ] Representative transient states restore coherently.
+- [ ] Loading does not visibly replay objective/loot/alarm/dialogue consequences.
+- [ ] Restored world resumes from the saved state rather than briefly simulating a fresh start first.
+
+## Combat
+
+Before combat becomes LOCKED, playtest:
+
+- [ ] one guard
+- [ ] two guards
+- [ ] tight corridor
+- [ ] open room
+- [ ] stealth-to-combat transition
+- [ ] lethal assault
+- [ ] nonlethal assault
+- [ ] retreat/break contact
+
+Subjective combat feel is accepted by the user, not inferred from tests.
+
+---
+
+# Performance-testing policy
+
+Do not wait for the final representative mission before checking expensive-system scaling.
+
+When each system becomes real, add a focused stress fixture and record representative measurements for:
+
+- gameplay exposure with many relevant lights;
+- many guards performing vision checks;
+- many semantic sounds/hearing receivers;
+- nav/path updates around changing doors;
+- mission-event/rule bursts;
+- save snapshot size/time;
+- prop support checks.
+
+The purpose is early architectural warning, not premature optimization.
+
+The later production-scale mission remains the final realistic performance proof.
+
+---
+
+# CI policy
 
 Add GitHub Actions only after the local suite it will run is deterministic.
 
@@ -169,18 +470,21 @@ CI should:
 - run on pushes to `test` and pull requests;
 - fail on nonzero test exit.
 
-When multiple suites exist, CI should call the single all-tests entry point rather than duplicating suite commands in workflow YAML.
+When multiple suites exist, CI should call one all-tests entry point rather than duplicating suite commands in workflow YAML.
 
-Only consider making a CI check required after it has proven stable and non-flaky.
+Only make a CI check required after it has proven stable and non-flaky.
 
-## Maintenance
+---
+
+# Maintenance
 
 The agent updates this file automatically during authorized repository patches when:
 
-- a meaningful automated regression test is added, removed, or changes what it protects;
+- meaningful automated regression coverage is added/removed/changed;
 - the authoritative test command changes;
 - a new real suite is introduced;
-- broad manual regression coverage needs to change;
-- CI/testing strategy materially changes.
+- broad manual regression coverage changes;
+- CI/testing strategy materially changes;
+- an OPEN/TARGET system becomes LOCKED and needs permanent verification rules.
 
 Do not turn this file into a line-by-line mirror of test code. It should describe the verification contract at the behavior level.
