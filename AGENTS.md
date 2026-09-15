@@ -6,10 +6,13 @@ This file is the operating contract for AI-assisted work in this repository. The
 
 - `docs/GAME_VISION.md` — what Vark is: product, gameplay, presentation, and confirmed scope decisions.
 - `docs/DEVELOPMENT_PLAN.md` — what to build next: ordered roadmap, dependencies, item-specific acceptance criteria, and status.
+- `docs/FOUNDATION_CONTRACT.md` — cross-cutting architecture invariants for lifecycle, input ownership, events, persistence, save compatibility, and early stress gates.
 - `docs/TESTING.md` — how correctness is verified: test rules, commands, current automated coverage, manual regression checks, and CI policy.
 - Current code/tests — implementation truth.
 
 The user's latest explicit instruction overrides stale repository documentation. When that happens, synchronize the affected document during the next authorized repository patch.
+
+When a roadmap item is underspecified about a cross-cutting concern, apply `FOUNDATION_CONTRACT.md`. Do not bypass a foundation gate merely because the numbered roadmap introduces the larger feature later. The foundation contract may require an intentionally crude compatibility proof before a later system is fully designed; that proof does not pull the later feature's full scope forward.
 
 ## Decision states
 
@@ -23,7 +26,7 @@ Do not silently convert TARGET or OPEN decisions into LOCKED contracts.
 
 ## Working on a roadmap item
 
-For a request such as `implement 2.3`, read this file, the matching roadmap item, relevant vision/testing sections, and the current implementation before editing.
+For a request such as `implement 2.3`, read this file, the matching roadmap item, relevant foundation/vision/testing sections, and the current implementation before editing.
 
 Implement only the requested bounded item plus the minimum supporting architecture it genuinely requires. Do not silently bundle adjacent roadmap items or build speculative systems for distant features.
 
@@ -35,7 +38,9 @@ Use the development loop:
 
 Do not design a universal subsystem before at least one representative gameplay use has exercised the hard interactions that define it.
 
-When a system touches an existing integration spine such as doors, save/load, input ownership, perception, mission loading, or authoring, test the interaction while both systems are still small.
+When a system touches an existing integration spine such as doors, save/load, input ownership, perception, mission loading, world lifetime, persistent identity, or authoring, test the interaction while both systems are still small.
+
+Cross-cutting architecture is not considered stable until the relevant `FOUNDATION_CONTRACT.md` gate has been exercised. In particular, do not harden stealth APIs before the crude hostile/combat compatibility proof demonstrates that the same actor/input/event/perception/persistence model can support active hostile interaction.
 
 Do not change intended gameplay merely to make a test pass. If a test encodes the wrong invariant, correct the test.
 
@@ -49,11 +54,13 @@ Future tests protect the behavior contract, not a particular internal call graph
 
 ## Testing and validation
 
-Use `docs/TESTING.md` for detailed testing rules.
+Use `docs/TESTING.md` for detailed testing rules and `docs/FOUNDATION_CONTRACT.md` for cross-system invariants that must be proven by integrated fixtures.
 
 As part of implementation, decide automatically whether objective automated coverage is warranted. Reproducible gameplay bugs should receive a regression test when they can reasonably be recreated deterministically. Subjective feel, pacing, readability, atmosphere, and artistic quality are accepted through the user's playtesting, not automated assertions.
 
 Systemic features need integrated proof, not only unit-level proof. A save system is not complete because it can serialize a dictionary; a door is not complete because it animates; an acoustic system is not complete because one distance test passes.
+
+For every nontrivial roadmap item being implemented, make completion mechanically checkable with concise `Done when`, `Automated`, and `Manual` acceptance information. These may be written in the roadmap item itself or inherited unambiguously from its phase gate/testing/foundation contract. If an automated or manual check is not warranted, say so rather than leaving completion subjective.
 
 Never claim Godot/runtime tests were run unless they actually were. If runtime execution is unavailable, provide the exact local command and manual scenario the user should run.
 
@@ -73,13 +80,14 @@ During each authorized development patch, update every affected living document 
 
 - update `GAME_VISION.md` only when a confirmed product/design/scope decision changes;
 - update `DEVELOPMENT_PLAN.md` when roadmap scope, dependencies, acceptance criteria, ordering, or truthful status changes;
+- update `FOUNDATION_CONTRACT.md` only when a cross-cutting architecture invariant/gate changes, and keep it small rather than turning it into a general framework specification;
 - update `TESTING.md` when test commands, current automated coverage, manual regression coverage, or testing strategy changes.
 
 If the user reports validation or a design change without authorizing a repository write, remember the pending documentation change in the conversation and apply it with the next authorized coherent patch.
 
 Do not create `PLAYTEST_NOTES.md`. Subjective feedback remains in chat unless the user explicitly requests a document later.
 
-Avoid duplicate sources of truth. Do not create new persistent documentation when the information fits cleanly in an existing living document. Add specialized documents later only when a real production need cannot be represented clearly by the core set (for example, individual production mission documents).
+Avoid duplicate sources of truth. Do not create new persistent documentation when the information fits cleanly in an existing living document. `FOUNDATION_CONTRACT.md` is intentionally limited to cross-cutting invariants whose omission would make multiple roadmap phases contradict or replace one another. Add other specialized documents later only when a real production need cannot be represented clearly by the core set (for example, individual production mission documents).
 
 ## GitHub policy
 
@@ -94,13 +102,15 @@ Before writing, re-read the current `test` head and current versions of files be
 ## Normal development cycle
 
 1. User selects a roadmap item.
-2. Agent inspects current docs/code/tests.
+2. Agent inspects current docs/code/tests, including relevant foundation invariants.
 3. If the item contains unresolved behavior/architecture, build the smallest representative spike that can answer it.
 4. Integrate the result with the existing playable path instead of leaving it isolated.
-5. Add objective regressions and diagnostics where warranted.
-6. Update living docs to reflect what is now LOCKED, still TARGET, or still OPEN.
-7. Agent uploads only if explicitly authorized.
-8. User runs local automated checks and playtests in Godot.
-9. User reports success, bugs, or feel differences in chat.
-10. Agent fixes/tunes as requested and keeps documentation truthful on the next authorized patch.
-11. Move on only when the current item has the required acceptance.
+5. Exercise relevant cross-cutting foundation gates while systems are still small.
+6. Add objective regressions and diagnostics where warranted.
+7. Record concise `Done when`, `Automated`, and `Manual` acceptance for the implemented item.
+8. Update living docs to reflect what is now LOCKED, still TARGET, or still OPEN.
+9. Agent uploads only if explicitly authorized.
+10. User runs local automated checks and playtests in Godot.
+11. User reports success, bugs, or feel differences in chat.
+12. Agent fixes/tunes as requested and keeps documentation truthful on the next authorized patch.
+13. Move on only when the current item has the required acceptance.
