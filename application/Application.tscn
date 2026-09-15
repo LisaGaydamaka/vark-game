@@ -1,0 +1,12 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://application/application_root.gd" id="1_app"]
+[ext_resource type="PackedScene" path="res://scenes/VarkTest.tscn" id="2_world"]
+
+[node name="Application" type="Node"]
+script = ExtResource("1_app")
+default_world_scene = ExtResource("2_world")
+
+[node name="WorldHost" type="Node" parent="."]
+
+[node name="UIRoot" type="CanvasLayer" parent="."]
