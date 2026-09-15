@@ -58,12 +58,6 @@ Character direction:
 
 The low-fi presentation is an art direction, not an excuse for unclear gameplay information.
 
-## World and aesthetic identity
-
-The city is happy, sunlit, and culturally centered on worship of the sun. Its visual language uses gold, pressed ornaments, decorative solar imagery, and bright civic presentation.
-
-The protagonist is in conflict with that culture and adopts a contrasting moon-associated identity. The sun/moon contrast should appear in architecture, decoration, symbols, UI motifs where appropriate, and character presentation without overwhelming gameplay readability.
-
 ## Narrative presentation
 
 ### Dialogue
@@ -165,9 +159,8 @@ In-mission UI should support:
 - pause
 - objectives
 - map
-- inventory / gems as appropriate to the final data model
+- inventory
 - statistics where useful
-- alignment only if alignment is later defined and retained as a real gameplay system
 
 In-game HUD target:
 
