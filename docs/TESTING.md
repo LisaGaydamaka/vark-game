@@ -145,7 +145,7 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 
 Expected result: nonzero exit code and intentional failure reported.
 
-The authoring suite derives a temporary identity-workflow fixture from the real Playground `.map`, exercises source-owned `persistent_id` creation/repair through representative edits, and reparses every stage through the pinned FuncGodot parser. It does not mutate the tracked Playground map.
+The authoring suite derives a temporary identity-workflow fixture from the real Playground `.map`, verifies the project-owned Vark TrenchBroom FGD declares `persistent_id` on `func_detail`, exercises source-owned ID creation/repair through representative edits, and reparses every stage through the pinned FuncGodot parser. It does not mutate the tracked Playground map.
 
 The application suite verifies the configured F5 application entry point, no-world main-menu startup, separate New Game and curated Development Launch flows, selected development-target launch through the real lifecycle/input path, package-local Playground source/build wiring, minimal `MissionDefinition` validation/loading/session configuration, the real look-sensitivity setting across replacement, menu/quit wiring, current development world/player/UI ownership once gameplay starts, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
 
@@ -184,9 +184,11 @@ The following coverage exists now.
 
 Phase 2.3 adds an authoring-only proof around `persistent_id` as a property of authoritative Valve `.map` entity source. `tools/authoring/persistent_id_source.gd` scans top-level authored entities, ignores `worldspawn` and TrenchBroom structural group/layer records, reports missing/duplicate IDs, and can repair missing IDs or later duplicate occurrences directly in source. The first occurrence of a duplicate remains the current source owner. Production runtime identity wiring, registry lookup, semantic content IDs, and the final Vark TrenchBroom entity vocabulary remain later Phase 2 work.
 
-The deterministic authoring suite begins from the actual `missions/playground/mission.map` text, creates temporary ordinary `func_detail` brush entities, and uses deterministic generated IDs only inside the test. It reparses each edit through the real pinned `FuncGodotParser`. Coverage proves: initial missing-ID repair persists into map source/imported entity properties; moving an entity keeps its ID with no rewrite; reordering unrelated entity blocks keeps semantic probe→ID mappings and source hash; duplicating a source entity initially carrying the same ID repairs only the duplicate to a distinct ID; deleting one entity and creating another gives the replacement a new ID; another validation/parse pass performs no write and no ID churn; and an old source hash cannot write repair text over a newer mapper edit.
+The first real Windows mapper pass exposed a missing authoring-schema boundary: the repair tool wrote `persistent_id`, but the then-exported Vark TrenchBroom FGD did not declare that key on `func_detail`, and TrenchBroom dropped it when the entity was moved/saved. Vark now owns project-side FGD resources under `authoring/fgd/`; `VarkTrenchBroom.tres` exports `Vark.fgd`, and its project-owned `func_detail` inherits a `VarkPersistentIdentity` base declaring `persistent_id`. FuncGodot vendor resources remain untouched.
 
-The mapper-facing probe uses random 128-bit ID bytes and operates only on ignored `tests/authoring/workspace/mission.map`, which `prepare` copies from the real Playground source. It refuses to overwrite an existing workspace. This gives the Windows TrenchBroom manual feasibility check a real source/writeback workflow without risking tracked mission content or requiring a mapper to invent ID strings manually.
+The deterministic authoring suite begins from the actual `missions/playground/mission.map` text, verifies the exact Vark TrenchBroom configuration resolves the project-owned `func_detail` definition and exported FGD text contains `persistent_id`, creates temporary ordinary `func_detail` brush entities, and uses deterministic generated IDs only inside the test. It reparses each edit through the real pinned `FuncGodotParser`. Coverage proves: initial missing-ID repair persists into map source/imported entity properties; moving an entity keeps its ID with no rewrite; reordering unrelated entity blocks keeps semantic probe→ID mappings and source hash; duplicating a source entity initially carrying the same ID repairs only the duplicate to a distinct ID; deleting one entity and creating another gives the replacement a new ID; another validation/parse pass performs no write and no ID churn; and an old source hash cannot write repair text over a newer mapper edit.
+
+The mapper-facing probe uses random 128-bit ID bytes and operates only on ignored `tests/authoring/workspace/mission.map`. `sync-config` exports the current Vark GameConfig/FGD to the machine-specific FuncGodot TrenchBroom config folder and verifies the exported FGD contains `persistent_id`; `prepare` remains non-destructive and refuses to overwrite an existing workspace; `reset` deliberately replaces only the ignored workspace map with a fresh copy of the real Playground source. This gives the Windows TrenchBroom manual feasibility check the same declared-property/writeback workflow CI protects without risking tracked mission content or requiring a mapper to invent ID strings manually.
 
 ## Application root ownership
 
@@ -341,7 +343,7 @@ As real timed gameplay appears, extend this fixture to prove guard search, mecha
 
 ## Persistent-ID/reimport fixture
 
-Phase 2.3 uses the real `missions/playground/mission.map` as the base source for a temporary authoring fixture and proves the source/writeback mechanics before production entities depend on them: move/reorder preserves existing IDs, duplication is repaired to a distinct ID while the first source owner stays stable, delete/recreate gets a new ID, generated/repaired IDs survive real FuncGodot parsing, valid source is not rewritten, repeat repair is idempotent, and a stale source hash cannot overwrite newer mapper text. The Windows TrenchBroom mapper workflow below validates that normal tool duplication/save behavior fits that same contract without hand-managed ID strings.
+Phase 2.3 uses the real `missions/playground/mission.map` as the base source for a temporary authoring fixture and proves the source/writeback mechanics before production entities depend on them: the Vark TrenchBroom FGD explicitly declares `persistent_id` on the mapper-facing `func_detail` proof entity, move/reorder preserves existing IDs, duplication is repaired to a distinct ID while the first source owner stays stable, delete/recreate gets a new ID, generated/repaired IDs survive real FuncGodot parsing, valid source is not rewritten, repeat repair is idempotent, and a stale source hash cannot overwrite newer mapper text. The Windows TrenchBroom mapper workflow below validates that regenerated Vark config plus normal tool duplication/save behavior fits that same contract without hand-managed ID strings.
 
 Phase 2.4 then wires the proven mechanism into real authored persistent entities and fail-closed missing/duplicate diagnostics. Phase 2.5 adds optional semantic `content_id`; duplicate/missing semantic-reference checks belong there/2.9 rather than this feasibility proof. Phase 2.8 extends the same fixture to full ordinary TrenchBroom save → Godot import/rebuild → run stability.
 
@@ -574,17 +576,25 @@ When `Manual:` requires a specialized validator, name the role explicitly (user/
 
 Validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**.
 
-From project root, create the disposable ignored workspace once:
+The first mapper attempt found a real authoring bug: TrenchBroom dropped the repaired ID on a moved `func_detail` because the installed Vark FGD did not declare `persistent_id`. Before repeating the proof, close TrenchBroom, pull the fixed repository state, and refresh the installed Vark game configuration from project root:
 
 ```powershell
-godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- prepare
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- sync-config
 ```
 
-`prepare` refuses to overwrite an existing `tests/authoring/workspace/mission.map`. If repeating the proof later, close TrenchBroom and deliberately delete that ignored workspace yourself before preparing a fresh copy; the tool never destroys mapper work automatically.
+`sync-config` uses the machine-specific FuncGodot **TrenchBroom Game Config Folder**, exports `GameConfig.cfg` plus the current project-owned `Vark.fgd`, and refuses success unless that exported FGD contains `persistent_id`. If no folder is configured, set it in `res://addons/func_godot/func_godot_local_config.tres`, use its **Export func_godot settings** control, then rerun `sync-config`.
 
-Then use normal mapper operations only:
+With TrenchBroom still closed, replace only the disposable ignored proof map with a fresh copy of the real Playground source:
 
-1. Open `tests/authoring/workspace/mission.map` in TrenchBroom with the Vark game configuration.
+```powershell
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- reset
+```
+
+`reset` intentionally replaces only `tests/authoring/workspace/mission.map`; it never touches the tracked Playground source. `prepare` remains available for a first non-destructive workspace creation and still refuses to overwrite mapper work.
+
+Then reopen TrenchBroom with the refreshed **Vark** game configuration and use normal mapper operations only:
+
+1. Open `tests/authoring/workspace/mission.map`.
 2. Create a small brush and convert it to an ordinary `func_detail` entity; save the map.
 3. Run:
 
@@ -594,12 +604,12 @@ godot --headless --path . --script res://tools/authoring/persistent_identity_pro
 ```
 
 4. Reload/reopen the map if needed and note the generated `persistent_id` property. Do not type or edit the ID manually.
-5. Move that entity, save, run `repair` then `inspect`; its ID must remain unchanged.
+5. Move that entity, save, run `repair` then `inspect`; its ID must remain unchanged and `repair` should not need to regenerate that entity's ID.
 6. Add another unrelated `func_detail` entity, save, run `repair` then `inspect`; the existing entity's ID must remain unchanged and the new entity receives its own ID.
 7. Duplicate the original entity using TrenchBroom, move the duplicate, save, then run `repair` and `inspect`; the original must retain its ID and the duplicate must end with a different ID without manual ID bookkeeping.
 8. Delete the unrelated entity and create a replacement `func_detail`, save, repair, inspect; the replacement must receive a new ID rather than inheriting the deleted entity's identity.
 
-Source-order reordering and stale source/write races are deterministic file/tool concerns rather than useful mapper UI operations; the authoring suite covers those automatically. This manual check exists to prove TrenchBroom's real create/move/duplicate/delete/save behavior preserves the proposed source property in the way the repair strategy expects.
+Source-order reordering and stale source/write races are deterministic file/tool concerns rather than useful mapper UI operations; the authoring suite covers those automatically. This manual check exists to prove the refreshed TrenchBroom schema preserves the repaired source property through real create/move/duplicate/delete/save behavior.
 
 ---
 

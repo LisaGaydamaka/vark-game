@@ -4,6 +4,7 @@ extends SceneTree
 const PersistentIdSource = preload("res://tools/authoring/persistent_id_source.gd")
 const AUTHORED_SOURCE_PATH: String = "res://missions/playground/mission.map"
 const WORKSPACE_PATH: String = "res://tests/authoring/workspace/mission.map"
+const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
 
 
 func _initialize() -> void:
@@ -20,6 +21,10 @@ func _run() -> void:
 	match args[0].to_lower():
 		"prepare":
 			quit(0 if _prepare_workspace() else 1)
+		"reset":
+			quit(0 if _reset_workspace() else 1)
+		"sync-config":
+			quit(0 if _sync_trenchbroom_config() else 1)
 		"inspect":
 			quit(0 if _inspect_workspace() else 1)
 		"repair":
@@ -66,6 +71,64 @@ func _prepare_workspace() -> bool:
 	print("  source:    ", AUTHORED_SOURCE_PATH)
 	print("  workspace: ", WORKSPACE_PATH)
 	print("The workspace is ignored by Git and will not overwrite the authored mission.")
+	return true
+
+
+func _reset_workspace() -> bool:
+	if FileAccess.file_exists(WORKSPACE_PATH):
+		var remove_error: Error = DirAccess.remove_absolute(
+			ProjectSettings.globalize_path(WORKSPACE_PATH)
+		)
+		if remove_error != OK:
+			push_error(
+				"Could not remove the ignored identity-proof workspace map: %s"
+				% error_string(remove_error)
+			)
+			return false
+	print("Resetting ignored mapper identity workspace from authored Playground source.")
+	return _prepare_workspace()
+
+
+func _sync_trenchbroom_config() -> bool:
+	var config_folder: String = str(
+		FuncGodotLocalConfig.get_setting(
+			FuncGodotLocalConfig.PROPERTY.TRENCHBROOM_GAME_CONFIG_FOLDER
+		)
+	).strip_edges()
+	if config_folder.is_empty():
+		push_error(
+			"FuncGodot has no TrenchBroom Game Config Folder configured on this machine. "
+			+ "Set it in res://addons/func_godot/func_godot_local_config.tres, export the local FuncGodot settings, then rerun sync-config."
+		)
+		return false
+
+	var config := load(VARK_TRENCHBROOM_CONFIG_PATH) as TrenchBroomGameConfig
+	if config == null or config.fgd_file == null:
+		push_error("Could not load the Vark TrenchBroom configuration/FGD resource.")
+		return false
+
+	config.export_file()
+	var fgd_path: String = config_folder.path_join(config.fgd_file.fgd_name + ".fgd")
+	var game_config_path: String = config_folder.path_join("GameConfig.cfg")
+	if not FileAccess.file_exists(fgd_path) or not FileAccess.file_exists(game_config_path):
+		push_error(
+			"Vark TrenchBroom config export did not produce the expected GameConfig.cfg and %s.fgd in %s"
+			% [config.fgd_file.fgd_name, config_folder]
+		)
+		return false
+
+	var fgd_text: String = FileAccess.get_file_as_string(fgd_path)
+	if not fgd_text.contains("persistent_id"):
+		push_error(
+			"Exported Vark FGD does not declare persistent_id; refusing to continue the mapper proof."
+		)
+		return false
+
+	print("Refreshed the installed Vark TrenchBroom game configuration:")
+	print("  folder: ", config_folder)
+	print("  FGD:    ", fgd_path)
+	print("The exported Vark FGD declares persistent_id for func_detail.")
+	print("Close/reopen TrenchBroom before continuing so it reloads the updated game configuration.")
 	return true
 
 
@@ -154,6 +217,8 @@ func _print_inspection(result: Dictionary) -> void:
 
 func _print_usage() -> void:
 	print("Persistent identity authoring probe")
-	print("  -- prepare  Copy the real Playground map into an ignored mapper workspace.")
-	print("  -- inspect  Report authored persistent IDs in that workspace.")
-	print("  -- repair   Repair missing/duplicate IDs in the workspace source.")
+	print("  -- sync-config  Export the current Vark game config/FGD to this machine's configured TrenchBroom game folder.")
+	print("  -- prepare      Copy the real Playground map into an ignored mapper workspace.")
+	print("  -- reset        Replace only the ignored workspace map with a fresh Playground copy.")
+	print("  -- inspect      Report authored persistent IDs in that workspace.")
+	print("  -- repair       Repair missing/duplicate IDs in the workspace source.")

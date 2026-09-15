@@ -4,6 +4,7 @@ extends SceneTree
 const PersistentIdSource = preload("res://tools/authoring/persistent_id_source.gd")
 const PLAYGROUND_SOURCE_PATH: String = "res://missions/playground/mission.map"
 const MAP_SETTINGS_PATH: String = "res://addons/func_godot/func_godot_default_map_settings.tres"
+const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
 const TEMP_MAP_PATH: String = "user://vark_persistent_identity_feasibility.map"
 
 var failures: Array[String] = []
@@ -14,6 +15,8 @@ func _initialize() -> void:
 
 
 func _run_tests() -> void:
+	_assert_vark_trenchbroom_identity_property()
+
 	var playground_read: Dictionary = PersistentIdSource.read_source(
 		PLAYGROUND_SOURCE_PATH
 	)
@@ -178,6 +181,31 @@ func _run_tests() -> void:
 	_remove_temp_map()
 	_print_summary()
 	quit(1 if not failures.is_empty() else 0)
+
+
+func _assert_vark_trenchbroom_identity_property() -> void:
+	var config := load(VARK_TRENCHBROOM_CONFIG_PATH) as TrenchBroomGameConfig
+	var fgd_file: FuncGodotFGDFile = config.fgd_file if config != null else null
+	var definitions: Dictionary[String, FuncGodotFGDEntityClass] = {}
+	if fgd_file != null:
+		definitions = fgd_file.get_entity_definitions()
+	var func_detail: FuncGodotFGDEntityClass = definitions.get("func_detail")
+	var exported_fgd: String = ""
+	if fgd_file != null:
+		exported_fgd = fgd_file.build_class_text(
+			FuncGodotFGDFile.FuncGodotTargetMapEditors.TRENCHBROOM
+		)
+	_assert_true(
+		config != null
+		and fgd_file != null
+		and fgd_file.fgd_name == "Vark"
+		and func_detail != null
+		and func_detail.class_properties.has("persistent_id")
+		and str(func_detail.class_properties["persistent_id"]).is_empty()
+		and exported_fgd.contains("VarkPersistentIdentity")
+		and exported_fgd.contains("persistent_id"),
+		"Vark TrenchBroom FGD declares persistent_id on func_detail so mapper saves preserve repaired IDs"
+	)
 
 
 func _repair_with_ids(path: String, generated_ids: Array[String]) -> Dictionary:
