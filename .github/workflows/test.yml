@@ -33,5 +33,8 @@ jobs:
       - name: Verify Godot
         run: godot --version
 
+      - name: Import project
+        run: godot --headless --path . --import
+
       - name: Run movement regression suite
         run: godot --headless --path . --script res://tests/movement/run_movement_tests.gd
