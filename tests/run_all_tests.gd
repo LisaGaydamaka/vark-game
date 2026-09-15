@@ -3,6 +3,10 @@ extends SceneTree
 
 const SUITES = [
 	{
+		"name": "Authoring",
+		"script": "res://tests/authoring/run_authoring_tests.gd",
+	},
+	{
 		"name": "Application",
 		"script": "res://tests/application/run_application_tests.gd",
 	},

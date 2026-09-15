@@ -11,3 +11,6 @@
 # Existing tracked top-level maps/*.map.import sidecars stay tracked until the
 # dedicated reimport-stability work decides their migration policy.
 /missions/**/*.map.import
+
+# Phase 2.3 mapper identity proof workspace is generated from the real mission source.
+/tests/authoring/workspace/

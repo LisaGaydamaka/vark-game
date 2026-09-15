@@ -77,6 +77,7 @@ The project currently contains:
 - a minimal application main-menu shell with New Game, curated Development Launch, Quit, and one working look-sensitivity setting
 - an initial `missions/playground/` package with authoritative TrenchBroom spatial source and a launchable application-owned world wrapper
 - a minimal typed `MissionDefinition` for Playground carrying authored mission ID, world/map references, player-start selection, and content revision
+- a proof-only authored persistent-ID source inspection/repair path and deterministic mapper-workflow regression fixture
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -85,7 +86,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, production persistent-ID wiring/registry, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -614,7 +615,7 @@ The Playground contains only a broad zebra floor plus one low reference step and
 
 **Manual:** passed — the user confirmed on Windows x64 that Development Launch → Playground shows the zebra playground/reference step, spawns the real player normally, and preserves accepted movement/jump/mouse-look behavior.
 
-## 2.2 Minimal MissionDefinition `[~]`
+## 2.2 Minimal MissionDefinition `[x]`
 
 Include only fields currently required to load the playground: mission ID, map/world reference, semantic reference/selection for the map-authored player start, and minimal metadata.
 
@@ -630,11 +631,11 @@ Development Launch now points the Playground entry at `mission.tres`. `VarkAppli
 
 **Done when:** Playground has one loadable authored `MissionDefinition`; the application launches it through that definition; the active session carries the definition as configuration; the definition owns mission ID, world/map references, player-start selection, and content revision without owning a player transform; restart preserves the authored definition while replacing runtime session state; and raw scene development targets still work without fake metadata.
 
-**Automated:** the application suite loads and validates `missions/playground/mission.tres`, verifies all five current fields and the absence of duplicated player-start transform fields, exercises invalid required-field diagnostics, launches Playground through the definition, proves the definition supplies the FuncGodot map path before gameplay, verifies the active world/session carry the same definition across restart, verifies raw scene targets carry no definition, and keeps all existing lifecycle/input/movement regressions green. Clean-checkout import and the authoritative all-tests barrier must remain green in post-push CI.
+**Automated:** passed — the application suite loads and validates `missions/playground/mission.tres`, verifies all five current fields and the absence of duplicated player-start transform fields, exercises invalid required-field diagnostics, launches Playground through the definition, proves the definition supplies the FuncGodot map path before gameplay, verifies the active world/session carry the same definition across restart, verifies raw scene targets carry no definition, and the clean-checkout authoritative all-tests CI barrier passed.
 
-**Manual:** none — this step changes authored metadata/loading ownership only. The just-accepted 2.1 Windows Playground playtest covers the unchanged player-facing geometry/start/movement/look behavior.
+**Manual:** none — this step changes authored metadata/loading ownership only. The accepted 2.1 Windows Playground playtest covers the unchanged player-facing geometry/start/movement/look behavior.
 
-## 2.3 Persistent identity feasibility and authoring-workflow proof `[ ]`
+## 2.3 Persistent identity feasibility and authoring-workflow proof `[~]`
 
 Prove the real workflow:
 
@@ -659,6 +660,18 @@ If tooling generates/repairs IDs, prove the correction persists to the authorita
 - stale generated data cannot overwrite newer authored source edits.
 
 Exercise the workflow from the mapper's point of view. Fragile manual ID bookkeeping is a failed feasibility proof.
+
+The feasibility implementation is deliberately authoring-only. `res://tools/authoring/persistent_id_source.gd` inspects Valve `.map` top-level authored entities, treats `persistent_id` as authored source data, repairs missing IDs, and repairs only later occurrences of duplicate IDs while preserving the first source owner. Repairs are written back to the `.map` source itself, never to generated FuncGodot output. A source SHA-256 token plus an immediate pre-write reread makes stale repair work fail closed instead of overwriting a newer mapper edit. Already-valid source returns without opening it for write, so repeated validation/import does not churn source.
+
+The proof does not yet make gameplay Nodes persistent, introduce a registry, add Vark TrenchBroom entity classes, or enforce production missing/duplicate diagnostics at runtime; those are 2.4–2.9. The deterministic authoring suite derives a temporary fixture from the real `missions/playground/mission.map`, creates ordinary `func_detail` entities, runs the real FuncGodot parser after each source edit, and covers create/repair, move, source reorder, duplicate repair, delete/recreate, repeated no-op validation, and stale-write refusal. Generated IDs use random 128-bit bytes in the mapper probe; tests inject deterministic IDs only for assertions.
+
+`res://tools/authoring/persistent_identity_probe.gd` provides the mapper-facing proof route. `prepare` copies the real Playground map to ignored `tests/authoring/workspace/mission.map` and refuses to overwrite an existing workspace. `inspect` reports candidate IDs; `repair` writes only missing/duplicate ID corrections back to that workspace source. The tracked real Playground source therefore remains untouched by the feasibility exercise.
+
+**Done when:** the chosen authored `persistent_id` source/writeback strategy survives create → import → move → unrelated source reorder → reimport → duplicate → delete/recreate → reimport; duplicate repair preserves the original identity and gives the duplicate a distinct identity; repaired IDs persist in `.map` source; valid source is byte-for-byte unchanged by repeat repair; and a stale repair refuses to overwrite newer source. The mapper can exercise the same workflow in TrenchBroom without manually inventing or editing ID strings.
+
+**Automated:** the focused authoring suite derives its fixture from the real Playground map, exercises the edit sequence through source repair plus the pinned FuncGodot parser, asserts identity preservation/distinct duplication/recreated identity, proves repeat repair is a no-op with an unchanged source hash, proves stale expected-hash writeback is refused while preserving the newer edit, and is wired into the authoritative all-tests CI barrier. Clean-checkout import and post-push `Regression suite` must remain green.
+
+**Manual:** Windows mapper/user with TrenchBroom 2026.2 — prepare the ignored mapper workspace, open it using the Vark TrenchBroom game configuration, create a normal `func_detail` brush entity, save and run the repair probe, then confirm through normal mapper edits that moving it and adding unrelated content preserve its ID; duplicate/move it and confirm repair keeps the original ID while assigning the duplicate a different one; delete/recreate another entity and confirm the replacement receives a new ID. No hand-editing of `persistent_id` is allowed. Source-order reordering and stale-write races are covered deterministically because they are not useful mapper-facing UI operations.
 
 ## 2.4 Persistent IDs `[ ]`
 
@@ -716,7 +729,7 @@ Before mission/objective/save logic depends on it, prove:
 - participating handlers finish synchronously and do not `await` inside the current drain;
 - a development runaway/cascade guard reports an accidental self-sustaining event loop instead of hanging forever;
 - one stable gameplay boundary after the current controlled semantic consequence pass has drained;
-- engine callbacks outside the controlled pass may update presentation/input-owned view state or queue future semantic work but cannot race durable world state across that boundary.
+- engine callbacks outside the controlled pass may update presentation/input-owned view state or queue future semantic work but cannot race durable world state across the stable boundary.
 
 Do not create a general scheduler or author-facing rule language here.
 
@@ -1048,7 +1061,7 @@ Document this as provisional/supportable. Phase 11 may stabilize only the world/
 
 ## 7.6 Deterministic rule ordering and save state `[ ]`
 
-Define rule ordering relative to event queue/stable boundary, repeat/one-shot behavior, and restore semantics.
+Define rule ordering relative to the event queue/stable boundary, repeat/one-shot behavior, and restore semantics.
 
 ## 7.7 Mission logic debugger `[ ]`
 
@@ -1453,8 +1466,8 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `2.2` post-push validation: the authoritative `Regression suite` must stay green. `Manual: none`; reconcile `2.2` to `[x]` during the next authorized patch once that automated result is confirmed.
-2. Run `2.3` persistent-identity feasibility/idempotent writeback proof, then implement 2.4–2.9 through the real TrenchBroom/reimport path.
+1. Finish `2.3` post-push/manual validation: the authoritative `Regression suite` must stay green, then a Windows mapper/user with TrenchBroom 2026.2 completes the ignored-workspace create/move/unrelated-edit/duplicate/delete-recreate proof without hand-editing IDs; reconcile `2.3` to `[x]` during the next authorized patch.
+2. Implement `2.4` persistent IDs using the proven authored-source/writeback workflow, then 2.5–2.9 through the real TrenchBroom/reimport path.
 3. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 4. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 5. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.

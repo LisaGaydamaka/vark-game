@@ -111,7 +111,15 @@ godot --headless --path . --script res://tests/run_all_tests.gd
 
 Expected result: exit code `0` and `ALL TEST SUITES PASSED`.
 
-The all-tests runner invokes the independent application and movement suites through clean headless Godot subprocesses. The import bootstrap is not required before every ordinary local test run when the project has already been imported successfully; it exists so a clean checkout follows the same reproducible startup path used by CI.
+The all-tests runner invokes the independent authoring, application, and movement suites through clean headless Godot subprocesses. The import bootstrap is not required before every ordinary local test run when the project has already been imported successfully; it exists so a clean checkout follows the same reproducible startup path used by CI.
+
+Focused persistent-identity authoring command:
+
+```powershell
+godot --headless --path . --script res://tests/authoring/run_authoring_tests.gd
+```
+
+Expected result: exit code `0` and `ALL AUTHORING TESTS PASSED`.
 
 Focused application ownership command:
 
@@ -136,6 +144,8 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 ```
 
 Expected result: nonzero exit code and intentional failure reported.
+
+The authoring suite derives a temporary identity-workflow fixture from the real Playground `.map`, exercises source-owned `persistent_id` creation/repair through representative edits, and reparses every stage through the pinned FuncGodot parser. It does not mutate the tracked Playground map.
 
 The application suite verifies the configured F5 application entry point, no-world main-menu startup, separate New Game and curated Development Launch flows, selected development-target launch through the real lifecycle/input path, package-local Playground source/build wiring, minimal `MissionDefinition` validation/loading/session configuration, the real look-sensitivity setting across replacement, menu/quit wiring, current development world/player/UI ownership once gameplay starts, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
 
@@ -170,6 +180,14 @@ If relevant CI exists but its result cannot be retrieved/verified, report it as 
 
 The following coverage exists now.
 
+## Persistent identity feasibility/source-writeback proof
+
+Phase 2.3 adds an authoring-only proof around `persistent_id` as a property of authoritative Valve `.map` entity source. `tools/authoring/persistent_id_source.gd` scans top-level authored entities, ignores `worldspawn` and TrenchBroom structural group/layer records, reports missing/duplicate IDs, and can repair missing IDs or later duplicate occurrences directly in source. The first occurrence of a duplicate remains the current source owner. Production runtime identity wiring, registry lookup, semantic content IDs, and the final Vark TrenchBroom entity vocabulary remain later Phase 2 work.
+
+The deterministic authoring suite begins from the actual `missions/playground/mission.map` text, creates temporary ordinary `func_detail` brush entities, and uses deterministic generated IDs only inside the test. It reparses each edit through the real pinned `FuncGodotParser`. Coverage proves: initial missing-ID repair persists into map source/imported entity properties; moving an entity keeps its ID with no rewrite; reordering unrelated entity blocks keeps semantic probe→ID mappings and source hash; duplicating a source entity initially carrying the same ID repairs only the duplicate to a distinct ID; deleting one entity and creating another gives the replacement a new ID; another validation/parse pass performs no write and no ID churn; and an old source hash cannot write repair text over a newer mapper edit.
+
+The mapper-facing probe uses random 128-bit ID bytes and operates only on ignored `tests/authoring/workspace/mission.map`, which `prepare` copies from the real Playground source. It refuses to overwrite an existing workspace. This gives the Windows TrenchBroom manual feasibility check a real source/writeback workflow without risking tracked mission content or requiring a mapper to invent ID strings manually.
+
 ## Application root ownership
 
 The real `Application.tscn` is instantiated through the application regression suite. Coverage verifies that F5 is configured to launch the application root, that the persistent application/UI exists before any world session, and that the application owns the current development world/player/session once either New Game or a development target installs gameplay through the same root. Current/stale session identity and one exclusive top-level-operation guard remain protected.
@@ -192,7 +210,7 @@ For deterministic selection coverage, the application test adds one test-only ra
 
 The current `MissionDefinition` has exactly the load metadata needed now: `mission_id`, `world_scene`, `map_source_path`, `player_start_selector`, and `mission_content_revision`. Playground starts at content revision `1`. There is deliberately no player-start transform/position/rotation field: `player_start_selector = &"default"` is semantic selection metadata only until Phase 2.7 introduces the actual map-authored Vark player-start entity and resolution path. Persistent identity, registry, content IDs, and reimport-stability policy remain later Phase 2 work.
 
-The application regression loads and validates `missions/playground/mission.tres`, verifies all five fields and missing-field diagnostics, proves no duplicated player-start transform exists, launches Playground through the definition, verifies the same authored resource reaches `WorldSession` and the wrapper before FuncGodot builds the package-local map, restarts into a fresh session/world while retaining the same authored definition as configuration, and confirms raw development scenes carry no definition. This proves the minimal metadata/load boundary only; it does not claim persistent identity, registry, Vark point-entity authoring, or reimport stability.
+The application regression loads and validates `missions/playground/mission.tres`, verifies all five fields and missing-field diagnostics, proves no duplicated player-start transform exists, launches Playground through the definition, verifies the same authored resource reaches `WorldSession` and the wrapper before FuncGodot builds the package-local map, restarts into a fresh session/world while retaining the same authored definition as configuration, and confirms raw development scenes carry no definition. This proves the minimal metadata/load boundary only; it does not claim production persistent identity, registry, Vark point-entity authoring, or reimport stability.
 
 ## World-session lifecycle and replacement
 
@@ -323,7 +341,9 @@ As real timed gameplay appears, extend this fixture to prove guard search, mecha
 
 ## Persistent-ID/reimport fixture
 
-Use the real `missions/playground/mission.map` source as the initial Phase 2 authoring fixture. Prove persistent IDs are unique, ordinary map move/reorder/reimport preserves identity, duplication receives distinct identity, generated/repaired IDs persist to authoritative source, repeated validation does not rewrite valid source or churn IDs, repair does not create import/rewrite loops, stale generated data cannot overwrite newer authored edits, semantic `content_id` duplicates are rejected, and missing semantic references report clearly.
+Phase 2.3 uses the real `missions/playground/mission.map` as the base source for a temporary authoring fixture and proves the source/writeback mechanics before production entities depend on them: move/reorder preserves existing IDs, duplication is repaired to a distinct ID while the first source owner stays stable, delete/recreate gets a new ID, generated/repaired IDs survive real FuncGodot parsing, valid source is not rewritten, repeat repair is idempotent, and a stale source hash cannot overwrite newer mapper text. The Windows TrenchBroom mapper workflow below validates that normal tool duplication/save behavior fits that same contract without hand-managed ID strings.
+
+Phase 2.4 then wires the proven mechanism into real authored persistent entities and fail-closed missing/duplicate diagnostics. Phase 2.5 adds optional semantic `content_id`; duplicate/missing semantic-reference checks belong there/2.9 rather than this feasibility proof. Phase 2.8 extends the same fixture to full ordinary TrenchBroom save → Godot import/rebuild → run stability.
 
 ## Gameplay-event / controlled-mutation / stable-boundary fixture
 
@@ -550,6 +570,37 @@ A focused agent handoff must collectively cover every unresolved `Manual:` accep
 
 When `Manual:` requires a specialized validator, name the role explicitly (user/playtester, Windows operator, mapper, writer, cold author, external developer, etc.). The implementing agent may prepare the fixture/procedure but cannot self-certify an independent-human validation requirement.
 
+## Phase 2.3 mapper persistent-identity feasibility check
+
+Validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**.
+
+From project root, create the disposable ignored workspace once:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- prepare
+```
+
+`prepare` refuses to overwrite an existing `tests/authoring/workspace/mission.map`. If repeating the proof later, close TrenchBroom and deliberately delete that ignored workspace yourself before preparing a fresh copy; the tool never destroys mapper work automatically.
+
+Then use normal mapper operations only:
+
+1. Open `tests/authoring/workspace/mission.map` in TrenchBroom with the Vark game configuration.
+2. Create a small brush and convert it to an ordinary `func_detail` entity; save the map.
+3. Run:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- repair
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- inspect
+```
+
+4. Reload/reopen the map if needed and note the generated `persistent_id` property. Do not type or edit the ID manually.
+5. Move that entity, save, run `repair` then `inspect`; its ID must remain unchanged.
+6. Add another unrelated `func_detail` entity, save, run `repair` then `inspect`; the existing entity's ID must remain unchanged and the new entity receives its own ID.
+7. Duplicate the original entity using TrenchBroom, move the duplicate, save, then run `repair` and `inspect`; the original must retain its ID and the duplicate must end with a different ID without manual ID bookkeeping.
+8. Delete the unrelated entity and create a replacement `func_detail`, save, repair, inspect; the replacement must receive a new ID rather than inheriting the deleted entity's identity.
+
+Source-order reordering and stale source/write races are deterministic file/tool concerns rather than useful mapper UI operations; the authoring suite covers those automatically. This manual check exists to prove TrenchBroom's real create/move/duplicate/delete/save behavior preserves the proposed source property in the way the repair strategy expects.
+
 ---
 
 # Player manual regression checklist
@@ -746,7 +797,7 @@ The current CI barrier:
 - installs Godot `4.7.2` without .NET or export templates;
 - performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
 - runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
-- executes the independent application menu/development-launch/mission-package/definition/ownership/lifecycle/input/pause-time suite and movement suite through that entry point;
+- executes the independent authoring, application menu/development-launch/mission-package/definition/ownership/lifecycle/input/pause-time, and movement suites through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;
 - fails when the all-tests process returns nonzero.
 
