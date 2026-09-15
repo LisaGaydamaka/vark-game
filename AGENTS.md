@@ -1,6 +1,6 @@
 # Vark repository workflow
 
-This file is the operating contract for AI-assisted work in this repository. The user should be able to manage development through chat without manually maintaining repository documentation.
+This file is the operating contract for AI-assisted work in this repository. The intended user workflow is deliberately simple: the user selects a roadmap item, authorizes one repository patch, the agent performs the complete bounded implementation/verification/documentation cycle, and the user only performs the focused manual/playtest validation that cannot be replaced by automation.
 
 ## Sources of truth
 
@@ -10,9 +10,21 @@ This file is the operating contract for AI-assisted work in this repository. The
 - `docs/TESTING.md` — how correctness is verified: test rules, commands, current automated coverage, manual regression checks, and CI policy.
 - Current code/tests — implementation truth.
 
-The user's latest explicit instruction overrides stale repository documentation. When that happens, synchronize the affected document during the next authorized repository patch.
+The user's latest explicit instruction overrides stale repository documentation. When that happens, synchronize every affected living document during the next authorized repository patch.
 
-When a roadmap item is underspecified about a cross-cutting concern, apply `FOUNDATION_CONTRACT.md`. Do not bypass a foundation gate merely because the numbered roadmap introduces the larger feature later. The foundation contract may require an intentionally crude compatibility proof before a later system is fully designed; that proof does not pull the later feature's full scope forward.
+When a roadmap item is underspecified about a cross-cutting concern, apply `FOUNDATION_CONTRACT.md`. Do not bypass a foundation gate merely because the numbered roadmap introduces the larger feature later. A foundation compatibility proof does not pull the later feature's full scope forward.
+
+## User-facing operating model
+
+The normal request is expected to be as small as:
+
+> `do step X.Y, upload to gh`
+
+Treat that as a request to complete the **entire bounded roadmap item X.Y**, not merely its most obvious production-code edit. Unless the item itself says otherwise, the agent owns all work reasonably required to make that step honestly ready for automated validation and focused user acceptance, including necessary supporting code within scope, deterministic tests, fixtures, diagnostics, and living-document updates.
+
+The user should not need to separately ask for tests, documentation maintenance, CI inspection, status synchronization, or obvious supporting work that belongs to the requested roadmap item.
+
+The user normally owns only subjective/manual validation. The agent owns machine-verifiable validation whenever its environment or configured CI can perform it.
 
 ## Decision states
 
@@ -24,11 +36,218 @@ Repository documentation distinguishes three kinds of design statements:
 
 Do not silently convert TARGET or OPEN decisions into LOCKED contracts.
 
-## Working on a roadmap item
+## Roadmap-step execution protocol
 
-For a request such as `implement 2.3`, read this file, the matching roadmap item, relevant foundation/vision/testing sections, and the current implementation before editing.
+For every request to implement a numbered roadmap item, follow this protocol unless the user explicitly narrows the request further.
 
-Implement only the requested bounded item plus the minimum supporting architecture it genuinely requires. Do not silently bundle adjacent roadmap items or build speculative systems for distant features.
+### 1. Reconcile prior accepted work
+
+Before evaluating prerequisites, check the current conversation for user validation of the most recently handed-off roadmap work.
+
+If the user previously reported that the last uploaded step passed its required manual/playtest validation, treat that report as authoritative even if the repository still shows `[~]` because no write authorization existed at the time of the report.
+
+During the next authorized coherent patch:
+
+- update the previously accepted step to `[x]` when all automated requirements also passed;
+- apply any testing/design/status documentation changes implied by that validation;
+- then implement the newly requested step.
+
+A pending successful user validation satisfies a prerequisite in the current conversation even while the checked-in roadmap temporarily remains `[~]`. If no such validation is available and the step requires it, do not invent acceptance.
+
+### 2. Preflight the current integration head
+
+Before editing:
+
+- read the current `test` head;
+- re-read this `AGENTS.md`;
+- read the requested roadmap item and its phase gate;
+- read directly relevant `GAME_VISION.md`, `FOUNDATION_CONTRACT.md`, and `TESTING.md` sections;
+- inspect the current implementation, tests, fixtures, resources, and directly affected call sites;
+- inspect the relevant CI result/status for the current `test` head when CI exists.
+
+Do not stack new implementation work on a known failing integration head. Diagnose or report the failure first.
+
+### 3. Check prerequisites without silently expanding scope
+
+Confirm the actual prerequisites of X.Y are satisfied by repository state plus any pending accepted validation from the current conversation.
+
+Do not silently implement an entire earlier/later roadmap item for convenience.
+
+Implement the minimum supporting seam that X.Y genuinely requires when that seam is part of making X.Y work. If the missing prerequisite would amount to implementing a distinct roadmap item, report X.Y as blocked rather than hiding the scope expansion.
+
+### 4. Establish acceptance before declaring completion
+
+Every nontrivial roadmap item needs mechanically checkable acceptance information:
+
+```text
+Done when:
+Automated:
+Manual:
+```
+
+Derive these from the roadmap, foundation, vision, and testing contracts. Add/clarify them in the same implementation patch when necessary.
+
+Do not ask the user to invent acceptance criteria when the repository already contains enough information to derive them. Ask for a product/design decision only when a genuine player-facing TARGET/OPEN choice cannot be resolved by implementation evidence or existing instructions.
+
+### 5. Implement the complete bounded item
+
+`do step X.Y` includes, where warranted:
+
+- production code;
+- the minimum supporting code genuinely required by X.Y;
+- deterministic regression tests;
+- test fixtures/maps/resources;
+- useful diagnostics for otherwise invisible failure modes;
+- authoring/import/source-ownership adjustments required by the item;
+- updates to affected living documents.
+
+Do **not** opportunistically:
+
+- implement adjacent roadmap items;
+- refactor unrelated systems;
+- rename/reorganize unrelated content;
+- upgrade tools/dependencies;
+- clean up unrelated warnings/files;
+- change accepted player-facing behavior.
+
+Such work belongs in the current patch only when it is genuinely required for the requested item to be correct.
+
+### 6. Create/update tests automatically when warranted
+
+The agent owns the decision to add objective automated coverage. Do not wait for the user to ask for tests.
+
+Create or update deterministic tests when at least one of these is true:
+
+- the roadmap item explicitly requires automated coverage;
+- new deterministic gameplay/system behavior is introduced;
+- a reproducible bug is fixed;
+- a LOCKED behavior could be affected by the implementation/refactor;
+- a cross-system ownership, lifecycle, persistence, timing, ordering, or failure boundary is introduced;
+- a regression would otherwise be costly or ambiguous to rediscover manually.
+
+Do not add tests merely to increase test count, and do not freeze subjective TARGET/OPEN tuning as permanent behavior before validation.
+
+### 7. Maintain living documentation in the same patch
+
+Documentation maintenance is part of implementation, not a later user chore.
+
+- update `GAME_VISION.md` only when a confirmed product/design/scope decision changes;
+- update `DEVELOPMENT_PLAN.md` when roadmap scope, dependencies, acceptance criteria, ordering, supported tool/runtime baseline, or truthful status changes;
+- update `FOUNDATION_CONTRACT.md` only when a genuine cross-cutting architecture invariant/gate changes;
+- update `TESTING.md` when commands, actual automated coverage, fixtures, manual regression coverage, or testing/CI strategy changes.
+
+Do not create a second persistent source of truth when information belongs in an existing living document. Do not create `PLAYTEST_NOTES.md`; subjective feedback remains in chat unless the user explicitly requests such a document.
+
+### 8. Perform automated validation before push when possible
+
+When execution is available, the agent should run the checks it can run before uploading:
+
+- newly added/targeted tests;
+- the current authoritative full regression barrier;
+- clean import/bootstrap or tool validation when relevant to the change;
+- any deterministic content/authoring validation introduced by the item.
+
+Inspect intended changes for incidental generated-file churn and unrelated modifications before upload.
+
+Automated validation is the agent's responsibility by default. Do not ask the user to run an automated command merely because it was omitted from the implementation workflow.
+
+If the agent environment cannot execute a required runtime/tool check:
+
+- never claim it ran;
+- use configured CI after upload when CI covers it;
+- identify a genuinely local-only automated check for the user only when neither the agent nor CI can execute it.
+
+Subjective feel, pacing, readability, atmosphere, artistic quality, and other genuinely human judgments remain user playtest territory.
+
+### 9. Upload one coherent integration patch
+
+GitHub writes follow the authorization rules below.
+
+Prefer one atomic commit for the requested roadmap-step patch, especially when code/tests/docs depend on one another. If Git tooling supports a single tree/commit operation, use it rather than intentionally exposing `test` to a sequence of half-applied file states.
+
+If available tooling cannot make the whole patch atomic, order writes so intermediate states are as safe/buildable as possible and verify the final pre-write-to-post-write diff carefully. Do not create helper branches to work around the direct-write policy.
+
+### 10. Verify the uploaded result
+
+After the write:
+
+- confirm the final `test` head;
+- compare the pre-write head with the final head;
+- verify the changed-file set matches the requested coherent patch;
+- confirm CI was triggered when applicable;
+- inspect relevant CI through completion when the tooling permits it.
+
+A commit reaching `test` is not acceptance. Do not report the step as accepted while relevant CI is failing.
+
+### 11. Handle CI failure without consuming extra scope
+
+If relevant CI fails:
+
+- diagnose the actual failure;
+- keep the roadmap item `[~]` (or `[ ]` if implementation never became substantial);
+- do not hand a known-broken integration to the user for normal playtest acceptance;
+- do not make another GitHub write using the already-consumed authorization;
+- explain the correction needed.
+
+A corrective GitHub patch requires a new user message containing the exact authorization phrase `upload to gh`.
+
+### 12. Hand off only the focused manual validation that remains
+
+After automated validation is green, tell the user exactly what still requires human validation.
+
+The handoff should state:
+
+- what scene/mission/setup to use;
+- exact actions to perform;
+- expected behavior/results;
+- important regressions/failure symptoms to watch for;
+- what outcome to report back.
+
+Keep the requested manual pass focused on the changed behavior and its meaningful integration risks. Do not dump the entire global regression checklist after every unrelated change.
+
+### 13. Interpret the user's validation report
+
+If the user reports that the handed-off test **works/passes/is good**, treat that as manual acceptance of the most recently handed-off item for the cases you asked them to validate.
+
+Do not write to GitHub unless that user message also contains a fresh `upload to gh` authorization. Record the validation in conversation as a pending roadmap/documentation synchronization for the next authorized coherent patch.
+
+If all required automated checks and manual acceptance are satisfied, the item is logically accepted even if checked-in status temporarily remains `[~]` until the next authorized patch.
+
+If the user reports a failure:
+
+- keep the item unaccepted;
+- diagnose it against the intended contract;
+- add/update a deterministic regression when the failure is objectively reproducible and testable;
+- make corrections only after a new `upload to gh` authorization;
+- repeat automated validation and focused manual handoff.
+
+### 14. TARGET/OPEN work is allowed to require more than one user loop
+
+For a TARGET or OPEN item:
+
+- build the smallest representative implementation/spike that can answer the unresolved question;
+- integrate it into the real playable path where the roadmap requires integration;
+- automate only objective invariants that do not prematurely freeze unvalidated feel/tuning;
+- keep the item `[~]` while required behavior/design validation remains unresolved;
+- give the user a focused playtest/decision scenario;
+- revise on a newly authorized patch if the result is rejected.
+
+Do not convert TARGET/OPEN behavior to LOCKED merely because code exists.
+
+### 15. Report completion consistently
+
+Every uploaded roadmap-step handoff should state, concisely:
+
+- roadmap item implemented;
+- commit/final `test` head;
+- important files/systems changed;
+- automated checks actually performed and their results;
+- relevant CI result;
+- current roadmap status (`[ ]`, `[~]`, or pending/accepted `[x]` reconciliation);
+- exact manual validation still required, or explicitly `none`;
+- anything intentionally left out because it belongs to another roadmap item.
+
+## Implementation principles
 
 Prefer root-cause fixes, clear ownership, semantic APIs, and reusable foundations where a real current need exists. Avoid duplicated logic, arbitrary thresholds, and workarounds that hide the actual problem.
 
@@ -54,69 +273,49 @@ Refactoring input sampling, command routing, component ownership, pause/cutscene
 
 Future tests protect the behavior contract, not a particular internal call graph.
 
-## Testing and validation
+## Testing and validation status
 
 Use `docs/TESTING.md` for detailed testing rules and `docs/FOUNDATION_CONTRACT.md` for cross-system invariants that must be proven by integrated fixtures.
 
-As part of implementation, decide automatically whether objective automated coverage is warranted. Reproducible gameplay bugs should receive a regression test when they can reasonably be recreated deterministically. Subjective feel, pacing, readability, atmosphere, and artistic quality are accepted through the user's playtesting, not automated assertions.
-
 Systemic features need integrated proof, not only unit-level proof. A save system is not complete because it can serialize a dictionary; a door is not complete because it animates; an acoustic system is not complete because one distance test passes.
 
-For every nontrivial roadmap item being implemented, make completion mechanically checkable with concise `Done when`, `Automated`, and `Manual` acceptance information. These may be written in the roadmap item itself or inherited unambiguously from its phase gate/testing/foundation contract. If an automated or manual check is not warranted, say so rather than leaving completion subjective.
-
-Never claim Godot/runtime tests were run unless they actually were. If runtime execution is unavailable, provide the exact local command and manual scenario the user should run.
+Never claim Godot/runtime tests were run unless they actually were.
 
 Roadmap status meanings:
 
 - `[ ]` — not implemented.
 - `[~]` — implemented or substantially implemented but still awaiting required validation/follow-up.
-- `[x]` — required automated checks passed and the user accepted the relevant manual/playtest behavior.
+- `[x]` — required automated checks passed and the user accepted every relevant required manual/playtest behavior; an explicit `Manual: none` requires no subjective user playtest.
 
-Do not mark newly uploaded gameplay code `[x]` before the user validates it.
+Do not mark newly uploaded gameplay code `[x]` before required user validation. Because repository writes require explicit authorization, a logically accepted `[~]` may remain checked in temporarily; reconcile it during the next authorized patch.
 
-Under the current direct-write workflow, `test` is an **integration branch**. CI on `test` is post-push validation, not a pre-push gate. Newly uploaded implementation work remains `[~]` until the relevant CI/local automated checks pass and required user validation is accepted.
-
-## Documentation maintenance
-
-Documentation maintenance is the agent's responsibility. Do not ask the user to edit documentation after implementation or testing.
-
-During each authorized development patch, update every affected living document automatically:
-
-- update `GAME_VISION.md` only when a confirmed product/design/scope decision changes;
-- update `DEVELOPMENT_PLAN.md` when roadmap scope, dependencies, acceptance criteria, ordering, or truthful status changes;
-- update `FOUNDATION_CONTRACT.md` only when a cross-cutting architecture invariant/gate changes, and keep it small rather than turning it into a general framework specification;
-- update `TESTING.md` when test commands, current automated coverage, manual regression coverage, or testing strategy changes.
-
-If the user reports validation or a design change without authorizing a repository write, remember the pending documentation change in the conversation and apply it with the next authorized coherent patch.
-
-Do not create `PLAYTEST_NOTES.md`. Subjective feedback remains in chat unless the user explicitly requests a document later.
-
-Avoid duplicate sources of truth. Do not create new persistent documentation when the information fits cleanly in an existing living document. `FOUNDATION_CONTRACT.md` is intentionally limited to cross-cutting invariants whose omission would make multiple roadmap phases contradict or replace one another. Add other specialized documents later only when a real production need cannot be represented clearly by the core set (for example, individual production mission documents).
+Under the current direct-write workflow, `test` is an **integration branch**. CI on `test` is post-push validation, not a pre-push gate.
 
 ## GitHub policy
 
-Repository writes require the exact phrase `upload to gh` in the user's current request. Without it, GitHub work is read-only.
+Repository writes require the exact phrase `upload to gh` in the user's **current request**. Without it, GitHub work is read-only.
 
 Authorized writes go only to the existing `test` branch. Never write to `main` or another branch and never create helper branches.
 
 One `upload to gh` authorization covers one coherent requested patch. After that patch is uploaded and verified, further repository writes require a new authorization.
 
-Before writing, re-read the current `test` head and current versions of files being changed. After writing, verify the final `test` head and compare it with the pre-write head to confirm the exact changed-file set.
+Before writing, re-read the current `test` head, current `AGENTS.md`, and current versions of every file being changed. After writing, verify the final `test` head and compare it with the pre-write head to confirm the exact changed-file set.
 
-Because writes intentionally go directly to `test`, repository policy must not pretend CI has validated a commit before it lands there. CI should run immediately after the push when available; failed CI means the integration commit is not accepted and requires correction before the roadmap item advances.
+Never force-update/rewind `test` as part of normal development. If the head moved unexpectedly after preflight, re-read/reconcile rather than overwriting another change.
 
-## Normal development cycle
+Because writes intentionally go directly to `test`, repository policy must not pretend CI validated a commit before it landed. CI should run immediately after the push when available; failed CI means the integration commit is not accepted and requires correction before the roadmap item advances.
 
-1. User selects a roadmap item.
-2. Agent inspects current docs/code/tests, including relevant foundation invariants.
-3. If the item contains unresolved behavior/architecture, build the smallest representative spike that can answer it.
-4. Integrate the result with the existing playable path instead of leaving it isolated.
-5. Exercise relevant cross-cutting foundation gates while systems are still small.
-6. Add objective regressions and diagnostics where warranted.
-7. Record concise `Done when`, `Automated`, and `Manual` acceptance for the implemented item.
-8. Update living docs to reflect what is now LOCKED, still TARGET, or still OPEN.
-9. Agent uploads only if explicitly authorized.
-10. CI on `test` runs when configured; the uploaded implementation remains `[~]` until automated validation is green.
-11. User runs required local automated checks/playtests that are not replaced by CI and reports success, bugs, or feel differences in chat.
-12. Agent fixes/tunes as requested and keeps documentation truthful on the next authorized patch.
-13. Move on only when the current item has the required acceptance.
+## Normal chat-driven development cycle
+
+The expected steady-state interaction is:
+
+```text
+User: do step X.Y, upload to gh
+Agent: preflight → implement complete bounded item → tests/docs → automated validation → upload → verify CI → focused manual handoff
+User: works
+Agent: records pending acceptance; no repository write without new authorization
+User: do step X.Z, upload to gh
+Agent: reconciles X.Y to [x] when warranted → performs complete X.Z cycle
+```
+
+If the user reports a bug instead of acceptance, the step stays open. The agent diagnoses it, then waits for a new authorized correction request before writing.

@@ -291,17 +291,18 @@ Failure must leave one coherent application-owned recovery state and no leaked w
 
 ## Supported Phase 0 baseline
 
-The current reproducible development/test baseline is:
+The current supported development/test baseline is:
 
-- Godot `4.7.2` for the automated barrier;
+- supported local development/export target: **Windows x64 desktop**;
+- Godot `4.7.2`;
 - Jolt Physics as the configured 3D physics backend;
 - FuncGodot `2025.12`;
 - TrenchBroom `2026.2` (`Build v2026.2 Release Win64`) for the currently authored `.map` sources;
 - Forward+ as the supported desktop rendering method, with D3D12 configured on Windows;
 - Mobile renderer for Godot's mobile rendering-method slot;
-- GitHub Actions on the pinned `ubuntu-24.04` hosted runner for clean-checkout movement validation.
+- GitHub Actions on the pinned `ubuntu-24.04` hosted runner for clean-checkout headless movement validation.
 
-The observed current authoring setup is Win64, but the production export target has not yet been explicitly declared. Until that target is confirmed/documented, roadmap item 0.4 remains `[~]` rather than pretending the entire runtime/export contract is closed.
+Windows x64 desktop is the official development/export target. The Ubuntu GitHub Actions environment is an automated headless validation environment only; it does not redefine the supported player-facing/export platform.
 
 ## TrenchBroom
 
@@ -380,20 +381,17 @@ One cleanup decision remains intentionally open: `maps/level export2.map` is a r
 
 ## 0.4 Tool/runtime contract `[~]`
 
-The current supported baseline is documented above and materially pins deterministic testing: Godot 4.7.2, Jolt, FuncGodot 2025.12, TrenchBroom 2026.2 Win64, Forward+ desktop/D3D12 on Windows, and the `ubuntu-24.04` CI runner.
+The supported baseline is now explicitly documented: Windows x64 desktop, Godot 4.7.2, Jolt, FuncGodot 2025.12, TrenchBroom 2026.2 Win64, Forward+ desktop/D3D12 on Windows, and the `ubuntu-24.04` CI validation runner.
 
-Still required before `[x]`:
+The platform decision is closed. Before `[x]`, confirm the project opens/runs normally on the declared Windows x64 development target with this baseline. Future tool/runtime upgrades must update this baseline intentionally rather than silently drifting versions.
 
-- explicitly declare the supported development/export target rather than inferring a shipping/export target from the current Windows authoring setup;
-- update this baseline whenever a tool/runtime upgrade is intentionally accepted rather than silently drifting versions.
+Do not create a broad platform matrix yet; Windows x64 desktop is the one supported development/export target.
 
-Do not create a broad platform matrix yet; define one supported development/export target first.
+**Done when:** the documented Windows x64 desktop development/export target and material runtime/tool versions are explicit and the project has been successfully opened/run on that declared target.
 
-**Done when:** one supported development/export target and the material runtime/tool versions are explicit and reproducible.
+**Automated:** CI proves Godot 4.7.2 clean-checkout import plus the authoritative movement barrier on the pinned Ubuntu runner.
 
-**Automated:** CI proves Godot 4.7.2 clean-checkout import plus the authoritative movement barrier on the pinned runner.
-
-**Manual:** open/run the project on the declared supported local development target after a runtime/renderer/toolchain change.
+**Manual:** open/run the project on Windows x64 desktop and confirm normal project/player startup after this baseline declaration; repeat this check after material runtime/renderer/toolchain changes.
 
 ## 0.5 Continuous integration for the existing barrier `[x]`
 
@@ -703,7 +701,7 @@ Snapshot data must not retain live Nodes/Objects/RIDs/callbacks/signals/shared m
 
 ### Save-slot ordering
 
-Use one serialized writer per logical slot or a monotonic save generation so an older request cannot commit after a newer request. F9-equivalent load reads the latest fully committed save, never a temporary/in-progress write.
+Use one serialized writer per logical slot or a monotonic save generation so an older request cannot commit after a newer one. F9-equivalent load reads the latest fully committed save, never a temporary/in-progress write.
 
 ### Restore topology
 
@@ -1346,7 +1344,7 @@ Subjective feel remains user playtest territory.
 # Immediate recommended sequence
 
 1. Finish `0.3` by classifying `maps/level export2.map` and applying only the cleanup implied by that ownership decision.
-2. Finish `0.4` by explicitly declaring the supported development/export target; keep the already-pinned Godot/Jolt/FuncGodot/TrenchBroom/renderer/CI baseline synchronized when upgrades are intentionally accepted.
+2. Finish `0.4` by confirming the project opens/runs normally on the declared Windows x64 desktop baseline; after successful user validation, mark it `[x]` during the next authorized patch.
 3. Implement `0.6` traversal regression expansion with real deterministic ledge/mantle fixtures.
 4. Implement `0.7` semantic behavior-trace protection over representative accepted locomotion/traversal sequences.
 5. Only after the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
