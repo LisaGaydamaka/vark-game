@@ -84,17 +84,17 @@ func _boot_default_world() -> void:
 
 
 func _find_session_player(world: Node) -> Node:
-	var match: Node = null
+	var found_player: Node = null
 	if world.is_in_group(PLAYER_GROUP):
-		match = world
+		found_player = world
 
 	for node: Node in world.find_children("*", "", true, false):
 		if not node.is_in_group(PLAYER_GROUP):
 			continue
 		assert(
-			match == null,
+			found_player == null,
 			"A Vark world may expose only one node in the vark_player group."
 		)
-		match = node
+		found_player = node
 
-	return match
+	return found_player
