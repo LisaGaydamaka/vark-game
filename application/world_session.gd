@@ -4,6 +4,9 @@ extends Node
 
 const PLAYER_GROUP: StringName = &"vark_player"
 const MISSION_DEFINITION_SCRIPT = preload("res://missions/mission_definition.gd")
+const PersistentIdentityValidator = preload(
+	"res://missions/persistence/persistent_identity_validator.gd"
+)
 
 
 enum State {
@@ -77,6 +80,17 @@ func build(
 			return false
 
 	add_child(world)
+	var identity_validation: Dictionary = PersistentIdentityValidator.validate_subtree(world)
+	if not bool(identity_validation["ok"]):
+		var identity_errors: PackedStringArray = identity_validation["errors"]
+		for error_message: String in identity_errors:
+			push_error(
+				"WorldSession persistent identity validation failed: %s"
+				% error_message
+			)
+		teardown()
+		return false
+
 	player = _find_session_player(world)
 	if player == null:
 		teardown()

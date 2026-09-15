@@ -215,6 +215,9 @@ func _repair_workspace() -> bool:
 					str(repair["reason"]),
 				]
 			)
+		print(
+			"IMPORTANT: repair changed the .map on disk. Reload/reopen this map in TrenchBroom before any further edit or save so stale editor state cannot overwrite the repaired IDs."
+		)
 	else:
 		print("No persistent-ID repair needed; valid source was left byte-for-byte unchanged.")
 
@@ -262,4 +265,4 @@ func _print_usage() -> void:
 	print("  -- prepare      Copy the real Playground map into an ignored mapper workspace.")
 	print("  -- reset        Replace only the ignored workspace map with a fresh Playground copy.")
 	print("  -- inspect      Report authored persistent IDs in that workspace.")
-	print("  -- repair       Repair missing/duplicate IDs in the workspace source.")
+	print("  -- repair       Repair missing/duplicate IDs in the workspace source; reload TrenchBroom after any write.")

@@ -24,6 +24,10 @@ window/stretch/aspect="expand"
 
 enabled=PackedStringArray("res://addons/func_godot/plugin.cfg")
 
+[func_godot]
+
+default_map_settings="res://authoring/vark_map_settings.tres"
+
 [input]
 
 move_forward={

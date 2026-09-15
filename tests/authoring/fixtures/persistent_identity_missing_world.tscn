@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://missions/persistence/persistent_entity.gd" id="1_identity"]
+
+[node name="MissingIdentityWorld" type="Node3D"]
+
+[node name="PlayerMarker" type="Node" parent="." groups=["vark_player"]]
+
+[node name="MissingIdentity" type="Node" parent="."]
+script = ExtResource("1_identity")

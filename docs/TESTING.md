@@ -145,7 +145,7 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 
 Expected result: nonzero exit code and intentional failure reported.
 
-The authoring suite derives a temporary identity-workflow fixture from the real Playground `.map`, verifies the project-owned Vark TrenchBroom FGD declares `persistent_id` on `func_detail`, exercises source-owned ID creation/repair through representative edits, and reparses every stage through the pinned FuncGodot parser. It does not mutate the tracked Playground map.
+The authoring suite derives temporary identity-workflow fixtures from the real Playground `.map`, verifies the project-owned Vark TrenchBroom FGD/config, exercises source-owned ID repair through representative edits, reparses through the pinned FuncGodot parser, builds identity-bearing entities through the real Vark FuncGodot map settings, and verifies the generated runtime Nodes carry authored IDs. It also proves useful missing/duplicate diagnostics and the `WorldSession` fail-closed boundary with test-only invalid worlds. It never mutates the tracked Playground map.
 
 The application suite verifies the configured F5 application entry point, no-world main-menu startup, separate New Game and curated Development Launch flows, selected development-target launch through the real lifecycle/input path, package-local Playground source/build wiring, minimal `MissionDefinition` validation/loading/session configuration, the real look-sensitivity setting across replacement, menu/quit wiring, current development world/player/UI ownership once gameplay starts, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
 
@@ -182,13 +182,25 @@ The following coverage exists now.
 
 ## Persistent identity feasibility/source-writeback proof
 
-Phase 2.3 adds an authoring-only proof around `persistent_id` as a property of authoritative Valve `.map` entity source. `tools/authoring/persistent_id_source.gd` scans top-level authored entities, ignores `worldspawn` and TrenchBroom structural group/layer records, reports missing/duplicate IDs, and can repair missing IDs or later duplicate occurrences directly in source. The first occurrence of a duplicate remains the current source owner. Production runtime identity wiring, registry lookup, semantic content IDs, and the final Vark TrenchBroom entity vocabulary remain later Phase 2 work.
+Phase 2.3 established `persistent_id` as a property of authoritative Valve `.map` entity source. `tools/authoring/persistent_id_source.gd` scans top-level authored entities, ignores `worldspawn` and TrenchBroom structural group/layer records, reports missing/duplicate IDs, and repairs missing IDs or later duplicate occurrences directly in source. The first occurrence of a duplicate remains the source owner. The accepted proof is authoring/source ownership; registry lookup, semantic content IDs, and the final Vark TrenchBroom entity vocabulary remain later Phase 2 work.
 
 The first real Windows mapper pass exposed a missing authoring-schema boundary: the repair tool wrote `persistent_id`, but the then-exported Vark TrenchBroom FGD did not declare that key on `func_detail`, and TrenchBroom dropped it when the entity was moved/saved. Vark now owns project-side FGD resources under `authoring/fgd/`; `VarkTrenchBroom.tres` exports `Vark.fgd`, and its project-owned `func_detail` inherits a `VarkPersistentIdentity` base declaring `persistent_id`. FuncGodot vendor resources remain untouched.
 
-The deterministic authoring suite begins from the actual `missions/playground/mission.map` text, verifies the exact Vark TrenchBroom configuration resolves the project-owned `func_detail` definition and exported FGD text contains `persistent_id`, creates temporary ordinary `func_detail` brush entities, and uses deterministic generated IDs only inside the test. It reparses each edit through the real pinned `FuncGodotParser`. Coverage proves: initial missing-ID repair persists into map source/imported entity properties; moving an entity keeps its ID with no rewrite; reordering unrelated entity blocks keeps semantic probe→ID mappings and source hash; duplicating a source entity initially carrying the same ID repairs only the duplicate to a distinct ID; deleting one entity and creating another gives the replacement a new ID; another validation/parse pass performs no write and no ID churn; and an old source hash cannot write repair text over a newer mapper edit.
+Refreshing the Vark config then exposed an inherited invalid material dependency: the generated GameConfig pointed at non-existent `textures/palette.lmp`. Vark explicitly disables that unused Quake palette with `palette_path = ""`. The authoring regression protects the `textures` material root, PNG support, empty palette, and presence of the representative zebra PNG so a config refresh cannot silently blank the TrenchBroom material browser again.
 
-The mapper-facing probe uses random 128-bit ID bytes and operates only on ignored `tests/authoring/workspace/mission.map`. `sync-config` exports the current Vark GameConfig/FGD to the machine-specific FuncGodot TrenchBroom config folder and verifies the exported FGD contains `persistent_id`; `prepare` remains non-destructive and refuses to overwrite an existing workspace; `reset` deliberately replaces only the ignored workspace map with a fresh copy of the real Playground source. This gives the Windows TrenchBroom manual feasibility check the same declared-property/writeback workflow CI protects without risking tracked mission content or requiring a mapper to invent ID strings manually.
+The deterministic source-workflow coverage begins from actual `missions/playground/mission.map` text, creates temporary ordinary `func_detail` brush entities, and uses deterministic generated IDs only inside the test. It reparses each edit through the real pinned `FuncGodotParser`. Coverage proves initial missing-ID repair persists into map source/parser properties; moving an entity keeps its ID with no rewrite; reordering unrelated entity blocks keeps semantic probe→ID mappings and source hash; duplicating a source entity initially carrying the same ID repairs only the duplicate to a distinct ID; deleting one entity and creating another gives the replacement a new ID; another validation/parse pass performs no write and no ID churn; and an old source hash cannot write repair text over a newer mapper edit.
+
+The mapper-facing probe uses random 128-bit ID bytes and operates only on ignored `tests/authoring/workspace/mission.map`. `sync-config` exports and validates the current Vark GameConfig/FGD in the machine-specific FuncGodot TrenchBroom folder; `prepare` refuses to overwrite an existing workspace; and `reset` deliberately replaces only the ignored workspace from the real Playground source. When `repair` writes the `.map`, it explicitly tells the mapper to reload/reopen the document before any further edit/save. The accepted Windows run demonstrated why: TrenchBroom preserves IDs it has loaded, but an already-open pre-repair document can overwrite an external repair from stale in-memory state. This reload rule prevents editor/source synchronization from masquerading as identity churn.
+
+The Windows TrenchBroom 2026.2 proof is accepted: materials remained available after config refresh; the original ID survived move/save; unrelated loaded IDs survived ordinary saves; duplication kept the original source owner and received a distinct repaired ID; delete/recreate received a fresh ID; a plain save preserved all three loaded IDs; and the mapper never hand-authored an ID.
+
+## Production authored persistent identity
+
+Phase 2.4 wires the accepted source mechanism into runtime without pulling forward the registry or semantic IDs. `authoring/vark_map_settings.tres` points FuncGodot at the same project-owned Vark FGD used by TrenchBroom; the project default and Playground wrapper both use those settings. The current proof `func_detail` keeps ordinary `StaticBody3D` behavior while its Vark FGD definition attaches `VarkPersistentEntity` and auto-applies the authored `persistent_id` property to the generated runtime node.
+
+`VarkPersistentIdentityValidator` is a stateless validation boundary, not a lookup service. It scans only explicitly marked persistent entities, accepts unique non-empty IDs, reports missing IDs with node paths, and reports duplicate IDs with both the duplicate and first-owner paths. `WorldSession.build()` runs it after world/FuncGodot construction and before the session becomes `READY`; invalid identity pushes diagnostics, tears down the candidate world, and returns failure. Worlds with no identity-bearing nodes remain valid. Phase 2.6 still owns the actual world-session registry/lookup API.
+
+The authoring regression exercises the real Vark `FuncGodotMapSettings` and `FuncGodotMap` build path. Before repair, mapper-style missing IDs appear as empty runtime persistent IDs and fail validation. After repair, the generated nodes retain `StaticBody3D` behavior and expose the exact authored IDs. A duplicated source ID is visible to runtime validation before repair. Direct validator fixtures assert path-specific missing/duplicate diagnostics, and test-only invalid packed worlds prove `WorldSession` fails closed and returns to `EMPTY` rather than allowing bad identity to reach `READY`.
 
 ## Application root ownership
 
@@ -210,13 +222,13 @@ For deterministic selection coverage, the application test adds one test-only ra
 
 `missions/playground/` is the first real mission package. `mission.map` is the authoritative TrenchBroom spatial source; `mission.tres` is the typed authored `MissionDefinition`; `world.tscn` is the current launchable Godot wrapper; and `world.gd` is technical bootstrap glue that consumes the definition's map path and asks FuncGodot to build before the session enters ordinary play. Mission-package `.map.import` sidecars and TrenchBroom autosaves are generated/non-source and ignored. The existing tracked top-level `maps/*.map.import` policy is unchanged until the dedicated reimport-stability work decides that migration.
 
-The current `MissionDefinition` has exactly the load metadata needed now: `mission_id`, `world_scene`, `map_source_path`, `player_start_selector`, and `mission_content_revision`. Playground starts at content revision `1`. There is deliberately no player-start transform/position/rotation field: `player_start_selector = &"default"` is semantic selection metadata only until Phase 2.7 introduces the actual map-authored Vark player-start entity and resolution path. Persistent identity, registry, content IDs, and reimport-stability policy remain later Phase 2 work.
+The current `MissionDefinition` has exactly the load metadata needed now: `mission_id`, `world_scene`, `map_source_path`, `player_start_selector`, and `mission_content_revision`. Playground starts at content revision `1`. There is deliberately no player-start transform/position/rotation field: `player_start_selector = &"default"` is semantic selection metadata only until Phase 2.7 introduces the actual map-authored Vark player-start entity and resolution path. Registry lookup, semantic content IDs, and reimport-stability policy remain later Phase 2 work.
 
-The application regression loads and validates `missions/playground/mission.tres`, verifies all five fields and missing-field diagnostics, proves no duplicated player-start transform exists, launches Playground through the definition, verifies the same authored resource reaches `WorldSession` and the wrapper before FuncGodot builds the package-local map, restarts into a fresh session/world while retaining the same authored definition as configuration, and confirms raw development scenes carry no definition. This proves the minimal metadata/load boundary only; it does not claim production persistent identity, registry, Vark point-entity authoring, or reimport stability.
+The application regression loads and validates `missions/playground/mission.tres`, verifies all five fields and missing-field diagnostics, proves no duplicated player-start transform exists, launches Playground through the definition, verifies the same authored resource reaches `WorldSession` and the wrapper before FuncGodot builds the package-local map, restarts into a fresh session/world while retaining the same authored definition as configuration, and confirms raw development scenes carry no definition. This proves the minimal metadata/load boundary only; it does not claim registry lookup, Vark point-entity authoring, or full reimport stability.
 
 ## World-session lifecycle and replacement
 
-The production `WorldSession` path is exercised directly and through the application. A session builds with processing disabled in `READY`, enters `PLAYING` only through explicit permission, may enter explicit `PAUSED` without becoming lifecycle-stopped, stops coherently in `STOPPED`, and tears down to `EMPTY` with world/player/session references invalidated. The application can pause/resume the current session, stop/start it for lifecycle work, restart or mission-transition through stop/teardown/fresh replacement, and exit to a coherent no-world state while persistent UI remains application-owned.
+The production `WorldSession` path is exercised directly and through the application. A session builds with processing disabled in `READY`, enters `PLAYING` only through explicit permission, may enter explicit `PAUSED` without becoming lifecycle-stopped, stops coherently in `STOPPED`, and tears down to `EMPTY` with world/player/session references invalidated. Before `READY`, the session now also rejects missing/duplicate IDs on explicitly identity-bearing authored runtime nodes and tears the invalid world down. The application can pause/resume the current session, stop/start it for lifecycle work, restart or mission-transition through stop/teardown/fresh replacement, and exit to a coherent no-world state while persistent UI remains application-owned.
 
 The lifecycle regression attaches representative `Timer` and deferred work beneath the real session owner. A stopped session freezes the timer; restarting tears the old session down before yielding, and neither the old timer nor deferred callback can fire afterward. A control probe under the current replacement proves the same work executes normally while its session is alive. The replacement receives a fresh runtime world instance and session ID while reusing authored `PackedScene`/`MissionDefinition` resources only as configuration, so runtime metadata/state does not leak through shared authored resources or the persistent application owner.
 
@@ -300,7 +312,7 @@ These requirements become active when corresponding systems are implemented.
 
 Phase 1.1–1.6 now prove application boot/menu ownership, current session identity once gameplay starts, one exclusive top-level-operation guard, non-playing build, explicit entry to play, explicit pause/resume distinct from lifecycle stop, synchronous teardown, restart/ordinary replacement, exit back to the application menu, fresh runtime state, stale-work rejection, separation between persistent application/authored configuration and session runtime state, application-owned gameplay/look input permission with stale intent/gesture cancellation, exclusive application/UI/cutscene ownership, world-session gameplay-time pause semantics, an application-owned setting surviving world replacement, and curated development-target selection through the same lifecycle/input path.
 
-Phase 2.1 adds one package-local TrenchBroom source/wrapper to that already-proven lifetime path. Phase 2.2 adds the authored `MissionDefinition` configuration boundary: a mission session carries the definition that selected its world/map, restart reuses that authored configuration while creating fresh runtime state, and teardown clears the session reference. Raw development worlds continue to have no invented definition. Future registries, semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive. Phase 1 does **not** need a simultaneous old/candidate world fixture.
+Phase 2.1 adds one package-local TrenchBroom source/wrapper to that already-proven lifetime path. Phase 2.2 adds the authored `MissionDefinition` configuration boundary: a mission session carries the definition that selected its world/map, restart reuses that authored configuration while creating fresh runtime state, and teardown clears the session reference. Phase 2.4 adds pre-`READY` authored persistent-identity validation. Raw development worlds continue to have no invented mission definition or persistence requirement. Future registries, semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive. Phase 1 does **not** need a simultaneous old/candidate world fixture.
 
 When Phase 4 implements real restore, extend this fixture to the chosen restore topology. If old and restored worlds overlap in memory, prove their mutable world-scoped services/resources remain isolated and they never both produce authoritative gameplay consequences. If restore uses sole-world replacement after prevalidation, prove failure reaches the defined coherent recovery state.
 
@@ -343,9 +355,9 @@ As real timed gameplay appears, extend this fixture to prove guard search, mecha
 
 ## Persistent-ID/reimport fixture
 
-Phase 2.3 uses the real `missions/playground/mission.map` as the base source for a temporary authoring fixture and proves the source/writeback mechanics before production entities depend on them: the Vark TrenchBroom FGD explicitly declares `persistent_id` on the mapper-facing `func_detail` proof entity, move/reorder preserves existing IDs, duplication is repaired to a distinct ID while the first source owner stays stable, delete/recreate gets a new ID, generated/repaired IDs survive real FuncGodot parsing, valid source is not rewritten, repeat repair is idempotent, and a stale source hash cannot overwrite newer mapper text. The Windows TrenchBroom mapper workflow below validates that regenerated Vark config plus normal tool duplication/save behavior fits that same contract without hand-managed ID strings.
+Phase 2.3 uses the real `missions/playground/mission.map` as the base source for a temporary authoring fixture and proves the source/writeback mechanics before production entities depend on them: the Vark TrenchBroom FGD explicitly declares `persistent_id` on the mapper-facing `func_detail` proof entity, move/reorder preserves existing IDs, duplication is repaired to a distinct ID while the first source owner stays stable, delete/recreate gets a new ID, generated/repaired IDs survive real FuncGodot parsing, valid source is not rewritten, repeat repair is idempotent, stale source hashes cannot overwrite newer mapper text, the refreshed mapper config has a valid PNG material path, and any external repair write requires a TrenchBroom reload before further edits.
 
-Phase 2.4 then wires the proven mechanism into real authored persistent entities and fail-closed missing/duplicate diagnostics. Phase 2.5 adds optional semantic `content_id`; duplicate/missing semantic-reference checks belong there/2.9 rather than this feasibility proof. Phase 2.8 extends the same fixture to full ordinary TrenchBroom save → Godot import/rebuild → run stability.
+Phase 2.4 now wires the same Vark FGD into runtime FuncGodot map settings, carries authored IDs onto generated nodes, and makes missing/duplicate IDs fail closed at `WorldSession` build with useful paths. Phase 2.5 adds optional semantic `content_id`; duplicate/missing semantic-reference checks belong there/2.9 rather than the persistence-ID validator. Phase 2.6 adds lookup/registry ownership. Phase 2.8 extends the same fixture to full ordinary TrenchBroom save → Godot import/rebuild → run stability.
 
 ## Gameplay-event / controlled-mutation / stable-boundary fixture
 
@@ -572,17 +584,19 @@ A focused agent handoff must collectively cover every unresolved `Manual:` accep
 
 When `Manual:` requires a specialized validator, name the role explicitly (user/playtester, Windows operator, mapper, writer, cold author, external developer, etc.). The implementing agent may prepare the fixture/procedure but cannot self-certify an independent-human validation requirement.
 
-## Phase 2.3 mapper persistent-identity feasibility check
+## Phase 2.3 mapper persistent-identity feasibility check — accepted
 
 Validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**.
 
-The first mapper attempt found a real authoring bug: TrenchBroom dropped the repaired ID on a moved `func_detail` because the installed Vark FGD did not declare `persistent_id`. Before repeating the proof, close TrenchBroom, pull the fixed repository state, and refresh the installed Vark game configuration from project root:
+The accepted proof exposed and corrected two real configuration failures before identity became a runtime dependency: the installed Vark FGD originally did not declare `persistent_id` on `func_detail`, and the refreshed GameConfig originally inherited a non-existent `textures/palette.lmp` that blanked the material browser. The current project-owned Vark FGD declares the property, and `VarkTrenchBroom.tres` disables the unused palette while retaining `textures` PNG discovery.
+
+For a fresh machine or future regression rerun, close TrenchBroom and refresh the installed Vark configuration from project root:
 
 ```powershell
 godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- sync-config
 ```
 
-`sync-config` uses the machine-specific FuncGodot **TrenchBroom Game Config Folder**, exports `GameConfig.cfg` plus the current project-owned `Vark.fgd`, and refuses success unless that exported FGD contains `persistent_id`. If no folder is configured, set it in `res://addons/func_godot/func_godot_local_config.tres`, use its **Export func_godot settings** control, then rerun `sync-config`.
+`sync-config` uses the machine-specific FuncGodot **TrenchBroom Game Config Folder**, exports `GameConfig.cfg` plus project-owned `Vark.fgd`, verifies the FGD contains `persistent_id`, and validates the material root/PNG/empty-palette contract. If no folder is configured, set it in `res://addons/func_godot/func_godot_local_config.tres`, use its **Export func_godot settings** control, then rerun `sync-config`.
 
 With TrenchBroom still closed, replace only the disposable ignored proof map with a fresh copy of the real Playground source:
 
@@ -594,7 +608,7 @@ godot --headless --path . --script res://tools/authoring/persistent_identity_pro
 
 Then reopen TrenchBroom with the refreshed **Vark** game configuration and use normal mapper operations only:
 
-1. Open `tests/authoring/workspace/mission.map`.
+1. Open `tests/authoring/workspace/mission.map` and confirm normal zebra materials are visible.
 2. Create a small brush and convert it to an ordinary `func_detail` entity; save the map.
 3. Run:
 
@@ -603,13 +617,14 @@ godot --headless --path . --script res://tools/authoring/persistent_identity_pro
 godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- inspect
 ```
 
-4. Reload/reopen the map if needed and note the generated `persistent_id` property. Do not type or edit the ID manually.
-5. Move that entity, save, run `repair` then `inspect`; its ID must remain unchanged and `repair` should not need to regenerate that entity's ID.
-6. Add another unrelated `func_detail` entity, save, run `repair` then `inspect`; the existing entity's ID must remain unchanged and the new entity receives its own ID.
-7. Duplicate the original entity using TrenchBroom, move the duplicate, save, then run `repair` and `inspect`; the original must retain its ID and the duplicate must end with a different ID without manual ID bookkeeping.
-8. Delete the unrelated entity and create a replacement `func_detail`, save, repair, inspect; the replacement must receive a new ID rather than inheriting the deleted entity's identity.
+4. **Whenever `repair` reports that it wrote source, reload/reopen the map in TrenchBroom before any further edit or save.** This is mandatory: an already-open pre-repair document can otherwise save stale in-memory entity properties over the external repair.
+5. Confirm the generated `persistent_id` is visible after reload. Do not type or edit the ID manually.
+6. Move that entity, save, run `repair` then `inspect`; its ID must remain unchanged and repair should be a no-op.
+7. Add another unrelated `func_detail`, save, repair/inspect, then reload because repair assigned the new entity's ID. The existing entity must keep its ID.
+8. Duplicate the original entity using TrenchBroom, move the duplicate, save, then repair/inspect; the original must retain its ID and the duplicate must receive a different ID. Reload after this repair write before more edits.
+9. Delete the unrelated entity and create a replacement `func_detail`, save, repair/inspect; the replacement must receive a new ID rather than inheriting the deleted entity's identity.
 
-Source-order reordering and stale source/write races are deterministic file/tool concerns rather than useful mapper UI operations; the authoring suite covers those automatically. This manual check exists to prove the refreshed TrenchBroom schema preserves the repaired source property through real create/move/duplicate/delete/save behavior.
+The completed Windows run satisfied these cases. Source-order reordering and stale expected-hash write races remain deterministic file/tool concerns covered automatically rather than mapper UI operations.
 
 ---
 
@@ -815,7 +830,7 @@ The GitHub Actions job is named `Regression suite`. Focused suite commands remai
 
 A newly uploaded implementation commit is not accepted merely because it reached `test`. Keep roadmap work `[~]` until relevant CI/local automated validation is green and required manual/user validation is accepted.
 
-When job logs are available, validation includes checking for newly introduced parser/script errors, resource/UID/import failures, invalid references, and other meaningful project regressions even if the process exits successfully. Known harmless external/deprecation noise should be distinguished rather than treated as a project failure.
+When job logs are available, validation includes checking for newly introduced parser/script errors, resource/UID/import failures, invalid references, or other meaningful project regressions even if the process exits successfully. The deliberate missing/duplicate identity fixtures emit expected error diagnostics while asserting that the session fails closed; those messages are test evidence, not unexpected project-load failures. Known harmless external/deprecation noise should likewise be distinguished rather than treated as a project failure.
 
 Do not describe a `test` status check as pre-merge/pre-push protection while policy writes directly to `test` and forbids helper branches.
 
