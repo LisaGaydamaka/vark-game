@@ -50,7 +50,7 @@ Use intentional numeric tolerances where physics requires them.
 
 The locomotion trace is not a universal input API. Interaction, combat, and inventory use separate world-gameplay intent domains as they become real.
 
-The one-frame-per-gameplay-tick contract applies to **world gameplay intent**, not every input path. Accepted mouse-look response may remain event-driven and should not be forced into physics-tick latency merely for architectural uniformity. UI/menu input is application input and may operate independently of world simulation.
+The one-frame-per-gameplay-tick contract applies to **world gameplay intent**, not every input path. Accepted mouse-look response may remain event-driven and should not be forced into physics-tick latency merely for architectural uniformity. Treat the resulting view pose as input-owned state: world gameplay samples it in the controlled simulation pass, and save capture may synchronously capture it at the stable boundary. UI/menu input is application input and may operate independently of world simulation.
 
 ---
 
@@ -60,7 +60,7 @@ The one-frame-per-gameplay-tick contract applies to **world gameplay intent**, n
 2. Keep fixtures minimal: only the actors/geometry needed to reproduce the behavior.
 3. Assert semantic gameplay state rather than private helper call order.
 4. Use fixed transforms, fixed gameplay intent/commands, physics-frame progression, and deterministic configuration.
-5. Avoid real-time sleeps, render-FPS dependence, uncontrolled randomness, and broad timing windows that hide instability.
+5. Avoid real-time sleeps, render-FPS dependence, uncontrolled randomness, and broad timing windows that hide instability. When gameplay intentionally uses randomness, inject deterministic choices for tests and verify already-resolved choices survive restore rather than rerolling.
 6. Release simulated input and free fixture/world-session state between tests.
 7. Assert the original regression boundary, not merely an eventual outcome.
 8. Do not freeze temporary tuning unless it is an intentional design contract.
@@ -68,20 +68,24 @@ The one-frame-per-gameplay-tick contract applies to **world gameplay intent**, n
 10. Stabilize flaky tests/systems before making them CI gates.
 11. Test integrated boundaries likely to fail: world replacement, restore/startup, doors/nav/sound, perception/knowledge, authored IDs/reimport, props/support.
 12. Prefer explicit test maps/fixtures for spatial systems over hidden hard-coded geometry assumptions.
-13. Save/load tests assert coherent detached capture, no duplicate consequences, failed-transaction safety, slot ordering, and compatibility refusal—not merely serialized-field equality.
+13. Save/load tests assert coherent detached capture, source-session ownership, no duplicate consequences, failed-transaction safety, slot ordering, and compatibility refusal—not merely serialized-field equality.
 14. Performance fixtures report measured cost/scale and reference environment; do not invent premature micro-budgets.
 15. Event tests assert emitted-order FIFO, lifecycle behavior, synchronous drain, and runaway-cascade handling rather than incidental signal/call-stack order.
 16. Do not assert a global deterministic order for unrelated physics discoveries unless gameplay explicitly defines a semantic tie-breaker.
 17. Persistence tests distinguish authored-present, authored-removed, and runtime-created cases while keeping authored-removed as state of authored identity.
-18. Gameplay-input tests distinguish continuous held state from one-frame edges and prove disabled domains do not replay stale edges.
+18. Gameplay-input tests distinguish continuous held state from one-frame edges, prove disabled domains do not replay stale edges, and prove domain loss cancels incomplete gestures that depend on a future edge.
 19. Save-capture tests prove snapshot data is detached/value-owned: mutating live state after capture cannot mutate the captured snapshot.
 20. World-session tests prove shared authored/config Resources and autoload/application state do not become accidental mutable mission-state bridges across sessions.
-21. Durable semantic mutation must be tested at the controlled gameplay-step/consequence boundary. Engine callbacks outside it may update presentation or enqueue future work, not race persistent gameplay truth.
-22. Gameplay-time tests use world simulation time, not wall-clock elapsed time through pause/load.
-23. Long-running saveable behavior is tested through explicit semantic stage/progress/remaining-time state, not serialized engine timers/coroutine stacks.
-24. Each semantic fact has one authoritative owner; tests should not require generic mission facts to mirror system-owned state.
+21. Durable world-semantic mutation must be tested at the controlled gameplay-step/consequence boundary. Engine callbacks outside it may update presentation/input-owned view pose or enqueue future work, not race persistent gameplay truth.
+22. Mission-script tests must prove supported mutation commands cannot bypass the controlled gameplay boundary when invoked from `_process()`, arbitrary signals, or async continuations.
+23. Gameplay-time tests use world simulation time, not wall-clock elapsed time through pause/load.
+24. Long-running saveable behavior is tested through explicit semantic stage/progress/remaining-time state, not serialized engine timers/coroutine stacks.
+25. Each semantic fact has one authoritative owner; tests should not require generic mission facts to mirror system-owned state or become premature campaign storage.
+26. Compatibility tests distinguish global `save_format_version` semantic compatibility from authored `mission_content_revision` compatibility.
+27. Runtime-persistence tests prove restored IDs remain reserved and cannot collide with later runtime-created objects.
+28. Campaign-progression tests, once campaign state exists, must prove completion consequences are applied exactly once and stale in-mission saves cannot silently load against an already-advanced campaign baseline.
 
-Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, objective complete, audible, supported, restoring, world generation, stable-boundary state, gameplay time, or persistence identity.
+Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, objective complete, audible, supported, restoring, world generation, stable-boundary state, gameplay time, player view pose, or persistence identity.
 
 ---
 
@@ -161,7 +165,7 @@ Protect representative locomotion traces for walk/start/stop, sprint, crouch, ju
 
 Compare semantic results, not private component internals.
 
-Protect accepted mouse-look response separately where needed; do not make event-driven look wait for a gameplay/physics frame simply to fit locomotion trace machinery.
+Protect accepted mouse-look response separately where needed; do not make event-driven look wait for a gameplay/physics frame simply to fit locomotion trace machinery. Also prove the current event-driven view pose can be sampled/captured coherently at a stable gameplay boundary without changing accepted input response.
 
 ## World-session lifetime fixture
 
@@ -192,7 +196,9 @@ Prove:
 - held gameplay state persists only while physically/currently held and permitted;
 - pressed/released gameplay intent exists for one frame only;
 - pause/UI/cutscene/teardown/world-replacement gating clears transient gameplay edges rather than replaying them;
+- a representative edge-dependent gesture (for example hold attack, lose combat-input ownership, release while disabled, resume) is cancelled and requires a fresh initiating press rather than remaining stuck or firing later;
 - mouse look retains accepted response/feel and is not inadvertently quantized/delayed by the gameplay-frame refactor;
+- world gameplay samples the current input-owned view pose coherently during simulation;
 - UI/menu input continues to work when world gameplay simulation is paused.
 
 ## Gameplay-time fixture
@@ -221,7 +227,10 @@ Before mission logic or save capture depends on the path, prove:
 - stale events from torn-down worlds cannot affect replacement;
 - handlers participating in the current drain finish synchronously and cannot suspend/`await` then later pretend to belong to the completed step;
 - an intentionally self-sustaining event/rule loop is caught by a development runaway-cascade guard with a useful trace rather than hanging indefinitely;
-- engine callbacks outside the controlled pass cannot directly race durable semantic state across the stable boundary; representative callbacks enqueue future semantic work instead;
+- engine callbacks outside the controlled pass cannot directly race durable world-semantic state across the stable boundary; representative callbacks enqueue future semantic work instead;
+- input-owned player view pose may change at accepted event cadence without being treated as an alternate world-consequence path;
+- a supported mission-script mutation requested from `_process()`/signal/async context is queued/recorded and becomes authoritative only through the controlled pass;
+- public event/API data uses supported semantic identity/value boundaries rather than requiring mutable private Node references;
 - the current consequence pass completes before the stable gameplay boundary is reported;
 - save requested mid-step occurs only after that true stable boundary.
 
@@ -229,14 +238,16 @@ Do not freeze a broad event/scheduler framework; freeze only these semantics.
 
 ## Semantic-state ownership fixture
 
-As mission facts/objectives/possession/statistics appear, verify representative facts have one owner:
+As mission facts/objectives/possession/statistics/vitality/campaign state appear, verify representative facts have one owner:
 
 - door state comes from door ownership, not mirrored generic facts;
-- actor life/awareness comes from actor/perception ownership;
+- actor life/awareness/vitality comes from actor/perception/vitality ownership as appropriate;
 - possession comes from possession/inventory ownership;
 - objective state comes from objective ownership;
 - run counters come from `MissionRunState`/statistics;
-- mission facts hold mission-defined variables/latched meanings rather than generic mirrors.
+- mission facts hold mission-defined variables/latched meanings rather than generic mirrors;
+- before Phase 12, mission facts do not become storage for campaign-persistent truth;
+- once introduced, campaign-persistent facts come from `CampaignState`.
 
 Where a derived/latched mission fact intentionally duplicates information, test its distinct semantic meaning instead of treating it as the primary system state.
 
@@ -297,9 +308,12 @@ Save/restore is tested as semantic transaction, not dictionary serialization.
 Prove:
 
 - save request may happen during ordinary active/transient gameplay;
-- capture waits only to next stable semantic boundary, not world idle;
+- each pending save request is bound to the `WorldSession` that received it;
+- if restart/load/exit stops that source session before its stable-boundary capture, the pending request is cancelled and **does not capture the replacement world**;
+- if snapshot capture already completed, its detached file write may finish after source-world teardown without reading live world data;
+- capture waits only to the source session's next stable semantic boundary, not world idle;
 - current semantic event/consequence processing has drained first;
-- every owner contributes to one detached in-memory snapshot for the same semantic instant;
+- every owner plus current input-owned player view pose contributes to one detached in-memory snapshot for the same coherent boundary;
 - snapshot contains no live Node/Object/RID/callback/signal/shared mutable runtime Resource references;
 - mutable Arrays/Dictionaries/other data in snapshot are not shared with live gameplay state;
 - after capture, deliberately mutate corresponding live objects/containers and prove snapshot remains unchanged;
@@ -307,7 +321,7 @@ Prove:
 - rapid repeated saves to one slot cannot allow an older requested snapshot to commit over a newer request;
 - quickload uses latest fully committed save and ignores in-progress temporary writes.
 
-Use a deterministic fixture where several systems change around the save request and prove restored result is one completed semantic instant.
+Use a deterministic fixture where several systems and mouse/view pose change around a save request and prove restored result corresponds to one completed semantic instant without quantizing normal look input to the physics tick.
 
 ### Restore
 
@@ -316,13 +330,16 @@ During restore and `after_restore`/world-ready reconciliation, ordinary conseque
 As systems exist, cover:
 
 - header contains `save_format_version`, `mission_id`, `mission_content_revision`;
-- unsupported format/revision refuses clearly;
+- unsupported global save-format version refuses clearly when **semantic interpretation** is incompatible even if the serialized structure still parses;
+- unsupported mission-content revision refuses clearly;
 - an intentionally incompatible structural/spatial mission change is refused when old transforms/state cannot be restored safely;
 - mission restart creates fresh state;
 - save → restore round trip;
 - authored removals before state application to survivors;
-- runtime-persistent recreation/registration before state application;
-- player/door/prop/NPC/objective/fact/script/run-stat state;
+- runtime-persistent recreation/registration/reservation before state application;
+- player transform/velocity/stance/traversal/view pose;
+- door/prop/NPC/objective/fact/script/run-stat state;
+- a representative already-resolved random AI/search choice resumes as the same choice rather than rerolling during restore;
 - no duplicate one-shot rules/objectives/loot/stats/alarms/dialogue/events;
 - `after_restore` cannot emit ordinary gameplay consequences merely because it reconciles state;
 - load/restart/mission-transition application operations do not race one another;
@@ -345,8 +362,12 @@ Once a runtime-created object must survive save/load, prove:
 - unknown saved type fails clearly;
 - enough provenance exists to recreate correct object;
 - semantic state applies only after recreation/registration;
+- restored runtime identities are reserved in the new world;
+- after restore, creating additional runtime objects cannot reuse/collide with restored identities;
 - repeated restore does not duplicate copies;
 - lifecycle obeys world teardown/replacement ownership.
+
+When ordinary save-anywhere can occur during an active runtime-created transient—projectile in flight, thrown inventory tool, arming deployable, timed explosive, active area effect, or similar—also prove one representative direct-restore/reconstruct/normalize policy. A restored state must not silently consume inventory/ammo while dropping the corresponding active effect, nor duplicate the effect.
 
 ## Actor-state compatibility fixture
 
@@ -368,23 +389,44 @@ attack intent
 
 Protect reuse of gameplay-intent, controlled-mutation, gameplay-time, actor, event, world-session, perception, and persistence contracts without locking combat tuning/feel.
 
-## Mission fact/rule fixture
+## Combat vitality/damage fixture
 
-Once rule system exists, cover:
+When Phase 9 direct combat becomes real, prove the smallest semantic player/actor vitality and damage state is the authoritative combat path and survives save/restore.
+
+Phase 10 healing/gas/water/fire/explosion/tool effects must extend that same vitality/damage boundary rather than introducing a replacement health/damage owner. Include at least one regression showing ordinary combat damage produces the same semantic vitality result before and after effect-system generalization.
+
+## Mission fact/rule/script fixture
+
+Once the rule/script system exists, cover:
 
 - fact type/default/scope validation;
 - invalid fact assignment rejection/reporting;
 - facts do not become generic mirrors of system-owned truth;
+- pre-Phase-12 fact scopes do not provide a hidden campaign-persistent owner;
 - deterministic rule ordering relative to event queue;
 - one-shot/repeat behavior;
 - explicit semantic state for delayed/long-running rules;
 - save/load of rule state without coroutine/timer serialization;
+- already-resolved random rule/script choices restore without reroll when their result is durable gameplay truth;
 - runaway event/rule cascade diagnostics;
-- missing entity references report clearly.
+- missing entity references report clearly;
+- a mutation command invoked from an out-of-pass GDScript callback is queued/applied through the controlled semantic pass rather than changing gameplay immediately;
+- public script/event data does not require arbitrary mutable private Node references.
 
 ## Mission-run statistics fixture
 
 Once the first run statistic exists, prove one semantic owner supplies counters/results. Loot collection, and later kills/knockouts/alerts/objectives/time, extend the same ownership instead of accumulating private duplicate counters for later UI scraping.
+
+## Campaign completion / durable progression fixture
+
+Once Phase 12 campaign progression exists, prove:
+
+- an in-mission save records/references enough campaign/mission-start baseline to reconstruct the same derived mission variant;
+- completing a mission applies campaign consequences exactly once;
+- retrying/re-entering the completion path cannot double-apply those consequences;
+- durable campaign advancement and mission-completion state cannot be left half-committed by a simulated write/failure path;
+- after durable completion, an old in-mission quicksave from that mission instance is either invalidated/removed or clearly refused against the advanced campaign baseline;
+- `Continue` cannot ambiguously combine advanced campaign state with a stale in-mission world.
 
 ---
 
@@ -409,10 +451,12 @@ The checklist below is the broad integration pass for changes that could affect 
 - [ ] Move in all four directions/diagonally.
 - [ ] Mouse look and mouse capture/release retain accepted response/feel after input-router changes.
 - [ ] Mouse look does not gain obvious physics-tick quantization/latency merely because gameplay intent is tick-framed.
+- [ ] World gameplay reacts to the current view pose coherently despite event-driven look cadence.
 - [ ] Combined movement/jump/crouch/sprint does not create stale one-frame states.
 - [ ] Pause/UI/cutscene ownership suppresses world gameplay input without breaking UI input or resumed gameplay feel.
 - [ ] Interaction/combat/inventory domains, once present, do not alter ordinary locomotion command semantics.
 - [ ] Press/release actions performed while their gameplay domain is disabled do not fire later on resume.
+- [ ] An armed hold/release gesture cancelled by pause/UI/input-owner change does not remain stuck or fire after resume; a fresh press is required.
 
 ## Pause / world ownership / gameplay time
 
@@ -504,13 +548,15 @@ If the user explicitly reopens player movement/traversal behavior, update automa
 ## Save/load
 
 - [ ] Quicksave can be requested during ordinary active/transient gameplay without waiting for world idle.
-- [ ] Loaded save reflects one coherent instant rather than mixed before/after state.
+- [ ] A quicksave requested immediately before restart/load/exit is either captured from the original world at an allowed boundary or cancelled; it never silently saves the replacement world.
+- [ ] Loaded save reflects one coherent instant including player orientation/view pose rather than mixed before/after state.
+- [ ] Representative resolved AI/random choices resume as the same current choice instead of visibly rerolling on load.
 - [ ] Representative transient/timed states restore coherently and do not advance merely because real time passed during loading.
 - [ ] Loading/`after_restore` does not visibly replay objective/loot/stat/alarm/dialogue consequences.
 - [ ] Repeated rapid saves leave the latest requested successfully committed state as the quicksave.
 - [ ] Quickload never reads an in-progress temporary save.
 - [ ] Application remains coherent when save/load/restart requests happen close together.
-- [ ] Incompatible mission-content revision produces clear refusal rather than partially wrong world.
+- [ ] Incompatible global save semantics or mission-content revision produce clear refusal rather than a partially wrong world.
 - [ ] Failed load reaches coherent recovery state for chosen restore topology.
 - [ ] Failed save attempt preserves previous valid quicksave.
 
@@ -518,7 +564,17 @@ If the user explicitly reopens player movement/traversal behavior, update automa
 
 Before combat becomes LOCKED, playtest one guard, two guards, tight corridor, open room, stealth-to-combat transition, lethal assault, nonlethal assault, and retreat/break contact.
 
+Also verify pause/UI/input ownership while a hold/release combat gesture is armed cancels it cleanly rather than leaving a latent attack.
+
 Subjective combat feel is accepted by the user, not inferred from crude architecture proof/tests.
+
+## Campaign progression
+
+When campaign flow exists:
+
+- [ ] Completing a mission advances consequences once even if the completion path is retried/re-entered.
+- [ ] Continue after completion resumes from the advanced campaign state, not a stale in-mission quicksave.
+- [ ] Attempting to load an invalidated/stale in-mission save after durable campaign advancement gives clear behavior rather than mixing two campaign baselines.
 
 ---
 

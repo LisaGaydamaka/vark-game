@@ -68,6 +68,8 @@ A failed restore may not leak registrations, events, timers, callbacks, shared m
 
 Top-level load, restart, mission transition, and exit operations are application-owned and serialized as exclusive world-transition operations rather than competing subsystem actions.
 
+A pending world-bound operation never silently retargets to a replacement world. In particular, a save request is bound to the `WorldSession` that received it: it either captures that same session at an allowed stable boundary before the session stops, or it is cancelled. Once a detached snapshot has been captured, its file write may finish after the source world has been torn down because the write no longer reads live world state.
+
 ---
 
 # 2. Input ownership
@@ -92,9 +94,11 @@ Gameplay objects must not independently decide whether gameplay input is globall
 
 The strict one-frame-per-tick rule applies to **world gameplay intent**, not to every form of input. One gameplay intent frame belongs to one gameplay simulation tick. Continuous gameplay state such as movement direction or `block_held` may remain true across frames while physically held and permitted. Edge intent such as `interact_pressed`, `attack_pressed`, or `attack_released` exists for that gameplay frame only.
 
-Look input may retain the existing event-driven cadence where required to preserve accepted look response/feel. Menus/UI may likewise process application input independently of whether the mission world is currently simulating. Application ownership still decides whether look or gameplay domains are currently permitted.
+Look input may retain the existing event-driven cadence where required to preserve accepted look response/feel. The player view pose produced by that input is input-owned state and may update at that accepted cadence; world gameplay systems sample the current pose during the controlled simulation step, and a stable-boundary operation such as save capture may synchronously capture the current player view pose with the rest of player state. Preserving this accepted view cadence is not permission for arbitrary world/gameplay consequences to mutate outside the controlled gameplay pass.
 
-When a gameplay-intent domain becomes disabled because of pause, UI ownership, a sequence, teardown, or world replacement, transient edge intent for that domain is cleared rather than stored and replayed later. Resuming gameplay must not produce ghost presses/releases from an inactive period.
+Menus/UI may likewise process application input independently of whether the mission world is currently simulating. Application ownership still decides whether look or gameplay domains are currently permitted.
+
+When a gameplay-intent domain becomes disabled because of pause, UI ownership, a sequence, teardown, or world replacement, transient edge intent for that domain is cleared rather than stored and replayed later. Any incomplete gesture whose completion depends on a future edge in that disabled domain is cancelled; resuming requires a fresh initiating press. This prevents hold/release interactions such as charged attacks from becoming stuck or firing from an edge that occurred while the domain was inactive.
 
 Do not force every future action into one ever-growing locomotion command object.
 
@@ -132,11 +136,13 @@ Before author-facing rules depend on event cascades, add a development-only runa
 
 ## Controlled semantic mutation
 
-Durable world-semantic state becomes authoritative only through the controlled gameplay step/consequence pass.
+Durable world consequences and simulation-owned semantic state become authoritative only through the controlled gameplay step/consequence pass.
 
-Engine/runtime callbacks that occur outside that controlled pass—such as arbitrary signal callbacks, `Timer.timeout`, `call_deferred()`, async continuations, animation callbacks, or `_process()` work—must not independently commit durable gameplay truth in a way that can race the stable boundary. They may update transient presentation or enqueue/record work to be consumed by the next controlled gameplay step.
+Engine/runtime callbacks that occur outside that controlled pass—such as arbitrary signal callbacks, `Timer.timeout`, `call_deferred()`, async continuations, animation callbacks, or `_process()` work—must not independently commit world gameplay truth in a way that can race the stable boundary. They may update transient presentation/input-owned view state or enqueue/record semantic work to be consumed by the next controlled gameplay step.
 
-Do not build a general scheduler to enforce this. Keep the rule semantic: presentation may be asynchronous; durable gameplay truth has one controlled mutation boundary.
+Supported mission-script mutation APIs must preserve the same boundary. Read/query APIs may inspect supported semantic state, but a command requested from `_process()`, a signal callback, an async continuation, or another out-of-pass context queues/records semantic work for a controlled gameplay pass rather than mutating private gameplay Nodes immediately. Event payloads and public APIs should prefer stable semantic IDs and detached typed values over arbitrary mutable Node references.
+
+Do not build a general scheduler to enforce this. Keep the rule semantic: presentation/input sampling may be asynchronous; durable world gameplay truth has one controlled mutation boundary.
 
 ## Gameplay time
 
@@ -145,6 +151,12 @@ Gameplay durations advance from world simulation time, not wall-clock time.
 World simulation time advances only while the application permits that world to simulate. Pausing the ordinary mission world, freezing it for replacement, loading, or spending real-world time outside gameplay does not silently advance guard searches, stagger, mechanisms, mine arming, delayed mission actions, or similar gameplay durations.
 
 When a duration must survive save/load, persist the meaningful semantic progress/remaining duration needed by its owner. Do not serialize engine `Timer` objects, coroutine stacks, signal waits, or wall-clock deadlines as gameplay truth.
+
+## Resolved decisions and randomness
+
+Randomness is allowed where gameplay calls for variation, but restore must not reroll decisions that were already part of gameplay truth when the save was captured.
+
+Once a random choice becomes authoritative state—for example a chosen search point, route variation, or other resolved behavior—save the resolved result or enough semantic state to reconstruct that same result. Future choices that had not yet occurred at the captured boundary may be randomized normally after restore. Deterministic tests may inject a fixed choice/RNG source where useful; Vark does not require a universal replay/RNG framework.
 
 ## Single authoritative state owner
 
@@ -157,9 +169,10 @@ Examples:
 - possession/inventory owns item possession;
 - the objective system owns objective state;
 - mission-run statistics own run counters;
-- mission facts own genuinely mission-defined variables.
+- mission facts own genuinely mission-defined variables;
+- campaign state, once introduced, owns campaign-persistent facts.
 
-Mission facts/rules may query or react to system-owned state, but should not create generic mirrors of state already authoritatively owned elsewhere unless a mission deliberately needs a separate latched/derived fact with distinct meaning.
+Mission facts/rules may query or react to system-owned state, but should not create generic mirrors of state already authoritatively owned elsewhere unless a mission deliberately needs a separate latched/derived fact with distinct meaning. Before a real `CampaignState` exists, mission facts must not quietly become a second temporary owner for campaign-persistent truth.
 
 The canonical semantic simulation boundary is conceptually:
 
@@ -171,9 +184,9 @@ consume one gameplay intent frame
 → reach STABLE GAMEPLAY BOUNDARY
 ```
 
-A stable gameplay boundary means the durable semantic consequences belonging to that completed step have been processed according to the event contract and no uncontrolled callback is allowed to mutate semantic truth between that boundary and a boundary-owned operation such as save capture.
+A stable gameplay boundary means the durable semantic consequences belonging to that completed step have been processed according to the event contract and no uncontrolled callback is allowed to mutate world gameplay truth between that boundary and a boundary-owned operation such as save capture.
 
-Save snapshot capture and other operations that require one coherent instant occur only at this boundary.
+Save snapshot capture and other operations that require one coherent instant occur only at this boundary. Input-owned view pose that intentionally updates at event cadence is sampled synchronously as part of the boundary-owned capture rather than being treated as an uncontrolled world consequence.
 
 This does not require a general scheduler or new gameplay framework. It is a timing/ownership rule so saves, events, rules, and later combat cannot disagree about which gameplay instant they represent.
 
@@ -223,6 +236,8 @@ If a runtime-created object must survive save/load, its save representation need
 - semantic state owned by that object.
 
 When the first real runtime-persistent object establishes a saved type/spawn identifier, that identifier must be semantic and stable across ordinary code/scene renames. An unknown/unsupported saved runtime type fails clearly rather than silently spawning a different object.
+
+Restoring runtime-created persistent objects also reserves their restored identities in that world. Any later runtime-created object must receive an identity that cannot collide with an already-restored or already-allocated runtime identity. A UUID-like/generated identity is sufficient; do not build a global allocator framework merely to satisfy this rule.
 
 Examples may eventually include deployables, mines, projectiles that intentionally persist, or mission-spawned actors/items.
 
@@ -282,13 +297,15 @@ what meaningful state does each owner have?
 
 A save request made during ordinary active gameplay is fulfilled at the next stable gameplay boundary defined by the event/simulation contract.
 
+The request belongs to the source `WorldSession`. If that session is stopped or replaced before capture, the request is cancelled rather than retargeted to another world. If capture already completed, the detached snapshot may continue through encoding/durable write after source-world teardown.
+
 Conceptually:
 
 ```text
-player requests save at any ordinary gameplay time
-→ finish the current semantic simulation/event pass
-→ reach stable gameplay boundary
-→ synchronously capture all save-owning semantic state into one detached in-memory snapshot
+player requests save in WorldSession A
+→ finish A's current semantic simulation/event pass
+→ reach A's stable gameplay boundary
+→ synchronously capture all save-owning semantic state and current player view pose into one detached in-memory snapshot
 → resume ordinary gameplay
 → encode/write that detached snapshot
 ```
@@ -302,6 +319,8 @@ File serialization/write latency must not require keeping the whole gameplay wor
 Pending semantic gameplay facts that belong to the completed simulation step must not be silently lost between state capture and event consequences. Capture after the current deterministic consequence pass has drained rather than serializing an arbitrary half-processed event queue.
 
 Long-running saveable behavior must expose explicit semantic progress/state. A suspended coroutine, pending engine signal, `SceneTreeTimer`, animation callback, or similar runtime continuation is never the sole durable representation of gameplay that must resume correctly after restore.
+
+Once a random/resolved decision is gameplay truth, its resolved semantic result is part of meaningful state when needed for coherent restoration; restore must not reroll it merely because the code that originally chose it runs again.
 
 ## Save-slot commit ordering
 
@@ -324,7 +343,7 @@ validate save header/content compatibility
 → register authored persistent/semantic identities
 → apply removed-authored tombstones/removal set
 → recreate runtime-persistent instances
-→ register runtime persistent/semantic identities
+→ register and reserve runtime persistent/semantic identities
 → apply semantic snapshots to surviving/recreated owners
 → restore player/MissionState/mission-script state
 → resolve/reconcile references and derived state
@@ -364,7 +383,7 @@ mission_id
 mission_content_revision
 ```
 
-`save_format_version` describes the serialization contract.
+`save_format_version` identifies the global Vark save-state schema **and semantic interpretation contract**, not merely the byte/file encoding. Increment/refuse it when globally saved state would otherwise parse successfully but be interpreted with incompatible meaning—for example if the semantic meaning of saved actor, inventory, prop, combat, or other global gameplay state changes incompatibly.
 
 `mission_content_revision` describes the authored mission content against which persistent IDs, semantic references, and restorable spatial/gameplay assumptions were saved.
 
@@ -382,8 +401,8 @@ Ordinary art, geometry, text, or tuning edits that remain semantically save-comp
 During development, the correct simple policy is acceptable:
 
 ```text
-same supported mission revision → load
-different unsupported mission revision → clear warning/refusal
+same supported save format + mission revision → load
+unsupported global save format or mission revision → clear warning/refusal
 ```
 
 Do not build migration machinery before a real migration is required.
@@ -398,11 +417,13 @@ A save request may wait until the next stable gameplay boundary—normally the n
 
 Transient implementation details must not become broad save restrictions.
 
-For traversal, doors, props, AI, combat, and similar transient states, choose explicitly among:
+For traversal, doors, props, AI, combat, projectiles, thrown tools, active area effects, deployable arming, and similar transient states, choose explicitly among:
 
 - direct semantic restoration;
 - reconstruction from semantic state;
 - normalization to a safe equivalent on restore.
+
+A runtime-created object/effect does not avoid restore design merely because it is expected to be short-lived. If it is active at a valid save boundary and its disappearance would make the restored gameplay state semantically wrong—for example consumed ammo with a missing projectile/effect—it needs an explicit restoration/reconstruction/normalization policy.
 
 Disabling save is reserved for states where arbitrary gameplay restoration is genuinely inappropriate, such as a top-level mission transition or deliberately noninteractive sequence. It must not become the routine solution for difficult gameplay-state restoration.
 
@@ -516,7 +537,7 @@ Persistent-ID repair/writeback must respect the same principle: update the autho
 
 A roadmap item is not complete merely because code exists.
 
-Every nontrivial item being implemented must have enough acceptance detail to answer these three questions:
+Every nontrivial item being implemented must have enough acceptance detail to answer these three questions **before implementation begins or as part of the implementation patch**:
 
 ```text
 Done when:
@@ -545,21 +566,25 @@ Before Phase 4 save/restore is considered complete, prove:
 - removed authored objects can be represented if the slice permits permanent removal/collection;
 - actor life-state/body representation does not change persistent actor identity;
 - world teardown/restart/quickload does not leave stale ownership regardless of the chosen restore topology;
+- a pending save request cannot retarget from its source `WorldSession` to a replacement session;
 - overlapping old/restored worlds, if used, cannot both act authoritative or share mutable world state;
 - one gameplay-intent frame has deterministic tick/edge lifetime without forcing accepted look/UI cadence into that tick model;
+- losing an input domain cancels incomplete edge-dependent gestures rather than leaving them armed/stuck;
+- event-driven player view pose and controlled world-semantic mutation coexist without changing accepted look feel;
 - durable semantic mutation, gameplay-time ownership, event ordering/lifecycle semantics, and the stable gameplay boundary are defined;
 - semantic state has one authoritative owner rather than generic mirrored facts;
 - save capture produces one coherent detached snapshot at that boundary and remains unchanged when live state mutates afterward;
 - save-slot commit ordering cannot let an older quicksave overwrite a newer request;
 - restore establishes object existence/removal/runtime recreation before semantic state application;
 - restore reconciliation/`after_restore` completes while ordinary gameplay consequences remain suppressed;
+- save-format compatibility covers incompatible global semantic interpretation changes;
 - mission content revision ownership/bump/refusal policy includes incompatible spatial/semantic changes.
 
 Before Phase 5 stealth hardening is considered complete, additionally prove the crude combat compatibility path against the same actor/input/event/perception/save architecture.
 
-Before Phase 8 production authoring is considered complete, ordinary authored spatial values must have one source of truth and the cold-author workflow must exercise identity/reimport validation.
+Before Phase 8 production authoring is considered complete, ordinary authored spatial values must have one source of truth, mission scripts must route supported mutation through the controlled gameplay boundary, and the cold-author workflow must exercise identity/reimport validation.
 
-Before broad production generalization, inventory/deployables/runtime-created persistent objects must have exercised the persistence model if those features are part of the representative slice.
+Before broad production generalization, inventory/deployables/runtime-created persistent objects must have exercised the persistence model if those features are part of the representative slice, including non-colliding runtime identity after restore and at least one active runtime-created transient when real gameplay can save during it.
 
 ---
 
