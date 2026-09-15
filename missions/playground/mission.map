@@ -1,0 +1,28 @@
+// Game: Vark
+// Format: Valve
+// Generator: TrenchBroom 2026.2 (Build v2026.2 Release Win64)
+// Phase 2 playground: authoritative spatial source.
+// entity 0
+{
+"mapversion" "220"
+"wad" ""
+"classname" "worldspawn"
+// brush 0 - broad floor slab
+{
+( -128 -128 -16 ) ( -128 -127 -16 ) ( -128 -128 -15 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -128 -128 -16 ) ( -128 -128 -15 ) ( -127 -128 -16 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -128 -128 -16 ) ( -127 -128 -16 ) ( -128 -127 -16 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 128 128 0 ) ( 128 129 0 ) ( 129 128 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 128 128 0 ) ( 129 128 0 ) ( 128 128 1 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 128 128 0 ) ( 128 128 1 ) ( 128 129 0 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+// brush 1 - low traversal/reference step
+{
+( 32 -32 0 ) ( 32 -31 0 ) ( 32 -32 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 32 -32 0 ) ( 32 -32 1 ) ( 33 -32 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 32 -32 0 ) ( 33 -32 0 ) ( 32 -31 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 64 32 4 ) ( 64 33 4 ) ( 65 32 4 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 64 32 4 ) ( 65 32 4 ) ( 64 32 5 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 64 32 4 ) ( 64 32 5 ) ( 64 33 4 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+}

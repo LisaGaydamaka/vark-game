@@ -1,0 +1,30 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://missions/playground/world.gd" id="1_world"]
+[ext_resource type="Script" path="res://addons/func_godot/src/map/func_godot_map.gd" id="2_map"]
+[ext_resource type="Resource" path="res://addons/func_godot/func_godot_default_map_settings.tres" id="3_settings"]
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="4_player"]
+
+[sub_resource type="Environment" id="Environment_playground"]
+background_color = Color(0.08, 0.08, 0.08, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.75, 0.75, 0.75, 1)
+
+[node name="Playground" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_playground")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -35, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("4_player")]
+position = Vector3(0, 1.15, 0)
+
+[node name="FuncGodotMap" type="Node3D" parent="."]
+script = ExtResource("2_map")
+local_map_file = "res://missions/playground/mission.map"
+map_settings = ExtResource("3_settings")
+metadata/_custom_type_script = "uid://cwu5cf7a0awcd"

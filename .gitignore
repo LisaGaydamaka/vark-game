@@ -5,3 +5,9 @@
 
 # TrenchBroom editor autosaves are generated recovery files, not authored mission source.
 /maps/autosave/
+/missions/**/autosave/
+
+# Mission-package map import sidecars are generated Godot/FuncGodot metadata.
+# Existing tracked top-level maps/*.map.import sidecars stay tracked until the
+# dedicated reimport-stability work decides their migration policy.
+/missions/**/*.map.import

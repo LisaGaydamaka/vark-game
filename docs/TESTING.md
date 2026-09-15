@@ -137,7 +137,7 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 
 Expected result: nonzero exit code and intentional failure reported.
 
-The application suite verifies the configured F5 application entry point, no-world main-menu startup, separate New Game and curated Development Launch flows, selected development-target launch through the real lifecycle/input path, the real look-sensitivity setting across replacement, menu/quit wiring, current development world/player/UI ownership once gameplay starts, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
+The application suite verifies the configured F5 application entry point, no-world main-menu startup, separate New Game and curated Development Launch flows, selected development-target launch through the real lifecycle/input path, package-local Playground source/build wiring, the real look-sensitivity setting across replacement, menu/quit wiring, current development world/player/UI ownership once gameplay starts, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
 
 The movement runner currently:
 
@@ -182,9 +182,15 @@ The only current exposed setting is look sensitivity. The regression changes the
 
 ## Development launch route
 
-The main menu has a separate development-only launch panel backed by curated label/scene-path pairs owned by `VarkApplication`. Production currently exposes only `VarkTest`; this is deliberately not a `MissionDefinition`, mission package, arbitrary file picker, or automatic scene discovery mechanism.
+The main menu has a separate development-only launch panel backed by curated label/scene-path pairs owned by `VarkApplication`. Production currently exposes `VarkTest` and the real `Playground` mission-package target; this remains deliberately separate from `MissionDefinition`, arbitrary file picking, and automatic scene discovery.
 
-For deterministic selection coverage, the application test configures a second test-only target before the real application enters the tree. The regression proves both targets appear in the selector, invalid target indices create no session, an overlapping top-level operation blocks development launch, selecting the alternate target launches that exact `PackedScene` through the normal `WorldSession`/input path, exit returns to the persistent menu, Back returns to menu actions, and New Game still launches the default `VarkTest` path afterward. The alternate fixture uses the real `Player.tscn` so the launch path exercises the same semantic player marker and input binding rather than a fake session API.
+For deterministic selection coverage, the application test adds one test-only `Alternate Fixture` target before the real application enters the tree. The regression proves all three targets appear in the selector, invalid target indices create no session, an overlapping top-level operation blocks development launch, Playground launches through the normal `WorldSession`/input path, selecting the alternate target still launches that exact `PackedScene`, exit returns to the persistent menu, Back returns to menu actions, and New Game still launches the default `VarkTest` path afterward. Both non-default launch targets use the real `Player.tscn` so the launch path exercises the semantic player marker and input binding rather than a fake session API.
+
+## Mission package convention and playground
+
+`missions/playground/` is the first real mission package. `mission.map` is the authoritative TrenchBroom spatial source; `world.tscn` is the current launchable Godot wrapper; and `world.gd` is temporary technical bootstrap glue that asks FuncGodot to build the package-local map before the session enters ordinary play. Mission-package `.map.import` sidecars and TrenchBroom autosaves are generated/non-source and ignored. The existing tracked top-level `maps/*.map.import` policy is unchanged until the dedicated reimport-stability work decides that migration.
+
+The application regression launches Playground through the production Development Launch route and asserts application/session/input ownership, the real Player, the wrapper scene path, the package-local map source path, and generated `entity_0_worldspawn`. This proves the package/source wiring only. It does not claim `MissionDefinition`, persistent identity, registry, Vark point-entity authoring, or reimport stability before the corresponding Phase 2 items.
 
 ## World-session lifecycle and replacement
 
@@ -272,7 +278,7 @@ These requirements become active when corresponding systems are implemented.
 
 Phase 1.1–1.6 now prove application boot/menu ownership, current session identity once gameplay starts, one exclusive top-level-operation guard, non-playing build, explicit entry to play, explicit pause/resume distinct from lifecycle stop, synchronous teardown, restart/ordinary replacement, exit back to the application menu, fresh runtime state, stale-work rejection, separation between persistent application/authored configuration and session runtime state, application-owned gameplay/look input permission with stale intent/gesture cancellation, exclusive application/UI/cutscene ownership, world-session gameplay-time pause semantics, an application-owned setting surviving world replacement, and curated development-target selection through the same lifecycle/input path.
 
-Future registries, semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive. Phase 1 does **not** need a simultaneous old/candidate world fixture.
+Phase 2.1 now adds one package-local TrenchBroom source/wrapper to that already-proven lifetime path. Future registries, semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive. Phase 1 does **not** need a simultaneous old/candidate world fixture.
 
 When Phase 4 implements real restore, extend this fixture to the chosen restore topology. If old and restored worlds overlap in memory, prove their mutable world-scoped services/resources remain isolated and they never both produce authoritative gameplay consequences. If restore uses sole-world replacement after prevalidation, prove failure reaches the defined coherent recovery state.
 
@@ -315,7 +321,7 @@ As real timed gameplay appears, extend this fixture to prove guard search, mecha
 
 ## Persistent-ID/reimport fixture
 
-Prove persistent IDs are unique, ordinary map move/reorder/reimport preserves identity, duplication receives distinct identity, generated/repaired IDs persist to authoritative source, repeated validation does not rewrite valid source or churn IDs, repair does not create import/rewrite loops, stale generated data cannot overwrite newer authored edits, semantic `content_id` duplicates are rejected, and missing semantic references report clearly.
+Use the real `missions/playground/mission.map` source as the initial Phase 2 authoring fixture. Prove persistent IDs are unique, ordinary map move/reorder/reimport preserves identity, duplication receives distinct identity, generated/repaired IDs persist to authoritative source, repeated validation does not rewrite valid source or churn IDs, repair does not create import/rewrite loops, stale generated data cannot overwrite newer authored edits, semantic `content_id` duplicates are rejected, and missing semantic references report clearly.
 
 ## Gameplay-event / controlled-mutation / stable-boundary fixture
 
@@ -558,6 +564,7 @@ When `Manual:` requires a specialized validator, name the role explicitly (user/
 - [ ] Settings exposes only working controls; current Look Sensitivity visibly changes mouse-look response after gameplay start.
 - [ ] New Game enters the current default development world normally.
 - [ ] Development Launch opens the curated target selector and launching the selected target enters gameplay through the same application-owned world path.
+- [ ] Development Launch → Playground loads the package-local zebra floor/reference step and real Player normally.
 - [ ] Returning to the application no-world state shows the menu coherently rather than leaving an input/world orphan.
 - [ ] Quit from the main menu closes the application normally on the supported Windows x64 target.
 
@@ -737,7 +744,7 @@ The current CI barrier:
 - installs Godot `4.7.2` without .NET or export templates;
 - performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
 - runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
-- executes the independent application menu/development-launch/ownership/lifecycle/input/pause-time suite and movement suite through that entry point;
+- executes the independent application menu/development-launch/mission-package/ownership/lifecycle/input/pause-time suite and movement suite through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;
 - fails when the all-tests process returns nonzero.
 

@@ -86,10 +86,11 @@ func run(
 		and not menu_actions.visible
 		and development_launch_panel.visible
 		and not settings_panel.visible
-		and development_target_selector.get_item_count() == 2
+		and development_target_selector.get_item_count() == 3
 		and development_target_selector.get_item_text(0) == "VarkTest"
-		and development_target_selector.get_item_text(1) == "Alternate Fixture",
-		"Development Launch exposes the curated target selector inside persistent application UI"
+		and development_target_selector.get_item_text(1) == "Playground"
+		and development_target_selector.get_item_text(2) == "Alternate Fixture",
+		"Development Launch exposes curated production and test targets inside persistent application UI"
 	)
 
 	assert_true.call(
@@ -118,6 +119,57 @@ func run(
 	development_target_selector.select(1)
 	development_launch_start_button.pressed.emit()
 	await tree.process_frame
+	var playground_session: Node = application.get("current_session") as Node
+	var playground_world: Node = application.get("current_world") as Node
+	var playground_player: Node = application.get("current_player") as Node
+	var playground_scene: PackedScene = null
+	var playground_map: Node = null
+	if playground_session != null:
+		playground_scene = playground_session.get("world_scene") as PackedScene
+	if playground_world != null:
+		playground_map = playground_world.get_node_or_null("FuncGodotMap")
+	assert_true.call(
+		playground_session != null
+		and playground_world != null
+		and playground_world.name == &"Playground"
+		and playground_scene != null
+		and playground_scene.resource_path == "res://missions/playground/world.tscn"
+		and playground_player != null
+		and playground_player.is_in_group(&"vark_player")
+		and boundary.get("current_player") == playground_player
+		and int(application.call("get_current_session_state")) == WorldSession.State.PLAYING
+		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.GAMEPLAY
+		and not main_menu.visible
+		and bool(boundary.get("gameplay_enabled"))
+		and bool(boundary.get("look_enabled")),
+		"Mission-package Playground launches through the normal world-session/input path"
+	)
+	assert_true.call(
+		playground_map != null
+		and str(playground_map.get("local_map_file"))
+		== "res://missions/playground/mission.map"
+		and playground_map.get_node_or_null("entity_0_worldspawn") != null,
+		"Playground builds its package-local authoritative TrenchBroom worldspawn before gameplay"
+	)
+
+	var exited_playground: bool = bool(application.call("exit_current_world"))
+	await tree.process_frame
+	assert_true.call(
+		exited_playground
+		and application.get("current_session") == null
+		and application.get("current_world") == null
+		and application.get("current_player") == null
+		and main_menu.visible
+		and menu_actions.visible
+		and not development_launch_panel.visible,
+		"Exiting the Playground returns to the same application-owned main menu"
+	)
+
+	development_launch_button.pressed.emit()
+	await tree.process_frame
+	development_target_selector.select(2)
+	development_launch_start_button.pressed.emit()
+	await tree.process_frame
 	var development_session: Node = application.get("current_session") as Node
 	var development_world: Node = application.get("current_world") as Node
 	var development_scene: PackedScene = null
@@ -131,11 +183,8 @@ func run(
 		and development_scene.resource_path
 		== "res://tests/application/fixtures/development_alternate_world.tscn"
 		and int(application.call("get_current_session_state")) == WorldSession.State.PLAYING
-		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.GAMEPLAY
-		and not main_menu.visible
-		and bool(boundary.get("gameplay_enabled"))
-		and bool(boundary.get("look_enabled")),
-		"Development Launch starts the selected target through the normal world-session/input path"
+		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.GAMEPLAY,
+		"Development Launch still starts the exact selected target rather than a hard-coded world"
 	)
 
 	var exited_development_target: bool = bool(application.call("exit_current_world"))
