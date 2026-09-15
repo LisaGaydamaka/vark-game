@@ -8,6 +8,9 @@ const SessionWorkProbe = preload("res://tests/application/session_work_probe.gd"
 const InputBoundaryRegressions = preload(
 	"res://tests/application/input_boundary_regressions.gd"
 )
+const PauseArbitrationRegressions = preload(
+	"res://tests/application/pause_arbitration_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -98,6 +101,13 @@ func _run_tests() -> void:
 		Callable(self, "_assert_true")
 	)
 
+	var pause_regressions: RefCounted = PauseArbitrationRegressions.new()
+	await pause_regressions.run(
+		self,
+		application,
+		Callable(self, "_assert_true")
+	)
+
 	var isolated_session: Node = WorldSession.new()
 	isolated_session.name = "IsolatedWorldSession"
 	get_root().add_child(isolated_session)
@@ -112,14 +122,27 @@ func _run_tests() -> void:
 		isolated_built
 		and int(isolated_session.get("state")) == WorldSession.State.READY
 		and isolated_world != null
-		and not isolated_world.can_process(),
-		"WorldSession builds a non-playing READY world"
+		and not isolated_world.can_process()
+		and is_zero_approx(float(isolated_session.call("get_gameplay_time_seconds"))),
+		"WorldSession builds a non-playing READY world with fresh gameplay time"
 	)
 	_assert_true(
 		bool(isolated_session.call("begin_play"))
 		and int(isolated_session.get("state")) == WorldSession.State.PLAYING
 		and isolated_world.can_process(),
 		"WorldSession enters PLAYING only through explicit lifecycle permission"
+	)
+	_assert_true(
+		bool(isolated_session.call("pause_gameplay"))
+		and int(isolated_session.get("state")) == WorldSession.State.PAUSED
+		and not isolated_world.can_process(),
+		"WorldSession pauses ordinary world processing through an explicit PAUSED state"
+	)
+	_assert_true(
+		bool(isolated_session.call("resume_gameplay"))
+		and int(isolated_session.get("state")) == WorldSession.State.PLAYING
+		and isolated_world.can_process(),
+		"WorldSession resumes PAUSED gameplay without rebuilding the world"
 	)
 	_assert_true(
 		bool(isolated_session.call("stop_gameplay"))
@@ -162,6 +185,7 @@ func _run_tests() -> void:
 	_assert_true(
 		resumed
 		and int(application.call("get_current_session_state")) == WorldSession.State.PLAYING
+		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.GAMEPLAY
 		and current_world.can_process()
 		and timer_hits == ["timer"],
 		"Application resumes the stopped session without recreating it"
@@ -255,6 +279,7 @@ func _run_tests() -> void:
 		and application.get("current_world") == null
 		and application.get("current_player") == null
 		and int(application.call("get_current_session_id")) == 0
+		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.MENU
 		and not bool(application.call("is_current_session", exiting_session_id))
 		and world_host.get_child_count() == 0
 		and application.get("current_ui") == ui_root,

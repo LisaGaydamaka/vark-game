@@ -10,6 +10,7 @@ enum State {
 	BUILDING,
 	READY,
 	PLAYING,
+	PAUSED,
 	STOPPED,
 	TEARING_DOWN,
 }
@@ -20,6 +21,16 @@ var world_scene: PackedScene = null
 var world: Node = null
 var player: Node = null
 var state: int = State.EMPTY
+var gameplay_time_seconds: float = 0.0
+
+
+func _physics_process(delta: float) -> void:
+	if state == State.PLAYING:
+		gameplay_time_seconds += delta
+
+
+func get_gameplay_time_seconds() -> float:
+	return gameplay_time_seconds
 
 
 func build(new_session_id: int, scene: PackedScene) -> bool:
@@ -29,6 +40,7 @@ func build(new_session_id: int, scene: PackedScene) -> bool:
 	session_id = new_session_id
 	world_scene = scene
 	state = State.BUILDING
+	gameplay_time_seconds = 0.0
 	process_mode = Node.PROCESS_MODE_DISABLED
 
 	world = world_scene.instantiate()
@@ -53,8 +65,26 @@ func begin_play() -> bool:
 	return true
 
 
-func stop_gameplay() -> bool:
+func pause_gameplay() -> bool:
 	if state != State.PLAYING or world == null:
+		return false
+
+	state = State.PAUSED
+	process_mode = Node.PROCESS_MODE_DISABLED
+	return true
+
+
+func resume_gameplay() -> bool:
+	if state != State.PAUSED or world == null:
+		return false
+
+	process_mode = Node.PROCESS_MODE_INHERIT
+	state = State.PLAYING
+	return true
+
+
+func stop_gameplay() -> bool:
+	if (state != State.PLAYING and state != State.PAUSED) or world == null:
 		return false
 
 	process_mode = Node.PROCESS_MODE_DISABLED
@@ -78,6 +108,7 @@ func teardown() -> void:
 	player = null
 	world_scene = null
 	session_id = 0
+	gameplay_time_seconds = 0.0
 	state = State.EMPTY
 
 

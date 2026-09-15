@@ -73,6 +73,7 @@ The project currently contains:
 - existing graybox/test maps
 - an application root with explicit current-world/session ownership
 - an application-owned gameplay/look input boundary with tick-framed locomotion intent and event-cadence view pose
+- application-owned exclusive control modes with coherent world pause and world-session gameplay time
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -81,7 +82,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: complete application flow/pause-time arbitration, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: complete player-facing application/menu/development-launch flow, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -261,7 +262,7 @@ save requested in WorldSession A
 → encode/write only from that snapshot
 ```
 
-A pending save request is cancelled if its source session stops before capture; it never retargets to the replacement session. Once the detached snapshot exists, the write may finish after source-world teardown.
+A pending save request is cancelled if its source session stops before capture; it never retargets to the replacement session. Once the detached snapshot exists, the write may finish after the source world has been torn down.
 
 The snapshot contains no live Nodes/RIDs/callbacks/shared mutable gameplay containers or shared mutable runtime Resources. Mutating live gameplay after capture must not mutate the snapshot.
 
@@ -493,7 +494,7 @@ World-scoped Nodes/services are owned beneath the `WorldSession`, so their timer
 
 **Manual:** passed — the user confirmed on Windows x64 that F5 still starts the current `VarkTest` world normally and ordinary movement/mouse-look startup and response feel unchanged after the session wrapper.
 
-## 1.3 Gameplay-input boundary, domains, view pose, and frame lifetime `[~]`
+## 1.3 Gameplay-input boundary, domains, view pose, and frame lifetime `[x]`
 
 Refactor so application ownership is outside locomotion.
 
@@ -521,11 +522,11 @@ Continuous movement/sprint may resume from current physical input when the gamep
 
 **Done when:** the production F5 path has one application-owned gameplay/look boundary; locomotion receives at most one semantic command frame per physics tick; disabled gameplay produces neutral intent without stale edge replay and cancels the representative incomplete locomotion gesture; event-driven look remains independent of gameplay-tick cadence; and the application can sample a detached current view pose without changing accepted movement/look behavior.
 
-**Automated:** the application suite verifies production player/boundary binding, one command sample per physics frame, continuous held movement/sprint versus one-frame jump press intent, disabled-domain neutral intent, continuous-state resume without replaying a held edge gesture, release-plus-fresh-press recovery, explicit airborne-mantle gesture cancellation, event-cadence mouse-look routing, independent look gating, and detached view-pose sampling. The authoritative all-tests barrier must also keep the existing movement/traversal behavior traces green in post-push CI.
+**Automated:** passed — the application suite verifies production player/boundary binding, one command sample per physics frame, continuous held movement/sprint versus one-frame jump press intent, disabled-domain neutral intent, continuous-state resume without replaying a held edge gesture, release-plus-fresh-press recovery, explicit airborne-mantle gesture cancellation, event-cadence mouse-look routing, independent look gating, detached view-pose sampling, and the authoritative all-tests barrier remained green.
 
-**Manual:** Windows x64 user/playtester — press F5, briefly move/sprint/crouch/jump and use representative traversal, and confirm accepted movement response remains unchanged; use mouse look and confirm there is no obvious physics-tick quantization/latency; then press Escape and confirm the accepted mouse-release behavior still works.
+**Manual:** passed — the user confirmed on Windows x64 that F5 locomotion/traversal and mouse-look response remain accepted after the input-boundary refactor and Escape still releases the mouse normally.
 
-## 1.4 Pause/UI/cutscene input, simulation, and gameplay-time ownership `[ ]`
+## 1.4 Pause/UI/cutscene input, simulation, and gameplay-time ownership `[~]`
 
 Define arbitration between gameplay, pause, inventory/objectives/map, cutscenes/sequences, and menus.
 
@@ -536,6 +537,16 @@ Define one explicit pause simulation policy: ordinary gameplay simulation and ga
 Do not implement meaningful gameplay durations from wall-clock time. Search durations, mechanism progress, stagger, delayed gameplay actions, and similar future state must be based on simulation-owned time/progress.
 
 Mouse capture/release and resumed gameplay state must restore correctly without stale gameplay edges or partially armed hold/release gestures.
+
+The application now owns one explicit control mode for gameplay, pause menu, inventory, objectives, map, cutscene, and menu ownership. `GAMEPLAY` is the only mode that permits ordinary `WorldSession` processing plus gameplay/look input. Every current exclusive application-owned mode pauses the session subtree, suppresses gameplay/look input, releases mouse capture through the existing look gate, and leaves persistent application/UI processing and application input live. No special world-simulation exception exists yet; a future sequence may add one only as an explicit application-owned exception when real sequence content proves it is needed.
+
+`WorldSession` now distinguishes `PAUSED` from lifecycle `STOPPED`. It owns monotonic gameplay time in seconds and advances that time only from permitted `PLAYING` physics steps. Pausing therefore freezes player/world processing, session-owned timer work, and gameplay time together without globally pausing the application tree. Resume restores session processing first and then gameplay/look input, so the 1.3 stale-edge/gesture rules remain authoritative across pause ownership changes.
+
+**Done when:** application control ownership can move from gameplay to pause/menu/UI/cutscene modes without leaking world input; ordinary world processing and session gameplay time freeze together while application/UI processing continues; resuming restores world simulation/input coherently without replaying an edge-dependent gesture; and lifecycle stop/restart/transition remains separate from user-facing pause.
+
+**Automated:** the application suite covers direct `WorldSession` `PLAYING ↔ PAUSED` behavior, gameplay-time advancement only while `PLAYING`, all current exclusive control modes mapping to paused world/input ownership, persistent application/UI input and timer work while paused, frozen player pose/session timer/gameplay time during pause, rejection of world-input re-enable while application control is exclusive, held-jump cancellation/no replay on resume, resumed session timer/gameplay time, and the existing lifecycle/input/movement barriers. The authoritative all-tests barrier must remain green in post-push CI.
+
+**Manual:** Windows x64 user/playtester — press F5 and confirm ordinary startup, movement/traversal, and mouse-look response still feel unchanged. No player-facing pause/inventory/map/menu control is introduced until `1.5`/later UI work, so 1.4's actual pause/time/arbitration behavior is deterministic automated coverage at this step.
 
 ## 1.5 Minimal application/menu shell `[ ]`
 
@@ -742,7 +753,7 @@ Snapshot data must not retain live Nodes/Objects/RIDs/callbacks/signals/shared m
 
 ### Save-slot ordering
 
-Use one serialized writer per logical slot or a monotonic save generation so an older request cannot commit after a newer one. F9-equivalent load reads the latest fully committed save, never a temporary/in-progress write.
+Use one serialized writer per logical slot or a monotonic save generation so an older request cannot commit after a newer request. F9-equivalent load reads the latest fully committed save, never a temporary/in-progress write.
 
 ### Restore topology
 
@@ -1384,24 +1395,23 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `1.3` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms F5 locomotion/traversal and event-cadence mouse look still match accepted response and Escape still releases the mouse; reconcile `1.3` to `[x]` during the next authorized patch.
-2. Implement `1.4` pause/UI/cutscene arbitration and gameplay-time ownership on the proven input/session boundary.
-3. Complete the minimal application/menu and development-launch work in `1.5`–`1.6` only after those ownership boundaries are proven.
-4. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
-5. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-6. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-7. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-8. Phase 4 crude hostile compatibility.
-9. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-10. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-11. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-12. early cold-author review.
-13. Phase 9 establish real vitality/damage ownership while prototyping combat.
-14. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-15. Phase 11 stabilize **world/gameplay** production APIs only.
-16. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-17. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-18. production scaling/handoff.
+1. Finish `1.4` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms normal F5 startup/movement/traversal/mouse-look feel is unchanged; reconcile `1.4` to `[x]` during the next authorized patch.
+2. Implement the minimal application/menu and development-launch work in `1.5`–`1.6` on the proven lifecycle/input/pause-time ownership boundaries.
+3. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
+4. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+5. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+6. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+7. Phase 4 crude hostile compatibility.
+8. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+9. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+10. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+11. early cold-author review.
+12. Phase 9 establish real vitality/damage ownership while prototyping combat.
+13. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+14. Phase 11 stabilize **world/gameplay** production APIs only.
+15. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+16. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+17. production scaling/handoff.
 
 The most important sequencing rules are:
 

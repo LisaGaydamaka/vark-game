@@ -14,6 +14,17 @@ enum TopLevelOperation {
 }
 
 
+enum ControlMode {
+	GAMEPLAY,
+	PAUSE_MENU,
+	INVENTORY,
+	OBJECTIVES,
+	MAP,
+	CUTSCENE,
+	MENU,
+}
+
+
 @export var default_world_scene: PackedScene
 
 @onready var input_boundary: ApplicationInputBoundary = $InputBoundary
@@ -25,6 +36,7 @@ var current_world: Node = null
 var current_player: Node = null
 var current_ui: CanvasLayer = null
 var active_top_level_operation: int = TopLevelOperation.NONE
+var control_mode: int = ControlMode.MENU
 
 var _last_session_id: int = 0
 
@@ -52,6 +64,23 @@ func is_current_session(session_id: int) -> bool:
 		and current_session != null
 		and session_id == int(current_session.get("session_id"))
 	)
+
+
+func get_control_mode() -> int:
+	return control_mode
+
+
+func is_world_paused() -> bool:
+	return (
+		current_session != null
+		and get_current_session_state() == WORLD_SESSION_SCRIPT.State.PAUSED
+	)
+
+
+func get_gameplay_time_seconds() -> float:
+	if current_session == null:
+		return 0.0
+	return float(current_session.call("get_gameplay_time_seconds"))
 
 
 func get_current_view_pose() -> Dictionary:
@@ -82,15 +111,35 @@ func has_active_top_level_operation() -> bool:
 	return active_top_level_operation != TopLevelOperation.NONE
 
 
+func set_control_mode(mode: int) -> bool:
+	if not _is_valid_control_mode(mode):
+		return false
+	if mode == ControlMode.GAMEPLAY:
+		return _enter_gameplay_control()
+	return _enter_application_control(mode)
+
+
 func set_gameplay_input_enabled(enabled: bool) -> bool:
-	if enabled and get_current_session_state() != WORLD_SESSION_SCRIPT.State.PLAYING:
+	if (
+		enabled
+		and (
+			get_current_session_state() != WORLD_SESSION_SCRIPT.State.PLAYING
+			or control_mode != ControlMode.GAMEPLAY
+		)
+	):
 		return false
 	input_boundary.set_gameplay_enabled(enabled)
 	return true
 
 
 func set_look_input_enabled(enabled: bool) -> bool:
-	if enabled and get_current_session_state() != WORLD_SESSION_SCRIPT.State.PLAYING:
+	if (
+		enabled
+		and (
+			get_current_session_state() != WORLD_SESSION_SCRIPT.State.PLAYING
+			or control_mode != ControlMode.GAMEPLAY
+		)
+	):
 		return false
 	input_boundary.set_look_enabled(enabled)
 	return true
@@ -100,11 +149,19 @@ func stop_current_world() -> bool:
 	if current_session == null:
 		return false
 
+	var previous_mode: int = control_mode
 	_set_world_input_domains(false)
 	var stopped: bool = bool(current_session.call("stop_gameplay"))
-	if not stopped:
+	if stopped:
+		control_mode = ControlMode.MENU
+		return true
+
+	if (
+		previous_mode == ControlMode.GAMEPLAY
+		and get_current_session_state() == WORLD_SESSION_SCRIPT.State.PLAYING
+	):
 		_set_world_input_domains(true)
-	return stopped
+	return false
 
 
 func start_current_world() -> bool:
@@ -113,6 +170,7 @@ func start_current_world() -> bool:
 
 	var started: bool = bool(current_session.call("begin_play"))
 	if started:
+		control_mode = ControlMode.GAMEPLAY
 		_set_world_input_domains(true)
 	return started
 
@@ -198,6 +256,7 @@ func _install_world(scene: PackedScene) -> bool:
 		_teardown_current_session()
 		return false
 
+	control_mode = ControlMode.GAMEPLAY
 	_set_world_input_domains(true)
 	return true
 
@@ -209,9 +268,14 @@ func _teardown_current_session() -> void:
 	if current_session == null:
 		current_world = null
 		current_player = null
+		control_mode = ControlMode.MENU
 		return
 
-	if int(current_session.get("state")) == WORLD_SESSION_SCRIPT.State.PLAYING:
+	var session_state: int = int(current_session.get("state"))
+	if (
+		session_state == WORLD_SESSION_SCRIPT.State.PLAYING
+		or session_state == WORLD_SESSION_SCRIPT.State.PAUSED
+	):
 		current_session.call("stop_gameplay")
 
 	current_session.call("teardown")
@@ -222,6 +286,7 @@ func _teardown_current_session() -> void:
 	current_session = null
 	current_world = null
 	current_player = null
+	control_mode = ControlMode.MENU
 
 
 func _sync_current_references() -> void:
@@ -236,6 +301,57 @@ func _sync_current_references() -> void:
 		current_world != null and current_player != null,
 		"A built Vark world session must expose its world and player."
 	)
+
+
+func _enter_gameplay_control() -> bool:
+	if current_session == null:
+		return false
+
+	var session_state: int = get_current_session_state()
+	if session_state == WORLD_SESSION_SCRIPT.State.PAUSED:
+		if not bool(current_session.call("resume_gameplay")):
+			return false
+	elif session_state != WORLD_SESSION_SCRIPT.State.PLAYING:
+		return false
+
+	control_mode = ControlMode.GAMEPLAY
+	_set_world_input_domains(true)
+	return true
+
+
+func _enter_application_control(mode: int) -> bool:
+	if mode == ControlMode.GAMEPLAY:
+		return false
+
+	if current_session == null:
+		if mode != ControlMode.MENU:
+			return false
+		control_mode = mode
+		_set_world_input_domains(false)
+		return true
+
+	var session_state: int = get_current_session_state()
+	if session_state == WORLD_SESSION_SCRIPT.State.PLAYING:
+		_set_world_input_domains(false)
+		if not bool(current_session.call("pause_gameplay")):
+			if control_mode == ControlMode.GAMEPLAY:
+				_set_world_input_domains(true)
+			return false
+	elif session_state == WORLD_SESSION_SCRIPT.State.PAUSED:
+		_set_world_input_domains(false)
+	elif session_state == WORLD_SESSION_SCRIPT.State.STOPPED:
+		if mode != ControlMode.MENU:
+			return false
+		_set_world_input_domains(false)
+	else:
+		return false
+
+	control_mode = mode
+	return true
+
+
+func _is_valid_control_mode(mode: int) -> bool:
+	return mode >= ControlMode.GAMEPLAY and mode <= ControlMode.MENU
 
 
 func _set_world_input_domains(enabled: bool) -> void:

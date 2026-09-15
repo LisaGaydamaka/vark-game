@@ -2,6 +2,9 @@ class_name ApplicationInputBoundary
 extends Node
 
 
+signal application_input_received(event: InputEvent)
+
+
 var current_player: Node = null
 var gameplay_enabled: bool = false
 var look_enabled: bool = false
@@ -108,6 +111,10 @@ func sample_locomotion_command() -> PlayerCommand:
 
 
 func route_input_event(event: InputEvent) -> void:
+	# Application/UI input remains live independently of world gameplay
+	# simulation. Concrete UI decides whether a delivered event is relevant.
+	application_input_received.emit(event)
+
 	# Escape remains application input. It is available even when world gameplay
 	# or look input is disabled, and preserves the accepted mouse-release action.
 	if (

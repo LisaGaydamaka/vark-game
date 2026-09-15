@@ -137,7 +137,7 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 
 Expected result: nonzero exit code and intentional failure reported.
 
-The application suite verifies the configured F5 application entry point, current development world/player/UI ownership, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/stop/resume, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, and the application-owned gameplay/look input boundary including intent-frame/view-pose lifetime.
+The application suite verifies the configured F5 application entry point, current development world/player/UI ownership, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
 
 The movement runner currently:
 
@@ -176,7 +176,7 @@ The real `Application.tscn` is instantiated through the application regression s
 
 ## World-session lifecycle and replacement
 
-The production `WorldSession` path is exercised directly and through the application. A session builds with processing disabled in `READY`, enters `PLAYING` only through explicit permission, stops coherently in `STOPPED`, and tears down to `EMPTY` with world/player/session references invalidated. The application can stop/resume the current session, restart or mission-transition through stop → synchronous teardown → fresh replacement, and exit to a coherent no-world state while persistent UI remains application-owned.
+The production `WorldSession` path is exercised directly and through the application. A session builds with processing disabled in `READY`, enters `PLAYING` only through explicit permission, may enter explicit `PAUSED` without becoming lifecycle-stopped, stops coherently in `STOPPED`, and tears down to `EMPTY` with world/player/session references invalidated. The application can pause/resume the current session, stop/start it for lifecycle work, restart or mission-transition through stop/teardown/fresh replacement, and exit to a coherent no-world state while persistent UI remains application-owned.
 
 The lifecycle regression attaches representative `Timer` and deferred work beneath the real session owner. A stopped session freezes the timer; restarting tears the old session down before yielding, and neither the old timer nor deferred callback can fire afterward. A control probe under the current replacement proves the same work executes normally while its session is alive. The replacement receives a fresh runtime world instance and session ID while reusing the authored `PackedScene` only as configuration, so runtime metadata/state does not leak through the shared authored resource or persistent application owner.
 
@@ -189,6 +189,14 @@ The production F5 application path binds the current real player to one persiste
 The application regression proves continuous movement/sprint state can remain held across gameplay frames while a fresh jump press exists for one gameplay frame only. A disabled gameplay domain produces a neutral command; on resume, continuous movement/sprint reflects current physical state while a jump gesture held across domain loss remains suppressed until release and a fresh press. Domain loss also clears the player's representative buffered airborne-mantle gesture. The current locomotion command does not invent a release edge that locomotion does not consume; as interaction/combat/inventory actions with meaningful pressed/released semantics arrive, their domain fixtures must extend this same one-frame edge/cancellation contract rather than expanding `PlayerCommand` into their owner.
 
 Look input remains event-driven through the application boundary and is not delayed to the physics tick. The regression applies mouse motion and observes the input-owned view pose immediately, verifies disabling the look domain prevents view mutation, and verifies application view-pose sampling returns detached value-owned data. Escape remains application input for the accepted mouse-release behavior. Existing movement/traversal traces remain the objective behavior barrier for unchanged controller response.
+
+## Application control arbitration and gameplay time
+
+The application now exposes explicit exclusive control modes for gameplay, pause menu, inventory, objectives, map, cutscene, and menu ownership. The regression drives every non-gameplay mode through the real application/session/input path and proves they all place the current session in `PAUSED`, disable gameplay/look input, prevent manual re-enabling of those world domains, and leave the world subtree unable to process. Returning to `GAMEPLAY` resumes the same session before restoring gameplay/look input.
+
+Application/UI input remains live outside the paused session: the input boundary delivers application events while gameplay/look are disabled, and a representative timer under persistent `UIRoot` completes while an equivalent session-owned timer remains frozen. The fixture also proves player pose and the world-session gameplay-time counter remain unchanged across multiple paused physics frames. After resume, gameplay time and the paused session timer continue normally. A jump held across the ownership change remains suppressed on resume, reusing the 1.3 gesture-cancellation contract rather than inventing a pause-specific input path.
+
+`WorldSession.gameplay_time_seconds` is the current minimal simulation-time owner. It advances only during `PLAYING` physics steps and resets with fresh session lifetime. No gameplay system yet uses a wall-clock duration, scheduler, or serialized engine `Timer` as semantic truth. Future timed gameplay extends this owner/contract rather than adding independent clocks.
 
 ## Framework sanity
 
@@ -238,7 +246,7 @@ Dropping from a hang cannot immediately recatch the same local ledge while the p
 
 The authoritative movement barrier also drives fixed real-player command sequences and samples one read-only semantic movement snapshot instead of private controller/component call order. The traces protect representative walk startup/sustain/stop, crouch movement and stance changes, ordinary jump and sprint-jump takeoff, a real step crossing, and ledge catch/hang/shimmy/release/corner/mantle transitions. Checkpoints assert position, velocity, support class, stance, and traversal state with explicit numeric tolerances where physics requires them.
 
-Mouse look is deliberately not quantized into these physics traces; accepted event-driven look cadence is now exercised separately through the application input-boundary regression.
+Mouse look is deliberately not quantized into these physics traces; accepted event-driven look cadence is exercised separately through the application input-boundary regression.
 
 No future-system coverage below should be reported as existing until actually implemented.
 
@@ -250,11 +258,12 @@ These requirements become active when corresponding systems are implemented.
 
 ## World-session lifetime fixture
 
-Phase 1.1–1.3 now prove application boot ownership, current session identity, one exclusive top-level-operation guard, non-playing build, explicit entry to play, coherent stop/resume, synchronous teardown, restart/ordinary replacement, exit, fresh runtime state, stale-work rejection, separation between persistent application/authored configuration and session runtime state, and application-owned gameplay/look input permission with stale intent/gesture cancellation.
+Phase 1.1–1.4 now prove application boot ownership, current session identity, one exclusive top-level-operation guard, non-playing build, explicit entry to play, explicit pause/resume distinct from lifecycle stop, synchronous teardown, restart/ordinary replacement, exit, fresh runtime state, stale-work rejection, separation between persistent application/authored configuration and session runtime state, application-owned gameplay/look input permission with stale intent/gesture cancellation, exclusive application/UI/cutscene ownership, and world-session gameplay-time pause semantics.
 
-The remaining Phase 1 work extends that proven seam rather than replacing it:
+The remaining Phase 1 work uses those seams rather than replacing them:
 
-- Phase 1.4 defines pause/UI/cutscene arbitration, one explicit pause simulation policy, and gameplay-time ownership so ordinary gameplay durations do not advance while paused;
+- Phase 1.5 adds the minimal visible application/menu shell over existing ownership;
+- Phase 1.6 adds the development mission launch route without bypassing lifecycle/input/pause policy;
 - future registries, semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive.
 
 Phase 1 does **not** need a simultaneous old/candidate world fixture.
@@ -263,7 +272,7 @@ When Phase 4 implements real restore, extend this fixture to the chosen restore 
 
 ## Gameplay-input-domain fixture
 
-Phase 1.3 now proves for the real production player path:
+Phase 1.3–1.4 now prove for the real production player/application path:
 
 - application ownership supplies/suppresses current locomotion gameplay intent rather than leaving global permission inside locomotion;
 - one locomotion gameplay command frame is sampled at most once per physics tick;
@@ -273,9 +282,11 @@ Phase 1.3 now proves for the real production player path:
 - domain loss prevents stale held jump intent from replaying, cancels the representative buffered mantle gesture, and requires release plus a fresh press before that edge-dependent gesture can begin again;
 - mouse look retains event-driven cadence and can be gated independently without physics-tick quantization;
 - the application can sample detached current input-owned view pose data;
+- pause/menu/inventory/objectives/map/cutscene ownership disables world gameplay/look input while application/UI input remains live;
+- resuming gameplay through application ownership keeps the held-jump gesture blocked rather than replaying it;
 - the existing movement/traversal behavior traces remain green through the same authoritative all-tests barrier.
 
-As real interaction/combat/inventory/UI domains arrive, extend this fixture to prove:
+As real interaction/combat/inventory action domains arrive, extend this fixture to prove:
 
 - interaction/combat/inventory are not forced through locomotion `PlayerCommand`;
 - their pressed/released edges each exist for one gameplay frame only;
@@ -285,13 +296,15 @@ As real interaction/combat/inventory/UI domains arrive, extend this fixture to p
 
 ## Gameplay-time fixture
 
-As timed gameplay appears, prove:
+Phase 1.4 now proves the foundational clock/pause boundary:
 
-- ordinary gameplay time advances with permitted world simulation;
-- pausing for real wall-clock time does not advance guard search, mechanism progress, stagger, deployable arming, delayed mission actions, or other ordinary gameplay durations;
-- time spent loading/restoring does not silently advance restored gameplay durations;
-- save/restore preserves meaningful stage/progress/remaining simulation time where required;
-- no test depends on serializing `Timer` objects or coroutine stacks.
+- `WorldSession` owns gameplay time for its lifetime;
+- gameplay time advances during permitted `PLAYING` physics steps;
+- application-owned pause modes stop the whole ordinary world subtree and leave gameplay time unchanged across paused physics frames;
+- persistent application/UI processing continues while the mission world and its session-owned timer work are paused;
+- resume continues gameplay time from the same semantic value rather than adding elapsed paused wall-clock time.
+
+As real timed gameplay appears, extend this fixture to prove guard search, mechanism progress, stagger, deployable arming, delayed mission actions, and other meaningful durations consume simulation-owned progress rather than wall-clock deadlines. Loading/restoring must not silently advance those durations; save/restore preserves meaningful stage/progress/remaining simulation time where required; no test should depend on serializing `Timer` objects or coroutine stacks as gameplay truth.
 
 ## Persistent-ID/reimport fixture
 
@@ -518,7 +531,7 @@ Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`.
 
 The checklist below is the broad integration pass for changes that could affect accepted player behavior. It is not required after every unrelated docs/gameplay change.
 
-A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit irrelevant global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
+A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit unrelated global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
 
 When `Manual:` requires a specialized validator, name the role explicitly (user/playtester, Windows operator, mapper, writer, cold author, external developer, etc.). The implementing agent may prepare the fixture/procedure but cannot self-certify an independent-human validation requirement.
 
@@ -708,7 +721,7 @@ The current CI barrier:
 - installs Godot `4.7.2` without .NET or export templates;
 - performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
 - runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
-- executes the independent application ownership/lifecycle/input suite and movement suite through that entry point;
+- executes the independent application ownership/lifecycle/input/pause-time suite and movement suite through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;
 - fails when the all-tests process returns nonzero.
 
