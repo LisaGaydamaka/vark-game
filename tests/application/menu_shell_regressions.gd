@@ -16,11 +16,11 @@ func run(
 	var menu_actions: VBoxContainer = application.get_node(
 		"UIRoot/MainMenu/Center/Panel/Content/MenuActions"
 	)
-	var settings_panel: VBoxContainer = application.get_node(
-		"UIRoot/MainMenu/Center/Panel/Content/SettingsPanel"
-	)
 	var new_game_button: Button = application.get_node(
 		"UIRoot/MainMenu/Center/Panel/Content/MenuActions/NewGameButton"
+	)
+	var development_launch_button: Button = application.get_node(
+		"UIRoot/MainMenu/Center/Panel/Content/MenuActions/DevelopmentLaunchButton"
 	)
 	var settings_button: Button = application.get_node(
 		"UIRoot/MainMenu/Center/Panel/Content/MenuActions/SettingsButton"
@@ -28,13 +28,28 @@ func run(
 	var quit_button: Button = application.get_node(
 		"UIRoot/MainMenu/Center/Panel/Content/MenuActions/QuitButton"
 	)
+	var development_launch_panel: VBoxContainer = application.get_node(
+		"UIRoot/MainMenu/Center/Panel/Content/DevelopmentLaunchPanel"
+	)
+	var development_target_selector: OptionButton = application.get_node(
+		"UIRoot/MainMenu/Center/Panel/Content/DevelopmentLaunchPanel/TargetSelector"
+	)
+	var development_launch_start_button: Button = application.get_node(
+		"UIRoot/MainMenu/Center/Panel/Content/DevelopmentLaunchPanel/LaunchButton"
+	)
+	var development_launch_back_button: Button = application.get_node(
+		"UIRoot/MainMenu/Center/Panel/Content/DevelopmentLaunchPanel/BackButton"
+	)
+	var settings_panel: VBoxContainer = application.get_node(
+		"UIRoot/MainMenu/Center/Panel/Content/SettingsPanel"
+	)
 	var sensitivity_slider: HSlider = application.get_node(
 		"UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/LookSensitivity"
 	)
 	var sensitivity_value: Label = application.get_node(
 		"UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/LookSensitivityValue"
 	)
-	var back_button: Button = application.get_node(
+	var settings_back_button: Button = application.get_node(
 		"UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/BackButton"
 	)
 
@@ -46,6 +61,7 @@ func run(
 		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.MENU
 		and main_menu.visible
 		and menu_actions.visible
+		and not development_launch_panel.visible
 		and not settings_panel.visible
 		and not bool(boundary.get("gameplay_enabled"))
 		and not bool(boundary.get("look_enabled")),
@@ -54,10 +70,94 @@ func run(
 
 	assert_true.call(
 		new_game_button.get_signal_connection_list(&"pressed").size() == 1
+		and development_launch_button.get_signal_connection_list(&"pressed").size() == 1
+		and development_launch_start_button.get_signal_connection_list(&"pressed").size() == 1
+		and development_launch_back_button.get_signal_connection_list(&"pressed").size() == 1
 		and settings_button.get_signal_connection_list(&"pressed").size() == 1
 		and quit_button.get_signal_connection_list(&"pressed").size() == 1
 		and application.get_signal_connection_list(&"quit_requested").size() == 1,
-		"Main-menu New Game, Settings, and Quit controls are wired to application ownership"
+		"Main-menu New Game, Development Launch, Settings, and Quit controls are wired to application ownership"
+	)
+
+	development_launch_button.pressed.emit()
+	await tree.process_frame
+	assert_true.call(
+		main_menu.visible
+		and not menu_actions.visible
+		and development_launch_panel.visible
+		and not settings_panel.visible
+		and development_target_selector.get_item_count() == 2
+		and development_target_selector.get_item_text(0) == "VarkTest"
+		and development_target_selector.get_item_text(1) == "Alternate Fixture",
+		"Development Launch exposes the curated target selector inside persistent application UI"
+	)
+
+	assert_true.call(
+		not bool(application.call("launch_development_target", 99))
+		and application.get("current_session") == null,
+		"Development Launch rejects an invalid target without creating a world session"
+	)
+
+	var began_blocking_operation: bool = bool(application.call(
+		"try_begin_top_level_operation",
+		ApplicationRoot.TopLevelOperation.LOAD
+	))
+	var blocked_launch: bool = bool(application.call("launch_development_target", 0))
+	var finished_blocking_operation: bool = bool(application.call(
+		"finish_top_level_operation",
+		ApplicationRoot.TopLevelOperation.LOAD
+	))
+	assert_true.call(
+		began_blocking_operation
+		and not blocked_launch
+		and finished_blocking_operation
+		and application.get("current_session") == null,
+		"Development Launch obeys the existing exclusive top-level operation guard"
+	)
+
+	development_target_selector.select(1)
+	development_launch_start_button.pressed.emit()
+	await tree.process_frame
+	var development_session: Node = application.get("current_session") as Node
+	var development_world: Node = application.get("current_world") as Node
+	var development_scene: PackedScene = null
+	if development_session != null:
+		development_scene = development_session.get("world_scene") as PackedScene
+	assert_true.call(
+		development_session != null
+		and development_world != null
+		and development_world.name == &"DevelopmentAlternate"
+		and development_scene != null
+		and development_scene.resource_path
+		== "res://tests/application/fixtures/development_alternate_world.tscn"
+		and int(application.call("get_current_session_state")) == WorldSession.State.PLAYING
+		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.GAMEPLAY
+		and not main_menu.visible
+		and bool(boundary.get("gameplay_enabled"))
+		and bool(boundary.get("look_enabled")),
+		"Development Launch starts the selected target through the normal world-session/input path"
+	)
+
+	var exited_development_target: bool = bool(application.call("exit_current_world"))
+	await tree.process_frame
+	assert_true.call(
+		exited_development_target
+		and application.get("current_session") == null
+		and application.get("current_world") == null
+		and application.get("current_player") == null
+		and main_menu.visible
+		and menu_actions.visible
+		and not development_launch_panel.visible,
+		"Exiting a development target returns to the same application-owned main menu"
+	)
+
+	development_launch_button.pressed.emit()
+	await tree.process_frame
+	development_launch_back_button.pressed.emit()
+	await tree.process_frame
+	assert_true.call(
+		menu_actions.visible and not development_launch_panel.visible,
+		"Development Launch Back returns to the main menu actions"
 	)
 
 	settings_button.pressed.emit()
@@ -65,6 +165,7 @@ func run(
 	assert_true.call(
 		main_menu.visible
 		and not menu_actions.visible
+		and not development_launch_panel.visible
 		and settings_panel.visible,
 		"Settings opens inside the persistent application menu shell"
 	)
@@ -81,7 +182,7 @@ func run(
 		"Look sensitivity is a real application setting rather than a placeholder control"
 	)
 
-	back_button.pressed.emit()
+	settings_back_button.pressed.emit()
 	await tree.process_frame
 	assert_true.call(
 		menu_actions.visible and not settings_panel.visible,
@@ -92,8 +193,11 @@ func run(
 	await tree.process_frame
 	var first_player: Node = application.get("current_player") as Node
 	var first_session_id: int = int(application.call("get_current_session_id"))
+	var new_game_world: Node = application.get("current_world") as Node
 	assert_true.call(
 		application.get("current_session") != null
+		and new_game_world != null
+		and new_game_world.name == &"VarkTest"
 		and int(application.call("get_current_session_state")) == WorldSession.State.PLAYING
 		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.GAMEPLAY
 		and first_player != null
@@ -101,7 +205,7 @@ func run(
 		and not main_menu.visible
 		and bool(boundary.get("gameplay_enabled"))
 		and bool(boundary.get("look_enabled")),
-		"New Game / Development Start installs the current world through the application lifecycle"
+		"New Game remains the default application start path after development launch is separated"
 	)
 	assert_true.call(
 		is_equal_approx(float(first_player.get("mouse_sensitivity")), TEST_SENSITIVITY)

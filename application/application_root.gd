@@ -18,6 +18,7 @@ enum TopLevelOperation {
 	MISSION_TRANSITION,
 	EXIT,
 	NEW_GAME,
+	DEVELOPMENT_LAUNCH,
 }
 
 
@@ -33,16 +34,23 @@ enum ControlMode {
 
 
 @export var default_world_scene: PackedScene
+@export var development_launch_labels: PackedStringArray = PackedStringArray()
+@export var development_launch_scene_paths: PackedStringArray = PackedStringArray()
 
 @onready var input_boundary: ApplicationInputBoundary = $InputBoundary
 @onready var world_host: Node = $WorldHost
 @onready var ui_root: CanvasLayer = $UIRoot
 @onready var main_menu: Control = $UIRoot/MainMenu
 @onready var menu_actions: VBoxContainer = $UIRoot/MainMenu/Center/Panel/Content/MenuActions
-@onready var settings_panel: VBoxContainer = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel
 @onready var new_game_button: Button = $UIRoot/MainMenu/Center/Panel/Content/MenuActions/NewGameButton
+@onready var development_launch_button: Button = $UIRoot/MainMenu/Center/Panel/Content/MenuActions/DevelopmentLaunchButton
 @onready var settings_button: Button = $UIRoot/MainMenu/Center/Panel/Content/MenuActions/SettingsButton
 @onready var quit_button: Button = $UIRoot/MainMenu/Center/Panel/Content/MenuActions/QuitButton
+@onready var development_launch_panel: VBoxContainer = $UIRoot/MainMenu/Center/Panel/Content/DevelopmentLaunchPanel
+@onready var development_target_selector: OptionButton = $UIRoot/MainMenu/Center/Panel/Content/DevelopmentLaunchPanel/TargetSelector
+@onready var development_launch_start_button: Button = $UIRoot/MainMenu/Center/Panel/Content/DevelopmentLaunchPanel/LaunchButton
+@onready var development_launch_back_button: Button = $UIRoot/MainMenu/Center/Panel/Content/DevelopmentLaunchPanel/BackButton
+@onready var settings_panel: VBoxContainer = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel
 @onready var look_sensitivity_slider: HSlider = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/LookSensitivity
 @onready var look_sensitivity_value: Label = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/LookSensitivityValue
 @onready var settings_back_button: Button = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/BackButton
@@ -61,6 +69,7 @@ var _last_session_id: int = 0
 func _ready() -> void:
 	current_ui = ui_root
 	_wire_menu_shell()
+	_refresh_development_launch_targets()
 	_show_main_menu()
 
 
@@ -133,6 +142,44 @@ func start_new_game() -> bool:
 
 	var finished: bool = finish_top_level_operation(TopLevelOperation.NEW_GAME)
 	assert(finished, "VarkApplication lost ownership of the new-game operation.")
+	return succeeded
+
+
+func launch_development_target(target_index: int) -> bool:
+	if current_session != null or control_mode != ControlMode.MENU:
+		return false
+	if (
+		target_index < 0
+		or target_index >= development_launch_labels.size()
+		or target_index >= development_launch_scene_paths.size()
+	):
+		return false
+
+	var scene_path: String = development_launch_scene_paths[target_index].strip_edges()
+	if scene_path.is_empty():
+		return false
+	if not try_begin_top_level_operation(TopLevelOperation.DEVELOPMENT_LAUNCH):
+		return false
+
+	var scene_resource: Resource = ResourceLoader.load(scene_path, "PackedScene")
+	var succeeded: bool = false
+	if scene_resource is PackedScene:
+		succeeded = _replace_world(scene_resource as PackedScene)
+	else:
+		push_error(
+			"Development launch target '%s' is not a loadable PackedScene: %s"
+			% [development_launch_labels[target_index], scene_path]
+		)
+
+	if succeeded:
+		_hide_main_menu()
+	else:
+		_show_main_menu()
+
+	var finished: bool = finish_top_level_operation(
+		TopLevelOperation.DEVELOPMENT_LAUNCH
+	)
+	assert(finished, "VarkApplication lost ownership of the development-launch operation.")
 	return succeeded
 
 
@@ -397,6 +444,13 @@ func _set_world_input_domains(enabled: bool) -> void:
 
 func _wire_menu_shell() -> void:
 	new_game_button.pressed.connect(_on_new_game_pressed)
+	development_launch_button.pressed.connect(_on_development_launch_pressed)
+	development_launch_start_button.pressed.connect(
+		_on_development_launch_start_pressed
+	)
+	development_launch_back_button.pressed.connect(
+		_on_development_launch_back_pressed
+	)
 	settings_button.pressed.connect(_on_settings_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 	settings_back_button.pressed.connect(_on_settings_back_pressed)
@@ -405,11 +459,40 @@ func _wire_menu_shell() -> void:
 	_sync_look_sensitivity_ui()
 
 
+func _refresh_development_launch_targets() -> void:
+	assert(
+		development_launch_labels.size() == development_launch_scene_paths.size(),
+		"Development launch labels and scene paths must have matching sizes."
+	)
+
+	development_target_selector.clear()
+	for target_index: int in range(development_launch_labels.size()):
+		var label: String = development_launch_labels[target_index].strip_edges()
+		var scene_path: String = development_launch_scene_paths[target_index].strip_edges()
+		if label.is_empty() or scene_path.is_empty():
+			push_error(
+				"Development launch target %d requires a non-empty label and scene path."
+				% target_index
+			)
+			continue
+
+		development_target_selector.add_item(label)
+		var selector_index: int = development_target_selector.get_item_count() - 1
+		development_target_selector.set_item_metadata(selector_index, target_index)
+
+	var has_targets: bool = development_target_selector.get_item_count() > 0
+	development_launch_button.disabled = not has_targets
+	development_launch_start_button.disabled = not has_targets
+	if has_targets:
+		development_target_selector.select(0)
+
+
 func _show_main_menu() -> void:
 	control_mode = ControlMode.MENU
 	_set_world_input_domains(false)
 	main_menu.visible = true
 	menu_actions.visible = true
+	development_launch_panel.visible = false
 	settings_panel.visible = false
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
@@ -417,11 +500,20 @@ func _show_main_menu() -> void:
 func _hide_main_menu() -> void:
 	main_menu.visible = false
 	menu_actions.visible = true
+	development_launch_panel.visible = false
+	settings_panel.visible = false
+
+
+func _show_development_launch() -> void:
+	_refresh_development_launch_targets()
+	menu_actions.visible = false
+	development_launch_panel.visible = true
 	settings_panel.visible = false
 
 
 func _show_settings() -> void:
 	menu_actions.visible = false
+	development_launch_panel.visible = false
 	settings_panel.visible = true
 
 
@@ -440,6 +532,25 @@ func _apply_look_sensitivity_to_current_player() -> void:
 
 func _on_new_game_pressed() -> void:
 	start_new_game()
+
+
+func _on_development_launch_pressed() -> void:
+	_show_development_launch()
+
+
+func _on_development_launch_start_pressed() -> void:
+	var selector_index: int = development_target_selector.selected
+	if selector_index < 0:
+		return
+	var target_index: int = int(
+		development_target_selector.get_item_metadata(selector_index)
+	)
+	launch_development_target(target_index)
+
+
+func _on_development_launch_back_pressed() -> void:
+	menu_actions.visible = true
+	development_launch_panel.visible = false
 
 
 func _on_settings_pressed() -> void:

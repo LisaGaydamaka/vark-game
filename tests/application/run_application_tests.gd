@@ -30,6 +30,17 @@ func _run_tests() -> void:
 	)
 
 	var application: Node = ApplicationScene.instantiate()
+	application.set(
+		"development_launch_labels",
+		PackedStringArray(["VarkTest", "Alternate Fixture"])
+	)
+	application.set(
+		"development_launch_scene_paths",
+		PackedStringArray([
+			"res://scenes/VarkTest.tscn",
+			"res://tests/application/fixtures/development_alternate_world.tscn",
+		])
+	)
 	get_root().add_child(application)
 	await process_frame
 

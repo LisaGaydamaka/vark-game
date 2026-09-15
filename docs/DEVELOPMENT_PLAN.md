@@ -74,7 +74,7 @@ The project currently contains:
 - an application root with explicit current-world/session ownership
 - an application-owned gameplay/look input boundary with tick-framed locomotion intent and event-cadence view pose
 - application-owned exclusive control modes with coherent world pause and world-session gameplay time
-- a minimal application main-menu shell with development start, Quit, and one working look-sensitivity setting
+- a minimal application main-menu shell with New Game, curated Development Launch, Quit, and one working look-sensitivity setting
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -83,7 +83,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: development mission selection/launch, persistence-backed Continue/campaign flow, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, real mission-package loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -263,7 +263,7 @@ save requested in WorldSession A
 → encode/write only from that snapshot
 ```
 
-A pending save request is cancelled if its source session stops before capture; it never retargets to the replacement session. Once the detached snapshot exists, the write may finish after the source world has been torn down.
+A pending save request is cancelled if its source session stops before capture; it never retargets to the replacement session. Once the detached snapshot exists, its file write may finish after the source world has been torn down.
 
 The snapshot contains no live Nodes/RIDs/callbacks/shared mutable gameplay containers or shared mutable runtime Resources. Mutating live gameplay after capture must not mutate the snapshot.
 
@@ -549,23 +549,33 @@ The application now owns one explicit control mode for gameplay, pause menu, inv
 
 **Manual:** passed — the user confirmed on Windows x64 that normal F5 startup, movement/traversal, and mouse-look response still feel unchanged after pause/time ownership was introduced.
 
-## 1.5 Minimal application/menu shell `[~]`
+## 1.5 Minimal application/menu shell `[x]`
 
 Provide functional New Game/development start, Quit, and only settings that actually work.
 
-F5 now enters a persistent application-owned main menu with no mission world instantiated yet. `New Game / Development Start` uses the same serialized application lifecycle to instantiate the current `VarkTest` world and enter normal gameplay. Returning to the no-world state through the application exit path reveals the same menu again rather than leaving the application without player-facing ownership.
+F5 enters a persistent application-owned main menu with no mission world instantiated yet. `New Game` uses the same serialized application lifecycle to instantiate the current default `VarkTest` world and enter normal gameplay. Returning to the no-world state through the application exit path reveals the same menu again rather than leaving the application without player-facing ownership. Phase 1.6 separates the development-target selector from New Game instead of turning New Game into a scene picker.
 
 The shell exposes exactly one current setting: look sensitivity. It keeps the accepted default value, updates the live event-cadence look owner when changed, and remains application-owned so the chosen value is reapplied to replacement players during the same application run. No placeholder Continue, difficulty, save/load, audio, graphics, inventory, objectives, map, or persistence-backed settings are shown before their real systems exist. Quit is wired directly to the application tree quit path.
 
-**Done when:** F5 opens the Vark main menu with no active world; New Game / Development Start starts the current development world through `VarkApplication`; the only exposed setting changes real look sensitivity and survives ordinary world replacement within the application run; application exit returns to the menu; and Quit closes the application without introducing placeholder product controls.
+**Done when:** F5 opens the Vark main menu with no active world; New Game starts the current default world through `VarkApplication`; the only exposed setting changes real look sensitivity and survives ordinary world replacement within the application run; application exit returns to the menu; and Quit closes the application without introducing placeholder product controls.
 
-**Automated:** the application suite verifies no-world `MENU` startup, main-menu/settings/quit wiring, settings-panel navigation, look-sensitivity application to the real player and its event-cadence look owner, retention across world restart, New Game / Development Start entering the existing lifecycle/input path, exit returning to the menu, and all existing lifecycle/input/pause/movement barriers. The authoritative all-tests barrier must remain green in post-push CI.
+**Automated:** passed — the application suite verifies no-world `MENU` startup, main-menu/settings/quit wiring, settings-panel navigation, look-sensitivity application to the real player and its event-cadence look owner, retention across world restart, New Game entering the existing lifecycle/input path, exit returning to the menu, and all existing lifecycle/input/pause/movement barriers; the authoritative all-tests barrier remained green.
 
-**Manual:** Windows x64 user/playtester — press F5 and confirm the main menu appears before any world; open Settings, adjust Look Sensitivity, return, then choose New Game / Development Start and confirm `VarkTest` starts and mouse look reflects the changed sensitivity while movement/traversal remain normal. Relaunch and use Quit from the main menu, confirming the application closes normally.
+**Manual:** passed — the user confirmed on Windows x64 that the main menu appears before gameplay, Settings changes real look sensitivity, New Game starts `VarkTest` with accepted movement/traversal/look behavior, and Quit closes the application normally.
 
-## 1.6 Development mission launch `[ ]`
+## 1.6 Development mission launch `[~]`
 
 Support a fast development route for launching a selected mission/playground without manually opening scenes.
+
+The main menu now has a separate `Development Launch` panel. It reads a small application-owned curated list of display labels and `PackedScene` resource paths, lets the developer select a target, and launches that exact target through a serialized `DEVELOPMENT_LAUNCH` top-level operation and the same `_replace_world → WorldSession → application input boundary` path used by normal world ownership. Exit returns to the persistent main menu, and Back returns from the development panel without creating a world.
+
+Production currently lists only the real `VarkTest` scene because Phase 2 has not created the first mission package/playground yet. This step deliberately does **not** invent `MissionDefinition`, scan the repository for arbitrary scenes, expose a filesystem picker, or bypass application lifecycle by running selected scenes directly. Phase 2 can add its real playground to this curated route once the mission-package contract exists.
+
+**Done when:** F5 offers a development-only selector without requiring scene-editor/manual scene opening; a selected curated target launches through the existing serialized application/world-session/input ownership path; invalid selection or an overlapping top-level operation cannot create a competing session; Back/exit return to coherent menu ownership; and New Game remains a separate default application path.
+
+**Automated:** the application suite configures a second test-only target before application startup and verifies both targets appear, invalid selection is rejected, the exclusive operation guard blocks overlapping development launch, selecting the alternate target launches that exact scene through `WorldSession` with gameplay/input ownership, exit returns to the menu, Back returns to menu actions, New Game still launches `VarkTest`, and all existing lifecycle/input/pause/movement barriers remain green. The authoritative all-tests barrier must remain green in post-push CI.
+
+**Manual:** Windows x64 user/playtester — press F5, open Development Launch, confirm `VarkTest` appears as the current real target, use Back once, reopen Development Launch and launch `VarkTest`, then confirm the world starts normally and accepted movement/traversal/mouse-look behavior remains unchanged.
 
 **Phase gate:** application ownership is clear; a world can build non-playing, enter play, stop, tear down, and be replaced without stale work; gameplay time follows world simulation policy; gameplay-input edges and gesture cancellation have deterministic lifetime without changing accepted look/UI cadence; the player view pose can be sampled/captured coherently; and accepted player behavior remains intact.
 
@@ -1406,23 +1416,22 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `1.5` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms the menu → settings → development-start flow, changed look sensitivity, unchanged movement/traversal behavior, and functional Quit; reconcile `1.5` to `[x]` during the next authorized patch.
-2. Implement `1.6` development mission launch/selection on the proven application/menu lifecycle.
-3. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
-4. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-5. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-6. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-7. Phase 4 crude hostile compatibility.
-8. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-9. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-10. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-11. early cold-author review.
-12. Phase 9 establish real vitality/damage ownership while prototyping combat.
-13. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-14. Phase 11 stabilize **world/gameplay** production APIs only.
-15. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-16. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-17. production scaling/handoff.
+1. Finish `1.6` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms Development Launch → `VarkTest` uses the normal application path with accepted movement/traversal/mouse-look behavior; reconcile `1.6` to `[x]` during the next authorized patch.
+2. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
+3. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+4. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+5. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+6. Phase 4 crude hostile compatibility.
+7. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+8. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+9. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+10. early cold-author review.
+11. Phase 9 establish real vitality/damage ownership while prototyping combat.
+12. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+13. Phase 11 stabilize **world/gameplay** production APIs only.
+14. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+15. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+16. production scaling/handoff.
 
 The most important sequencing rules are:
 
