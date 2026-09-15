@@ -4,6 +4,7 @@ extends SceneTree
 const ApplicationScene = preload("res://application/Application.tscn")
 const ApplicationRoot = preload("res://application/application_root.gd")
 const WorldSession = preload("res://application/world_session.gd")
+const MissionDefinition = preload("res://missions/mission_definition.gd")
 const SessionWorkProbe = preload("res://tests/application/session_work_probe.gd")
 const MenuShellRegressions = preload(
 	"res://tests/application/menu_shell_regressions.gd"
@@ -29,16 +30,51 @@ func _run_tests() -> void:
 		"F5 main scene is the Vark application root"
 	)
 
+	var playground_definition: Resource = load("res://missions/playground/mission.tres")
+	var playground_load_errors := PackedStringArray()
+	if playground_definition != null:
+		playground_load_errors = playground_definition.call("get_load_errors")
+	_assert_true(
+		playground_definition != null
+		and playground_definition.get_script() == MissionDefinition
+		and playground_load_errors.is_empty()
+		and playground_definition.get("mission_id") == &"playground"
+		and (playground_definition.get("world_scene") as PackedScene).resource_path
+		== "res://missions/playground/world.tscn"
+		and str(playground_definition.get("map_source_path"))
+		== "res://missions/playground/mission.map"
+		and playground_definition.get("player_start_selector") == &"default"
+		and int(playground_definition.get("mission_content_revision")) == 1,
+		"Playground MissionDefinition owns the minimal load metadata"
+	)
+	var definition_properties: Array[String] = []
+	if playground_definition != null:
+		for property: Dictionary in playground_definition.get_property_list():
+			definition_properties.append(str(property.get("name", "")))
+	_assert_true(
+		not definition_properties.has("player_start_transform")
+		and not definition_properties.has("player_start_position")
+		and not definition_properties.has("player_start_rotation"),
+		"MissionDefinition selects a player start semantically without duplicating its transform"
+	)
+	var invalid_definition: Resource = MissionDefinition.new()
+	invalid_definition.set("mission_content_revision", 0)
+	var invalid_load_errors: PackedStringArray = invalid_definition.call("get_load_errors")
+	_assert_true(
+		invalid_load_errors.size() == 5,
+		"MissionDefinition reports every currently required load field when invalid"
+	)
+
 	var application: Node = ApplicationScene.instantiate()
 	application.set(
 		"development_launch_labels",
 		PackedStringArray(["VarkTest", "Playground", "Alternate Fixture"])
 	)
 	application.set(
-		"development_launch_scene_paths",
+		"development_launch_resource_paths",
 		PackedStringArray([
 			"res://scenes/VarkTest.tscn",
-			"res://missions/playground/world.tscn",
+			"res://missions/playground/mission.tres",
 			"res://tests/application/fixtures/development_alternate_world.tscn",
 		])
 	)
@@ -145,8 +181,9 @@ func _run_tests() -> void:
 		and int(isolated_session.get("state")) == WorldSession.State.READY
 		and isolated_world != null
 		and not isolated_world.can_process()
+		and isolated_session.get("mission_definition") == null
 		and is_zero_approx(float(isolated_session.call("get_gameplay_time_seconds"))),
-		"WorldSession builds a non-playing READY world with fresh gameplay time"
+		"WorldSession builds a non-playing READY raw world with no invented mission metadata"
 	)
 	_assert_true(
 		bool(isolated_session.call("begin_play"))
@@ -177,6 +214,7 @@ func _run_tests() -> void:
 		int(isolated_session.get("state")) == WorldSession.State.EMPTY
 		and isolated_session.get("world") == null
 		and isolated_session.get("player") == null
+		and isolated_session.get("mission_definition") == null
 		and int(isolated_session.get("session_id")) == 0,
 		"WorldSession teardown clears world-owned references and invalidates its identity"
 	)

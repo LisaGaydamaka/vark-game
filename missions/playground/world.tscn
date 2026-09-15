@@ -25,6 +25,5 @@ position = Vector3(0, 1.15, 0)
 
 [node name="FuncGodotMap" type="Node3D" parent="."]
 script = ExtResource("2_map")
-local_map_file = "res://missions/playground/mission.map"
 map_settings = ExtResource("3_settings")
 metadata/_custom_type_script = "uid://cwu5cf7a0awcd"

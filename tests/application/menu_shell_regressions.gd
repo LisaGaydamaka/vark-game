@@ -123,9 +123,11 @@ func run(
 	var playground_world: Node = application.get("current_world") as Node
 	var playground_player: Node = application.get("current_player") as Node
 	var playground_scene: PackedScene = null
+	var playground_definition: Resource = null
 	var playground_map: Node = null
 	if playground_session != null:
 		playground_scene = playground_session.get("world_scene") as PackedScene
+		playground_definition = playground_session.get("mission_definition") as Resource
 	if playground_world != null:
 		playground_map = playground_world.get_node_or_null("FuncGodotMap")
 	assert_true.call(
@@ -145,11 +147,42 @@ func run(
 		"Mission-package Playground launches through the normal world-session/input path"
 	)
 	assert_true.call(
+		playground_definition != null
+		and playground_definition.resource_path
+		== "res://missions/playground/mission.tres"
+		and playground_definition.get("mission_id") == &"playground"
+		and playground_definition.get("world_scene") == playground_scene
+		and str(playground_definition.get("map_source_path"))
+		== "res://missions/playground/mission.map"
+		and playground_definition.get("player_start_selector") == &"default"
+		and int(playground_definition.get("mission_content_revision")) == 1
+		and playground_world.get("mission_definition") == playground_definition,
+		"Playground session receives one authored MissionDefinition with minimal mission metadata"
+	)
+	assert_true.call(
 		playground_map != null
 		and str(playground_map.get("local_map_file"))
-		== "res://missions/playground/mission.map"
+		== str(playground_definition.get("map_source_path"))
 		and playground_map.get_node_or_null("entity_0_worldspawn") != null,
-		"Playground builds its package-local authoritative TrenchBroom worldspawn before gameplay"
+		"MissionDefinition owns the package-local map source used to build Playground"
+	)
+
+	var playground_session_id: int = int(application.call("get_current_session_id"))
+	var restarted_playground: bool = bool(application.call("restart_current_world"))
+	var replacement_playground_session: Node = application.get("current_session") as Node
+	var replacement_playground_world: Node = application.get("current_world") as Node
+	var replacement_definition: Resource = null
+	if replacement_playground_session != null:
+		replacement_definition = replacement_playground_session.get("mission_definition") as Resource
+	assert_true.call(
+		restarted_playground
+		and replacement_playground_session != null
+		and replacement_playground_session != playground_session
+		and int(application.call("get_current_session_id")) > playground_session_id
+		and replacement_definition == playground_definition
+		and replacement_playground_world != null
+		and replacement_playground_world.get("mission_definition") == playground_definition,
+		"Restart preserves authored MissionDefinition configuration while replacing session runtime state"
 	)
 
 	var exited_playground: bool = bool(application.call("exit_current_world"))
@@ -182,9 +215,10 @@ func run(
 		and development_scene != null
 		and development_scene.resource_path
 		== "res://tests/application/fixtures/development_alternate_world.tscn"
+		and development_session.get("mission_definition") == null
 		and int(application.call("get_current_session_state")) == WorldSession.State.PLAYING
 		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.GAMEPLAY,
-		"Development Launch still starts the exact selected target rather than a hard-coded world"
+		"Development Launch still starts exact raw-scene targets without inventing mission metadata"
 	)
 
 	var exited_development_target: bool = bool(application.call("exit_current_world"))

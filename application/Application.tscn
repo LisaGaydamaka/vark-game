@@ -8,7 +8,7 @@
 script = ExtResource("1_app")
 default_world_scene = ExtResource("2_world")
 development_launch_labels = PackedStringArray("VarkTest", "Playground")
-development_launch_scene_paths = PackedStringArray("res://scenes/VarkTest.tscn", "res://missions/playground/world.tscn")
+development_launch_resource_paths = PackedStringArray("res://scenes/VarkTest.tscn", "res://missions/playground/mission.tres")
 
 [node name="InputBoundary" type="Node" parent="."]
 script = ExtResource("3_input")

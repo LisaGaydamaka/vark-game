@@ -76,6 +76,7 @@ The project currently contains:
 - application-owned exclusive control modes with coherent world pause and world-session gameplay time
 - a minimal application main-menu shell with New Game, curated Development Launch, Quit, and one working look-sensitivity setting
 - an initial `missions/playground/` package with authoritative TrenchBroom spatial source and a launchable application-owned world wrapper
+- a minimal typed `MissionDefinition` for Playground carrying authored mission ID, world/map references, player-start selection, and content revision
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -84,7 +85,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, typed mission metadata/production mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -350,7 +351,7 @@ missions/
         assets/
 ```
 
-`mission.gd` is optional. A simple mission must not require custom mission behavior GDScript. `world.tscn` is the current Godot runtime wrapper around the package's authored spatial source; the exact amount of technical loader glue may shrink as Phase 2 proves the final import/loading workflow.
+`mission.tres` is the authored `MissionDefinition` metadata owner for a package. `mission.gd` is optional; a simple mission must not require custom mission behavior GDScript. `world.tscn` is the current Godot runtime wrapper around the package's authored spatial source; the exact amount of technical loader glue may shrink as Phase 2 proves the final import/loading workflow.
 
 ---
 
@@ -570,9 +571,9 @@ The shell exposes exactly one current setting: look sensitivity. It keeps the ac
 
 Support a fast development route for launching a selected mission/playground without manually opening scenes.
 
-The main menu has a separate `Development Launch` panel. It reads a small application-owned curated list of display labels and `PackedScene` resource paths, lets the developer select a target, and launches that exact target through a serialized `DEVELOPMENT_LAUNCH` top-level operation and the same `_replace_world → WorldSession → application input boundary` path used by normal world ownership. Exit returns to the persistent main menu, and Back returns from the development panel without creating a world.
+The main menu has a separate `Development Launch` panel. It reads a small application-owned curated list of display labels and resource paths, lets the developer select a target, and launches that exact target through a serialized `DEVELOPMENT_LAUNCH` top-level operation and the same `_replace_world → WorldSession → application input boundary` path used by normal world ownership. Raw development fixtures may still be `PackedScene` targets; real mission packages may supply a `MissionDefinition` resource that resolves its owned world scene. Exit returns to the persistent main menu, and Back returns from the development panel without creating a world.
 
-The selector remains deliberately curated rather than scanning arbitrary scenes or exposing a filesystem picker. Phase 2.1 adds the first real mission-package target, `Playground`, beside the legacy `VarkTest`; later mission packages can join the same route without bypassing application lifecycle.
+The selector remains deliberately curated rather than scanning arbitrary scenes or exposing a filesystem picker. Playground is the first real mission-definition target beside the legacy `VarkTest`; later mission packages can join the same route without bypassing application lifecycle.
 
 **Done when:** F5 offers a development-only selector without requiring scene-editor/manual scene opening; a selected curated target launches through the existing serialized application/world-session/input ownership path; invalid selection or an overlapping top-level operation cannot create a competing session; Back/exit return to coherent menu ownership; and New Game remains a separate default application path.
 
@@ -588,37 +589,50 @@ The selector remains deliberately curated rather than scanning arbitrary scenes 
 
 Goal: prove the real authoring/import/identity path before save/load or broad gameplay systems depend on it.
 
-## 2.1 Mission package convention `[~]`
+## 2.1 Mission package convention `[x]`
 
 Create the initial mission folder ownership convention and a tiny playground mission.
 
-The initial package convention is `missions/<mission_id>/`. For the first package:
+The initial package convention is `missions/<mission_id>/`. The first package now contains:
 
 ```text
 missions/
     playground/
         mission.map
+        mission.tres
         world.tscn
         world.gd
 ```
 
-`mission.map` is the authoritative TrenchBroom spatial source. `world.tscn` is the launchable Godot world wrapper that participates in the existing application/`WorldSession` lifecycle. The tiny `world.gd` is currently technical development glue that asks FuncGodot to build the package-local map before the session enters ordinary play; it is not the future mission-behavior script surface. Generated `.godot/` data, package-local `.map.import` sidecars, and TrenchBroom autosaves are not authored mission truth and are ignored. Legacy top-level `maps/*.map.import` sidecars retain their existing tracked policy until 2.8 proves the reimport/migration workflow.
+`mission.map` is the authoritative TrenchBroom spatial source. `world.tscn` is the launchable Godot world wrapper that participates in the existing application/`WorldSession` lifecycle. The tiny `world.gd` is technical development glue that asks FuncGodot to build the package-local map before the session enters ordinary play; it is not the future mission-behavior script surface. Generated `.godot/` data, package-local `.map.import` sidecars, and TrenchBroom autosaves are not authored mission truth and are ignored. Legacy top-level `maps/*.map.import` sidecars retain their existing tracked policy until 2.8 proves the reimport/migration workflow. `mission.tres` is added by 2.2 as the package's typed metadata owner without changing the 2.1 source/generated boundary.
 
-The Playground contains only a broad zebra floor plus one low reference step and the real `Player.tscn`. It is registered in the existing curated Development Launch route beside `VarkTest`. This step deliberately does **not** invent `MissionDefinition`, persistent IDs, a registry, authored Vark point entities, mission scripting, or final import/rebuild policy; those remain 2.2–2.9.
+The Playground contains only a broad zebra floor plus one low reference step and the real `Player.tscn`. It is registered in the existing curated Development Launch route beside `VarkTest`.
 
-**Done when:** one predictable mission package exists under `missions/`; its TrenchBroom `.map` is clearly the authoritative spatial source; its Godot wrapper launches through the application-owned development route and `WorldSession`; the real player is bound through the existing input path; generated/import recovery metadata has explicit non-source ownership; and no 2.2+ mission metadata/identity framework has been pulled forward.
+**Done when:** one predictable mission package exists under `missions/`; its TrenchBroom `.map` is clearly the authoritative spatial source; its Godot wrapper launches through the application-owned development route and `WorldSession`; the real player is bound through the existing input path; and generated/import recovery metadata has explicit non-source ownership.
 
-**Automated:** the application suite verifies the production Development Launch list includes `Playground`, launches `res://missions/playground/world.tscn`, confirms its real player is application/input-bound, verifies the wrapper points at `res://missions/playground/mission.map`, and proves FuncGodot built `entity_0_worldspawn` from that package-local source before gameplay. Clean-checkout import and the authoritative all-tests barrier must remain green in post-push CI.
+**Automated:** passed — the application suite verifies the production Development Launch list includes `Playground`, launches the package through the real session/input path, confirms the package-local map source builds `entity_0_worldspawn`, and the clean-checkout authoritative all-tests CI barrier passed.
 
-**Manual:** Windows x64 user/playtester — press F5 → Development Launch → Playground; confirm the tiny zebra playground appears, the player spawns on the floor, the low reference step is present, and ordinary movement/jump/mouse-look response feels unchanged.
+**Manual:** passed — the user confirmed on Windows x64 that Development Launch → Playground shows the zebra playground/reference step, spawns the real player normally, and preserves accepted movement/jump/mouse-look behavior.
 
-## 2.2 Minimal MissionDefinition `[ ]`
+## 2.2 Minimal MissionDefinition `[~]`
 
 Include only fields currently required to load the playground: mission ID, map/world reference, semantic reference/selection for the map-authored player start, and minimal metadata.
 
 Do not duplicate a player-start transform in `MissionDefinition` when the TrenchBroom map owns it.
 
 Reserve one authoritative mission metadata owner for future `mission_content_revision`.
+
+`res://missions/mission_definition.gd` is now the typed authored metadata resource. The Playground's `mission.tres` contains exactly the current load contract: `mission_id`, `world_scene`, `map_source_path`, `player_start_selector`, and `mission_content_revision`. The content revision starts at `1`, establishing the single metadata owner required by the foundation contract without adding save/load compatibility machinery yet.
+
+Development Launch now points the Playground entry at `mission.tres`. `VarkApplication` validates the definition, resolves its `world_scene`, and passes the same authored resource into `WorldSession` before the wrapper enters the scene tree. The Playground wrapper consumes `map_source_path` from that definition before FuncGodot builds, so the wrapper no longer duplicates the map-source path. Restart creates a fresh world/session while retaining the same authored definition as shared configuration; teardown clears the session reference. Raw development scenes such as `VarkTest` and the alternate fixture still run with no invented mission metadata.
+
+`player_start_selector = &"default"` is deliberately semantic selection metadata only at this step. Phase 2.7 still owns the actual TrenchBroom Vark player-start entity and selector resolution. Until then, the already accepted wrapper-owned Player placement remains unchanged. `MissionDefinition` contains no player transform/position/rotation fields, so it does not create a second spatial source of truth.
+
+**Done when:** Playground has one loadable authored `MissionDefinition`; the application launches it through that definition; the active session carries the definition as configuration; the definition owns mission ID, world/map references, player-start selection, and content revision without owning a player transform; restart preserves the authored definition while replacing runtime session state; and raw scene development targets still work without fake metadata.
+
+**Automated:** the application suite loads and validates `missions/playground/mission.tres`, verifies all five current fields and the absence of duplicated player-start transform fields, exercises invalid required-field diagnostics, launches Playground through the definition, proves the definition supplies the FuncGodot map path before gameplay, verifies the active world/session carry the same definition across restart, verifies raw scene targets carry no definition, and keeps all existing lifecycle/input/movement regressions green. Clean-checkout import and the authoritative all-tests barrier must remain green in post-push CI.
+
+**Manual:** none — this step changes authored metadata/loading ownership only. The just-accepted 2.1 Windows Playground playtest covers the unchanged player-facing geometry/start/movement/look behavior.
 
 ## 2.3 Persistent identity feasibility and authoring-workflow proof `[ ]`
 
@@ -1034,7 +1048,7 @@ Document this as provisional/supportable. Phase 11 may stabilize only the world/
 
 ## 7.6 Deterministic rule ordering and save state `[ ]`
 
-Define rule ordering relative to the event queue/stable boundary, repeat/one-shot behavior, and restore semantics.
+Define rule ordering relative to event queue/stable boundary, repeat/one-shot behavior, and restore semantics.
 
 ## 7.7 Mission logic debugger `[ ]`
 
@@ -1439,23 +1453,22 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `2.1` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms Development Launch → Playground loads the package-local TrenchBroom geometry with the real player and accepted movement/jump/mouse-look behavior; reconcile `2.1` to `[x]` during the next authorized patch.
-2. Implement `2.2` Minimal MissionDefinition around the proven Playground package without pulling persistent identity or registry work forward.
-3. Run `2.3` persistent-identity feasibility/idempotent writeback proof, then implement 2.4–2.9 through the real TrenchBroom/reimport path.
-4. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-5. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-6. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-7. Phase 4 crude hostile compatibility.
-8. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-9. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-10. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-11. early cold-author review.
-12. Phase 9 establish real vitality/damage ownership while prototyping combat.
-13. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-14. Phase 11 stabilize **world/gameplay** production APIs only.
-15. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-16. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-17. production scaling/handoff.
+1. Finish `2.2` post-push validation: the authoritative `Regression suite` must stay green. `Manual: none`; reconcile `2.2` to `[x]` during the next authorized patch once that automated result is confirmed.
+2. Run `2.3` persistent-identity feasibility/idempotent writeback proof, then implement 2.4–2.9 through the real TrenchBroom/reimport path.
+3. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+4. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+5. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+6. Phase 4 crude hostile compatibility.
+7. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+8. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+9. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+10. early cold-author review.
+11. Phase 9 establish real vitality/damage ownership while prototyping combat.
+12. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+13. Phase 11 stabilize **world/gameplay** production APIs only.
+14. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+15. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+16. production scaling/handoff.
 
 The most important sequencing rules are:
 

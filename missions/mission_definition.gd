@@ -1,0 +1,32 @@
+class_name MissionDefinition
+extends Resource
+
+
+@export var mission_id: StringName = &""
+@export var world_scene: PackedScene
+@export_file("*.map") var map_source_path: String = ""
+@export var player_start_selector: StringName = &""
+@export var mission_content_revision: int = 1
+
+
+func get_load_errors() -> PackedStringArray:
+	var errors := PackedStringArray()
+
+	if str(mission_id).strip_edges().is_empty():
+		errors.append("mission_id must not be empty.")
+	if world_scene == null:
+		errors.append("world_scene must reference a PackedScene.")
+	if map_source_path.strip_edges().is_empty():
+		errors.append("map_source_path must point at the authoritative mission .map source.")
+	elif not FileAccess.file_exists(map_source_path):
+		errors.append("map_source_path does not exist: %s" % map_source_path)
+	if str(player_start_selector).strip_edges().is_empty():
+		errors.append("player_start_selector must not be empty.")
+	if mission_content_revision <= 0:
+		errors.append("mission_content_revision must be greater than zero.")
+
+	return errors
+
+
+func is_loadable() -> bool:
+	return get_load_errors().is_empty()

@@ -3,6 +3,7 @@ extends Node
 
 
 const PLAYER_GROUP: StringName = &"vark_player"
+const MISSION_DEFINITION_SCRIPT = preload("res://missions/mission_definition.gd")
 
 
 enum State {
@@ -18,6 +19,7 @@ enum State {
 
 var session_id: int = 0
 var world_scene: PackedScene = null
+var mission_definition: Resource = null
 var world: Node = null
 var player: Node = null
 var state: int = State.EMPTY
@@ -33,17 +35,47 @@ func get_gameplay_time_seconds() -> float:
 	return gameplay_time_seconds
 
 
-func build(new_session_id: int, scene: PackedScene) -> bool:
+func build(
+	new_session_id: int,
+	scene: PackedScene,
+	definition: Resource = null
+) -> bool:
 	if state != State.EMPTY or new_session_id <= 0 or scene == null:
 		return false
+	if definition != null:
+		if definition.get_script() != MISSION_DEFINITION_SCRIPT:
+			push_error("WorldSession received a non-MissionDefinition resource.")
+			return false
+		var definition_world: PackedScene = definition.get("world_scene") as PackedScene
+		if (
+			definition_world == null
+			or definition_world.resource_path != scene.resource_path
+		):
+			push_error(
+				"WorldSession mission definition does not own the requested world scene."
+			)
+			return false
 
 	session_id = new_session_id
 	world_scene = scene
+	mission_definition = definition
 	state = State.BUILDING
 	gameplay_time_seconds = 0.0
 	process_mode = Node.PROCESS_MODE_DISABLED
 
 	world = world_scene.instantiate()
+	if mission_definition != null:
+		if not world.has_method("configure_mission_definition"):
+			push_error(
+				"A MissionDefinition world must accept configure_mission_definition()."
+			)
+			teardown()
+			return false
+		if not bool(world.call("configure_mission_definition", mission_definition)):
+			push_error("MissionDefinition world rejected its authored configuration.")
+			teardown()
+			return false
+
 	add_child(world)
 	player = _find_session_player(world)
 	if player == null:
@@ -106,6 +138,7 @@ func teardown() -> void:
 
 	world = null
 	player = null
+	mission_definition = null
 	world_scene = null
 	session_id = 0
 	gameplay_time_seconds = 0.0

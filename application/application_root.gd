@@ -6,6 +6,7 @@ signal quit_requested
 
 
 const WORLD_SESSION_SCRIPT = preload("res://application/world_session.gd")
+const MISSION_DEFINITION_SCRIPT = preload("res://missions/mission_definition.gd")
 const DEFAULT_LOOK_SENSITIVITY: float = 0.007
 const MIN_LOOK_SENSITIVITY: float = 0.002
 const MAX_LOOK_SENSITIVITY: float = 0.014
@@ -35,7 +36,7 @@ enum ControlMode {
 
 @export var default_world_scene: PackedScene
 @export var development_launch_labels: PackedStringArray = PackedStringArray()
-@export var development_launch_scene_paths: PackedStringArray = PackedStringArray()
+@export var development_launch_resource_paths: PackedStringArray = PackedStringArray()
 
 @onready var input_boundary: ApplicationInputBoundary = $InputBoundary
 @onready var world_host: Node = $WorldHost
@@ -151,24 +152,35 @@ func launch_development_target(target_index: int) -> bool:
 	if (
 		target_index < 0
 		or target_index >= development_launch_labels.size()
-		or target_index >= development_launch_scene_paths.size()
+		or target_index >= development_launch_resource_paths.size()
 	):
 		return false
 
-	var scene_path: String = development_launch_scene_paths[target_index].strip_edges()
-	if scene_path.is_empty():
+	var resource_path: String = development_launch_resource_paths[target_index].strip_edges()
+	if resource_path.is_empty():
 		return false
 	if not try_begin_top_level_operation(TopLevelOperation.DEVELOPMENT_LAUNCH):
 		return false
 
-	var scene_resource: Resource = ResourceLoader.load(scene_path, "PackedScene")
+	var target_resource: Resource = ResourceLoader.load(resource_path)
 	var succeeded: bool = false
-	if scene_resource is PackedScene:
-		succeeded = _replace_world(scene_resource as PackedScene)
+	if _is_mission_definition(target_resource):
+		var load_errors: PackedStringArray = target_resource.call("get_load_errors")
+		if load_errors.is_empty():
+			var mission_world: PackedScene = target_resource.get("world_scene") as PackedScene
+			succeeded = _replace_world(mission_world, target_resource)
+		else:
+			for load_error: String in load_errors:
+				push_error(
+					"Development mission '%s' is invalid: %s"
+					% [resource_path, load_error]
+				)
+	elif target_resource is PackedScene:
+		succeeded = _replace_world(target_resource as PackedScene)
 	else:
 		push_error(
-			"Development launch target '%s' is not a loadable PackedScene: %s"
-			% [development_launch_labels[target_index], scene_path]
+			"Development launch target '%s' is not a MissionDefinition or PackedScene: %s"
+			% [development_launch_labels[target_index], resource_path]
 		)
 
 	if succeeded:
@@ -276,10 +288,12 @@ func restart_current_world() -> bool:
 		return false
 
 	var scene: PackedScene = default_world_scene
+	var mission_definition: Resource = null
 	if current_session != null:
 		scene = current_session.get("world_scene") as PackedScene
+		mission_definition = current_session.get("mission_definition") as Resource
 
-	var succeeded: bool = _replace_world(scene)
+	var succeeded: bool = _replace_world(scene, mission_definition)
 	var finished: bool = finish_top_level_operation(TopLevelOperation.RESTART)
 	assert(finished, "VarkApplication lost ownership of the restart operation.")
 	return succeeded
@@ -308,15 +322,21 @@ func exit_current_world() -> bool:
 	return true
 
 
-func _replace_world(scene: PackedScene) -> bool:
+func _replace_world(
+	scene: PackedScene,
+	mission_definition: Resource = null
+) -> bool:
 	if scene == null:
 		return false
 
 	_teardown_current_session()
-	return _install_world(scene)
+	return _install_world(scene, mission_definition)
 
 
-func _install_world(scene: PackedScene) -> bool:
+func _install_world(
+	scene: PackedScene,
+	mission_definition: Resource = null
+) -> bool:
 	if scene == null or current_session != null:
 		return false
 
@@ -325,7 +345,7 @@ func _install_world(scene: PackedScene) -> bool:
 	session.name = "WorldSession"
 	world_host.add_child(session)
 
-	if not bool(session.call("build", _last_session_id, scene)):
+	if not bool(session.call("build", _last_session_id, scene, mission_definition)):
 		world_host.remove_child(session)
 		session.free()
 		return false
@@ -437,6 +457,10 @@ func _is_valid_control_mode(mode: int) -> bool:
 	return mode >= ControlMode.GAMEPLAY and mode <= ControlMode.MENU
 
 
+func _is_mission_definition(resource: Resource) -> bool:
+	return resource != null and resource.get_script() == MISSION_DEFINITION_SCRIPT
+
+
 func _set_world_input_domains(enabled: bool) -> void:
 	input_boundary.set_gameplay_enabled(enabled)
 	input_boundary.set_look_enabled(enabled)
@@ -461,17 +485,17 @@ func _wire_menu_shell() -> void:
 
 func _refresh_development_launch_targets() -> void:
 	assert(
-		development_launch_labels.size() == development_launch_scene_paths.size(),
-		"Development launch labels and scene paths must have matching sizes."
+		development_launch_labels.size() == development_launch_resource_paths.size(),
+		"Development launch labels and resource paths must have matching sizes."
 	)
 
 	development_target_selector.clear()
 	for target_index: int in range(development_launch_labels.size()):
 		var label: String = development_launch_labels[target_index].strip_edges()
-		var scene_path: String = development_launch_scene_paths[target_index].strip_edges()
-		if label.is_empty() or scene_path.is_empty():
+		var resource_path: String = development_launch_resource_paths[target_index].strip_edges()
+		if label.is_empty() or resource_path.is_empty():
 			push_error(
-				"Development launch target %d requires a non-empty label and scene path."
+				"Development launch target %d requires a non-empty label and resource path."
 				% target_index
 			)
 			continue
