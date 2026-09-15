@@ -5,6 +5,7 @@ const PersistentIdSource = preload("res://tools/authoring/persistent_id_source.g
 const PLAYGROUND_SOURCE_PATH: String = "res://missions/playground/mission.map"
 const MAP_SETTINGS_PATH: String = "res://addons/func_godot/func_godot_default_map_settings.tres"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
+const VARK_PROOF_MATERIAL_PATH: String = "res://textures/zebra/zebra16x16.png"
 const TEMP_MAP_PATH: String = "user://vark_persistent_identity_feasibility.map"
 
 var failures: Array[String] = []
@@ -16,6 +17,7 @@ func _initialize() -> void:
 
 func _run_tests() -> void:
 	_assert_vark_trenchbroom_identity_property()
+	_assert_vark_trenchbroom_material_config()
 
 	var playground_read: Dictionary = PersistentIdSource.read_source(
 		PLAYGROUND_SOURCE_PATH
@@ -205,6 +207,23 @@ func _assert_vark_trenchbroom_identity_property() -> void:
 		and exported_fgd.contains("VarkPersistentIdentity")
 		and exported_fgd.contains("persistent_id"),
 		"Vark TrenchBroom FGD declares persistent_id on func_detail so mapper saves preserve repaired IDs"
+	)
+
+
+func _assert_vark_trenchbroom_material_config() -> void:
+	var config := load(VARK_TRENCHBROOM_CONFIG_PATH) as TrenchBroomGameConfig
+	var exported_config: String = ""
+	if config != null:
+		exported_config = str(config.call("_build_class_text"))
+	_assert_true(
+		config != null
+		and config.textures_root_folder == "textures"
+		and config.palette_path.strip_edges().is_empty()
+		and FileAccess.file_exists(VARK_PROOF_MATERIAL_PATH)
+		and exported_config.contains("\"root\": \"textures\"")
+		and exported_config.contains("\".png\"")
+		and exported_config.contains("\"palette\": \"\""),
+		"Vark TrenchBroom material config resolves PNG materials without a nonexistent palette dependency"
 	)
 
 

@@ -5,6 +5,8 @@ const PersistentIdSource = preload("res://tools/authoring/persistent_id_source.g
 const AUTHORED_SOURCE_PATH: String = "res://missions/playground/mission.map"
 const WORKSPACE_PATH: String = "res://tests/authoring/workspace/mission.map"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
+const VARK_MATERIAL_ROOT: String = "textures"
+const VARK_PROOF_MATERIAL_PATH: String = "res://textures/zebra/zebra16x16.png"
 
 
 func _initialize() -> void:
@@ -124,11 +126,50 @@ func _sync_trenchbroom_config() -> bool:
 		)
 		return false
 
+	var game_config_text: String = FileAccess.get_file_as_string(game_config_path)
+	if not _validate_trenchbroom_material_config(config, game_config_text):
+		return false
+
 	print("Refreshed the installed Vark TrenchBroom game configuration:")
 	print("  folder: ", config_folder)
 	print("  FGD:    ", fgd_path)
 	print("The exported Vark FGD declares persistent_id for func_detail.")
+	print("The exported Vark material config resolves PNGs under textures/ with no palette dependency.")
 	print("Close/reopen TrenchBroom before continuing so it reloads the updated game configuration.")
+	return true
+
+
+func _validate_trenchbroom_material_config(
+	config: TrenchBroomGameConfig,
+	game_config_text: String
+) -> bool:
+	if config.textures_root_folder != VARK_MATERIAL_ROOT:
+		push_error(
+			"Vark TrenchBroom material root must be '%s', got '%s'."
+			% [VARK_MATERIAL_ROOT, config.textures_root_folder]
+		)
+		return false
+	if not config.palette_path.strip_edges().is_empty():
+		push_error(
+			"Vark uses ordinary PNG materials and must not export a Quake palette dependency; palette_path is '%s'."
+			% config.palette_path
+		)
+		return false
+	if not FileAccess.file_exists(VARK_PROOF_MATERIAL_PATH):
+		push_error(
+			"Vark material probe source is missing: %s"
+			% VARK_PROOF_MATERIAL_PATH
+		)
+		return false
+	if (
+		not game_config_text.contains("\"root\": \"%s\"" % VARK_MATERIAL_ROOT)
+		or not game_config_text.contains("\".png\"")
+		or not game_config_text.contains("\"palette\": \"\"")
+	):
+		push_error(
+			"Exported Vark GameConfig.cfg does not advertise the expected textures/ PNG material path with an empty palette."
+		)
+		return false
 	return true
 
 
@@ -217,7 +258,7 @@ func _print_inspection(result: Dictionary) -> void:
 
 func _print_usage() -> void:
 	print("Persistent identity authoring probe")
-	print("  -- sync-config  Export the current Vark game config/FGD to this machine's configured TrenchBroom game folder.")
+	print("  -- sync-config  Export and validate the current Vark GameConfig/FGD in this machine's configured TrenchBroom game folder.")
 	print("  -- prepare      Copy the real Playground map into an ignored mapper workspace.")
 	print("  -- reset        Replace only the ignored workspace map with a fresh Playground copy.")
 	print("  -- inspect      Report authored persistent IDs in that workspace.")
