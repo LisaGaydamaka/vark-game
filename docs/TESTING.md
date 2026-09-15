@@ -137,7 +137,7 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 
 Expected result: nonzero exit code and intentional failure reported.
 
-The application suite verifies the configured F5 application entry point, current development world/player/UI ownership, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
+The application suite verifies the configured F5 application entry point, no-world main-menu startup, New Game/development-start flow, the real look-sensitivity setting across replacement, menu/quit wiring, current development world/player/UI ownership once gameplay starts, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
 
 The movement runner currently:
 
@@ -172,7 +172,13 @@ The following coverage exists now.
 
 ## Application root ownership
 
-The real `Application.tscn` is instantiated through the application regression suite. Coverage verifies that F5 is configured to launch the application root, the application owns the current development world, current player, persistent UI root, active session identity, and one exclusive top-level-operation guard.
+The real `Application.tscn` is instantiated through the application regression suite. Coverage verifies that F5 is configured to launch the application root, that the persistent application/UI exists before any world session, and that the application owns the current development world/player/session once New Game installs gameplay through the same root. Current/stale session identity and one exclusive top-level-operation guard remain protected.
+
+## Minimal application/menu shell
+
+The production application now starts in `MENU` with no `WorldSession` or player constructed. The application regression drives the actual menu controls: Settings opens/closes inside persistent `UIRoot`, New Game / Development Start installs the current `VarkTest` world and enters the existing lifecycle/input path, and application exit returns to the same no-world menu state. The Quit button and application quit signal are verified as wired; actual operating-system application termination remains a focused manual acceptance because invoking it would intentionally terminate the test process.
+
+The only current exposed setting is look sensitivity. The regression changes the real menu slider, verifies the application-owned value/readout, verifies the value is applied to both the real player's exported sensitivity and current event-cadence `PlayerLook`, restarts the world, and proves the replacement player receives the same application-owned value. The accepted default remains `0.007`; no placeholder settings or fake Continue/difficulty/save entries are treated as implemented.
 
 ## World-session lifecycle and replacement
 
@@ -184,7 +190,7 @@ No production registry, semantic event queue, or general scheduler is invented b
 
 ## Gameplay input boundary and view pose
 
-The production F5 application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.
+The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.
 
 The application regression proves continuous movement/sprint state can remain held across gameplay frames while a fresh jump press exists for one gameplay frame only. A disabled gameplay domain produces a neutral command; on resume, continuous movement/sprint reflects current physical state while a jump gesture held across domain loss remains suppressed until release and a fresh press. Domain loss also clears the player's representative buffered airborne-mantle gesture. The current locomotion command does not invent a release edge that locomotion does not consume; as interaction/combat/inventory actions with meaningful pressed/released semantics arrive, their domain fixtures must extend this same one-frame edge/cancellation contract rather than expanding `PlayerCommand` into their owner.
 
@@ -192,7 +198,7 @@ Look input remains event-driven through the application boundary and is not dela
 
 ## Application control arbitration and gameplay time
 
-The application now exposes explicit exclusive control modes for gameplay, pause menu, inventory, objectives, map, cutscene, and menu ownership. The regression drives every non-gameplay mode through the real application/session/input path and proves they all place the current session in `PAUSED`, disable gameplay/look input, prevent manual re-enabling of those world domains, and leave the world subtree unable to process. Returning to `GAMEPLAY` resumes the same session before restoring gameplay/look input.
+The application exposes explicit exclusive control modes for gameplay, pause menu, inventory, objectives, map, cutscene, and menu ownership. The regression drives every non-gameplay mode through the real application/session/input path and proves they all place the current session in `PAUSED`, disable gameplay/look input, prevent manual re-enabling of those world domains, and leave the world subtree unable to process. Returning to `GAMEPLAY` resumes the same session before restoring gameplay/look input.
 
 Application/UI input remains live outside the paused session: the input boundary delivers application events while gameplay/look are disabled, and a representative timer under persistent `UIRoot` completes while an equivalent session-owned timer remains frozen. The fixture also proves player pose and the world-session gameplay-time counter remain unchanged across multiple paused physics frames. After resume, gameplay time and the paused session timer continue normally. A jump held across the ownership change remains suppressed on resume, reusing the 1.3 gesture-cancellation contract rather than inventing a pause-specific input path.
 
@@ -258,12 +264,11 @@ These requirements become active when corresponding systems are implemented.
 
 ## World-session lifetime fixture
 
-Phase 1.1–1.4 now prove application boot ownership, current session identity, one exclusive top-level-operation guard, non-playing build, explicit entry to play, explicit pause/resume distinct from lifecycle stop, synchronous teardown, restart/ordinary replacement, exit, fresh runtime state, stale-work rejection, separation between persistent application/authored configuration and session runtime state, application-owned gameplay/look input permission with stale intent/gesture cancellation, exclusive application/UI/cutscene ownership, and world-session gameplay-time pause semantics.
+Phase 1.1–1.5 now prove application boot/menu ownership, current session identity once gameplay starts, one exclusive top-level-operation guard, non-playing build, explicit entry to play, explicit pause/resume distinct from lifecycle stop, synchronous teardown, restart/ordinary replacement, exit back to the application menu, fresh runtime state, stale-work rejection, separation between persistent application/authored configuration and session runtime state, application-owned gameplay/look input permission with stale intent/gesture cancellation, exclusive application/UI/cutscene ownership, world-session gameplay-time pause semantics, and an application-owned setting surviving world replacement.
 
 The remaining Phase 1 work uses those seams rather than replacing them:
 
-- Phase 1.5 adds the minimal visible application/menu shell over existing ownership;
-- Phase 1.6 adds the development mission launch route without bypassing lifecycle/input/pause policy;
+- Phase 1.6 adds the development mission launch/selection route without bypassing lifecycle/input/pause/menu policy;
 - future registries, semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive.
 
 Phase 1 does **not** need a simultaneous old/candidate world fixture.
@@ -272,7 +277,7 @@ When Phase 4 implements real restore, extend this fixture to the chosen restore 
 
 ## Gameplay-input-domain fixture
 
-Phase 1.3–1.4 now prove for the real production player/application path:
+Phase 1.3–1.5 now prove for the real production player/application path:
 
 - application ownership supplies/suppresses current locomotion gameplay intent rather than leaving global permission inside locomotion;
 - one locomotion gameplay command frame is sampled at most once per physics tick;
@@ -284,6 +289,7 @@ Phase 1.3–1.4 now prove for the real production player/application path:
 - the application can sample detached current input-owned view pose data;
 - pause/menu/inventory/objectives/map/cutscene ownership disables world gameplay/look input while application/UI input remains live;
 - resuming gameplay through application ownership keeps the held-jump gesture blocked rather than replaying it;
+- the main-menu shell begins without a world/input owner and development start enters the same proven input boundary rather than a direct polling path;
 - the existing movement/traversal behavior traces remain green through the same authoritative all-tests barrier.
 
 As real interaction/combat/inventory action domains arrive, extend this fixture to prove:
@@ -531,7 +537,7 @@ Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`.
 
 The checklist below is the broad integration pass for changes that could affect accepted player behavior. It is not required after every unrelated docs/gameplay change.
 
-A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit unrelated global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
+A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit irrelevant global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
 
 When `Manual:` requires a specialized validator, name the role explicitly (user/playtester, Windows operator, mapper, writer, cold author, external developer, etc.). The implementing agent may prepare the fixture/procedure but cannot self-certify an independent-human validation requirement.
 
@@ -542,8 +548,16 @@ When `Manual:` requires a specialized validator, name the role explicitly (user/
 ## Project load / player scene
 
 - [ ] Project reopens without new missing-script, parser, global-class, UID, or player-code errors.
-- [ ] `Player.tscn` loads/spawns normally.
+- [ ] `Player.tscn` loads/spawns normally after application start.
 - [ ] No unexpected resource/UID churn appears after normal project rescan.
+
+## Application/menu shell
+
+- [ ] F5 opens the application main menu before constructing the development world.
+- [ ] Settings exposes only working controls; current Look Sensitivity visibly changes mouse-look response after development start.
+- [ ] New Game / Development Start enters the current development world normally.
+- [ ] Returning to the application no-world state shows the menu coherently rather than leaving an input/world orphan.
+- [ ] Quit from the main menu closes the application normally on the supported Windows x64 target.
 
 ## Input and look
 
@@ -721,7 +735,7 @@ The current CI barrier:
 - installs Godot `4.7.2` without .NET or export templates;
 - performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
 - runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
-- executes the independent application ownership/lifecycle/input/pause-time suite and movement suite through that entry point;
+- executes the independent application menu/ownership/lifecycle/input/pause-time suite and movement suite through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;
 - fails when the all-tests process returns nonzero.
 

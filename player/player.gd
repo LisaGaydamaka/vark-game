@@ -85,6 +85,12 @@ func capture_look_mouse() -> void:
 	player_look.capture_mouse()
 
 
+func set_mouse_sensitivity(value: float) -> void:
+	mouse_sensitivity = value
+	if player_look != null:
+		player_look.mouse_sensitivity = value
+
+
 func cancel_gameplay_input_gestures() -> void:
 	player_input.current_command = PlayerCommand.new()
 	if locomotion_controller != null:

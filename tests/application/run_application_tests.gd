@@ -5,6 +5,9 @@ const ApplicationScene = preload("res://application/Application.tscn")
 const ApplicationRoot = preload("res://application/application_root.gd")
 const WorldSession = preload("res://application/world_session.gd")
 const SessionWorkProbe = preload("res://tests/application/session_work_probe.gd")
+const MenuShellRegressions = preload(
+	"res://tests/application/menu_shell_regressions.gd"
+)
 const InputBoundaryRegressions = preload(
 	"res://tests/application/input_boundary_regressions.gd"
 )
@@ -29,6 +32,13 @@ func _run_tests() -> void:
 	var application: Node = ApplicationScene.instantiate()
 	get_root().add_child(application)
 	await process_frame
+
+	var menu_regressions: RefCounted = MenuShellRegressions.new()
+	await menu_regressions.run(
+		self,
+		application,
+		Callable(self, "_assert_true")
+	)
 
 	var world_host: Node = application.get_node("WorldHost")
 	var ui_root: CanvasLayer = application.get_node("UIRoot")
@@ -282,8 +292,9 @@ func _run_tests() -> void:
 		and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.MENU
 		and not bool(application.call("is_current_session", exiting_session_id))
 		and world_host.get_child_count() == 0
-		and application.get("current_ui") == ui_root,
-		"Exit tears down mission-world ownership while the application UI remains coherent"
+		and application.get("current_ui") == ui_root
+		and (application.get_node("UIRoot/MainMenu") as Control).visible,
+		"Exit tears down mission-world ownership and returns to the application menu"
 	)
 
 	application.queue_free()

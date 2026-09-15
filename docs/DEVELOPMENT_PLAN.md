@@ -74,6 +74,7 @@ The project currently contains:
 - an application root with explicit current-world/session ownership
 - an application-owned gameplay/look input boundary with tick-framed locomotion intent and event-cadence view pose
 - application-owned exclusive control modes with coherent world pause and world-session gameplay time
+- a minimal application main-menu shell with development start, Quit, and one working look-sensitivity setting
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -82,7 +83,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: complete player-facing application/menu/development-launch flow, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: development mission selection/launch, persistence-backed Continue/campaign flow, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -457,13 +458,13 @@ F5 should launch the Vark application rather than an arbitrary development scene
 
 Top-level load/restart/mission-transition/exit operations have one application owner and cannot race each other as competing subsystem transitions. Future world-bound requests must carry/verify their source session rather than implicitly operating on whatever world happens to be current later.
 
-The project now boots through `res://application/Application.tscn`. The application owns a persistent world host and UI root, installs the current development `VarkTest` world, resolves the current player through a semantic player marker, exposes the current session identity for future source-session checks, and provides one exclusive top-level operation guard.
+The project boots through `res://application/Application.tscn`. The application owns a persistent world host and UI root, installs and resolves the current development `VarkTest` world/player when gameplay is started, exposes current session identity for future source-session checks, and provides one exclusive top-level operation guard. Phase 1.5 intentionally changes the initial child state from immediate development-world boot to an application-owned main menu; that later product-flow step does not change the 1.1 ownership contract.
 
-**Done when:** F5 launches the application root; that root owns the current world, player, persistent UI root, session identity, and exclusive top-level operation state without changing accepted player behavior.
+**Done when:** F5 launches the application root; when a world is active that root owns the current world, player, persistent UI root, session identity, and exclusive top-level operation state without changing accepted player behavior.
 
-**Automated:** passed — the application regression suite verifies the configured F5 main scene, current world/player/UI ownership, current/stale session identity checks, and rejection of overlapping top-level operations, and the authoritative all-tests CI barrier remained green.
+**Automated:** passed — the application regression suite verifies the configured F5 main scene, persistent UI/application ownership, current world/player/session ownership after development start, current/stale session identity checks, and rejection of overlapping top-level operations, and the authoritative all-tests CI barrier remained green.
 
-**Manual:** passed — the user confirmed on Windows x64 that F5 opens the current `VarkTest` world/player normally and ordinary movement/mouse-look startup and response feel unchanged.
+**Manual:** passed — the user confirmed the application-owned F5 path and ordinary movement/mouse-look startup/response on Windows x64. Phase 1.5 later inserts the intended main-menu step before gameplay.
 
 ## 1.2 World-session lifecycle, stop, replacement, and teardown `[x]`
 
@@ -526,7 +527,7 @@ Continuous movement/sprint may resume from current physical input when the gamep
 
 **Manual:** passed — the user confirmed on Windows x64 that F5 locomotion/traversal and mouse-look response remain accepted after the input-boundary refactor and Escape still releases the mouse normally.
 
-## 1.4 Pause/UI/cutscene input, simulation, and gameplay-time ownership `[~]`
+## 1.4 Pause/UI/cutscene input, simulation, and gameplay-time ownership `[x]`
 
 Define arbitration between gameplay, pause, inventory/objectives/map, cutscenes/sequences, and menus.
 
@@ -544,13 +545,23 @@ The application now owns one explicit control mode for gameplay, pause menu, inv
 
 **Done when:** application control ownership can move from gameplay to pause/menu/UI/cutscene modes without leaking world input; ordinary world processing and session gameplay time freeze together while application/UI processing continues; resuming restores world simulation/input coherently without replaying an edge-dependent gesture; and lifecycle stop/restart/transition remains separate from user-facing pause.
 
-**Automated:** the application suite covers direct `WorldSession` `PLAYING ↔ PAUSED` behavior, gameplay-time advancement only while `PLAYING`, all current exclusive control modes mapping to paused world/input ownership, persistent application/UI input and timer work while paused, frozen player pose/session timer/gameplay time during pause, rejection of world-input re-enable while application control is exclusive, held-jump cancellation/no replay on resume, resumed session timer/gameplay time, and the existing lifecycle/input/movement barriers. The authoritative all-tests barrier must remain green in post-push CI.
+**Automated:** passed — the application suite covers direct `WorldSession` `PLAYING ↔ PAUSED` behavior, gameplay-time advancement only while `PLAYING`, all current exclusive control modes mapping to paused world/input ownership, persistent application/UI input and timer work while paused, frozen player pose/session timer/gameplay time during pause, rejection of world-input re-enable while application control is exclusive, held-jump cancellation/no replay on resume, resumed session timer/gameplay time, and the existing lifecycle/input/movement barriers; the authoritative all-tests barrier remained green.
 
-**Manual:** Windows x64 user/playtester — press F5 and confirm ordinary startup, movement/traversal, and mouse-look response still feel unchanged. No player-facing pause/inventory/map/menu control is introduced until `1.5`/later UI work, so 1.4's actual pause/time/arbitration behavior is deterministic automated coverage at this step.
+**Manual:** passed — the user confirmed on Windows x64 that normal F5 startup, movement/traversal, and mouse-look response still feel unchanged after pause/time ownership was introduced.
 
-## 1.5 Minimal application/menu shell `[ ]`
+## 1.5 Minimal application/menu shell `[~]`
 
 Provide functional New Game/development start, Quit, and only settings that actually work.
+
+F5 now enters a persistent application-owned main menu with no mission world instantiated yet. `New Game / Development Start` uses the same serialized application lifecycle to instantiate the current `VarkTest` world and enter normal gameplay. Returning to the no-world state through the application exit path reveals the same menu again rather than leaving the application without player-facing ownership.
+
+The shell exposes exactly one current setting: look sensitivity. It keeps the accepted default value, updates the live event-cadence look owner when changed, and remains application-owned so the chosen value is reapplied to replacement players during the same application run. No placeholder Continue, difficulty, save/load, audio, graphics, inventory, objectives, map, or persistence-backed settings are shown before their real systems exist. Quit is wired directly to the application tree quit path.
+
+**Done when:** F5 opens the Vark main menu with no active world; New Game / Development Start starts the current development world through `VarkApplication`; the only exposed setting changes real look sensitivity and survives ordinary world replacement within the application run; application exit returns to the menu; and Quit closes the application without introducing placeholder product controls.
+
+**Automated:** the application suite verifies no-world `MENU` startup, main-menu/settings/quit wiring, settings-panel navigation, look-sensitivity application to the real player and its event-cadence look owner, retention across world restart, New Game / Development Start entering the existing lifecycle/input path, exit returning to the menu, and all existing lifecycle/input/pause/movement barriers. The authoritative all-tests barrier must remain green in post-push CI.
+
+**Manual:** Windows x64 user/playtester — press F5 and confirm the main menu appears before any world; open Settings, adjust Look Sensitivity, return, then choose New Game / Development Start and confirm `VarkTest` starts and mouse look reflects the changed sensitivity while movement/traversal remain normal. Relaunch and use Quit from the main menu, confirming the application closes normally.
 
 ## 1.6 Development mission launch `[ ]`
 
@@ -1395,8 +1406,8 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `1.4` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms normal F5 startup/movement/traversal/mouse-look feel is unchanged; reconcile `1.4` to `[x]` during the next authorized patch.
-2. Implement the minimal application/menu and development-launch work in `1.5`–`1.6` on the proven lifecycle/input/pause-time ownership boundaries.
+1. Finish `1.5` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms the menu → settings → development-start flow, changed look sensitivity, unchanged movement/traversal behavior, and functional Quit; reconcile `1.5` to `[x]` during the next authorized patch.
+2. Implement `1.6` development mission launch/selection on the proven application/menu lifecycle.
 3. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
 4. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 5. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.

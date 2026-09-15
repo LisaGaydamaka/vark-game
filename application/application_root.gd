@@ -2,7 +2,13 @@ class_name VarkApplication
 extends Node
 
 
+signal quit_requested
+
+
 const WORLD_SESSION_SCRIPT = preload("res://application/world_session.gd")
+const DEFAULT_LOOK_SENSITIVITY: float = 0.007
+const MIN_LOOK_SENSITIVITY: float = 0.002
+const MAX_LOOK_SENSITIVITY: float = 0.014
 
 
 enum TopLevelOperation {
@@ -11,6 +17,7 @@ enum TopLevelOperation {
 	RESTART,
 	MISSION_TRANSITION,
 	EXIT,
+	NEW_GAME,
 }
 
 
@@ -30,6 +37,15 @@ enum ControlMode {
 @onready var input_boundary: ApplicationInputBoundary = $InputBoundary
 @onready var world_host: Node = $WorldHost
 @onready var ui_root: CanvasLayer = $UIRoot
+@onready var main_menu: Control = $UIRoot/MainMenu
+@onready var menu_actions: VBoxContainer = $UIRoot/MainMenu/Center/Panel/Content/MenuActions
+@onready var settings_panel: VBoxContainer = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel
+@onready var new_game_button: Button = $UIRoot/MainMenu/Center/Panel/Content/MenuActions/NewGameButton
+@onready var settings_button: Button = $UIRoot/MainMenu/Center/Panel/Content/MenuActions/SettingsButton
+@onready var quit_button: Button = $UIRoot/MainMenu/Center/Panel/Content/MenuActions/QuitButton
+@onready var look_sensitivity_slider: HSlider = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/LookSensitivity
+@onready var look_sensitivity_value: Label = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/LookSensitivityValue
+@onready var settings_back_button: Button = $UIRoot/MainMenu/Center/Panel/Content/SettingsPanel/BackButton
 
 var current_session: Node = null
 var current_world: Node = null
@@ -37,13 +53,15 @@ var current_player: Node = null
 var current_ui: CanvasLayer = null
 var active_top_level_operation: int = TopLevelOperation.NONE
 var control_mode: int = ControlMode.MENU
+var look_sensitivity: float = DEFAULT_LOOK_SENSITIVITY
 
 var _last_session_id: int = 0
 
 
 func _ready() -> void:
 	current_ui = ui_root
-	_boot_default_world()
+	_wire_menu_shell()
+	_show_main_menu()
 
 
 func get_current_session_id() -> int:
@@ -85,6 +103,37 @@ func get_gameplay_time_seconds() -> float:
 
 func get_current_view_pose() -> Dictionary:
 	return input_boundary.get_current_view_pose()
+
+
+func get_look_sensitivity() -> float:
+	return look_sensitivity
+
+
+func set_look_sensitivity(value: float) -> void:
+	look_sensitivity = clampf(
+		value,
+		MIN_LOOK_SENSITIVITY,
+		MAX_LOOK_SENSITIVITY
+	)
+	_sync_look_sensitivity_ui()
+	_apply_look_sensitivity_to_current_player()
+
+
+func start_new_game() -> bool:
+	if default_world_scene == null:
+		return false
+	if not try_begin_top_level_operation(TopLevelOperation.NEW_GAME):
+		return false
+
+	var succeeded: bool = _replace_world(default_world_scene)
+	if succeeded:
+		_hide_main_menu()
+	else:
+		_show_main_menu()
+
+	var finished: bool = finish_top_level_operation(TopLevelOperation.NEW_GAME)
+	assert(finished, "VarkApplication lost ownership of the new-game operation.")
+	return succeeded
 
 
 func try_begin_top_level_operation(operation: int) -> bool:
@@ -206,24 +255,10 @@ func exit_current_world() -> bool:
 		return false
 
 	_teardown_current_session()
+	_show_main_menu()
 	var finished: bool = finish_top_level_operation(TopLevelOperation.EXIT)
 	assert(finished, "VarkApplication lost ownership of the exit operation.")
 	return true
-
-
-func _boot_default_world() -> void:
-	assert(
-		default_world_scene != null,
-		"VarkApplication requires a default world scene for initial development boot."
-	)
-	assert(
-		current_session == null,
-		"VarkApplication may install only one initial world."
-	)
-	assert(
-		_install_world(default_world_scene),
-		"VarkApplication failed to build the default world session."
-	)
 
 
 func _replace_world(scene: PackedScene) -> bool:
@@ -250,6 +285,7 @@ func _install_world(scene: PackedScene) -> bool:
 
 	current_session = session
 	_sync_current_references()
+	_apply_look_sensitivity_to_current_player()
 	input_boundary.bind_player(current_player)
 
 	if not bool(current_session.call("begin_play")):
@@ -357,3 +393,71 @@ func _is_valid_control_mode(mode: int) -> bool:
 func _set_world_input_domains(enabled: bool) -> void:
 	input_boundary.set_gameplay_enabled(enabled)
 	input_boundary.set_look_enabled(enabled)
+
+
+func _wire_menu_shell() -> void:
+	new_game_button.pressed.connect(_on_new_game_pressed)
+	settings_button.pressed.connect(_on_settings_pressed)
+	quit_button.pressed.connect(_on_quit_pressed)
+	settings_back_button.pressed.connect(_on_settings_back_pressed)
+	look_sensitivity_slider.value_changed.connect(_on_look_sensitivity_changed)
+	quit_requested.connect(_quit_application)
+	_sync_look_sensitivity_ui()
+
+
+func _show_main_menu() -> void:
+	control_mode = ControlMode.MENU
+	_set_world_input_domains(false)
+	main_menu.visible = true
+	menu_actions.visible = true
+	settings_panel.visible = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+
+func _hide_main_menu() -> void:
+	main_menu.visible = false
+	menu_actions.visible = true
+	settings_panel.visible = false
+
+
+func _show_settings() -> void:
+	menu_actions.visible = false
+	settings_panel.visible = true
+
+
+func _sync_look_sensitivity_ui() -> void:
+	if look_sensitivity_slider != null:
+		look_sensitivity_slider.value = look_sensitivity
+	if look_sensitivity_value != null:
+		look_sensitivity_value.text = "%.3f" % look_sensitivity
+
+
+func _apply_look_sensitivity_to_current_player() -> void:
+	if current_player == null or not is_instance_valid(current_player):
+		return
+	current_player.call("set_mouse_sensitivity", look_sensitivity)
+
+
+func _on_new_game_pressed() -> void:
+	start_new_game()
+
+
+func _on_settings_pressed() -> void:
+	_show_settings()
+
+
+func _on_settings_back_pressed() -> void:
+	menu_actions.visible = true
+	settings_panel.visible = false
+
+
+func _on_look_sensitivity_changed(value: float) -> void:
+	set_look_sensitivity(value)
+
+
+func _on_quit_pressed() -> void:
+	quit_requested.emit()
+
+
+func _quit_application() -> void:
+	get_tree().quit()
