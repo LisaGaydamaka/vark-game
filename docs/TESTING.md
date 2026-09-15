@@ -91,13 +91,21 @@ Small read-only semantic query methods are acceptable when tests need meaningful
 
 # Current local automated barrier
 
-Run from project root:
+After a fresh clone, after deleting `.godot/`, or whenever Godot's generated project metadata/class registry is absent, initialize the project once from the project root:
+
+```powershell
+godot --headless --path . --import
+```
+
+Then run the authoritative movement barrier from project root:
 
 ```powershell
 godot --headless --path . --script res://tests/movement/run_movement_tests.gd
 ```
 
 Expected result: exit code `0` and `ALL MOVEMENT TESTS PASSED`.
+
+The import bootstrap is not required before every ordinary local test run when the project has already been imported successfully; it exists so a clean checkout follows the same reproducible startup path used by CI.
 
 Harness failure-path check:
 
@@ -604,17 +612,18 @@ The later production-scale mission remains the final realistic performance proof
 
 # CI policy
 
-Add GitHub Actions only after the local suite it runs is deterministic.
+GitHub Actions exists for the deterministic movement barrier.
 
 Under current repository workflow, `test` is the direct-write integration branch. CI on `test` is therefore **post-push integration validation**, not a fictional pre-push gate.
 
-CI should:
+The current CI barrier:
 
-- use exact supported project Godot/runtime configuration;
-- run headlessly;
-- call the same authoritative command used locally;
-- run immediately on pushes to `test` and on PRs if used by other workflows;
-- fail on nonzero test exit.
+- runs on the pinned `ubuntu-24.04` GitHub-hosted runner;
+- installs Godot `4.7.2` without .NET or export templates;
+- performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
+- runs the same authoritative movement command used locally;
+- runs on pushes to `test` and on pull requests if they are used;
+- fails on a nonzero movement-test exit.
 
 When multiple suites exist, CI calls one all-tests entry point rather than duplicating suite commands in workflow YAML.
 

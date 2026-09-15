@@ -69,6 +69,7 @@ The project currently contains:
 - FuncGodot
 - TrenchBroom `.map` import
 - existing graybox/test maps
+- post-push GitHub Actions validation for the current movement barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
 
@@ -288,6 +289,20 @@ Failure must leave one coherent application-owned recovery state and no leaked w
 
 # Production toolchain
 
+## Supported Phase 0 baseline
+
+The current reproducible development/test baseline is:
+
+- Godot `4.7.2` for the automated barrier;
+- Jolt Physics as the configured 3D physics backend;
+- FuncGodot `2025.12`;
+- TrenchBroom `2026.2` (`Build v2026.2 Release Win64`) for the currently authored `.map` sources;
+- Forward+ as the supported desktop rendering method, with D3D12 configured on Windows;
+- Mobile renderer for Godot's mobile rendering-method slot;
+- GitHub Actions on the pinned `ubuntu-24.04` hosted runner for clean-checkout movement validation.
+
+The observed current authoring setup is Win64, but the production export target has not yet been explicitly declared. Until that target is confirmed/documented, roadmap item 0.4 remains `[~]` rather than pretending the entire runtime/export contract is closed.
+
 ## TrenchBroom
 
 Primary spatial authoring tool for brush geometry/materials, routes/rooms, player starts, guards/patrol markers, doors/lights, loot/containers/props, triggers/exits, and ordinary spatial mission objects.
@@ -344,49 +359,79 @@ Accepted behavior includes ground movement, sprint, crouch, jump, air movement, 
 
 Keep the deterministic headless movement suite. Tests protect accepted behavior, not current internal architecture.
 
-## 0.3 Repository cleanup `[ ]`
+## 0.3 Repository cleanup `[~]`
 
-Before adding more fixtures/content, review and establish policy for:
+Established policy so far:
 
-- TrenchBroom autosaves;
-- generated imports;
-- experimental maps;
-- large `.map` source files;
-- future binary assets/LFS;
-- `.gitignore`;
-- source vs generated ownership.
+- `maps/autosave/` is generated TrenchBroom recovery material, has been removed from tracked content, and is ignored;
+- `.godot/` and other current Godot-generated local state remain ignored;
+- top-level `maps/*.map` files are treated as authored/development map source unless deliberately retired;
+- tracked `.map.import` sidecars are generated import metadata rather than authored mission truth and must not receive irreplaceable manual edits; keep the current sidecars until the FuncGodot import/reimport workflow explicitly proves they can be removed safely;
+- do not blanket-place text `.map` source in Git LFS merely because a map becomes large; evaluate LFS for future large binary assets where Git text diffs are not useful;
+- existing `test.map`, `test2.map`, and `test3.map` remain development/graybox source for now.
 
-Current repository state already contains autosave material and a very large map source, so this is first-order development work rather than optional housekeeping.
+One cleanup decision remains intentionally open: `maps/level export2.map` is a roughly 29.5 MB tracked map whose ownership/name does not prove whether it is required authored source or an obsolete export. Do not delete, rename, or LFS-migrate it without an explicit content-ownership decision. Close 0.3 when that file is classified and any resulting cleanup is applied.
 
-## 0.4 Tool/runtime contract `[ ]`
+**Done when:** generated recovery/local state is excluded, remaining tracked map/import files have explicit source/generated ownership, and the large map is intentionally classified.
 
-Pin/document the supported development configuration that materially affects deterministic gameplay and portable test results:
+**Automated:** current clean checkout/import/CI remains green after any cleanup.
 
-- exact Godot version/build;
-- Jolt/physics backend implied by that build;
-- FuncGodot version;
-- TrenchBroom version;
-- supported renderer/rendering method;
-- supported development OS/export target relevant to current testing;
-- CI runner/runtime environment.
+**Manual:** confirm the role of `maps/level export2.map` before destructive cleanup.
 
-Do not create a broad platform matrix yet; define one supported development target first.
+## 0.4 Tool/runtime contract `[~]`
 
-## 0.5 Continuous integration for the existing barrier `[ ]`
+The current supported baseline is documented above and materially pins deterministic testing: Godot 4.7.2, Jolt, FuncGodot 2025.12, TrenchBroom 2026.2 Win64, Forward+ desktop/D3D12 on Windows, and the `ubuntu-24.04` CI runner.
 
-Once the exact runner environment is defined, run the existing authoritative headless command in CI on every `test` push and on pull requests if another workflow uses them.
+Still required before `[x]`:
+
+- explicitly declare the supported development/export target rather than inferring a shipping/export target from the current Windows authoring setup;
+- update this baseline whenever a tool/runtime upgrade is intentionally accepted rather than silently drifting versions.
+
+Do not create a broad platform matrix yet; define one supported development/export target first.
+
+**Done when:** one supported development/export target and the material runtime/tool versions are explicit and reproducible.
+
+**Automated:** CI proves Godot 4.7.2 clean-checkout import plus the authoritative movement barrier on the pinned runner.
+
+**Manual:** open/run the project on the declared supported local development target after a runtime/renderer/toolchain change.
+
+## 0.5 Continuous integration for the existing barrier `[x]`
+
+The existing authoritative movement barrier runs in GitHub Actions on every `test` push and on pull requests if used. CI performs a clean-checkout Godot import before executing the same authoritative movement command used locally.
 
 Under current repository policy, `test` is the direct-write integration branch. CI is post-push validation, not pre-push protection. Newly uploaded implementation work remains `[~]` until relevant CI/local checks pass and required user validation is accepted.
+
+**Done when:** a clean checkout on the pinned runner imports successfully and the movement suite is executed automatically after a `test` push.
+
+**Automated:** the `Movement regressions` GitHub Actions job passes; the current barrier has already completed successfully after the clean-import bootstrap was added.
+
+**Manual:** none for CI infrastructure beyond confirming the successful run/report; user confirmation has been received.
 
 ## 0.6 Traversal regression expansion `[ ]`
 
 Add deterministic coverage where practical for ledge catch, hang, shimmy, supported corners, mantle, release, and suppression/regrab.
 
+Do not invent synthetic geometry merely to make a test convenient if it does not represent accepted player behavior. Build minimal fixtures around the real ledge state machine and real `Player.tscn`.
+
+**Done when:** representative accepted ledge catch/hang/release, shimmy/corner, mantle, and suppression/regrab behavior has deterministic protection where practical.
+
+**Automated:** the authoritative movement barrier includes those fixtures and remains green in CI.
+
+**Manual:** run the existing ledge/mantle checklist and confirm the protected cases still feel like the accepted controller before marking `[x]`.
+
 ## 0.7 Behavior-trace protection for controller refactors `[ ]`
 
 Before major input/controller plumbing changes, add enough semantic trace coverage to show equivalent locomotion command sequences preserve accepted behavior within intended numeric tolerances.
 
+Representative traces should cover walk/start/stop, crouch, ordinary jump/sprint-jump, a step, and representative traversal transitions once 0.6 fixtures exist. Record/assert observable semantic results such as position/velocity/stance/support/traversal state, not private helper call order.
+
 Do not force mouse-look timing into a physics-tick trace if doing so would change accepted look response. Protect look behavior and stable-boundary pose capture separately where appropriate.
+
+**Done when:** the Phase 1 input/controller refactor can compare the same semantic command sequences before/after without depending on the current internal component call graph.
+
+**Automated:** representative traces execute through the authoritative barrier with explicit numeric tolerances where physics requires them.
+
+**Manual:** none beyond the movement/traversal manual acceptance already required when a refactor could affect player feel.
 
 **Phase gate:** repository ownership/tool/runtime versions are controlled, the existing barrier runs automatically in CI after `test` pushes, and accepted player behavior is sufficiently protected for application/input refactors.
 
@@ -1300,27 +1345,26 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. `0.3` repository cleanup
-2. `0.4` exact tool/runtime contract
-3. `0.5` CI for the existing movement barrier as post-push validation on `test`
-4. `0.6` traversal regression expansion
-5. `0.7` behavior-trace protection
-6. Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure
-7. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability
-8. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary
-9. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof
-10. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy
-11. Phase 4 crude hostile compatibility
-12. Phase 5 harden stealth, preserving resolved AI choices through save/load
-13. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence
-14. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it
-15. early cold-author review
-16. Phase 9 establish real vitality/damage ownership while prototyping combat
-17. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice
-18. Phase 11 stabilize **world/gameplay** production APIs only
-19. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion
-20. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior
-21. production scaling/handoff
+1. Finish `0.3` by classifying `maps/level export2.map` and applying only the cleanup implied by that ownership decision.
+2. Finish `0.4` by explicitly declaring the supported development/export target; keep the already-pinned Godot/Jolt/FuncGodot/TrenchBroom/renderer/CI baseline synchronized when upgrades are intentionally accepted.
+3. Implement `0.6` traversal regression expansion with real deterministic ledge/mantle fixtures.
+4. Implement `0.7` semantic behavior-trace protection over representative accepted locomotion/traversal sequences.
+5. Only after the Phase 0 gate is satisfied, begin Phase 1 application root + world stop/teardown/replacement + gameplay-input boundary/view-pose ownership + gesture cancellation + pause/gameplay-time ownership, **without** building save candidate infrastructure.
+6. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
+7. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
+8. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
+9. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
+10. Phase 4 crude hostile compatibility.
+11. Phase 5 harden stealth, preserving resolved AI choices through save/load.
+12. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
+13. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
+14. early cold-author review.
+15. Phase 9 establish real vitality/damage ownership while prototyping combat.
+16. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
+17. Phase 11 stabilize **world/gameplay** production APIs only.
+18. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
+19. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
+20. production scaling/handoff.
 
 The most important sequencing rules are:
 
