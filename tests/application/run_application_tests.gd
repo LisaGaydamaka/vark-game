@@ -5,6 +5,9 @@ const ApplicationScene = preload("res://application/Application.tscn")
 const ApplicationRoot = preload("res://application/application_root.gd")
 const WorldSession = preload("res://application/world_session.gd")
 const SessionWorkProbe = preload("res://tests/application/session_work_probe.gd")
+const InputBoundaryRegressions = preload(
+	"res://tests/application/input_boundary_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -86,6 +89,13 @@ func _run_tests() -> void:
 		and correct_finish
 		and not bool(application.call("has_active_top_level_operation")),
 		"Application serializes top-level world operations through one owner"
+	)
+
+	var input_regressions: RefCounted = InputBoundaryRegressions.new()
+	await input_regressions.run(
+		self,
+		application,
+		Callable(self, "_assert_true")
 	)
 
 	var isolated_session: Node = WorldSession.new()

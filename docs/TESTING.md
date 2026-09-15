@@ -20,7 +20,7 @@ An automated test does not count as coverage merely because a test file exists. 
 
 If a roadmap/fixture contract expects a named deterministic case “where practical” and that case cannot currently be automated credibly, record the exact case, why trustworthy automation is not practical yet, and the focused manual/integrated acceptance that covers the gap. Do not silently omit the case or weaken `Done when:`.
 
-Systemic features require **integrated proof**, not only isolated unit proof. A door is not complete because it animates; a save system is not complete because it serializes data; an acoustic system is not complete because one distance check passes.
+Systemic features require **integrated proof**, not only isolated unit proof. A door is not complete because it animates; a save system is not complete because it serializes data; an acoustic system is not complete because one distance test passes.
 
 For cross-cutting systems, test ownership and failure boundaries as aggressively as happy paths. A restore that fails safely is part of save correctness; a torn-down world that cannot affect its replacement is part of lifecycle correctness; a detached snapshot that cannot mutate with the live world is part of save correctness.
 
@@ -137,7 +137,7 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 
 Expected result: nonzero exit code and intentional failure reported.
 
-The application suite verifies the configured F5 application entry point, current development world/player/UI ownership, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/stop/resume, restart/transition/exit teardown, fresh replacement, and stale session-owned timer/deferred-work rejection.
+The application suite verifies the configured F5 application entry point, current development world/player/UI ownership, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/stop/resume, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, and the application-owned gameplay/look input boundary including intent-frame/view-pose lifetime.
 
 The movement runner currently:
 
@@ -181,6 +181,14 @@ The production `WorldSession` path is exercised directly and through the applica
 The lifecycle regression attaches representative `Timer` and deferred work beneath the real session owner. A stopped session freezes the timer; restarting tears the old session down before yielding, and neither the old timer nor deferred callback can fire afterward. A control probe under the current replacement proves the same work executes normally while its session is alive. The replacement receives a fresh runtime world instance and session ID while reusing the authored `PackedScene` only as configuration, so runtime metadata/state does not leak through the shared authored resource or persistent application owner.
 
 No production registry, semantic event queue, or general scheduler is invented by this fixture. Those systems remain future roadmap work; when introduced, the tested lifetime contract requires their mutable state/work to be owned by the current `WorldSession` rather than application/autoload state.
+
+## Gameplay input boundary and view pose
+
+The production F5 application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.
+
+The application regression proves continuous movement/sprint state can remain held across gameplay frames while a fresh jump press exists for one gameplay frame only. A disabled gameplay domain produces a neutral command; on resume, continuous movement/sprint reflects current physical state while a jump gesture held across domain loss remains suppressed until release and a fresh press. Domain loss also clears the player's representative buffered airborne-mantle gesture. The current locomotion command does not invent a release edge that locomotion does not consume; as interaction/combat/inventory actions with meaningful pressed/released semantics arrive, their domain fixtures must extend this same one-frame edge/cancellation contract rather than expanding `PlayerCommand` into their owner.
+
+Look input remains event-driven through the application boundary and is not delayed to the physics tick. The regression applies mouse motion and observes the input-owned view pose immediately, verifies disabling the look domain prevents view mutation, and verifies application view-pose sampling returns detached value-owned data. Escape remains application input for the accepted mouse-release behavior. Existing movement/traversal traces remain the objective behavior barrier for unchanged controller response.
 
 ## Framework sanity
 
@@ -230,7 +238,7 @@ Dropping from a hang cannot immediately recatch the same local ledge while the p
 
 The authoritative movement barrier also drives fixed real-player command sequences and samples one read-only semantic movement snapshot instead of private controller/component call order. The traces protect representative walk startup/sustain/stop, crouch movement and stance changes, ordinary jump and sprint-jump takeoff, a real step crossing, and ledge catch/hang/shimmy/release/corner/mantle transitions. Checkpoints assert position, velocity, support class, stance, and traversal state with explicit numeric tolerances where physics requires them.
 
-Mouse look is deliberately not quantized into these physics traces; accepted event-driven look cadence remains protected by the player-controller contract and is exercised separately when the Phase 1 input/view boundary is introduced.
+Mouse look is deliberately not quantized into these physics traces; accepted event-driven look cadence is now exercised separately through the application input-boundary regression.
 
 No future-system coverage below should be reported as existing until actually implemented.
 
@@ -242,12 +250,11 @@ These requirements become active when corresponding systems are implemented.
 
 ## World-session lifetime fixture
 
-Phase 1.1–1.2 now prove application boot ownership, current session identity, one exclusive top-level-operation guard, non-playing build, explicit entry to play, coherent stop/resume, synchronous teardown, restart/ordinary replacement, exit, fresh runtime state, stale-work rejection, and separation between persistent application/authored configuration and session runtime state.
+Phase 1.1–1.3 now prove application boot ownership, current session identity, one exclusive top-level-operation guard, non-playing build, explicit entry to play, coherent stop/resume, synchronous teardown, restart/ordinary replacement, exit, fresh runtime state, stale-work rejection, separation between persistent application/authored configuration and session runtime state, and application-owned gameplay/look input permission with stale intent/gesture cancellation.
 
 The remaining Phase 1 work extends that proven seam rather than replacing it:
 
-- Phase 1.3 makes gameplay-input domains/session gating explicit and clears/cancels stale intent/gestures during teardown/replacement;
-- Phase 1.4 defines pause simulation/gameplay-time ownership and proves ordinary gameplay durations do not advance while paused;
+- Phase 1.4 defines pause/UI/cutscene arbitration, one explicit pause simulation policy, and gameplay-time ownership so ordinary gameplay durations do not advance while paused;
 - future registries, semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive.
 
 Phase 1 does **not** need a simultaneous old/candidate world fixture.
@@ -256,19 +263,25 @@ When Phase 4 implements real restore, extend this fixture to the chosen restore 
 
 ## Gameplay-input-domain fixture
 
-Prove:
+Phase 1.3 now proves for the real production player path:
 
-- accepted locomotion behavior survives the gameplay-input boundary;
-- application ownership suppresses gameplay intent without private locomotion changes;
+- application ownership supplies/suppresses current locomotion gameplay intent rather than leaving global permission inside locomotion;
+- one locomotion gameplay command frame is sampled at most once per physics tick;
+- continuous movement/sprint held state persists while physically held and permitted;
+- the existing jump pressed edge lasts one gameplay frame;
+- disabled gameplay produces neutral current intent;
+- domain loss prevents stale held jump intent from replaying, cancels the representative buffered mantle gesture, and requires release plus a fresh press before that edge-dependent gesture can begin again;
+- mouse look retains event-driven cadence and can be gated independently without physics-tick quantization;
+- the application can sample detached current input-owned view pose data;
+- the existing movement/traversal behavior traces remain green through the same authoritative all-tests barrier.
+
+As real interaction/combat/inventory/UI domains arrive, extend this fixture to prove:
+
 - interaction/combat/inventory are not forced through locomotion `PlayerCommand`;
-- one **gameplay intent** frame maps to one gameplay simulation tick;
-- held gameplay state persists only while physically/currently held and permitted;
-- pressed/released gameplay intent exists for one frame only;
-- pause/UI/cutscene/teardown/world-replacement gating clears transient gameplay edges rather than replaying them;
-- a representative edge-dependent gesture (for example hold attack, lose combat-input ownership, release while disabled, resume) is cancelled and requires a fresh initiating press rather than remaining stuck or firing later;
-- mouse look retains accepted response/feel and is not inadvertently quantized/delayed by the gameplay-frame refactor;
-- world gameplay samples the current input-owned view pose coherently during simulation;
-- UI/menu input continues to work when world gameplay simulation is paused.
+- their pressed/released edges each exist for one gameplay frame only;
+- a real hold/release action loses ownership cleanly and requires a fresh initiating press rather than firing after resume;
+- pause/UI/cutscene gating clears their transient intent while application/UI input continues to operate;
+- world gameplay samples the current input-owned view pose coherently at the controlled simulation/stable boundary used by those systems.
 
 ## Gameplay-time fixture
 
@@ -505,7 +518,7 @@ Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`.
 
 The checklist below is the broad integration pass for changes that could affect accepted player behavior. It is not required after every unrelated docs/gameplay change.
 
-A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit unrelated global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
+A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit irrelevant global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
 
 When `Manual:` requires a specialized validator, name the role explicitly (user/playtester, Windows operator, mapper, writer, cold author, external developer, etc.). The implementing agent may prepare the fixture/procedure but cannot self-certify an independent-human validation requirement.
 
@@ -695,7 +708,7 @@ The current CI barrier:
 - installs Godot `4.7.2` without .NET or export templates;
 - performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
 - runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
-- executes the independent application ownership/lifecycle suite and movement suite through that entry point;
+- executes the independent application ownership/lifecycle/input suite and movement suite through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;
 - fails when the all-tests process returns nonzero.
 

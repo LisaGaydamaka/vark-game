@@ -72,6 +72,7 @@ The project currently contains:
 - TrenchBroom `.map` import
 - existing graybox/test maps
 - an application root with explicit current-world/session ownership
+- an application-owned gameplay/look input boundary with tick-framed locomotion intent and event-cadence view pose
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -80,7 +81,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: complete application flow/input arbitration, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: complete application flow/pause-time arbitration, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -463,7 +464,7 @@ The project now boots through `res://application/Application.tscn`. The applicat
 
 **Manual:** passed — the user confirmed on Windows x64 that F5 opens the current `VarkTest` world/player normally and ordinary movement/mouse-look startup and response feel unchanged.
 
-## 1.2 World-session lifecycle, stop, replacement, and teardown `[~]`
+## 1.2 World-session lifecycle, stop, replacement, and teardown `[x]`
 
 Create the smallest application-owned lifecycle that permits a mission world to exist before normal gameplay consequences are enabled and guarantees old-world work cannot leak into a replacement.
 
@@ -488,11 +489,11 @@ World-scoped Nodes/services are owned beneath the `WorldSession`, so their timer
 
 **Done when:** the application can build a non-playing world session, explicitly enter/stop/resume play, restart or transition only after tearing down the old session, exit to a coherent no-world state, preserve persistent UI/config ownership, and reject stale session identity/work after replacement.
 
-**Automated:** the application suite covers direct `READY → PLAYING → STOPPED → EMPTY` lifecycle behavior, application-controlled stop/resume, fresh restart and mission transition, synchronous old-session teardown, stale session-ID rejection, session-owned timer/deferred-work cancellation on teardown, fresh runtime state with shared authored configuration, and coherent exit. The authoritative all-tests barrier must also keep the movement/behavior traces green in post-push CI.
+**Automated:** passed — the application suite covers direct `READY → PLAYING → STOPPED → EMPTY` lifecycle behavior, application-controlled stop/resume, fresh restart and mission transition, synchronous old-session teardown, stale session-ID rejection, session-owned timer/deferred-work cancellation on teardown, fresh runtime state with shared authored configuration, coherent exit, and the authoritative all-tests CI barrier remained green.
 
-**Manual:** Windows x64 user/playtester — press F5 and confirm the current `VarkTest` world starts normally and ordinary movement/mouse-look startup and response still feel unchanged after the new session wrapper. No player-facing restart/menu control is introduced by 1.2; restart/transition/exit lifecycle behavior is deterministic automated coverage until 1.5–1.6 expose user/development flow.
+**Manual:** passed — the user confirmed on Windows x64 that F5 still starts the current `VarkTest` world normally and ordinary movement/mouse-look startup and response feel unchanged after the session wrapper.
 
-## 1.3 Gameplay-input boundary, domains, view pose, and frame lifetime `[ ]`
+## 1.3 Gameplay-input boundary, domains, view pose, and frame lifetime `[~]`
 
 Refactor so application ownership is outside locomotion.
 
@@ -513,6 +514,16 @@ Do not grow `PlayerCommand` into interaction/combat/inventory ownership.
 Define one gameplay intent frame per gameplay simulation tick. Held gameplay state persists only while physically/currently held and permitted; pressed/released edge intent exists for one gameplay frame only. Disabling a gameplay domain clears transient edges **and cancels incomplete edge-dependent gestures** rather than replaying or leaving them armed later.
 
 Mouse look may retain the existing event-driven cadence needed to preserve accepted response/feel. Treat the resulting player view pose as input-owned state: world gameplay samples it during the controlled simulation step, while a stable-boundary save may capture the current pose synchronously with other player state. UI/menu input is application input and need not wait for a gameplay tick.
+
+The F5 path now binds the current player to one persistent application-owned `ApplicationInputBoundary` before the `WorldSession` enters `PLAYING`. The boundary owns whether gameplay and look domains are permitted, produces at most one locomotion `PlayerCommand` per physics frame, and leaves `PlayerCommand` locomotion-only. Standalone player/movement fixtures retain direct sampling only as a focused fixture/development fallback; that fallback is not the production application ownership path.
+
+Continuous movement/sprint may resume from current physical input when the gameplay domain is permitted. Jump/crouch edge-dependent intent is neutral while disabled; an edge-dependent jump gesture held across domain loss remains blocked until release and a fresh press, and the current buffered airborne-mantle intent is explicitly cancelled on gameplay-domain loss. Look remains event-driven through the application boundary rather than physics-tick quantized; Escape remains application input; the current input-owned view pose is exposed as detached value-owned body/head/view transform data. Interaction/combat/inventory action schemas are not pulled forward before those real systems exist.
+
+**Done when:** the production F5 path has one application-owned gameplay/look boundary; locomotion receives at most one semantic command frame per physics tick; disabled gameplay produces neutral intent without stale edge replay and cancels the representative incomplete locomotion gesture; event-driven look remains independent of gameplay-tick cadence; and the application can sample a detached current view pose without changing accepted movement/look behavior.
+
+**Automated:** the application suite verifies production player/boundary binding, one command sample per physics frame, continuous held movement/sprint versus one-frame jump press intent, disabled-domain neutral intent, continuous-state resume without replaying a held edge gesture, release-plus-fresh-press recovery, explicit airborne-mantle gesture cancellation, event-cadence mouse-look routing, independent look gating, and detached view-pose sampling. The authoritative all-tests barrier must also keep the existing movement/traversal behavior traces green in post-push CI.
+
+**Manual:** Windows x64 user/playtester — press F5, briefly move/sprint/crouch/jump and use representative traversal, and confirm accepted movement response remains unchanged; use mouse look and confirm there is no obvious physics-tick quantization/latency; then press Escape and confirm the accepted mouse-release behavior still works.
 
 ## 1.4 Pause/UI/cutscene input, simulation, and gameplay-time ownership `[ ]`
 
@@ -1373,8 +1384,8 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `1.2` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms F5 still starts the current development world with accepted movement/mouse-look response; reconcile `1.2` to `[x]` during the next authorized patch.
-2. Implement `1.3` gameplay-input boundary/view-pose ownership and gesture cancellation, then `1.4` pause/gameplay-time ownership.
+1. Finish `1.3` post-push/manual validation: the authoritative `Regression suite` must stay green, then the Windows x64 user/playtester confirms F5 locomotion/traversal and event-cadence mouse look still match accepted response and Escape still releases the mouse; reconcile `1.3` to `[x]` during the next authorized patch.
+2. Implement `1.4` pause/UI/cutscene arbitration and gameplay-time ownership on the proven input/session boundary.
 3. Complete the minimal application/menu and development-launch work in `1.5`–`1.6` only after those ownership boundaries are proven.
 4. Phase 2 minimal mission + persistent-identity feasibility/idempotent writeback + TrenchBroom reimport stability.
 5. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.

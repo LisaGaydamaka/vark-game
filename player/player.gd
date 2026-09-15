@@ -16,6 +16,7 @@ extends CharacterBody3D
 @export var mouse_sensitivity: float = 0.007
 
 
+var gameplay_input_boundary: Node = null
 var player_input: PlayerInput
 var player_look: PlayerLook
 var support: PlayerSupport
@@ -35,11 +36,19 @@ var locomotion_controller: PlayerLocomotionController
 
 func _ready() -> void:
 	_create_components()
-	player_look.capture_mouse()
 
 
 func _physics_process(delta: float) -> void:
-	var command: PlayerCommand = player_input.sample()
+	var command: PlayerCommand
+	if gameplay_input_boundary != null and is_instance_valid(gameplay_input_boundary):
+		command = gameplay_input_boundary.call("sample_locomotion_command") as PlayerCommand
+	else:
+		# Standalone Player.tscn/movement fixtures retain their direct sampler.
+		# The production F5 path always binds the application-owned boundary before
+		# the WorldSession enters PLAYING.
+		command = player_input.sample()
+
+	player_input.current_command = command
 	velocity_state.apply_to_body(self)
 
 	if ledge_controller.is_active():
@@ -57,7 +66,38 @@ func _physics_process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Production input is routed by the application boundary. Standalone scenes
+	# keep the old event path so focused player fixtures remain useful.
+	if gameplay_input_boundary != null and is_instance_valid(gameplay_input_boundary):
+		return
 	player_look.handle_input(event)
+
+
+func bind_gameplay_input_boundary(boundary: Node) -> void:
+	gameplay_input_boundary = boundary
+
+
+func handle_look_input(event: InputEvent) -> void:
+	player_look.handle_input(event)
+
+
+func capture_look_mouse() -> void:
+	player_look.capture_mouse()
+
+
+func cancel_gameplay_input_gestures() -> void:
+	player_input.current_command = PlayerCommand.new()
+	if locomotion_controller != null:
+		locomotion_controller.air_mantle_intent_active = false
+
+
+func get_input_view_pose() -> Dictionary:
+	return {
+		"view_transform": head.global_transform,
+		"body_yaw": rotation.y,
+		"head_pitch": head.rotation.x,
+		"head_yaw": head.rotation.y,
+	}
 
 
 func is_grounded() -> bool:
