@@ -10,7 +10,11 @@ The finished production target remains:
 
 > **A mapper, mission scripter, writer, and artist can create production Vark missions without modifying Vark's core gameplay systems.**
 
-The difference is development order: Vark is not built as a speculative general immersive-sim SDK first. Reusability is extracted from systems that have already survived actual gameplay integration.
+Vark is not built as a speculative general immersive-sim SDK first. Reusability is extracted from systems that have survived actual gameplay integration.
+
+The roadmap therefore follows one rule above all others:
+
+> **Introduce only the smallest cross-cutting contracts that several near-term systems genuinely need; keep everything else local until gameplay proves it reusable.**
 
 ---
 
@@ -50,9 +54,11 @@ The project currently contains:
 - TrenchBroom `.map` import
 - existing graybox/test maps
 
-The accepted player-controller **behavior and feel are LOCKED**.
+The accepted player-controller behavior and feel are **LOCKED**.
 
-Its implementation is not frozen. Input sampling, command routing, component ownership, pause/cutscene gating, mouse ownership, scene structure, and other internals may be refactored as needed so long as player-facing behavior remains unchanged.
+Its implementation is not frozen. Input sampling, command routing, component ownership, pause/cutscene gating, mouse ownership, scene structure, and other internals may be refactored as needed so long as the accepted baseline response/feel remains unchanged.
+
+Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
 The project does not yet have the complete production gameplay platform: application flow, mission loading, stable persistent identities, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
@@ -68,19 +74,32 @@ Do not build many disconnected mechanics and integrate them near the end.
 
 The first representative stealth mission appears early, initially tiny and ugly.
 
-## 2. Spike → integrate → validate → contract → generalize
+## 2. Micro-proof → integrated proof → contract → generalize
 
 For uncertain systems:
 
-1. build the smallest representative use that can answer the hard question;
-2. integrate it into the actual playable path;
-3. test/playtest it against representative edge cases;
-4. define the accepted behavior/API only after evidence exists;
-5. generalize only the patterns that proved reusable.
+1. isolate the smallest fixture that can answer the system's hardest question;
+2. prove the dangerous assumption in that fixture;
+3. integrate the result into the actual playable path;
+4. test/playtest the cross-system behavior;
+5. define the accepted behavior/API only after evidence exists;
+6. generalize only the patterns that proved reusable.
 
-Do not begin by designing a universal subsystem around hypothetical future content.
+The isolated proof exists to make failures diagnosable. It does not replace the integrated proof.
 
-## 3. Authoring develops together with gameplay
+## 3. Extract a shared abstraction only when there is a current shared need
+
+Before introducing a framework, ask:
+
+> **Do at least two real near-term gameplay systems need the same contract now?**
+
+If not, keep the behavior local.
+
+If yes, extract the smallest semantic contract that removes real coupling.
+
+Do not create universal entity, event, effect, interaction, AI, or scripting frameworks around hypothetical future content.
+
+## 4. Authoring develops together with gameplay
 
 If a feature is ordinary mission content, its normal authoring path must be developed with it.
 
@@ -89,7 +108,7 @@ If a feature is ordinary mission content, its normal authoring path must be deve
 - GDScript: genuinely procedural or unusual mission behavior through stable public APIs
 - writer-facing text data: dialogue/narrative content without gameplay-code editing
 
-## 4. Do not create a new programming language
+## 5. Do not create a new programming language
 
 The common rule layer remains:
 
@@ -99,29 +118,107 @@ It is intentionally small.
 
 Loops, arbitrary locals, unrestricted expression evaluation, nested general control flow, and arbitrary object manipulation belong in GDScript rather than expanding the rule system.
 
-## 5. Stable APIs follow proven use
+## 6. Stable APIs follow proven use
 
 Mission scripts must not depend on private scene-tree paths, guard internals, movement internals, arbitrary internal signals, or undocumented singleton state.
 
 However, do not invent a broad public API before representative mission code needs it.
 
-## 6. Save/load is a cross-cutting requirement
+## 7. Saveability is designed with stateful features; the save framework comes later
 
-F5/F9 ordinary-gameplay save/load is fundamental.
+Every stateful feature added must define, at the semantic level:
 
-Every stateful feature added must define semantic snapshot/restore behavior and transient-state policy while that feature is still small.
+```text
+capture meaningful state
+apply meaningful state
+reconcile derived/runtime references after restore
+```
 
-## 7. Debugging is a production feature
+This does **not** mean building the full save service early.
+
+It means a door, prop, NPC, light, objective, or actor must not be designed around unsaveable private runtime state and then retrofitted later.
+
+Derived/transient data such as nav paths, temporary physics handles, caches, and runtime object references should normally be reconstructed rather than serialized blindly.
+
+## 8. Debugging is a production feature
 
 As soon as a system can fail invisibly, add the smallest useful diagnostics.
 
 Examples: entity-ID validation, acoustic path/debug, NPC perception state, nav path, mission-rule trace, save/restore warnings.
 
-## 8. Performance is checked incrementally
+## 9. Performance is checked incrementally
 
 The representative-scale stress mission remains late, but expensive systems get focused stress fixtures shortly after introduction.
 
 Do not wait until production scale to discover an architecture is asymptotically wrong.
+
+---
+
+# Minimal cross-cutting contracts
+
+These are the few shared contracts that intentionally arrive before the full systems built on them.
+
+## Application/world lifecycle
+
+The application owns whether a mission world is allowed to produce gameplay consequences.
+
+A minimal conceptual lifecycle is:
+
+```text
+BUILDING
+→ RESTORING when loading a save, otherwise READY
+→ PLAYING
+```
+
+Exact names may change, but the invariant is fixed:
+
+> **A world can be instantiated and reconciled without AI, rules, perception, objectives, gameplay sounds, or other consequences firing merely because nodes became ready.**
+
+Pause/menu/cutscene input ownership is related but is not a substitute for the world lifecycle.
+
+## Semantic player commands
+
+Application input policy is outside locomotion.
+
+```text
+Godot Input
+→ application/input router
+→ semantic PlayerCommand frame
+→ accepted player behavior
+```
+
+The movement controller owns response to commands; it does not own whether gameplay is currently permitted to receive them.
+
+## Semantic gameplay events
+
+Before a full mission-rule system exists, systems may use a very small internal semantic event envelope for real integration needs.
+
+Conceptually:
+
+```text
+GameplayEvent
+    type
+    source identity when relevant
+    minimal typed payload when relevant
+```
+
+This is not yet an authoring language and not a giant global signal dump.
+
+Events must describe meaningful gameplay facts such as a door changing state, a gameplay sound occurring, or an actor awareness state changing rather than expose private helper signals.
+
+## Semantic gameplay sounds
+
+The first acoustic spike needs a stable distinction between presentation audio and gameplay-significant sound.
+
+A minimal gameplay sound event should describe only what the spike needs, such as source/origin/category and semantic strength/profile reference.
+
+Propagation, audibility, surfaces, portals/graphs, and tuning are allowed to evolve after the spike.
+
+## Semantic state ownership
+
+Stateful systems expose meaningful state at their ownership boundary rather than asking the save system to inspect arbitrary scene trees.
+
+The save coordinator introduced later orchestrates these contracts; it does not define every system's meaning after the fact.
 
 ---
 
@@ -143,7 +240,11 @@ Requirements:
 - duplicating an authored entity creates a new identity
 - save snapshots use this identity
 
-Mission authors normally should not manually name every chair, lamp, box, or loot instance merely so save/load works.
+The identity must be owned by authoritative authored data or another explicitly persistent source-of-truth mechanism. It must **not** be heuristically derived from mutable transform, entity order, generated node path, geometry hash, or similar data.
+
+Mission authors should not manually invent names for every chair, lamp, box, or loot instance merely so save/load works.
+
+The authoring workflow must make missing/duplicate persistent identities easy to generate or repair, and duplicate identity must fail closed rather than silently restoring state to the wrong object.
 
 ## Optional semantic content identity
 
@@ -167,7 +268,7 @@ Mission scripting uses semantic IDs; persistence uses persistent instance IDs.
 
 ---
 
-# Save/restore lifecycle
+# Save/restore lifecycle target
 
 Do not restore by fully starting normal gameplay and then overwriting it.
 
@@ -181,14 +282,15 @@ RESTORE_SAVE
 Restore should conceptually perform:
 
 ```text
-create mission world in dormant state
+create mission world while non-playing
 → instantiate authored entities
 → register persistent and semantic identities
-→ apply raw entity snapshots
+→ apply raw semantic snapshots
 → restore MissionState
 → restore player semantic state
 → restore mission-script state
 → resolve/reconcile references and derived state
+→ mark world ready
 → enable AI, events, rules, perception, and gameplay updates
 → after_restore/world_ready hook
 → resume gameplay
@@ -201,13 +303,11 @@ During the restore transaction, ordinary consequences must not fire:
 - mission rules
 - perception
 - gameplay sound emission
-- door-change events
-- loot events
+- door-change consequences
+- loot consequences
 - alarm propagation
 
 Loading a save must not itself become gameplay.
-
-Derived/transient data such as nav paths should normally be recomputed from restored semantic state rather than serialized blindly.
 
 ---
 
@@ -281,15 +381,15 @@ A simple mission must not require custom GDScript.
 
 ---
 
-# Phase 0 — Protect existing behavior and repository discipline
+# Phase 0 — Stabilize the development ground
 
-Goal: make the current accepted player behavior safe to refactor around and prevent repository/tooling problems from compounding.
+Goal: prevent repository/tool drift from invalidating the behavior protection used by every later refactor.
 
 ## 0.1 Existing locomotion/traversal `[x]`
 
 Accepted behavior includes ground movement, sprint, crouch, jump, air movement, support/collision, steps, ledge catch/hang/shimmy/corners, mantle, and mouse look.
 
-**Contract:** behavior/feel is frozen; implementation is not.
+**Contract:** accepted baseline behavior/feel is frozen; implementation is not.
 
 ## 0.2 Existing movement regression suite `[x]`
 
@@ -297,7 +397,38 @@ Keep the deterministic headless movement suite.
 
 Tests protect accepted behavior, not current internal architecture.
 
-## 0.3 Traversal regression expansion `[ ]`
+## 0.3 Repository cleanup `[ ]`
+
+Before adding more fixtures/content, review and establish policy for:
+
+- TrenchBroom autosaves
+- generated imports
+- experimental maps
+- large `.map` source files
+- future binary assets/LFS
+- `.gitignore`
+- source vs generated ownership
+
+Current repository state already contains autosave material and a very large map source, so this is first-order development work rather than optional housekeeping.
+
+## 0.4 Tool version contract `[ ]`
+
+Pin/document exact production versions/build expectations for:
+
+- Godot
+- Jolt integration implied by that Godot build
+- FuncGodot
+- TrenchBroom
+
+A physics-sensitive regression suite is not a reliable contract if different machines silently run materially different tool/runtime builds.
+
+## 0.5 Continuous integration for the existing barrier `[ ]`
+
+Once the exact runner environment is defined, run the existing authoritative headless command in CI on `test` pushes and pull requests.
+
+Do not wait for many additional suites before proving the basic CI path.
+
+## 0.6 Traversal regression expansion `[ ]`
 
 Add deterministic coverage where practical for:
 
@@ -309,45 +440,19 @@ Add deterministic coverage where practical for:
 - release
 - suppression/regrab
 
-## 0.4 Behavior-trace protection for controller refactors `[ ]`
+## 0.7 Behavior-trace protection for controller refactors `[ ]`
 
 Before major input/controller plumbing changes, add enough semantic trace coverage to show that equivalent command sequences produce equivalent accepted behavior within intended numeric tolerances.
 
 Do not require byte-for-byte internal state equality.
 
-## 0.5 Repository cleanup `[ ]`
-
-Before content volume grows, review and establish policy for:
-
-- TrenchBroom autosaves
-- generated imports
-- experimental maps
-- large `.map` source files
-- future binary assets/LFS
-- `.gitignore`
-- source vs generated ownership
-
-Current repository state already contains autosave material and a very large map source, so this is an early requirement rather than optional housekeeping.
-
-## 0.6 Tool version contract `[ ]`
-
-Pin/document exact production versions for:
-
-- Godot
-- FuncGodot
-- TrenchBroom
-
-## 0.7 Continuous integration `[ ]`
-
-Once the runner is stable, run the authoritative headless command in CI on `test` pushes and pull requests.
-
-**Phase gate:** accepted player behavior is protected, repository ownership is clean enough for production growth, and tools are versioned.
+**Phase gate:** repository ownership/tool versions are controlled, the existing barrier runs in CI, and accepted player behavior is sufficiently protected for application/input refactors.
 
 ---
 
-# Phase 1 — Application shell and input ownership
+# Phase 1 — Application ownership, lifecycle, and input boundary
 
-Goal: turn the movement project into a controlled application without changing how the player feels.
+Goal: turn the movement project into a controlled application without changing accepted player feel and without baking gameplay side effects into node startup.
 
 ## 1.1 Application root `[ ]`
 
@@ -361,7 +466,15 @@ Create stable ownership for:
 
 F5 should launch the Vark application rather than an arbitrary development scene.
 
-## 1.2 Gameplay input boundary `[ ]`
+## 1.2 Minimal world lifecycle gate `[ ]`
+
+Create the smallest application-owned lifecycle that permits a mission world to exist before normal gameplay consequences are enabled.
+
+It must support future restore without yet implementing serialization.
+
+Prove that systems can be instantiated while the world is non-playing and become active only when the application allows it.
+
+## 1.3 Gameplay input boundary `[ ]`
 
 Refactor the player so locomotion consumes semantic gameplay commands rather than owning application-wide input policy.
 
@@ -370,13 +483,13 @@ Conceptually:
 ```text
 Godot Input
 → input router / gameplay input source
-→ player command frame
+→ PlayerCommand frame
 → existing movement behavior
 ```
 
 The player controller may be reorganized internally, but its accepted response/feel must remain unchanged.
 
-## 1.3 Pause/UI/cutscene input ownership `[ ]`
+## 1.4 Pause/UI/cutscene input ownership `[ ]`
 
 Define arbitration between:
 
@@ -390,21 +503,21 @@ No unintended gameplay input leaks through inactive ownership.
 
 Mouse capture/release must restore correctly.
 
-## 1.4 Minimal application/menu shell `[ ]`
+## 1.5 Minimal application/menu shell `[ ]`
 
 Provide functional New Game/development start, Quit, and only settings that actually work.
 
-## 1.5 Development mission launch `[ ]`
+## 1.6 Development mission launch `[ ]`
 
 Support a fast development route for launching a selected mission/playground without manually opening scenes.
 
-**Phase gate:** application ownership is clear and the player behaves identically through the new input boundary.
+**Phase gate:** application ownership is clear, a mission can exist while gameplay is disabled, and the player behaves identically through the semantic input boundary.
 
 ---
 
-# Phase 2 — Minimal mission and TrenchBroom substrate
+# Phase 2 — Minimal mission, authored identity, and TrenchBroom proof
 
-Goal: load one tiny real mission package through the intended authoring path before building broad gameplay architecture.
+Goal: prove the real authoring/import/identity path before save/load or broad gameplay systems depend on it.
 
 ## 2.1 Mission package convention `[ ]`
 
@@ -416,21 +529,44 @@ Only include fields currently required to load the playground: mission ID, map/w
 
 Do not pre-design every future campaign/narrative field.
 
-## 2.3 Persistent IDs `[ ]`
+## 2.3 Persistent identity feasibility proof `[ ]`
 
-Implement stable persistent instance identity for authored saveable entities.
+Before building a registry/save architecture, prove a concrete authoring workflow can satisfy all of these operations:
 
-## 2.4 Optional semantic content IDs `[ ]`
+```text
+create entity
+→ import
+→ move entity
+→ reorder unrelated entities
+→ reimport
+→ duplicate entity
+→ delete/recreate another entity
+→ reimport again
+```
+
+The original entity must retain its identity through ordinary edits; the duplicate must receive a distinct identity; unrelated edits must not reassign IDs.
+
+Identity may live directly in `.map` entity properties or another explicitly persistent authored source, but the workflow must be simple enough for normal mission production.
+
+Do not proceed by assuming transform/path/order/hash-derived identity will be good enough.
+
+## 2.4 Persistent IDs `[ ]`
+
+Implement the proven authored persistent identity mechanism for saveable authored entities.
+
+Missing/duplicate IDs must be diagnosable and must never silently alias two objects.
+
+## 2.5 Optional semantic content IDs `[ ]`
 
 Implement optional author-facing IDs only for entities mission logic needs to address.
 
-## 2.5 Minimal registry `[ ]`
+## 2.6 Minimal registry `[ ]`
 
 Provide owned registration/lookup with duplicate/missing reporting.
 
 Do not force every gameplay behavior into a giant base entity class.
 
-## 2.6 TrenchBroom Vark entity foundation `[ ]`
+## 2.7 TrenchBroom Vark entity foundation `[ ]`
 
 Create only the entity vocabulary needed for the playground:
 
@@ -439,7 +575,7 @@ Create only the entity vocabulary needed for the playground:
 - minimal exit
 - initial spike entities as they arrive
 
-## 2.7 Reimport stability `[ ]`
+## 2.8 Reimport stability `[ ]`
 
 Prove:
 
@@ -454,19 +590,19 @@ without unrelated repair.
 
 Persistent identity must survive ordinary moves/reordering/reimport.
 
-## 2.8 Basic content validation `[ ]`
+## 2.9 Basic content validation `[ ]`
 
-Validate duplicates, missing required mission objects, and invalid references that exist at this stage.
+Validate duplicates, missing required mission objects, invalid references, and identity errors that exist at this stage.
 
-**Phase gate:** a tiny mission loads from the real package/TrenchBroom path, starts, exits, and keeps stable identities through reimport.
+**Phase gate:** a tiny mission loads from the real package/TrenchBroom path, starts, exits, and keeps stable authored identities through representative editing/reimport operations.
 
 ---
 
-# Phase 3 — Five-minute integrated stealth spike
+# Phase 3 — Small contracts, isolated spikes, then the five-minute stealth slice
 
-Goal: force the hardest systems to collide before general frameworks are committed.
+Goal: answer the dangerous subsystem questions independently enough to debug them, then force them to collide in one real playable route before broad frameworks are committed.
 
-Build one intentionally ugly graybox containing:
+The final integrated graybox contains:
 
 - one room/corridor arrangement
 - one ordinary door
@@ -482,13 +618,49 @@ Build one intentionally ugly graybox containing:
 
 This is not the first production mission. It is an architectural proof mission.
 
-## 3.1 One ordinary door `[ ]`
+## 3.1 Minimal interaction contract `[ ]`
 
-Implement the smallest door that can participate in interaction, obstruction, vision, sound, NPC/nav use, events, and later save/load.
+Introduce only enough common interaction behavior for the spike:
 
-Use the door as an integration spine rather than building a broad door framework in isolation.
+- center-view target selection
+- range/occlusion/state eligibility
+- one primary interaction command
+- minimal feedback/highlight sufficient for debugging/play
 
-## 3.2 Thief-style prop spike `[ ]`
+Do not build the complete production interaction framework yet.
+
+The ordinary door and physical prop must use this same contract rather than invent separate temporary controls.
+
+## 3.2 Minimal semantic gameplay-event envelope `[ ]`
+
+Add the smallest internal semantic event route needed by the spike.
+
+It should carry meaningful events rather than private subsystem signals and must respect the non-playing/restoring lifecycle.
+
+Do not expose a broad author-facing rule language yet.
+
+## 3.3 Minimal semantic gameplay-sound event `[ ]`
+
+Separate gameplay-significant sound from presentation audio before acoustic propagation is prototyped.
+
+Footsteps, impacts, doors, NPC reactions, and speech should be able to produce one semantic sound representation without committing to the final propagation model.
+
+## 3.4 Ordinary door micro-proof `[ ]`
+
+Implement the smallest ordinary door that can prove:
+
+- interaction
+- collision/obstruction
+- open/closed visual state
+- vision blocking relationship
+- acoustic transmission hook
+- NPC/nav hook
+- semantic events
+- semantic state capture/apply
+
+Do not build keys/locks/barred behavior yet unless required by the proof.
+
+## 3.5 Thief-style prop micro-proof `[ ]`
 
 Implement ordinary prop states sufficient to prove:
 
@@ -496,17 +668,21 @@ Implement ordinary prop states sufficient to prove:
 settled → held → dropped/thrown/unsupported → settling → settled
 ```
 
-Prove these LOCKED rules:
+Protect the LOCKED player-facing rules:
 
 - supported props do not topple, spin, roll, or drift;
 - edge-supported boxes remain;
-- stacked props remain still;
-- removing lower support causes the unsupported stack/group above to fall until supported without exploding/scattering;
+- simple supported stacks remain still;
+- removing a simple lower support causes the unsupported objects above to fall until supported without uncontrolled rigid-body explosion/scatter;
 - settled props become stationary again.
+
+The first implementation does **not** need a universal support-graph theory for bridges, cyclic support, complex multi-support groups, moving supports, or arbitrary group splitting.
+
+Those generalized semantics remain TARGET until real gameplay/fixtures require and prove them.
 
 Do not use unrestricted always-active rigid-body simulation as the default object contract.
 
-## 3.3 Acoustic propagation spike `[ ]`
+## 3.6 Acoustic propagation micro-proof `[ ]`
 
 Use a dedicated test layout with:
 
@@ -520,7 +696,7 @@ Prototype propagation until footsteps, impacts, NPC reactions, and speech audibi
 
 Choose the architecture only after this experiment. Candidates may include acoustic spaces/portals, zones, or a graph.
 
-## 3.4 Primitive guard/nav spike `[ ]`
+## 3.7 Primitive guard/nav micro-proof `[ ]`
 
 One NPC must:
 
@@ -532,7 +708,7 @@ One NPC must:
 
 This exists early specifically to expose TrenchBroom/nav feasibility before many systems depend on it.
 
-## 3.5 Gameplay exposure spike `[ ]`
+## 3.8 Gameplay exposure micro-proof `[ ]`
 
 One gameplay light and light-gem/debug readout must be tested against:
 
@@ -545,29 +721,61 @@ One gameplay light and light-gem/debug readout must be tested against:
 
 Do not freeze the exposure algorithm until visual perception and gameplay value agree intuitively.
 
-## 3.6 Audible world-space speech `[ ]`
+## 3.9 Audible world-space speech `[ ]`
 
 NPC words appear above the NPC and remain visible through visual cover when the acoustic system says the player should hear them.
 
 Distance/audibility may control opacity; inaudible speech is hidden.
 
-## 3.7 Simple objective/exit `[ ]`
+## 3.10 Simple objective/exit `[ ]`
 
 Add only enough objective state to make the five-minute route have a beginning and end.
 
-**Phase gate:** the player can actually sneak through a tiny mission and door, props, light, sound, nav, NPC reaction, typed speech, objective, and exit interact without obvious architectural contradiction.
+It should use semantic state/events rather than reach directly into door/NPC internals.
+
+## 3.11 Actor life-state compatibility proof `[ ]`
+
+Before stealth NPC/save/event architecture is treated as stable, prove the actor model can represent at minimum:
+
+```text
+conscious
+unconscious
+dead
+```
+
+This is **not** the final combat system and does not lock combat feel.
+
+A debug/test action is sufficient if it proves that life-state changes can:
+
+- coexist with awareness/navigation ownership;
+- emit meaningful semantic events;
+- expose saveable semantic state;
+- stop/alter ordinary AI activity correctly;
+- later become bodies without requiring a completely different actor architecture.
+
+## 3.12 Integrated five-minute stealth slice `[ ]`
+
+Combine the actual micro-proof implementations into one ugly playable route.
+
+The player must be able to sneak through while door, props, light, sound, nav, NPC reaction, typed speech, objective, and exit interact through the intended shared contracts.
+
+Do not accept isolated fixture success as the phase gate.
+
+**Phase gate:** the dangerous technical assumptions have isolated proofs, and the same implementations work together in a playable five-minute stealth slice without obvious architectural contradiction.
 
 ---
 
-# Phase 4 — Real save/restore architecture on the spike
+# Phase 4 — Real save/restore architecture on the proven slice
 
-Goal: prove ordinary-gameplay quicksave against actual interacting systems, not against empty infrastructure.
+Goal: turn the semantic state contracts and lifecycle already used by the slice into real ordinary-gameplay quicksave/restore.
 
-## 4.1 Dormant restore lifecycle `[ ]`
+## 4.1 Save coordinator over the existing lifecycle `[ ]`
 
-Implement explicit fresh-start vs restore-start lifecycle.
+Use the Phase 1 world lifecycle rather than inventing a separate restore-only startup path.
 
-No ordinary gameplay consequences fire while snapshot state is being applied.
+Support explicit fresh-start vs restore-start boot intentions.
+
+No ordinary gameplay consequences fire while snapshot state is being applied/reconciled.
 
 ## 4.2 Semantic snapshots `[ ]`
 
@@ -576,44 +784,68 @@ Persist meaningful state, not arbitrary live node graphs.
 At this stage cover:
 
 - mission ID/state
-- player transform/orientation/velocity/stance/relevant traversal state
-- door state/open fraction/lock state
+- player transform/orientation/velocity/stance and accepted saveable traversal state
+- door state/open fraction/lock state if present
 - prop state/transform/transient velocity/support state as needed
-- guard semantic state
+- guard awareness/goal/life semantic state
 - gameplay light state
 - objective/fact state
 - mission-script state if the spike uses any
 
-## 4.3 Transient-state save policy `[ ]`
+## 4.3 Player transient/traversal restore policy `[ ]`
 
-Explicitly test or define behavior when saving during representative transient states:
+Do not assume runtime traversal objects, physics RIDs, collision handles, ledge candidates, nav paths, or similar ephemeral references can be serialized safely.
 
-- player airborne
-- player crouched
-- player hanging/mantling where technically feasible
-- door moving
+Classify representative player states into:
+
+- directly restorable stable semantic states;
+- reconstructable transient states;
+- states that must normalize to a safe equivalent;
+- only if genuinely necessary, very short states where saving is intentionally unavailable.
+
+Explicitly prove at minimum:
+
+- standing/moving
+- crouched
+- airborne
+- hanging
+- mantle/corner/catch behavior according to the chosen policy
+
+The player-facing save-anywhere goal remains fundamental, but the implementation must prefer coherent semantic restoration over pretending ephemeral physics references are durable save data.
+
+## 4.4 Other transient-state save policy `[ ]`
+
+Explicitly test or define behavior when saving during:
+
+- door movement
 - prop falling/thrown
-- guard investigating/alert if available
+- guard investigating/alert
+- actor unconscious/dead
+- any transient state actually present in the slice
 
 Do not silently assume quicksave happens only while idle.
 
-## 4.4 Restore event suppression `[ ]`
+## 4.5 Restore event suppression `[ ]`
 
 Regression coverage must prove restore does not duplicate one-shot events, objective transitions, loot/stat changes, alarms, dialogue, or rule execution.
 
-## 4.5 Versioned save foundation `[ ]`
+## 4.6 Versioned save foundation `[ ]`
 
-Introduce a version field and clear unsupported-version error path. Do not overbuild migration machinery before a real version change exists.
+Introduce a version field and clear unsupported-version error path.
 
-**Phase gate:** F5/F9-equivalent developer quicksave/restore can round-trip the integrated spike without corruption or duplicate consequences.
+Do not overbuild migration machinery before a real version change exists.
+
+**Phase gate:** F5/F9-equivalent developer quicksave/restore can round-trip the integrated slice through representative stable and transient states without corruption or duplicate consequences.
 
 ---
 
 # Phase 5 — Harden the stealth core
 
-Goal: turn spike implementations into reliable Vark systems only after their actual interactions are known.
+Goal: turn spike implementations into reliable Vark systems only after their actual interactions and save semantics are known.
 
 ## 5.1 Surface profiles and gameplay noise `[ ]`
+
+Generalize the minimal semantic gameplay-sound contract only as far as the slice proved necessary.
 
 Define reusable authored surface/noise profiles and semantic noise events.
 
@@ -668,17 +900,19 @@ Measure representative cost for:
 
 Set warnings/budgets only after measurement, not arbitrary speculation.
 
-**Phase gate:** the five-minute mission supports understandable darkness- and sound-based stealth with predictable guard behavior.
+**Phase gate:** the five-minute slice supports understandable darkness- and sound-based stealth with predictable guard behavior and stable save/reload semantics.
 
 ---
 
-# Phase 6 — World interaction grammar
+# Phase 6 — Complete the world interaction grammar
 
-Goal: expand the proven world model without changing its fundamental semantics.
+Goal: expand the minimal interaction contract proven in Phase 3 without changing its fundamental language.
 
-## 6.1 Interaction targeting/highlight `[ ]`
+## 6.1 Interaction targeting/highlight completion `[ ]`
 
-Center-view targeting, range/occlusion/state checks, highlight, one primary world-interaction input.
+Harden center-view targeting, range/occlusion/state checks, highlight, and one primary world-interaction input.
+
+The Phase 3 door/prop must continue to use the same contract.
 
 ## 6.2 Door completion `[ ]`
 
@@ -698,23 +932,27 @@ Integrate with gameplay light state, sound/events, and saves.
 
 ## 6.6 Physical prop completion `[ ]`
 
-Complete Thief-style support relationships, stacking/climbing, held presentation, drop/throw, impacts/noise, obstruction, and save state.
+Expand support relationships, stacking/climbing, held presentation, drop/throw, impacts/noise, obstruction, and save state only as real content needs them.
+
+Complex support/group semantics discovered here must be defined by representative fixtures before becoming LOCKED implementation rules.
 
 ## 6.7 Configured breakables/effects `[ ]`
 
 Only explicitly authored damageable/breakable objects respond. No universal destruction/fire simulation.
 
-**Phase gate:** the player can manipulate a convincing systemic environment without unrealistic rigid-body behavior or disconnected interaction rules.
+**Phase gate:** the player can manipulate a convincing systemic environment without unrealistic always-active rigid-body behavior or disconnected interaction rules.
 
 ---
 
 # Phase 7 — Mission logic and authoring API
 
-Goal: let the spike/prototype mission express ordinary reactions without core edits.
+Goal: promote the internal semantic contracts proven by the slice into a small author-facing mission logic system.
 
-## 7.1 Semantic event bus `[ ]`
+## 7.1 Author-facing semantic event bus `[ ]`
 
-Expose a small set of meaningful gameplay events rather than private internal signals.
+Promote the useful Phase 3 gameplay-event vocabulary into a documented event surface for mission logic.
+
+Do not expose private subsystem signals merely because they exist internally.
 
 ## 7.2 Typed mission facts `[ ]`
 
@@ -800,17 +1038,29 @@ Representative save points throughout the mission restore coherently.
 
 Fix tooling/diagnostics gaps exposed by actually building the mission.
 
-**Phase gate:** a real small stealth mission is fun/understandable enough to expose genuine production problems, and its ordinary content can be authored through intended tools.
+## 8.7 Cold-author review `[ ]`
+
+Have a developer familiar with Godot/TrenchBroom but not the relevant Vark internals attempt a small edit/addition using the intended workflow.
+
+This is an early usability test, not the final external handoff.
+
+Fix cheap structural authoring problems now instead of discovering them after production APIs are frozen.
+
+**Phase gate:** a real small stealth mission is understandable enough to expose genuine production problems, its ordinary content can be authored through intended tools, and the workflow makes sense to someone other than the system's author.
 
 ---
 
 # Phase 9 — Bodies and combat prototype
 
-Goal: establish the remaining four-playstyle foundation, but keep combat TARGET until play proves it.
+Goal: establish the full four-playstyle foundation while keeping combat TARGET until play proves it.
 
-## 9.1 Life states and bodies `[ ]`
+The Phase 3 actor life-state proof prevents this phase from requiring an entirely new actor/save/event model, but combat feel and body interaction are still intentionally discovered here.
 
-Conscious/unconscious/dead, carry/hide, body discovery hooks, save state.
+## 9.1 Bodies and life-state completion `[ ]`
+
+Complete conscious/unconscious/dead behavior, carry/hide, body discovery hooks, and save state.
+
+Contextual body-carry movement restrictions must be implemented as explicit gameplay modifiers rather than silent changes to the accepted unencumbered controller behavior.
 
 ## 9.2 Stealth knockout prototype `[ ]`
 
@@ -845,7 +1095,7 @@ Revise the TARGET grammar if needed. Mark combat LOCKED only after user acceptan
 
 ## 9.7 Combat perception/noise/body integration `[ ]`
 
-Combat must create appropriate noise, awareness, bodies, statistics, and save state.
+Combat must create appropriate gameplay noise, awareness, bodies, statistics, semantic events, and save state.
 
 **Phase gate:** stealth/nonlethal, stealth/lethal, assault/nonlethal, and assault/lethal are all genuinely possible enough to evaluate.
 
@@ -903,7 +1153,13 @@ Perception, acoustics, nav, entity lookup, mission rules, objectives, and save-s
 
 Create a template only after the first proper mission shows what a real mission actually needs.
 
-**Phase gate:** reusable systems represent proven Vark patterns, not hypothetical engine features.
+## 11.6 Second cold-author test `[ ]`
+
+Have another developer create or substantially modify a small mission using the now-generalized APIs/template.
+
+Use this to catch APIs that only make sense to their original implementer before campaign/content scale increases.
+
+**Phase gate:** reusable systems represent proven Vark patterns, not hypothetical engine features, and at least one non-author can use the generalized workflow successfully.
 
 ---
 
@@ -1001,9 +1257,9 @@ Production validation must catch common authoring errors before shipping.
 
 ---
 
-# Phase 15 — External handoff
+# Phase 15 — Final external handoff
 
-Goal: verify the platform is usable by someone who did not build its internals.
+Goal: verify the platform is usable by someone who did not build its internals after the earlier cold-author checks have already removed obvious workflow traps.
 
 ## 15.1 Production template/docs `[ ]`
 
@@ -1025,6 +1281,12 @@ Fix unclear APIs, missing validation, undocumented ownership, or tooling problem
 
 These are architecture proofs, not optional polish.
 
+## Persistent identity editing fixture
+
+Exercise create/move/reorder/duplicate/delete/reimport operations and prove identity remains stable where intended and distinct on duplication.
+
+Silent identity aliasing is a release-blocking correctness failure for saveable authored content.
+
 ## Door integration
 
 The ordinary door must eventually participate coherently in:
@@ -1035,7 +1297,7 @@ The ordinary door must eventually participate coherently in:
 - sight obstruction
 - acoustic transmission
 - lock/key state
-- mission events
+- semantic mission events
 - save/load
 - prop obstruction
 
@@ -1051,7 +1313,9 @@ Maintain a tiny chamber that tests dark/partial/full/occluded/edge/multiple-ligh
 
 ## Prop fixture
 
-Maintain deterministic scenarios for edge support, stable stacks, support removal, falling groups, drop/throw, settling, and save/load.
+Start with deterministic scenarios for edge support, a simple stable stack, simple support removal, drop/throw, settling, and save/load.
+
+Expand support-graph cases only when the gameplay contract for those cases is actually defined.
 
 ## Nav/reimport fixture
 
@@ -1059,7 +1323,11 @@ Imported map → NPC patrol → ordinary door interaction → map edit/reimport 
 
 ## Restore fixture
 
-A populated small mission save must prove dormant restoration and no duplicate gameplay consequences.
+A populated small mission save must prove non-playing/dormant restoration and no duplicate gameplay consequences.
+
+## Actor-state compatibility fixture
+
+Before final combat exists, prove conscious/unconscious/dead states do not require replacing the guard identity/event/save model.
 
 ---
 
@@ -1067,18 +1335,20 @@ A populated small mission save must prove dormant restoration and no duplicate g
 
 Automate deterministic objective behavior where valuable, including:
 
-- persistent-ID uniqueness and reimport stability
+- persistent-ID uniqueness and editing/reimport stability
+- duplicate persistent-ID failure/repair behavior
 - semantic-ID duplicate/missing-reference errors
 - mission restart freshness
 - save round trips
 - restore event suppression
-- transient-state restore where deterministic
+- transient-state restore according to explicit policy
 - mission fact typing/defaults
 - deterministic rule ordering/one-shot behavior
-- Thief-style prop support/fall invariants
+- Thief-style prop support/fall invariants that have actually been defined
 - door state persistence
 - acoustic propagation fixtures where deterministic
 - NPC local-knowledge/perception invariants where deterministic
+- actor life-state persistence/integration
 
 Subjective feel remains user playtest territory.
 
@@ -1090,18 +1360,26 @@ Do not proceed directly into broad mission/save frameworks.
 
 The current next order is:
 
-1. `0.3` traversal regression expansion
-2. `0.4` controller behavior-trace protection
-3. `0.5` repository cleanup
-4. `0.6` tool version contract
-5. `0.7` CI once deterministic
-6. Phase 1 application/input ownership
-7. Phase 2 minimal mission + identity + TrenchBroom substrate
-8. Phase 3 five-minute integrated stealth spike
-9. Phase 4 save/restore on that actual spike
-10. Phase 5 harden stealth architecture from what the spike taught
-11. continue through world grammar and the first proper 10–15 minute mission
+1. `0.3` repository cleanup
+2. `0.4` exact tool-version contract
+3. `0.5` CI for the existing movement barrier
+4. `0.6` traversal regression expansion
+5. `0.7` behavior-trace protection
+6. Phase 1 application root + world lifecycle + semantic input boundary
+7. Phase 2 minimal mission + persistent-identity feasibility proof + TrenchBroom reimport stability
+8. Phase 3 minimal interaction/event/sound contracts
+9. Phase 3 isolated door/prop/acoustic/nav/light proofs
+10. Phase 3 integrated five-minute stealth slice + actor life-state compatibility proof
+11. Phase 4 real save/restore on that proven slice
+12. Phase 5 harden stealth architecture from what the integrated/save proof taught
+13. Phase 6–8 expand world grammar, mission logic, and build the first proper 10–15 minute mission
+14. perform the early cold-author review before production APIs are treated as mature
+15. continue through full combat/inventory vertical slice and generalize only afterward
 
-The most important sequencing rule is:
+The most important sequencing rules are:
 
 > **Do not build the reusable immersive-sim platform first and hope Vark fits it later. Build Vark in playable slices and let the platform emerge from proven needs.**
+
+and:
+
+> **Do not stabilize an abstraction after proving it against only one side of a future cross-cutting requirement. Identity, lifecycle, save state, events, and actor state must be proven early enough that later systems extend them rather than replace them.**
