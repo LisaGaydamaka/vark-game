@@ -18,6 +18,8 @@ Do not add tests merely to increase test count. Every automated test should prot
 
 Systemic features require **integrated proof**, not only isolated unit proof. A door is not complete because it animates; a save system is not complete because it serializes data; an acoustic system is not complete because a distance check passes.
 
+For cross-cutting systems, test ownership and failure boundaries as aggressively as happy paths. A restore that fails safely is part of save correctness; a torn-down world that cannot affect its replacement is part of lifecycle correctness.
+
 ---
 
 # Decision-state relationship
@@ -52,11 +54,13 @@ For large controller/input refactors, prefer a command/behavior trace approach:
 
 ```text
 same initial fixture
-+ same semantic input/command sequence
++ same semantic locomotion command sequence
 ≈ same position/velocity/stance/traversal/support/look result
 ```
 
 Use intentional numeric tolerances where floating-point/physics behavior requires them. Do not demand meaningless byte-identical internal state.
+
+The locomotion trace is not the universal input API. Interaction, combat, and inventory should receive separate semantic domains as they become real; tests should prove application-level gating without requiring the locomotion controller to understand menus/cutscenes.
 
 ---
 
@@ -67,17 +71,19 @@ Use intentional numeric tolerances where floating-point/physics behavior require
 3. Assert semantic gameplay state rather than private helper call order.
 4. Use fixed transforms, fixed input/commands, physics-frame progression, and deterministic configuration.
 5. Avoid real-time sleeps, render-FPS dependence, uncontrolled randomness, and broad timing windows that hide instability.
-6. Release simulated input and free fixture state between tests.
+6. Release simulated input and free fixture/world-session state between tests.
 7. Assert the original regression boundary, not merely an eventual outcome.
 8. Do not freeze temporary tuning into tests unless the value/relationship is an intentional design contract.
 9. Existing relevant suites must remain green when behavior is intentionally unchanged.
 10. A flaky test or flaky system must be stabilized before it becomes a CI gate.
-11. Test integrated state transitions at subsystem boundaries where bugs are likely to appear: restore/startup, doors/nav/sound, perception/knowledge, authored IDs/reimport, props/support.
+11. Test integrated state transitions at subsystem boundaries where bugs are likely to appear: world teardown/replacement, restore/startup, doors/nav/sound, perception/knowledge, authored IDs/reimport, props/support.
 12. Prefer explicit test maps/fixtures for spatial systems over hidden hard-coded geometry assumptions.
-13. Save/load tests must assert absence of duplicate consequences, not only equality of serialized fields.
-14. Performance fixtures should report measured cost/scale and catch catastrophic regressions; do not invent premature micro-budgets without measurement.
+13. Save/load tests must assert absence of duplicate consequences, failed-transaction safety, and compatibility refusal—not only equality of serialized fields.
+14. Performance fixtures should report measured cost/scale and the reference tool/runtime environment; do not invent premature micro-budgets without measurement.
+15. Event-system tests must assert ordering and lifecycle behavior rather than relying on incidental signal/call-stack order.
+16. Persistence tests must distinguish authored-present, authored-removed, and runtime-created objects whenever those cases exist.
 
-Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, objective-complete, audible, supported, or restoring.
+Small read-only semantic query methods are acceptable when tests need meaningful state such as grounded, alert, open/closed, objective-complete, audible, supported, restoring, world-session generation, or persistence identity.
 
 ---
 
@@ -167,6 +173,30 @@ Protect representative traces for:
 
 The trace should compare semantic state, not private component internals.
 
+## World-session lifetime fixture
+
+Purpose: prove application ownership is complete across startup, pause, teardown, restart, and replacement.
+
+Protect:
+
+- BUILDING/non-playing startup produces no ordinary gameplay consequences;
+- a session becomes PLAYING only through application ownership;
+- teardown stops/discards world-owned event queues, gameplay timers, registries, and representative deferred work;
+- a stale callback/event/timer from the old session cannot mutate the replacement session;
+- restart creates fresh world state;
+- pause follows one explicit simulation policy, not just input suppression.
+
+A generation/session-token implementation may be tested if used, but protect the semantic outcome rather than the token itself.
+
+## Input-domain fixture
+
+Prove:
+
+- accepted locomotion behavior is preserved through the semantic input boundary;
+- application ownership can suppress gameplay input without private locomotion changes;
+- as domains arrive, interaction/combat/inventory input is not forced through the locomotion `PlayerCommand` object;
+- pause/UI/cutscene domain gating does not leak stale one-frame gameplay intents on resume.
+
 ## Persistent-ID/reimport fixture
 
 Prove:
@@ -174,8 +204,22 @@ Prove:
 - persistent IDs are unique;
 - ordinary map move/reorder/reimport preserves identity;
 - duplicate authored entities receive distinct identities;
+- generated/repaired IDs are persisted back to the authoritative authored source and survive another reimport;
 - semantic `content_id` duplicates are rejected;
 - missing semantic references report clearly.
+
+## Gameplay-event semantics fixture
+
+Before mission logic depends on the event path, prove:
+
+- semantic events are owned by the current world session;
+- emitted events process FIFO at the chosen controlled gameplay point;
+- the same emitted sequence produces deterministic ordering;
+- events emitted while processing append rather than recursively reordering dispatch;
+- normal dispatch is disabled while BUILDING, RESTORING, and TEARING_DOWN;
+- queued/stale events from a torn-down world cannot affect a replacement world.
+
+Do not freeze a broad event framework; freeze only these required semantics.
 
 ## Acoustic fixture
 
@@ -193,6 +237,8 @@ Protect deterministic propagation relationships once the accepted acoustic model
 - closed solid separation does not behave like open air;
 - connected around-corner space can transmit according to the accepted model;
 - audibility affects both guard hearing and world-space speech presentation consistently.
+
+If the accepted model requires authored rooms/portals/zones/topology, the fixture/workflow must also prove ordinary mapper edit/reimport does not require fragile generated-output repair.
 
 Do not freeze arbitrary numeric falloff values before they are accepted.
 
@@ -221,6 +267,7 @@ The same ordinary door should eventually be exercised for:
 - acoustic transmission
 - NPC/nav traversal
 - physical obstruction by prop where deterministic
+- semantic events
 - save/load state
 
 Avoid separate fake door models per subsystem.
@@ -275,14 +322,17 @@ Prove a representative imported map can:
 
 This exists early to discover toolchain/nav incompatibility before large AI systems depend on it.
 
-## Save/restore fixture
+## Save/restore transaction fixture
 
-Restore must be tested as a lifecycle, not merely data serialization.
+Restore must be tested as a lifecycle/transaction, not merely data serialization.
 
-During restore, ordinary gameplay consequences must be suppressed until state application is complete.
+During restore, ordinary gameplay consequences must be suppressed until state application/reconciliation/validation are complete.
 
 Deterministic tests should cover as systems exist:
 
+- save header contains `save_format_version`, `mission_id`, and `mission_content_revision`;
+- unsupported save-format version refuses clearly;
+- unsupported mission-content revision refuses clearly;
 - mission restart creates fresh state;
 - save → restore round trip;
 - player transform/velocity/stance/relevant traversal state;
@@ -294,7 +344,49 @@ Deterministic tests should cover as systems exist:
 - no duplicate one-shot rule execution;
 - no duplicate objective transitions;
 - no duplicate loot/stat changes;
-- no duplicate alarms/dialogue/events caused by loading.
+- no duplicate alarms/dialogue/events caused by loading;
+- a deliberately forced restore failure never promotes a partially restored candidate world;
+- a failed candidate cannot leak stale events/timers/deferred work into the current/next session;
+- a deliberately failed durable write does not intentionally replace the previous valid save with incomplete data.
+
+## Removed-authored persistence fixture
+
+Once authored objects can permanently disappear (for example collected loot), prove:
+
+- the authored object's `persistent_id` is represented as removed/tombstoned state;
+- save after removal → restore keeps it absent;
+- reloading does not grant duplicate loot/value or replay the collection consequence;
+- absence is not inferred only from the current scene tree.
+
+## Runtime-created persistence fixture
+
+Once a runtime-created object must survive save/load (for example a deployable), prove:
+
+- it receives a runtime persistent identity distinct from authored instances;
+- save captures enough spawn/type provenance to recreate the correct object;
+- semantic state is restored after recreation;
+- duplicate/repeated restore does not create multiple copies;
+- its lifecycle obeys normal world teardown/replacement ownership.
+
+## Actor-state compatibility fixture
+
+Before final combat exists, prove conscious/unconscious/dead states do not require replacing the guard identity/event/save model.
+
+## Crude hostile compatibility fixture
+
+Before stealth architecture is hardened, exercise one deliberately crude hostile path:
+
+```text
+attack intent
+→ semantic hostile effect
+→ actor/life-state consequence
+→ gameplay event and gameplay sound
+→ other AI/perception reaction where applicable
+→ save
+→ restore
+```
+
+The test protects reuse of the real input-domain, actor, event, world-session, perception, and persistence contracts. It must not lock combat damage numbers, timings, animations, weapon feel, or Phase 9 design.
 
 ## Mission fact/rule fixture
 
@@ -302,7 +394,7 @@ Once the rule system exists:
 
 - fact type/default/scope validation;
 - invalid fact assignment rejection/reporting;
-- deterministic event/rule ordering;
+- deterministic rule ordering relative to the gameplay-event queue;
 - one-shot vs repeat behavior;
 - rule state persistence through save/load;
 - missing entity references report clearly.
@@ -333,6 +425,15 @@ As new major systems become real, add concise manual regression sections here on
 - [ ] Mouse look and mouse capture/release behave normally.
 - [ ] Combined movement, jump, crouch, and sprint inputs do not create stale one-frame states.
 - [ ] After input-router refactors, pause/UI/cutscene ownership suppresses gameplay input without changing resumed gameplay feel.
+- [ ] Interaction/combat/inventory domains, once present, do not alter ordinary locomotion command semantics.
+
+## Pause / world ownership
+
+When Phase 1 exists:
+
+- [ ] Pausing suppresses ordinary gameplay simulation according to the defined application policy, not only player input.
+- [ ] Resume does not cause queued/stale gameplay intents, timers, or events to burst unexpectedly.
+- [ ] Restart/mission replacement does not visibly receive effects from the previous world session.
 
 ## Ground, support, slopes, and falling
 
@@ -399,6 +500,7 @@ When these systems exist, their phase gates should include representative playte
 - [ ] Typed speech remains visible above an NPC through visual cover when it should be audible.
 - [ ] Distant/marginal speech presentation fades as intended.
 - [ ] Inaudible speech is not shown.
+- [ ] If acoustic topology is mapper-authored, normal map editing/reimport remains understandable and low-friction.
 
 ## Gameplay lighting
 
@@ -416,10 +518,13 @@ When these systems exist, their phase gates should include representative playte
 
 ## Save/load
 
-- [ ] Quicksave/quickload works during ordinary active gameplay.
+- [ ] Quicksave/quickload works during ordinary active gameplay rather than only hand-picked idle states.
 - [ ] Representative transient states restore coherently.
 - [ ] Loading does not visibly replay objective/loot/alarm/dialogue consequences.
 - [ ] Restored world resumes from the saved state rather than briefly simulating a fresh start first.
+- [ ] An incompatible mission-content revision produces a clear refusal rather than a partially wrong world.
+- [ ] A failed load leaves the application in a coherent recoverable state.
+- [ ] A failed save attempt does not intentionally destroy the previous valid quicksave.
 
 ## Combat
 
@@ -434,7 +539,7 @@ Before combat becomes LOCKED, playtest:
 - [ ] nonlethal assault
 - [ ] retreat/break contact
 
-Subjective combat feel is accepted by the user, not inferred from tests.
+Subjective combat feel is accepted by the user, not inferred from the earlier crude architecture-compatibility proof or deterministic tests.
 
 ---
 
@@ -450,7 +555,10 @@ When each system becomes real, add a focused stress fixture and record represent
 - nav/path updates around changing doors;
 - mission-event/rule bursts;
 - save snapshot size/time;
-- prop support checks.
+- prop support checks;
+- runtime-created persistent objects if/when they become real.
+
+Record the exact supported Godot/runtime configuration and enough reference-machine information to make later comparisons meaningful.
 
 The purpose is early architectural warning, not premature optimization.
 
@@ -464,7 +572,7 @@ Add GitHub Actions only after the local suite it will run is deterministic.
 
 CI should:
 
-- use the exact project Godot version;
+- use the exact supported project Godot/runtime configuration;
 - run headlessly;
 - call the same authoritative command used locally;
 - run on pushes to `test` and pull requests;
