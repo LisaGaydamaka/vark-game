@@ -12,6 +12,8 @@ Do not automate subjective feel, pacing, readability, atmosphere, animation qual
 
 Do not add tests merely to increase test count. Every automated test should protect a meaningful invariant or a previously broken behavior.
 
+The current player movement and climbing behavior is an accepted, frozen gameplay contract. New movement/traversal tests should protect representative existing behavior against regressions; they must not be used as justification to redesign, retune, or add movement/climbing behavior unless that scope is explicitly reopened.
+
 ## Test design rules
 
 1. Prefer real gameplay objects and real Godot physics where practical.
@@ -87,7 +89,7 @@ Protects against simultaneous wall contacts manufacturing support or cancelling 
 
 ## Manual regression policy
 
-Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`. The checklist below is a broader integration pass for substantial player-controller/traversal changes; it is not required after every small unrelated change.
+Per-item manual acceptance belongs in `DEVELOPMENT_PLAN.md`. The checklist below is a broader integration pass for changes that could affect the accepted player controller/traversal contract; it is not required after every small unrelated change.
 
 As new major systems become real, add concise manual regression sections here only when they provide broad integration value. Do not create a separate checklist document for every feature.
 
@@ -99,14 +101,14 @@ As new major systems become real, add concise manual regression sections here on
 
 ### Input and look
 
-- [ ] Walk in all four directions and diagonally.
+- [ ] Move in all four directions and diagonally.
 - [ ] Mouse look and mouse capture/release behave normally.
 - [ ] Combined movement, jump, crouch, and sprint inputs do not create stale one-frame states.
 
 ### Ground, support, slopes, and falling
 
-- [ ] Walk/sprint/start/stop normally on flat ground.
-- [ ] Walk up, down, and across representative walkable slopes; standing still does not slide unexpectedly.
+- [ ] Move/sprint/start/stop normally on flat ground.
+- [ ] Move up, down, and across representative walkable slopes; standing still does not slide unexpectedly.
 - [ ] Land normally from jumps and longer falls.
 - [ ] Narrow beams/edges support the capsule when physically valid.
 - [ ] Rubbing walls, modular seams, and convex edges while falling does not stick, launch, or create fake support.
@@ -125,7 +127,7 @@ As new major systems become real, add concise manual regression sections here on
 
 - [ ] Crouch/stand repeatedly; standing remains blocked under low clearance until space exists.
 - [ ] Crouch movement and sprint movement remain distinct and usable.
-- [ ] Jump from standstill, walking, and sprinting.
+- [ ] Jump from standstill, ordinary movement, and sprinting.
 - [ ] Jump releases support cleanly and ascent is not immediately re-grounded.
 - [ ] Air steering, reversal, and landing remain coherent.
 - [ ] Held/released jump does not leave stale mantle-intent behavior across attempts.
@@ -140,11 +142,10 @@ As new major systems become real, add concise manual regression sections here on
 
 ### Mantle
 
-- [ ] Ground-requested mantle starts only from a valid contacted ledge.
-- [ ] Airborne jump-hold mantle buffering works.
-- [ ] Mantle a normal wide platform and supported thin geometry.
-- [ ] Crouch-clearance mantle cases behave as intended.
-- [ ] Invalid landing surfaces are rejected once that behavior is implemented.
+- [ ] Ground-requested mantle starts from the same accepted contact/intent situations as the current controller.
+- [ ] Airborne jump-hold mantle buffering behaves as currently accepted.
+- [ ] Mantle a normal wide platform and supported thin geometry as currently accepted.
+- [ ] Crouch-clearance mantle cases behave as currently accepted.
 - [ ] Successful mantle does not sink, stick, fall through, snap backward, or preserve unintended player velocity.
 - [ ] Walking/jumping from the resulting support works normally.
 
@@ -154,7 +155,7 @@ As new major systems become real, add concise manual regression sections here on
 - [ ] Valid landings terminate downward controlled velocity only after support is actually validated.
 - [ ] Unsupported collision response does not create displacement longer than requested motion or turn tiny downward motion into a large sideways launch.
 
-If a broad manual regression item changes intentionally, update the checklist so it describes the new accepted behavior rather than preserving obsolete behavior forever.
+If the user explicitly reopens and changes a player movement/traversal behavior, update this checklist and its automated regressions to describe the newly accepted contract rather than preserving obsolete behavior.
 
 ## CI policy
 
