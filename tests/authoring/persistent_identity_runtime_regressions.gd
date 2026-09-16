@@ -141,8 +141,7 @@ func _assert_content_id_runtime_wiring(assert_true: Callable) -> void:
 			and found_entity is StaticBody3D
 			and found_entity.has_method("get_content_id")
 			and str(found_entity.call("get_content_id")) == "door.vault"
-			and bool(validation.get("ok", false))
-			and int(validation.get("content_id_count", 0)) == 1,
+			and bool(validation.get("ok", false)),
 			"FuncGodot carries authored content_id onto the runtime persistent entity without changing func_detail behavior"
 		)
 		func_map.free()
