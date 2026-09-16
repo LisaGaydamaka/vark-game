@@ -755,7 +755,7 @@ The deterministic authoring regression now clones the real Playground source int
 
 **Manual:** passed — validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**. The mapper explicitly reopened `missions/playground/mission.map` from disk, preserved the existing player-start `persistent_id` and `content_id = default`, moved `vark_player_start` exactly +32 mapper units on X, saved, and verified the read-only probe reached the real Playground `PLAYING` path without identity repair while the moved authored start was consumed with normal movement/look. The point was restored exactly, the probe/Playground path was rerun, and the final `git diff -- missions/playground/mission.map` was empty. The first acceptance attempt exposed only TrenchBroom normalization of repository-added descriptive comments; the tracked map was canonicalized to TrenchBroom's save-normalized form before the final clean round trip. No `persistent_id` was hand-edited.
 
-## 2.9 Basic content validation `[~]`
+## 2.9 Basic content validation `[x]`
 
 Add the first content-specific pre-`READY` validation boundary without inventing a general mission-reference framework or Phase 3 gameplay.
 
@@ -765,7 +765,7 @@ Add the first content-specific pre-`READY` validation boundary without inventing
 
 **Done when:** a valid Playground still reaches `READY`/`PLAYING`; typed mission sessions cannot bypass static `MissionDefinition` load validation; missing/duplicate persistent or non-empty semantic IDs remain fail-closed through the existing registry gate; a missing or wrong-role `player_start_selector` fails before `READY`; a built mission with no authored `vark_exit` fails before `READY`; zero or multiple runtime `vark_player` nodes fail cleanly with useful diagnostics; raw scene targets with one player remain unaffected; and no Phase 3 interaction/objective/transition/reference framework is introduced.
 
-**Automated:** coverage is wired into the focused authoring suite and authoritative all-tests/CI barrier: it exercises the real Playground valid path, empty static selector rejection, missing and wrong-role player-start references, a disposable real-Playground map with the exit role removed, and zero/two-player world fixtures, while the existing identity/content-duplicate regressions and 2.8 reimport-to-`PLAYING` proof remain active. Exact-head post-push CI is still required for acceptance.
+**Automated:** passed — the focused authoring suite and authoritative all-tests/CI barrier exercise the real Playground valid path, empty static selector rejection, missing and wrong-role player-start references, a disposable real-Playground map with the exit role removed, and zero/two-player world fixtures while retaining the identity/content-duplicate regressions and 2.8 reimport-to-`PLAYING` proof. Exact implementation head `82fd934c9239cafbb5dac23deef3b5be79fc2ed8` passed Godot 4.7.2 `Regression suite` run #54 with `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
 
 **Manual:** none — this is deterministic fail-closed validation and does not change TrenchBroom schema, mapper workflow, mission geometry, or player-facing behavior. The accepted 2.7/2.8 Windows mapper runs already cover the unchanged authoring/edit/reimport/run path.
 
@@ -1539,7 +1539,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Complete 2.9 basic-content-validation acceptance on the exact uploaded head, then begin Phase 3.
+1. Begin Phase 3 with 3.1 minimal interaction contract; continue the event/sound contracts only in their ordered roadmap items.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
