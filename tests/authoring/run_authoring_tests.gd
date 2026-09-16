@@ -319,23 +319,31 @@ func _assert_vark_point_entity_foundation() -> void:
 		if point == null:
 			schema_valid = false
 			continue
-		var properties: Dictionary = point.retrieve_all_class_properties()
+		var direct_properties: Dictionary = point.class_properties
+		var direct_fgd: String = point.build_def_text(
+			FuncGodotFGDFile.FuncGodotTargetMapEditors.TRENCHBROOM
+		)
 		schema_valid = (
 			schema_valid
 			and point.node_class == "Node3D"
 			and point.script_class == PersistentEntity
 			and point.auto_apply_to_matching_node_properties
 			and point.node_groups.has(point_specs[classname])
-			and properties.has("persistent_id")
-			and properties.has("content_id")
-			and properties.has("angle")
+			and point.base_classes.is_empty()
+			and direct_properties.has("persistent_id")
+			and direct_properties.has("content_id")
+			and direct_properties.has("angle")
+			and str(direct_properties["persistent_id"]).is_empty()
+			and str(direct_properties["content_id"]).is_empty()
+			and direct_fgd.contains("persistent_id(string)")
+			and direct_fgd.contains("content_id(string)")
 		)
 	_assert_true(
 		schema_valid
 		and exported_fgd.contains("vark_player_start")
 		and exported_fgd.contains("vark_marker")
 		and exported_fgd.contains("vark_exit"),
-		"Vark TrenchBroom FGD exposes the minimal player-start, semantic-marker, and exit point vocabulary"
+		"Vark TrenchBroom point classes directly declare mapper-visible persistent/content identity fields"
 	)
 
 	var func_map := FuncGodotMap.new()
