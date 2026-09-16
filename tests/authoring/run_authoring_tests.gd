@@ -8,6 +8,9 @@ const PlaygroundReimportProbe = preload("res://tools/authoring/playground_reimpo
 const ReimportStabilityRegressions = preload(
 	"res://tests/authoring/reimport_stability_regressions.gd"
 )
+const MissionContentValidationRegressions = preload(
+	"res://tests/authoring/mission_content_validation_regressions.gd"
+)
 const PersistentEntity = preload("res://missions/persistence/persistent_entity.gd")
 const PersistentIdentityValidator = preload(
 	"res://missions/persistence/persistent_identity_validator.gd"
@@ -42,6 +45,8 @@ func _run_tests() -> void:
 	_assert_vark_trenchbroom_material_config()
 	_assert_vark_runtime_identity_wiring()
 	_assert_vark_point_entity_foundation()
+	var content_validation_regressions: RefCounted = MissionContentValidationRegressions.new()
+	content_validation_regressions.run(get_root(), Callable(self, "_assert_true"))
 	var reimport_stability_regressions: RefCounted = ReimportStabilityRegressions.new()
 	reimport_stability_regressions.run(get_root(), Callable(self, "_assert_true"))
 	_assert_runtime_identity_validator_diagnostics()

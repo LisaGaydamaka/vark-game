@@ -755,9 +755,19 @@ The deterministic authoring regression now clones the real Playground source int
 
 **Manual:** passed — validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**. The mapper explicitly reopened `missions/playground/mission.map` from disk, preserved the existing player-start `persistent_id` and `content_id = default`, moved `vark_player_start` exactly +32 mapper units on X, saved, and verified the read-only probe reached the real Playground `PLAYING` path without identity repair while the moved authored start was consumed with normal movement/look. The point was restored exactly, the probe/Playground path was rerun, and the final `git diff -- missions/playground/mission.map` was empty. The first acceptance attempt exposed only TrenchBroom normalization of repository-added descriptive comments; the tracked map was canonicalized to TrenchBroom's save-normalized form before the final clean round trip. No `persistent_id` was hand-edited.
 
-## 2.9 Basic content validation `[ ]`
+## 2.9 Basic content validation `[~]`
 
-Validate duplicates, missing required mission objects, invalid references, and identity errors that exist at this stage.
+Add the first content-specific pre-`READY` validation boundary without inventing a general mission-reference framework or Phase 3 gameplay.
+
+`VarkMissionContentValidator` runs only for typed `MissionDefinition` sessions after FuncGodot construction and the current-world entity registry succeed. The existing identity validator/registry remain authoritative for missing/duplicate `persistent_id` values and duplicate non-empty `content_id` values. 2.9 adds only the checks real content can express now: `MissionDefinition.player_start_selector` must resolve through the current registry to a persistent `Node3D` in `vark_player_start`, and the built mission must contain at least one persistent `vark_mission_exit`. Multiple distinct starts and multiple exits remain valid; the selector chooses one start. Raw `PackedScene` development targets do not gain mission-content requirements.
+
+`WorldSession` also rechecks `MissionDefinition.get_load_errors()` for direct session callers, so the reimport probe and future non-application build paths cannot bypass required metadata validation. Its existing exactly-one-player assumption now fails closed with diagnostics for zero or multiple `vark_player` nodes instead of a silent missing-player failure or assertion. Any definition, identity/semantic-ID, required-object, or current authored-reference failure keeps the candidate session from `READY` and tears down world/registry state as appropriate.
+
+**Done when:** a valid Playground still reaches `READY`/`PLAYING`; typed mission sessions cannot bypass static `MissionDefinition` load validation; missing/duplicate persistent or non-empty semantic IDs remain fail-closed through the existing registry gate; a missing or wrong-role `player_start_selector` fails before `READY`; a built mission with no authored `vark_exit` fails before `READY`; zero or multiple runtime `vark_player` nodes fail cleanly with useful diagnostics; raw scene targets with one player remain unaffected; and no Phase 3 interaction/objective/transition/reference framework is introduced.
+
+**Automated:** coverage is wired into the focused authoring suite and authoritative all-tests/CI barrier: it exercises the real Playground valid path, empty static selector rejection, missing and wrong-role player-start references, a disposable real-Playground map with the exit role removed, and zero/two-player world fixtures, while the existing identity/content-duplicate regressions and 2.8 reimport-to-`PLAYING` proof remain active. Exact-head post-push CI is still required for acceptance.
+
+**Manual:** none — this is deterministic fail-closed validation and does not change TrenchBroom schema, mapper workflow, mission geometry, or player-facing behavior. The accepted 2.7/2.8 Windows mapper runs already cover the unchanged authoring/edit/reimport/run path.
 
 **Phase gate:** a tiny mission loads from the real package/TrenchBroom path, starts, exits, keeps stable authored identities through representative editing/reimport, and uses an idempotent source-of-truth identity workflow.
 
@@ -1503,7 +1513,7 @@ Automate deterministic objective behavior where valuable, including:
 - resolved random-choice persistence when choices have become gameplay truth;
 - persistent-ID uniqueness/editing/reimport/repair/writeback/idempotence and fail-closed runtime validation;
 - current-session persistent/content-ID registry ownership, lookup, missing diagnostics, and teardown/replacement isolation;
-- semantic-ID uniqueness now, plus missing-reference errors when real references exist;
+- semantic-ID uniqueness plus current player-start reference, required-exit, and required-player validation before `READY`;
 - mission restart freshness;
 - detached save snapshot capture that cannot mutate after live state changes;
 - save-slot request/commit ordering and latest-committed load behavior;
@@ -1529,7 +1539,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Implement 2.9 basic content validation through the same real authoring path.
+1. Complete 2.9 basic-content-validation acceptance on the exact uploaded head, then begin Phase 3.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.

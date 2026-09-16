@@ -4,6 +4,7 @@ extends Node
 
 const PLAYER_GROUP: StringName = &"vark_player"
 const MISSION_DEFINITION_SCRIPT = preload("res://missions/mission_definition.gd")
+const MissionContentValidator = preload("res://missions/mission_content_validator.gd")
 const WorldEntityRegistry = preload(
 	"res://missions/persistence/world_entity_registry.gd"
 )
@@ -50,6 +51,14 @@ func build(
 		if definition.get_script() != MISSION_DEFINITION_SCRIPT:
 			push_error("WorldSession received a non-MissionDefinition resource.")
 			return false
+		var definition_errors: PackedStringArray = definition.call("get_load_errors")
+		if not definition_errors.is_empty():
+			for error_message: String in definition_errors:
+				push_error(
+					"WorldSession mission definition validation failed: %s"
+					% error_message
+				)
+			return false
 		var definition_world: PackedScene = definition.get("world_scene") as PackedScene
 		if (
 			definition_world == null
@@ -95,6 +104,25 @@ func build(
 			)
 		teardown()
 		return false
+
+	if mission_definition != null:
+		var content_validation: Dictionary = MissionContentValidator.validate(
+			mission_definition,
+			world,
+			entity_registry
+		)
+		if not bool(content_validation.get("ok", false)):
+			var content_errors: PackedStringArray = content_validation.get(
+				"errors",
+				PackedStringArray()
+			)
+			for error_message: String in content_errors:
+				push_error(
+					"WorldSession mission content validation failed: %s"
+					% error_message
+				)
+			teardown()
+			return false
 
 	player = _find_session_player(world)
 	if player == null:
@@ -189,17 +217,25 @@ func _registry_unavailable_result() -> Dictionary:
 
 
 func _find_session_player(session_world: Node) -> Node:
-	var found_player: Node = null
+	var found_players: Array[Node] = []
 	if session_world.is_in_group(PLAYER_GROUP):
-		found_player = session_world
+		found_players.append(session_world)
 
 	for node: Node in session_world.find_children("*", "", true, false):
-		if not node.is_in_group(PLAYER_GROUP):
-			continue
-		assert(
-			found_player == null,
-			"A Vark world may expose only one node in the vark_player group."
-		)
-		found_player = node
+		if node.is_in_group(PLAYER_GROUP):
+			found_players.append(node)
 
-	return found_player
+	if found_players.size() == 1:
+		return found_players[0]
+
+	var player_paths := PackedStringArray()
+	for found_player: Node in found_players:
+		player_paths.append(str(session_world.get_path_to(found_player)))
+	push_error(
+		"WorldSession requires exactly one node in the vark_player group; found %d%s."
+		% [
+			found_players.size(),
+			"" if player_paths.is_empty() else " at " + ", ".join(player_paths),
+		]
+	)
+	return null
