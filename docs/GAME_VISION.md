@@ -359,7 +359,7 @@ The acoustic/hearing system determines whether speech is audible enough to displ
 
 The world uses one consistent interaction language.
 
-There is one primary world-interaction button.
+There is one primary world-interaction button. The default keyboard binding is **F**.
 
 The object targeted near the center of the player's view can become interactable when:
 
@@ -367,7 +367,7 @@ The object targeted near the center of the player's view can become interactable
 - it is not blocked
 - the current state allows interaction
 
-Interactable objects visibly highlight.
+Interactable objects use a Thief 1 & 2-style shadowless/fullbright selection highlight: while targeted they keep their authored color but render without scene-light shadowing and do not cast a shadow; normal shaded/shadow-casting presentation returns immediately when selection is lost.
 
 There is no permanent central crosshair.
 
