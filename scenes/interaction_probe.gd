@@ -5,7 +5,6 @@ extends StaticBody3D
 @export var interaction_enabled: bool = true
 @export var disable_after_interact: bool = false
 @export var base_color: Color = Color(0.25, 0.45, 0.75, 1.0)
-@export var highlight_color: Color = Color(0.95, 0.95, 0.35, 1.0)
 
 @onready var mesh: MeshInstance3D = $MeshInstance3D
 @onready var status_label: Label3D = $StatusLabel
@@ -13,10 +12,12 @@ extends StaticBody3D
 var _highlighted: bool = false
 var _interaction_count: int = 0
 var _material: StandardMaterial3D
+var _base_cast_shadow: int = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 
 func _ready() -> void:
 	add_to_group(&"vark_interactable")
+	_base_cast_shadow = int(mesh.cast_shadow)
 	_material = StandardMaterial3D.new()
 	mesh.material_override = _material
 	_refresh_visual()
@@ -58,9 +59,22 @@ func get_interaction_count() -> int:
 
 func _refresh_visual() -> void:
 	if _material != null:
-		_material.albedo_color = highlight_color if _highlighted else base_color
-		_material.emission_enabled = _highlighted
-		_material.emission = highlight_color
+		# Thief-style selection feedback keeps the authored/base color but removes
+		# light/shadow response while selected instead of tinting the object.
+		_material.albedo_color = base_color
+		_material.emission_enabled = false
+		_material.disable_receive_shadows = _highlighted
+		_material.shading_mode = (
+			BaseMaterial3D.SHADING_MODE_UNSHADED
+			if _highlighted
+			else BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		)
+	if mesh != null:
+		mesh.cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if _highlighted
+			else _base_cast_shadow
+		)
 	if status_label != null:
 		var state_text: String = "READY" if interaction_enabled else "INACTIVE"
 		status_label.text = "%s\n%s · uses: %d" % [

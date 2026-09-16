@@ -7,6 +7,19 @@ const ApplicationRoot = preload("res://application/application_root.gd")
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
 	_release_interact()
+	var interact_has_f: bool = false
+	var interact_has_e: bool = false
+	for input_event: InputEvent in InputMap.action_get_events(&"interact"):
+		if input_event is not InputEventKey:
+			continue
+		var key_event: InputEventKey = input_event as InputEventKey
+		interact_has_f = interact_has_f or key_event.physical_keycode == KEY_F
+		interact_has_e = interact_has_e or key_event.physical_keycode == KEY_E
+	assert_true.call(
+		interact_has_f and not interact_has_e,
+		"Primary world interaction is bound to F instead of the legacy E key"
+	)
+
 	var application: Node = ApplicationScene.instantiate()
 	var default_labels: PackedStringArray = application.get("development_launch_labels")
 	var default_paths: PackedStringArray = application.get("development_launch_resource_paths")
@@ -49,6 +62,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var door: Node3D = world.get_node("DoorProbe") as Node3D
 	var prop: Node3D = world.get_node("PropProbe") as Node3D
 	var divider: Node3D = world.get_node("Divider") as Node3D
+	var door_mesh: MeshInstance3D = door.get_node("MeshInstance3D") as MeshInstance3D
+	var prop_mesh: MeshInstance3D = prop.get_node("MeshInstance3D") as MeshInstance3D
+	var door_material: StandardMaterial3D = door_mesh.material_override as StandardMaterial3D
+	var prop_material: StandardMaterial3D = prop_mesh.material_override as StandardMaterial3D
 	var door_position: Vector3 = door.position
 	var prop_position: Vector3 = prop.position
 	var divider_position: Vector3 = divider.position
@@ -64,6 +81,15 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and centered_state.get("target_name", "") == "DoorProbe",
 		"Center-view interaction targeting highlights the first eligible in-range hit"
 	)
+	assert_true.call(
+		door_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		and door_material != null
+		and door_material.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED
+		and door_material.disable_receive_shadows
+		and not door_material.emission_enabled
+		and door_material.albedo_color == door.get("base_color"),
+		"Selected interaction feedback is shadowless/fullbright without tinting the object"
+	)
 
 	player.global_position = Vector3(0, 0, 5)
 	player.set("velocity", Vector3.ZERO)
@@ -72,6 +98,12 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		not bool(door.call("is_interaction_highlighted"))
 		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
 		"Interaction targeting rejects an otherwise valid target outside the configured range"
+	)
+	assert_true.call(
+		door_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		and door_material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL
+		and not door_material.disable_receive_shadows,
+		"Losing interaction selection restores the object's ordinary shadowed rendering"
 	)
 
 	player.global_position = Vector3(0, 0, 2)
@@ -96,6 +128,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and (player.call("get_interaction_semantic_state") as Dictionary).get("target_name", "") == "PropProbe",
 		"An eligible in-range target highlights once the center-view line is unobstructed"
 	)
+	assert_true.call(
+		prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		and prop_material != null
+		and prop_material.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED
+		and prop_material.disable_receive_shadows,
+		"Door-like and prop-like interactables share the same shadowless selection feedback"
+	)
 
 	prop.call("set_interaction_enabled", false)
 	await _settle_player_physics(tree)
@@ -103,6 +142,11 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		not bool(prop.call("is_interaction_highlighted"))
 		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
 		"Target-owned current-state eligibility can reject interaction without changing the selector"
+	)
+	assert_true.call(
+		prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		and prop_material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL,
+		"State-ineligible interactables restore ordinary shadowed presentation"
 	)
 	prop.call("set_interaction_enabled", true)
 
@@ -150,6 +194,11 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not bool(door.call("is_interaction_highlighted"))
 		and int(door.call("get_interaction_count")) == unavailable_count_before,
 		"Player interaction ownership can centrally suppress ordinary world interaction"
+	)
+	assert_true.call(
+		door_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		and door_material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL,
+		"Central interaction suppression also clears shadowless selection presentation"
 	)
 
 	player.call("set_world_interaction_available", true)
