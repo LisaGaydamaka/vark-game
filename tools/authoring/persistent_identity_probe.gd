@@ -7,11 +7,11 @@ const WORKSPACE_PATH: String = "res://tests/authoring/workspace/mission.map"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
 const VARK_MATERIAL_ROOT: String = "textures"
 const VARK_PROOF_MATERIAL_PATH: String = "res://textures/zebra/zebra16x16.png"
-const VARK_POINT_CLASSNAMES := PackedStringArray([
+const VARK_POINT_CLASSNAMES: Array[String] = [
 	"vark_player_start",
 	"vark_marker",
 	"vark_exit",
-])
+]
 
 
 func _initialize() -> void:

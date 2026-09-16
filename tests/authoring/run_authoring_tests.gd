@@ -3,6 +3,7 @@ extends SceneTree
 
 const WorldSession = preload("res://application/world_session.gd")
 const PersistentIdSource = preload("res://tools/authoring/persistent_id_source.gd")
+const PersistentIdentityProbe = preload("res://tools/authoring/persistent_identity_probe.gd")
 const PersistentEntity = preload("res://missions/persistence/persistent_entity.gd")
 const PersistentIdentityValidator = preload(
 	"res://missions/persistence/persistent_identity_validator.gd"
@@ -25,6 +26,10 @@ func _initialize() -> void:
 
 
 func _run_tests() -> void:
+	_assert_true(
+		PersistentIdentityProbe != null,
+		"Mapper-facing persistent-identity probe script parses under pinned Godot"
+	)
 	_assert_vark_trenchbroom_identity_property()
 	_assert_vark_trenchbroom_material_config()
 	_assert_vark_runtime_identity_wiring()
