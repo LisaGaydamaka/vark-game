@@ -574,7 +574,7 @@ The shell exposes exactly one current setting: look sensitivity. It keeps the ac
 
 Support a fast development route for launching a selected mission/playground without manually opening scenes.
 
-The main menu has a separate `Development Launch` panel. It reads a small application-owned curated list of display labels and resource paths, lets the developer select a target, and launches that exact target through a serialized `DEVELOPMENT_LAUNCH` top-level operation and the same `_replace_world → WorldSession → application input boundary` path used by normal world ownership. Raw development fixtures may still be `PackedScene` targets; real mission packages may supply a `MissionDefinition` resource that resolves its owned world scene. Exit returns to the persistent main menu, and Back returns from the development panel without creating a world.
+The main menu has a separate development-only launch panel. It reads a small application-owned curated list of display labels and resource paths, lets the developer select a target, and launches that exact target through a serialized `DEVELOPMENT_LAUNCH` top-level operation and the same `_replace_world → WorldSession → application input boundary` path used by normal world ownership. Raw development fixtures may still be `PackedScene` targets; real mission packages may supply a `MissionDefinition` resource that resolves its owned world scene. Exit returns to the persistent main menu, and Back returns from the development panel without creating a world.
 
 The selector remains deliberately curated rather than scanning arbitrary scenes or exposing a filesystem picker. Playground is the first real mission-definition target beside the legacy `VarkTest`; later mission packages can join the same route without bypassing application lifecycle.
 
@@ -741,7 +741,7 @@ The tracked Playground `.map` contains one of each role with stable authored `pe
 
 **Manual:** passed — the Windows mapper/user refreshed the Vark config, explicitly reopened the authoritative Playground document, confirmed `vark_player_start`, `vark_marker`, and `vark_exit` expose `angle`, `classname`, `content_id`, `origin`, and `persistent_id` with **Show default properties OFF**, confirmed semantic IDs `default`, `marker.playground_reference`, and `exit.default` plus the existing non-empty `vark_...` persistent IDs, and confirmed Development Launch → Playground uses the authored start with normal movement/mouse look. During diagnosis, a stale already-open TrenchBroom document initially exposed only `classname`/`origin`; a fresh copy parsed all five properties, and closing the stale document without saving then explicitly reopening the authoritative path restored the correct property set. That editor-state issue did not modify the clean `.map` source.
 
-## 2.8 Reimport stability `[~]`
+## 2.8 Reimport stability `[x]`
 
 Prove `edit .map → save → import/rebuild → run` without unrelated repair and with stable persistent identity.
 
@@ -751,9 +751,9 @@ The deterministic authoring regression now clones the real Playground source int
 
 **Done when:** an ordinary TrenchBroom move/save of the tracked Playground player start preserves all existing persistent and semantic IDs, the real Godot/FuncGodot wrapper rebuild consumes the edited transform and reaches `PLAYING` without identity repair, restoring the start to its original authored pose produces a clean source diff, and no tracked `.map.import` metadata is required as source truth.
 
-**Automated:** the focused authoring suite exercises the temporary representative edit, byte-for-byte no-op identity-repair check, stable identity/content mappings, intended-only point-transform change, real `WorldSession` rebuild, and `READY → PLAYING` transition; the authoritative clean-checkout all-tests CI must pass after upload, which also proves removed `.map.import` sidecars are regenerable/non-source.
+**Automated:** passed — the focused authoring suite exercises the temporary representative edit, byte-for-byte no-op identity-repair check, stable identity/content mappings, intended-only point-transform change, real `WorldSession` rebuild, and `READY → PLAYING` transition; the authoritative clean-checkout all-tests CI passed on the accepted implementation head, also proving removed `.map.import` sidecars are regenerable/non-source.
 
-**Manual:** pending — validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**. Explicitly reopen `missions/playground/mission.map` from disk rather than relying on a stale already-open/Recent document, record the existing player-start IDs, move `vark_player_start` 32 mapper units on X, save, run `playground_reimport_probe.gd`, launch Development Launch → Playground and confirm the Player starts at the moved point with normal movement/look; then move the point exactly back, save, rerun the probe/Playground, and confirm `git diff -- missions/playground/mission.map` is empty. Never hand-edit `persistent_id`.
+**Manual:** passed — validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**. The mapper explicitly reopened `missions/playground/mission.map` from disk, preserved the existing player-start `persistent_id` and `content_id = default`, moved `vark_player_start` exactly +32 mapper units on X, saved, and verified the read-only probe reached the real Playground `PLAYING` path without identity repair while the moved authored start was consumed with normal movement/look. The point was restored exactly, the probe/Playground path was rerun, and the final `git diff -- missions/playground/mission.map` was empty. The first acceptance attempt exposed only TrenchBroom normalization of repository-added descriptive comments; the tracked map was canonicalized to TrenchBroom's save-normalized form before the final clean round trip. No `persistent_id` was hand-edited.
 
 ## 2.9 Basic content validation `[ ]`
 
@@ -1529,7 +1529,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Complete the focused 2.8 Windows/TrenchBroom reimport-stability acceptance, then implement 2.9 basic content validation through the same real authoring path.
+1. Implement 2.9 basic content validation through the same real authoring path.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
