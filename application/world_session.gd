@@ -4,8 +4,8 @@ extends Node
 
 const PLAYER_GROUP: StringName = &"vark_player"
 const MISSION_DEFINITION_SCRIPT = preload("res://missions/mission_definition.gd")
-const PersistentIdentityValidator = preload(
-	"res://missions/persistence/persistent_identity_validator.gd"
+const WorldEntityRegistry = preload(
+	"res://missions/persistence/world_entity_registry.gd"
 )
 
 
@@ -25,6 +25,7 @@ var world_scene: PackedScene = null
 var mission_definition: Resource = null
 var world: Node = null
 var player: Node = null
+var entity_registry: RefCounted = null
 var state: int = State.EMPTY
 var gameplay_time_seconds: float = 0.0
 
@@ -80,12 +81,16 @@ func build(
 			return false
 
 	add_child(world)
-	var identity_validation: Dictionary = PersistentIdentityValidator.validate_subtree(world)
-	if not bool(identity_validation["ok"]):
-		var identity_errors: PackedStringArray = identity_validation["errors"]
-		for error_message: String in identity_errors:
+	entity_registry = WorldEntityRegistry.new()
+	var registry_result: Dictionary = entity_registry.call("build_from_subtree", world)
+	if not bool(registry_result.get("ok", false)):
+		var registry_errors: PackedStringArray = registry_result.get(
+			"errors",
+			PackedStringArray()
+		)
+		for error_message: String in registry_errors:
 			push_error(
-				"WorldSession persistent identity validation failed: %s"
+				"WorldSession entity registry build failed: %s"
 				% error_message
 			)
 		teardown()
@@ -98,6 +103,18 @@ func build(
 
 	state = State.READY
 	return true
+
+
+func lookup_persistent_entity(persistent_id: String) -> Dictionary:
+	if entity_registry == null:
+		return _registry_unavailable_result()
+	return entity_registry.call("lookup_persistent_id", persistent_id)
+
+
+func lookup_content_entity(content_id: String) -> Dictionary:
+	if entity_registry == null:
+		return _registry_unavailable_result()
+	return entity_registry.call("lookup_content_id", content_id)
 
 
 func begin_play() -> bool:
@@ -145,6 +162,10 @@ func teardown() -> void:
 	state = State.TEARING_DOWN
 	process_mode = Node.PROCESS_MODE_DISABLED
 
+	if entity_registry != null:
+		entity_registry.call("clear")
+		entity_registry = null
+
 	if world != null:
 		if world.get_parent() == self:
 			remove_child(world)
@@ -157,6 +178,14 @@ func teardown() -> void:
 	session_id = 0
 	gameplay_time_seconds = 0.0
 	state = State.EMPTY
+
+
+func _registry_unavailable_result() -> Dictionary:
+	return {
+		"ok": false,
+		"node": null,
+		"error": "WorldSession has no active entity registry.",
+	}
 
 
 func _find_session_player(session_world: Node) -> Node:

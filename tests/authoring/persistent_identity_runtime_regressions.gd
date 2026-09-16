@@ -22,6 +22,7 @@ func run(assert_true: Callable) -> void:
 	_assert_content_id_authoring_schema(assert_true)
 	_assert_content_id_runtime_wiring(assert_true)
 	_assert_content_id_validation(assert_true)
+	_assert_world_session_registry(assert_true)
 
 	var session: Node = WorldSession.new()
 
@@ -31,6 +32,7 @@ func run(assert_true: Callable) -> void:
 		and int(session.get("state")) == WorldSession.State.EMPTY
 		and session.get("world") == null
 		and session.get("player") == null
+		and session.get("entity_registry") == null
 		and int(session.get("session_id")) == 0,
 		"WorldSession fails closed and tears down when an authored persistent ID is missing"
 	)
@@ -47,6 +49,7 @@ func run(assert_true: Callable) -> void:
 		and int(session.get("state")) == WorldSession.State.EMPTY
 		and session.get("world") == null
 		and session.get("player") == null
+		and session.get("entity_registry") == null
 		and int(session.get("session_id")) == 0,
 		"WorldSession fails closed and tears down when authored persistent IDs are duplicated"
 	)
@@ -67,6 +70,7 @@ func run(assert_true: Callable) -> void:
 		and int(session.get("state")) == WorldSession.State.EMPTY
 		and session.get("world") == null
 		and session.get("player") == null
+		and session.get("entity_registry") == null
 		and int(session.get("session_id")) == 0,
 		"WorldSession fails closed and tears down when optional semantic content IDs are duplicated"
 	)
@@ -186,6 +190,139 @@ func _assert_content_id_validation(assert_true: Callable) -> void:
 		"Semantic content-ID validation rejects ambiguity and reports both authored owner paths"
 	)
 	root.free()
+
+
+func _assert_world_session_registry(assert_true: Callable) -> void:
+	var first_scene: PackedScene = _make_registry_scene("first")
+	var replacement_scene: PackedScene = _make_registry_scene("replacement")
+	var session: Node = WorldSession.new()
+	var first_built: bool = first_scene != null and bool(
+		session.call("build", 9010, first_scene)
+	)
+	var registry: RefCounted = session.get("entity_registry") as RefCounted
+	var persistent_lookup: Dictionary = session.call(
+		"lookup_persistent_entity",
+		"pid-first-door"
+	)
+	var content_lookup: Dictionary = session.call(
+		"lookup_content_entity",
+		"door.first"
+	)
+	var missing_persistent: Dictionary = session.call(
+		"lookup_persistent_entity",
+		"pid-not-present"
+	)
+	var missing_content: Dictionary = session.call(
+		"lookup_content_entity",
+		"door.not-present"
+	)
+	var blank_content: Dictionary = session.call("lookup_content_entity", "   ")
+	var persistent_node: Node = persistent_lookup.get("node") as Node
+	var content_node: Node = content_lookup.get("node") as Node
+	assert_true.call(
+		first_built
+		and registry != null
+		and int(registry.call("persistent_count")) == 3
+		and int(registry.call("content_count")) == 2
+		and bool(persistent_lookup.get("ok", false))
+		and persistent_node != null
+		and persistent_node.name == &"Door_first"
+		and bool(content_lookup.get("ok", false))
+		and content_node == persistent_node,
+		"WorldSession owns a registry that resolves persistent and semantic IDs to current-world entities"
+	)
+	assert_true.call(
+		not bool(missing_persistent.get("ok", false))
+		and missing_persistent.get("node") == null
+		and str(missing_persistent.get("error", "")).contains("pid-not-present")
+		and not bool(missing_content.get("ok", false))
+		and missing_content.get("node") == null
+		and str(missing_content.get("error", "")).contains("door.not-present")
+		and not bool(blank_content.get("ok", false))
+		and str(blank_content.get("error", "")).contains("empty"),
+		"Registry lookup reports missing and blank IDs without returning an unrelated entity"
+	)
+
+	session.call("teardown")
+	var cleared_old_registry: Dictionary = registry.call(
+		"lookup_persistent_id",
+		"pid-first-door"
+	)
+	var unavailable_lookup: Dictionary = session.call(
+		"lookup_persistent_entity",
+		"pid-first-door"
+	)
+	assert_true.call(
+		session.get("entity_registry") == null
+		and not bool(cleared_old_registry.get("ok", false))
+		and cleared_old_registry.get("node") == null
+		and not bool(unavailable_lookup.get("ok", false))
+		and str(unavailable_lookup.get("error", "")).contains("no active entity registry"),
+		"WorldSession teardown clears and discards its registry before the old world can leak into another session"
+	)
+
+	var replacement_built: bool = replacement_scene != null and bool(
+		session.call("build", 9011, replacement_scene)
+	)
+	var stale_lookup: Dictionary = session.call(
+		"lookup_persistent_entity",
+		"pid-first-door"
+	)
+	var replacement_lookup: Dictionary = session.call(
+		"lookup_content_entity",
+		"door.replacement"
+	)
+	var replacement_node: Node = replacement_lookup.get("node") as Node
+	assert_true.call(
+		replacement_built
+		and not bool(stale_lookup.get("ok", false))
+		and stale_lookup.get("node") == null
+		and bool(replacement_lookup.get("ok", false))
+		and replacement_node != null
+		and replacement_node.name == &"Door_replacement",
+		"A replacement WorldSession registry contains only the replacement world's registrations"
+	)
+	if int(session.get("state")) != WorldSession.State.EMPTY:
+		session.call("teardown")
+	session.free()
+
+
+func _make_registry_scene(tag: String) -> PackedScene:
+	var root := Node3D.new()
+	root.name = "RegistryWorld_%s" % tag
+
+	var player := Node.new()
+	player.name = "PlayerMarker"
+	player.add_to_group(&"vark_player", true)
+	root.add_child(player)
+	player.owner = root
+
+	var door: Node = PersistentEntity.new()
+	door.name = "Door_%s" % tag
+	door.set("persistent_id", "pid-%s-door" % tag)
+	door.set("content_id", "door.%s" % tag)
+	root.add_child(door)
+	door.owner = root
+
+	var guard: Node = PersistentEntity.new()
+	guard.name = "Guard_%s" % tag
+	guard.set("persistent_id", "pid-%s-guard" % tag)
+	guard.set("content_id", "guard.%s" % tag)
+	root.add_child(guard)
+	guard.owner = root
+
+	var unaddressed: Node = PersistentEntity.new()
+	unaddressed.name = "Unaddressed_%s" % tag
+	unaddressed.set("persistent_id", "pid-%s-unaddressed" % tag)
+	root.add_child(unaddressed)
+	unaddressed.owner = root
+
+	var packed := PackedScene.new()
+	var pack_error: Error = packed.pack(root)
+	root.free()
+	if pack_error != OK:
+		return null
+	return packed
 
 
 func _make_duplicate_content_scene() -> PackedScene:

@@ -77,7 +77,7 @@ The project currently contains:
 - a minimal application main-menu shell with New Game, curated Development Launch, Quit, and one working look-sensitivity setting
 - an initial `missions/playground/` package with authoritative TrenchBroom spatial source and a launchable application-owned world wrapper
 - a minimal typed `MissionDefinition` for Playground carrying authored mission ID, world/map references, player-start selection, and content revision
-- an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, and fail-closed identity validation
+- an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, fail-closed identity validation, and a current-session-owned persistent/content-ID registry
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -86,7 +86,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, persistent-ID/content-ID registry and lookup, final Vark entity vocabulary, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, final Vark entity vocabulary, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -241,6 +241,8 @@ There are **three persistence cases**:
 Mission scripting may additionally use optional author-facing `content_id` values such as `door.vault` or `guard.library`. Persistence identity and semantic author-facing identity are different concerns.
 
 Authored identity must survive ordinary move/reorder/reimport operations and duplication must create a distinct identity. Repair/writeback must persist to the authoritative authored source and be idempotent.
+
+Runtime lookup of current authored identities is world-session-scoped. The current registry resolves validated `persistent_id` values and optional non-empty `content_id` values only for the active world and is discarded with that session.
 
 Runtime persistent identity/provenance is introduced only when the first real runtime-created object must survive save/load.
 
@@ -492,7 +494,7 @@ Use a small session/generation token only if needed to reject stale work.
 
 The application now creates a concrete `WorldSession` for each world instance. A session builds in a disabled `READY` state, enters `PLAYING` only through application permission, can be stopped/resumed coherently, and tears its world down synchronously before restart/mission-transition replacement becomes authoritative. Session IDs are monotonic at the application level and stale IDs stop matching immediately after replacement or exit. The persistent application UI remains outside session lifetime.
 
-World-scoped Nodes/services are owned beneath the `WorldSession`, so their timers/deferred callbacks die with the old session. The regression uses representative real `Timer` and deferred work to prove stop freezes session-owned timer processing and teardown prevents both timer/deferred work from the old session firing into the replacement. No empty registry, semantic event queue, or general scheduler framework is created here: those real systems remain Phase 2.6/3.2 work, but their lifetime owner is now established as the session. The shared authored `PackedScene` remains configuration while each restart gets a fresh runtime world instance.
+World-scoped Nodes/services are owned beneath the `WorldSession`, so their timers/deferred callbacks die with the old session. The regression uses representative real `Timer` and deferred work to prove stop freezes session-owned timer processing and teardown prevents both timer/deferred work from the old session firing into the replacement. Phase 1.2 deliberately did not invent empty registry/event/scheduler frameworks; Phase 2.6 now adds the actual session-owned identity registry once authored IDs exist, while the semantic event queue and general gameplay scheduling remain later work. The shared authored `PackedScene` remains configuration while each restart gets a fresh runtime world instance.
 
 **Done when:** the application can build a non-playing world session, explicitly enter/stop/resume play, restart or transition only after tearing down the old session, exit to a coherent no-world state, preserve persistent UI/config ownership, and reject stale session identity/work after replacement.
 
@@ -693,23 +695,35 @@ Vark now has a project-owned `FuncGodotMapSettings` resource that uses the same 
 
 **Manual:** none — 2.3 already accepted the Windows mapper/source-writeback workflow; 2.4 adds deterministic runtime wiring/validation without changing player-facing behavior. Full ordinary map edit → import/rebuild → run stability remains the dedicated 2.8 proof.
 
-## 2.5 Optional semantic content IDs `[~]`
+## 2.5 Optional semantic content IDs `[x]`
 
 Implement author-facing IDs only for entities mission logic actually needs to address.
 
 Vark now defines a separate project-owned `VarkContentAddressable` FGD base with optional `content_id`. The Phase-2 `func_detail` proof carrier composes that base only so the real TrenchBroom → FuncGodot property path can be proven before 2.7 introduces the actual Vark entity vocabulary; the tracked Playground does not assign semantic IDs to ordinary geometry. `VarkPersistentEntity` carries the optional runtime string alongside `persistent_id`, but the two concepts remain distinct: persistent identity is generated/repaired durable instance identity, while `content_id` is a mapper-chosen semantic name such as `door.vault` and is never auto-generated.
 
-Blank `content_id` is valid and means the entity is not addressed by mission logic. Non-empty semantic IDs must be unique within the built world so future mission references cannot become ambiguous. The existing pre-`READY` stateless identity validation reports a duplicate `content_id` with both owner paths and causes `WorldSession` to tear down the invalid candidate. This is validation only: 2.5 does not add lookup APIs, reference resolution, a registry, or required semantic IDs. Those remain 2.6/2.9, and 2.7 decides which real Vark entity classes opt into author-facing addressing.
+Blank `content_id` is valid and means the entity is not addressed by mission logic. Non-empty semantic IDs must be unique within the built world so future mission references cannot become ambiguous. The existing pre-`READY` stateless identity validation reports a duplicate `content_id` with both owner paths and causes `WorldSession` to tear down the invalid candidate. 2.5 itself adds validation only; 2.6 consumes the validated IDs for current-session lookup, while reference-schema validation remains 2.9 and 2.7 decides which real Vark entity classes opt into author-facing addressing.
 
 **Done when:** the Vark TrenchBroom FGD exposes optional `content_id` separately from generated `persistent_id`; the real FuncGodot path carries an authored semantic ID onto the runtime entity; blank semantic IDs remain valid; duplicate non-empty semantic IDs fail closed with both owner paths before `READY`; no semantic ID is auto-generated; and no lookup/registry/final entity vocabulary is introduced.
 
-**Automated:** the focused authoring suite verifies the exported Vark FGD contains the separate content-addressable schema, builds a temporary mapper-style `func_detail` with both IDs through the real Vark FuncGodot settings, proves the runtime `StaticBody3D` receives the exact authored `content_id`, proves blank semantic IDs validate, proves duplicate non-empty IDs report both owners, and proves `WorldSession` rejects a duplicate-content-ID packed world. Clean-checkout import and the authoritative post-push `Regression suite` must remain green.
+**Automated:** passed — the focused authoring suite verifies the exported Vark FGD contains the separate content-addressable schema, builds a temporary mapper-style `func_detail` with both IDs through the real Vark FuncGodot settings, proves the runtime `StaticBody3D` receives the exact authored `content_id`, proves blank semantic IDs validate, proves duplicate non-empty IDs report both owners, proves `WorldSession` rejects a duplicate-content-ID packed world, and the exact-head post-push `Regression suite` passed.
 
 **Manual:** none — this step adds deterministic authoring/runtime metadata and failure validation only. The real semantic entity vocabulary and normal mapper usage arrive in 2.7, while full edit/import/run stability remains 2.8.
 
-## 2.6 Minimal registry `[ ]`
+## 2.6 Minimal registry `[~]`
 
 Provide world-session-owned registration/lookup with duplicate/missing reporting. Do not force behavior into a giant base entity class.
+
+`VarkWorldEntityRegistry` is the smallest runtime lookup owner for the identities already proven in 2.4–2.5. It is a `RefCounted` created by the current `WorldSession` during build, reuses `VarkPersistentIdentityValidator` as the fail-closed gate, and only retains indexes after the whole world validates. It indexes every validated authored `persistent_id` and each non-empty optional `content_id`; it does not introduce a second entity hierarchy, registration callback protocol, autoload, or mutable authored `Resource` state.
+
+Lookups return a structured `{ ok, node, error }` result. Valid persistent/content IDs resolve to the exact current-world Node; blank or absent IDs return `node = null` with a useful namespace-specific diagnostic instead of silently returning another object. `WorldSession` owns the registry reference, clears it before freeing the world, and discards it on teardown or failed build, so a retained old registry cannot resolve stale Nodes and a replacement session contains only its own registrations.
+
+This step intentionally does not define authored references, required semantic IDs, point-entity classes, runtime-created persistence registration, or mission-script APIs. 2.7 supplies the first real Vark semantic entities; 2.9 validates real authored references once such references exist; runtime-created registration remains deferred until the first real runtime-persistent object requires it.
+
+**Done when:** a successful `WorldSession` build owns exactly one registry for its validated world; persistent and non-empty semantic IDs resolve to exact current-world Nodes; blank/missing lookups report useful failure without returning a Node; invalid identity cannot leave a partial registry; teardown clears/discards registrations before world destruction; a replacement session cannot resolve IDs from the old world; and no global registry/entity base/reference system is pulled forward.
+
+**Automated:** the focused authoring/runtime regression builds valid registry fixtures through the real `WorldSession`, verifies persistent/content lookup and counts, verifies blank/missing diagnostics, verifies missing/duplicate identity failures leave no registry, retains an old registry reference across teardown to prove it is cleared, rebuilds a replacement session to prove stale IDs do not resolve, and the clean-checkout authoritative post-push `Regression suite` must remain green.
+
+**Manual:** none — this is deterministic runtime ownership/lookup plumbing with no mapper workflow or player-facing behavior change. 2.7/2.8 own the next author-facing entity/reimport checks.
 
 ## 2.7 TrenchBroom Vark entity foundation `[ ]`
 
@@ -1418,7 +1432,7 @@ Prove ordinary gameplay durations stop with world simulation/pause and do not ad
 
 ## Persistent identity editing
 
-Exercise create/move/reorder/duplicate/delete/reimport plus idempotent source writeback/repair. Runtime validation must reject missing/duplicate authored persistent IDs and duplicate non-empty semantic `content_id` values before a world session becomes ready.
+Exercise create/move/reorder/duplicate/delete/reimport plus idempotent source writeback/repair. Runtime validation must reject missing/duplicate authored persistent IDs and duplicate non-empty semantic `content_id` values before a world session becomes ready. The current-session registry must resolve validated persistent/content IDs, report blank/missing lookup, and be cleared across teardown/replacement.
 
 ## Gameplay-event/stable boundary
 
@@ -1466,6 +1480,7 @@ Automate deterministic objective behavior where valuable, including:
 - event FIFO/re-entrant/lifecycle behavior and runaway-cascade failure diagnostics;
 - resolved random-choice persistence when choices have become gameplay truth;
 - persistent-ID uniqueness/editing/reimport/repair/writeback/idempotence and fail-closed runtime validation;
+- current-session persistent/content-ID registry ownership, lookup, missing diagnostics, and teardown/replacement isolation;
 - semantic-ID uniqueness now, plus missing-reference errors when real references exist;
 - mission restart freshness;
 - detached save snapshot capture that cannot mutate after live state changes;
@@ -1492,7 +1507,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `2.5` post-push automated validation. Because `Manual: none`, reconcile it to `[x]` on the next authorized patch once the exact-head `Regression suite` is green, then implement 2.6–2.9 through the real TrenchBroom/reimport path.
+1. Finish `2.6` post-push automated validation. Because `Manual: none`, reconcile it to `[x]` on the next authorized patch once the exact-head `Regression suite` is green, then implement 2.7–2.9 through the real TrenchBroom/reimport path.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
