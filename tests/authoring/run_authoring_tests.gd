@@ -1,6 +1,7 @@
 extends SceneTree
 
 
+const WorldSession = preload("res://application/world_session.gd")
 const PersistentIdSource = preload("res://tools/authoring/persistent_id_source.gd")
 const PersistentEntity = preload("res://missions/persistence/persistent_entity.gd")
 const PersistentIdentityValidator = preload(
@@ -10,6 +11,7 @@ const SessionIdentityRegressions = preload(
 	"res://tests/authoring/persistent_identity_runtime_regressions.gd"
 )
 const PLAYGROUND_SOURCE_PATH: String = "res://missions/playground/mission.map"
+const PLAYGROUND_DEFINITION_PATH: String = "res://missions/playground/mission.tres"
 const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
 const VARK_PROOF_MATERIAL_PATH: String = "res://textures/zebra/zebra16x16.png"
@@ -26,6 +28,7 @@ func _run_tests() -> void:
 	_assert_vark_trenchbroom_identity_property()
 	_assert_vark_trenchbroom_material_config()
 	_assert_vark_runtime_identity_wiring()
+	_assert_vark_point_entity_foundation()
 	_assert_runtime_identity_validator_diagnostics()
 	var session_identity_regressions: RefCounted = SessionIdentityRegressions.new()
 	session_identity_regressions.run(Callable(self, "_assert_true"))
@@ -289,6 +292,134 @@ func _assert_vark_runtime_identity_wiring() -> void:
 	)
 
 
+func _assert_vark_point_entity_foundation() -> void:
+	var config := load(VARK_TRENCHBROOM_CONFIG_PATH) as TrenchBroomGameConfig
+	var fgd_file: FuncGodotFGDFile = config.fgd_file if config != null else null
+	var definitions: Dictionary[String, FuncGodotFGDEntityClass] = {}
+	var exported_fgd: String = ""
+	if fgd_file != null:
+		definitions = fgd_file.get_entity_definitions()
+		exported_fgd = fgd_file.build_class_text(
+			FuncGodotFGDFile.FuncGodotTargetMapEditors.TRENCHBROOM
+		)
+
+	var point_specs: Dictionary[String, String] = {
+		"vark_player_start": "vark_player_start",
+		"vark_marker": "vark_semantic_marker",
+		"vark_exit": "vark_mission_exit",
+	}
+	var schema_valid: bool = fgd_file != null
+	for classname: String in point_specs:
+		var point := definitions.get(classname) as FuncGodotFGDPointClass
+		if point == null:
+			schema_valid = false
+			continue
+		var properties: Dictionary = point.retrieve_all_class_properties()
+		schema_valid = (
+			schema_valid
+			and point.node_class == "Node3D"
+			and point.script_class == PersistentEntity
+			and point.auto_apply_to_matching_node_properties
+			and point.node_groups.has(point_specs[classname])
+			and properties.has("persistent_id")
+			and properties.has("content_id")
+			and properties.has("angle")
+		)
+	_assert_true(
+		schema_valid
+		and exported_fgd.contains("vark_player_start")
+		and exported_fgd.contains("vark_marker")
+		and exported_fgd.contains("vark_exit"),
+		"Vark TrenchBroom FGD exposes the minimal player-start, semantic-marker, and exit point vocabulary"
+	)
+
+	var func_map := FuncGodotMap.new()
+	func_map.map_settings = load(MAP_SETTINGS_PATH) as FuncGodotMapSettings
+	func_map.local_map_file = PLAYGROUND_SOURCE_PATH
+	func_map.build()
+
+	var player_starts: Array[Node] = []
+	var markers: Array[Node] = []
+	var exits: Array[Node] = []
+	for node: Node in func_map.find_children("*", "", true, false):
+		if node.is_in_group(&"vark_player_start"):
+			player_starts.append(node)
+		if node.is_in_group(&"vark_semantic_marker"):
+			markers.append(node)
+		if node.is_in_group(&"vark_mission_exit"):
+			exits.append(node)
+
+	var start: Node3D = null
+	var marker: Node3D = null
+	var exit_point: Node3D = null
+	if player_starts.size() == 1:
+		start = player_starts[0] as Node3D
+	if markers.size() == 1:
+		marker = markers[0] as Node3D
+	if exits.size() == 1:
+		exit_point = exits[0] as Node3D
+	var validation: Dictionary = PersistentIdentityValidator.validate_subtree(func_map)
+	var point_ids: Dictionary = {}
+	for point: Node3D in [start, marker, exit_point]:
+		if point != null and point.has_method("get_persistent_id"):
+			point_ids[str(point.call("get_persistent_id"))] = true
+
+	_assert_true(
+		start != null
+		and marker != null
+		and exit_point != null
+		and str(start.call("get_content_id")) == "default"
+		and str(marker.call("get_content_id")) == "marker.playground_reference"
+		and str(exit_point.call("get_content_id")) == "exit.default"
+		and point_ids.size() == 3
+		and not point_ids.has("")
+		and bool(validation.get("ok", false))
+		and int(validation.get("identity_count", 0)) == 3
+		and int(validation.get("content_id_count", 0)) == 3
+		and start.position.is_equal_approx(Vector3(0.0, 1.15, 0.0))
+		and is_zero_approx(fposmod(start.rotation_degrees.y, 360.0)),
+		"Tracked Playground source builds one valid persistent/content-addressed Node3D for each Vark point role"
+	)
+	func_map.free()
+
+	var mission_definition: Resource = load(PLAYGROUND_DEFINITION_PATH)
+	var world_scene: PackedScene = null
+	if mission_definition != null:
+		world_scene = mission_definition.get("world_scene") as PackedScene
+	var session: Node = WorldSession.new()
+	session.name = "PointFoundationWorldSession"
+	get_root().add_child(session)
+	var built: bool = false
+	if world_scene != null:
+		built = bool(session.call("build", 2701, world_scene, mission_definition))
+	var session_world: Node = session.get("world") as Node
+	var session_player: Node3D = session.get("player") as Node3D
+	var selected_start: Node3D = null
+	if session_world != null:
+		selected_start = session_world.get("selected_player_start") as Node3D
+	var start_lookup: Dictionary = session.call("lookup_content_entity", "default")
+	var marker_lookup: Dictionary = session.call(
+		"lookup_content_entity",
+		"marker.playground_reference"
+	)
+	var exit_lookup: Dictionary = session.call("lookup_content_entity", "exit.default")
+	_assert_true(
+		built
+		and int(session.get("state")) == WorldSession.State.READY
+		and selected_start != null
+		and bool(start_lookup.get("ok", false))
+		and start_lookup.get("node") == selected_start
+		and bool(marker_lookup.get("ok", false))
+		and bool(exit_lookup.get("ok", false))
+		and session_player != null
+		and session_player.global_transform.is_equal_approx(selected_start.global_transform),
+		"Playground resolves MissionDefinition player_start_selector to the map-authored Vark start before play and registers all three semantic points"
+	)
+	if int(session.get("state")) != WorldSession.State.EMPTY:
+		session.call("teardown")
+	session.free()
+
+
 func _assert_runtime_identity_validator_diagnostics() -> void:
 	var missing_root := Node.new()
 	var missing_entity: Node = PersistentEntity.new()
@@ -334,10 +465,11 @@ func _build_runtime_identity_result(path: String) -> Dictionary:
 	for node: Node in func_map.find_children("*", "", true, false):
 		if not node.has_method("is_vark_persistent_entity"):
 			continue
+		if not (node is StaticBody3D):
+			continue
 		identity_count += 1
 		ids.append(str(node.call("get_persistent_id")))
-		if node is StaticBody3D:
-			static_body_count += 1
+		static_body_count += 1
 	var validation: Dictionary = PersistentIdentityValidator.validate_subtree(func_map)
 	func_map.free()
 	return {

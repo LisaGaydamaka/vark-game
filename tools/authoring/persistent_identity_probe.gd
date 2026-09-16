@@ -7,6 +7,11 @@ const WORKSPACE_PATH: String = "res://tests/authoring/workspace/mission.map"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
 const VARK_MATERIAL_ROOT: String = "textures"
 const VARK_PROOF_MATERIAL_PATH: String = "res://textures/zebra/zebra16x16.png"
+const VARK_POINT_CLASSNAMES := PackedStringArray([
+	"vark_player_start",
+	"vark_marker",
+	"vark_exit",
+])
 
 
 func _initialize() -> void:
@@ -122,9 +127,16 @@ func _sync_trenchbroom_config() -> bool:
 	var fgd_text: String = FileAccess.get_file_as_string(fgd_path)
 	if not fgd_text.contains("persistent_id") or not fgd_text.contains("content_id"):
 		push_error(
-			"Exported Vark FGD must declare persistent_id and optional content_id on the Phase-2 func_detail carrier."
+			"Exported Vark FGD must declare persistent_id and optional content_id on Vark identity-bearing entities."
 		)
 		return false
+	for classname: String in VARK_POINT_CLASSNAMES:
+		if not fgd_text.contains(classname):
+			push_error(
+				"Exported Vark FGD is missing required Phase-2 point entity class: %s"
+				% classname
+			)
+			return false
 
 	var game_config_text: String = FileAccess.get_file_as_string(game_config_path)
 	if not _validate_trenchbroom_material_config(config, game_config_text):
@@ -133,7 +145,9 @@ func _sync_trenchbroom_config() -> bool:
 	print("Refreshed the installed Vark TrenchBroom game configuration:")
 	print("  folder: ", config_folder)
 	print("  FGD:    ", fgd_path)
-	print("The exported Vark FGD declares persistent_id and optional content_id for func_detail.")
+	print("The exported Vark FGD declares persistent_id, optional content_id, and the minimal Phase-2 point vocabulary:")
+	for classname: String in VARK_POINT_CLASSNAMES:
+		print("  ", classname)
 	print("The exported Vark material config resolves PNGs under textures/ with no palette dependency.")
 	print("Close/reopen TrenchBroom before continuing so it reloads the updated game configuration.")
 	return true

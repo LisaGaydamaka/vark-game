@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="Resource" path="res://authoring/fgd/vark_persistent_identity_base.tres" id="2_identity"]
+[ext_resource type="Resource" path="res://authoring/fgd/vark_content_addressable_base.tres" id="3_content"]
+[ext_resource type="Script" path="res://missions/persistence/persistent_entity.gd" id="4_persistent"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_marker"
+description = "Generic authored semantic point marker for mission content that needs a stable spatial address without behavior."
+base_classes = Array[Resource]([ExtResource("2_identity"), ExtResource("3_content")])
+class_properties = Dictionary[String, Variant]({
+"angle": 180.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"angle": "Marker facing direction in TrenchBroom degrees."
+})
+auto_apply_to_matching_node_properties = true
+node_class = "Node3D"
+script_class = ExtResource("4_persistent")
+node_groups = Array[String](["vark_semantic_marker"])

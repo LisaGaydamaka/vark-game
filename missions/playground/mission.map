@@ -26,3 +26,27 @@
 ( 64 32 4 ) ( 64 32 5 ) ( 64 33 4 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
 }
 }
+// entity 1 - authored player start selected by MissionDefinition.player_start_selector
+{
+"classname" "vark_player_start"
+"persistent_id" "vark_c8dadb448ceca069874835d6126387d1"
+"content_id" "default"
+"angle" "180"
+"origin" "0 0 36.8"
+}
+// entity 2 - generic semantic point marker
+{
+"classname" "vark_marker"
+"persistent_id" "vark_195752b465f32018a1e7de0df673234f"
+"content_id" "marker.playground_reference"
+"angle" "180"
+"origin" "0 64 16"
+}
+// entity 3 - semantic exit endpoint; exit gameplay arrives later
+{
+"classname" "vark_exit"
+"persistent_id" "vark_d638c530260ed35a79a135ba21defb57"
+"content_id" "exit.default"
+"angle" "180"
+"origin" "0 -64 16"
+}

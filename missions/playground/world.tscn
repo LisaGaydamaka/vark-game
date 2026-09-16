@@ -21,7 +21,6 @@ rotation_degrees = Vector3(-55, -35, 0)
 shadow_enabled = true
 
 [node name="Player" parent="." instance=ExtResource("4_player")]
-position = Vector3(0, 1.15, 0)
 
 [node name="FuncGodotMap" type="Node3D" parent="."]
 script = ExtResource("2_map")
