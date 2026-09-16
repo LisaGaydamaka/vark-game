@@ -1,13 +1,12 @@
 // Game: Vark
 // Format: Valve
 // Generator: TrenchBroom 2026.2 (Build v2026.2 Release Win64)
-// Phase 2 playground: authoritative spatial source.
 // entity 0
 {
 "mapversion" "220"
 "wad" ""
 "classname" "worldspawn"
-// brush 0 - broad floor slab
+// brush 0
 {
 ( -128 -128 -16 ) ( -128 -127 -16 ) ( -128 -128 -15 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
 ( -128 -128 -16 ) ( -128 -128 -15 ) ( -127 -128 -16 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
@@ -16,7 +15,7 @@
 ( 128 128 0 ) ( 129 128 0 ) ( 128 128 1 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
 ( 128 128 0 ) ( 128 128 1 ) ( 128 129 0 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
 }
-// brush 1 - low traversal/reference step
+// brush 1
 {
 ( 32 -32 0 ) ( 32 -31 0 ) ( 32 -32 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
 ( 32 -32 0 ) ( 32 -32 1 ) ( 33 -32 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
@@ -26,7 +25,7 @@
 ( 64 32 4 ) ( 64 32 5 ) ( 64 33 4 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
 }
 }
-// entity 1 - authored player start selected by MissionDefinition.player_start_selector
+// entity 1
 {
 "classname" "vark_player_start"
 "persistent_id" "vark_c8dadb448ceca069874835d6126387d1"
@@ -34,7 +33,7 @@
 "angle" "180"
 "origin" "0 0 36.8"
 }
-// entity 2 - generic semantic point marker
+// entity 2
 {
 "classname" "vark_marker"
 "persistent_id" "vark_195752b465f32018a1e7de0df673234f"
@@ -42,7 +41,7 @@
 "angle" "180"
 "origin" "0 64 16"
 }
-// entity 3 - semantic exit endpoint; exit gameplay arrives later
+// entity 3
 {
 "classname" "vark_exit"
 "persistent_id" "vark_d638c530260ed35a79a135ba21defb57"
