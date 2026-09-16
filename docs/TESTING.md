@@ -395,7 +395,7 @@ As real timed gameplay appears, extend this fixture to prove guard search, mecha
 
 Phase 2.3 uses the real `missions/playground/mission.map` as the base source for a temporary authoring fixture and proves the source/writeback mechanics before production entities depend on them: the Vark TrenchBroom FGD explicitly declares `persistent_id` on the mapper-facing `func_detail` proof entity, move/reorder preserves existing IDs, duplication is repaired to a distinct ID while the first source owner stays stable, delete/recreate gets a new ID, generated/repaired IDs survive real FuncGodot parsing, valid source is not rewritten, repeat repair is idempotent, stale source hashes cannot overwrite newer mapper text, the refreshed mapper config has a valid PNG material path, and any external repair write requires a TrenchBroom reload before further edits.
 
-Phase 2.4 wires the same Vark FGD into runtime FuncGodot map settings, carries authored persistent IDs onto generated nodes, and makes missing/duplicate persistent IDs fail closed at `WorldSession` build with useful paths. Phase 2.5 adds optional mapper-owned `content_id`, proves it survives the real FuncGodot path, treats blank as unaddressed, and makes duplicate non-empty semantic IDs fail closed with both owner paths. Phase 2.6 registers those validated persistent/non-empty semantic IDs in the current `WorldSession`, proves successful/missing lookup plus teardown/replacement isolation, and still does not define authored reference schemas. Phase 2.7 adds the mapper/runtime vocabulary for player start, generic marker, and exit and directly declares both identity fields in each point's own FGD block so TrenchBroom treats the on-disk point keys as real entity properties; the tracked Playground proves those points build, register, and resolve the semantic player-start selector. Missing semantic-reference checks require actual references and therefore remain 2.9. Phase 2.8 now adds an automated representative player-start edit on a disposable real-Playground copy, read-only no-repair verification, real wrapper rebuild to `PLAYING`, stable persistent/content IDs, and an intended-only transform change. Windows mapper acceptance still owns the actual TrenchBroom save/reopen/edit loop.
+Phase 2.4 wires the same Vark FGD into runtime FuncGodot map settings, carries authored persistent IDs onto generated nodes, and makes missing/duplicate persistent IDs fail closed at `WorldSession` build with useful paths. Phase 2.5 adds optional mapper-owned `content_id`, proves it survives the real FuncGodot path, treats blank as unaddressed, and makes duplicate non-empty semantic IDs fail closed with both owner paths. Phase 2.6 registers those validated persistent/non-empty semantic IDs in the current `WorldSession`, proves successful/missing lookup plus teardown/replacement isolation, and still does not define authored reference schemas. Phase 2.7 adds the mapper/runtime vocabulary for player start, generic marker, and exit and directly declares both identity fields in each point's own FGD block so TrenchBroom treats the on-disk point keys as real entity properties; the tracked Playground proves those points build, register, and resolve the semantic player-start selector. Missing semantic-reference checks require actual references and therefore remain 2.9. Phase 2.8 now adds an automated representative player-start edit on a disposable real-Playground copy, read-only no-repair verification, real wrapper rebuild to `PLAYING`, stable persistent/content IDs, and an intended-only transform change. The accepted Windows mapper run also proves the actual TrenchBroom save/reopen/edit loop, including a clean source diff after restoring the authored start.
 
 ## Gameplay-event / controlled-mutation / stable-boundary fixture
 
@@ -561,7 +561,7 @@ Before stealth architecture hardens, exercise:
 
 ```text
 attack intent
-→ semantic hostile effect
+→ semantic hostile effect on guard
 → actor/life-state consequence
 → gameplay event + gameplay sound
 → relevant AI/perception reaction
@@ -687,7 +687,7 @@ godot --headless --path . --script res://tools/authoring/persistent_identity_pro
 
 The completed Windows run satisfied these cases and accepted the mapper-visible vocabulary, actual identity/content properties, authored selector/start result, and ordinary movement/look behavior.
 
-## Phase 2.8 TrenchBroom reimport-stability check — pending
+## Phase 2.8 TrenchBroom reimport-stability check — accepted
 
 Validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**.
 
@@ -720,6 +720,8 @@ git diff -- missions/playground/mission.map
 ```
 
 Expected: no output. If a diff remains, report it rather than hand-normalizing or editing identity values.
+
+The completed Windows run satisfied these cases. The first round trip exposed only TrenchBroom normalization of repository-added descriptive comments; entity data, identities, transforms, and brush geometry were unchanged. The tracked Playground map was then committed in TrenchBroom's save-normalized form and the stale comment-dependent authoring assertion was removed. Exact-head CI returned green, and the accepted rerun preserved the IDs and moved/restored start behavior while ending with an empty `git diff -- missions/playground/mission.map`; the mapper never hand-edited `persistent_id`.
 
 ---
 
