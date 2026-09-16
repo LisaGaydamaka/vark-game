@@ -145,7 +145,7 @@ godot --headless --path . --script res://tests/movement/run_movement_tests.gd --
 
 Expected result: nonzero exit code and intentional failure reported.
 
-The authoring suite derives temporary identity-workflow fixtures from the real Playground `.map`, verifies the project-owned Vark TrenchBroom FGD/config, exercises source-owned persistent-ID repair through representative edits, reparses through the pinned FuncGodot parser, builds identity-bearing entities through the real Vark FuncGodot map settings, and verifies generated runtime Nodes carry authored persistent IDs plus optional semantic `content_id` values. It preloads the mapper-facing `persistent_identity_probe.gd`, so parser errors in the exact CLI tool used for `sync-config`, `prepare`, `reset`, `inspect`, and `repair` fail the authoritative suite before a manual mapper handoff. It also verifies that each Vark player-start/marker/exit point class directly owns `persistent_id` and `content_id` and emits those fields in its own TrenchBroom FGD block, builds the tracked Playground point entities through the real FuncGodot path, proves `MissionDefinition.player_start_selector` resolves the authored start before play, and proves all three semantic points are present in the current-session registry. Useful missing/duplicate persistent-ID diagnostics, optional blank semantic IDs, duplicate non-empty semantic-ID diagnostics, the `WorldSession` fail-closed boundary, and current-session registry lookup/missing/lifetime behavior across teardown and replacement remain covered. Temporary identity-workflow fixtures never mutate the tracked Playground map.
+The authoring suite derives temporary identity-workflow fixtures from the real Playground `.map`, verifies the project-owned Vark TrenchBroom FGD/config, exercises source-owned persistent-ID repair through representative edits, reparses through the pinned FuncGodot parser, builds identity-bearing entities through the real Vark FuncGodot map settings, and verifies generated runtime Nodes carry authored persistent IDs plus optional semantic `content_id` values. It preloads both mapper-facing CLI scripts: `persistent_identity_probe.gd` protects the exact `sync-config`/workspace repair route, while `playground_reimport_probe.gd` protects the read-only 2.8 rebuild verifier. It also verifies that each Vark player-start/marker/exit point class directly owns `persistent_id` and `content_id` and emits those fields in its own TrenchBroom FGD block, builds the tracked Playground point entities through the real FuncGodot path, proves `MissionDefinition.player_start_selector` resolves the authored start before play, and proves all three semantic points are present in the current-session registry. Phase 2.8 additionally derives a disposable real-Playground copy, moves only the player start, proves dry identity repair is a byte-for-byte no-op, proves all tracked persistent/content IDs remain stable, proves only the intended point transform changes, rebuilds through the real `WorldSession`, and enters `PLAYING`. Useful missing/duplicate persistent-ID diagnostics, optional blank semantic IDs, duplicate non-empty semantic-ID diagnostics, the `WorldSession` fail-closed boundary, and current-session registry lookup/missing/lifetime behavior across teardown and replacement remain covered. Temporary authoring fixtures never mutate the tracked Playground map.
 
 The application suite verifies the configured F5 application entry point, no-world main-menu startup, separate New Game and curated Development Launch flows, selected development-target launch through the real lifecycle/input path, package-local Playground source/build wiring, minimal `MissionDefinition` validation/loading/session configuration, the real look-sensitivity setting across replacement, menu/quit wiring, current development world/player/UI ownership once gameplay starts, current/stale session identity checks, the exclusive top-level-operation guard, non-playing world build, application-controlled play/pause/resume/stop, restart/transition/exit teardown, fresh replacement, stale session-owned timer/deferred-work rejection, the application-owned gameplay/look input boundary, exclusive application control modes, and gameplay-time ownership.
 
@@ -224,7 +224,21 @@ Phase 2.7 introduces only the first point roles needed by the Playground: `vark_
 
 The tracked `missions/playground/mission.map` carries one of each point role with stable authored `persistent_id` values and semantic IDs `default`, `marker.playground_reference`, and `exit.default`. After FuncGodot builds, the Playground wrapper resolves `MissionDefinition.player_start_selector` against generated nodes in the `vark_player_start` group. Exactly one match is required; on success, the real Player receives that authored point's global transform before ordinary play. The map therefore owns the start pose rather than duplicating it in `MissionDefinition` or `world.tscn`.
 
-The authoring regression now requires each point resource's direct `class_properties` to contain `persistent_id`, `content_id`, and `angle`, requires these three point classes not to depend on FGD base inheritance for mapper-visible identity fields, and inspects each point's own TrenchBroom FGD text for direct `persistent_id(string)` and `content_id(string)` declarations. It then builds the tracked Playground through the real Vark FuncGodot settings, proves one valid persistent/content-addressed `Node3D` exists for each role, and proves the launched Playground resolves the selector and registers all three semantic points. The suite also preloads the mapper-facing CLI probe so parser errors in the exact `sync-config` tool fail CI. The authoritative exact-head Godot 4.7.2 CI barrier must remain green before the patched 2.7 implementation can be accepted.
+The authoring regression requires each point resource's direct `class_properties` to contain `persistent_id`, `content_id`, and `angle`, requires these three point classes not to depend on FGD base inheritance for mapper-visible identity fields, and inspects each point's own TrenchBroom FGD text for direct `persistent_id(string)` and `content_id(string)` declarations. It then builds the tracked Playground through the real Vark FuncGodot settings, proves one valid persistent/content-addressed `Node3D` exists for each role, and proves the launched Playground resolves the selector and registers all three semantic points. The suite also preloads the mapper-facing CLI probe so parser errors in the exact `sync-config` tool fail CI.
+
+## Reimport stability
+
+Phase 2.8 extends the authoring barrier from identity/source mechanics into the real Playground rebuild/run path. `reimport_stability_regressions.gd` derives a disposable `user://` copy from `missions/playground/mission.map`, moves only `vark_player_start` by 32 source units on X, and verifies both baseline and edited sources through `playground_reimport_probe.gd`.
+
+The probe is read-only with respect to the supplied map: it requires `PersistentIdSource.inspect_source()` to be valid, requires a dry `repair_source()` pass to report no change and reproduce the source/hash exactly, then builds the real Playground wrapper through `WorldSession`, resolves `default`, `marker.playground_reference`, and `exit.default`, applies the authored start to the real Player, and enters `PLAYING`. The regression proves all three persistent/content mappings are unchanged, the start transform changes, marker/exit transforms do not, and verification never rewrites the edited source.
+
+For mapper acceptance, the same probe can be run directly against the tracked source:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/playground_reimport_probe.gd
+```
+
+It fails rather than repairing authored source. `.map.import` sidecars are generated FuncGodot/Godot metadata; Phase 2.8 removes the four legacy tracked top-level sidecars and `.gitignore` ignores `*.map.import`. Clean-checkout import/CI is the proof that they are recreatable, not source.
 
 ## Application root ownership
 
@@ -244,11 +258,11 @@ For deterministic selection coverage, the application test adds one test-only ra
 
 ## Mission package and minimal MissionDefinition
 
-`missions/playground/` is the first real mission package. `mission.map` is the authoritative TrenchBroom spatial source; `mission.tres` is the typed authored `MissionDefinition`; `world.tscn` is the current launchable Godot wrapper; and `world.gd` is technical bootstrap glue that consumes the definition's map path, asks FuncGodot to build, and resolves the authored player-start selector before the session enters ordinary play. Mission-package `.map.import` sidecars and TrenchBroom autosaves are generated/non-source and ignored. The existing tracked top-level `maps/*.map.import` policy is unchanged until the dedicated reimport-stability work decides that migration.
+`missions/playground/` is the first real mission package. `mission.map` is the authoritative TrenchBroom spatial source; `mission.tres` is the typed authored `MissionDefinition`; `world.tscn` is the current launchable Godot wrapper; and `world.gd` is technical bootstrap glue that consumes the definition's map path, asks FuncGodot to build, and resolves the authored player-start selector before the session enters ordinary play. All `.map.import` sidecars and TrenchBroom autosaves are generated/non-source and ignored. Phase 2.8 removed the legacy tracked top-level sidecars after clean import/rebuild proved generated import metadata is recreatable; `.map` remains source truth.
 
-The current `MissionDefinition` has exactly the load metadata needed now: `mission_id`, `world_scene`, `map_source_path`, `player_start_selector`, and `mission_content_revision`. Playground starts at content revision `1`. There is deliberately no player-start transform/position/rotation field: `player_start_selector = &"default"` resolves the map-authored `vark_player_start`, and the wrapper applies that point's transform to the real Player before play. The `.map` remains the single spatial source of truth. Full ordinary edit/save/reimport stability remains Phase 2.8; missing authored-reference checks remain Phase 2.9.
+The current `MissionDefinition` has exactly the load metadata needed now: `mission_id`, `world_scene`, `map_source_path`, `player_start_selector`, and `mission_content_revision`. Playground starts at content revision `1`. There is deliberately no player-start transform/position/rotation field: `player_start_selector = &"default"` resolves the map-authored `vark_player_start`, and the wrapper applies that point's transform to the real Player before play. The `.map` remains the single spatial source of truth. Phase 2.8 now proves representative edit/save/rebuild/run stability; missing authored-reference checks remain Phase 2.9.
 
-The application regression loads and validates `missions/playground/mission.tres`, verifies all five fields and missing-field diagnostics, proves no duplicated player-start transform exists, launches Playground through the definition, verifies the same authored resource reaches `WorldSession` and the wrapper before FuncGodot builds the package-local map, restarts into a fresh session/world while retaining the same authored definition as configuration, and confirms raw development scenes carry no definition. The authoring regression supplies the additional point-entity/player-start resolution proof.
+The application regression loads and validates `missions/playground/mission.tres`, verifies all five fields and missing-field diagnostics, proves no duplicated player-start transform exists, launches Playground through the definition, verifies the same authored resource reaches `WorldSession` and the wrapper before FuncGodot builds the package-local map, restarts into a fresh session/world while retaining the same authored definition as configuration, and confirms raw development scenes carry no definition. The authoring regression supplies the additional point-entity/player-start resolution and reimport-stability proof.
 
 ## World-session lifecycle and replacement
 
@@ -336,7 +350,7 @@ These requirements become active when corresponding systems are implemented.
 
 Phase 1.1–1.6 now prove application boot/menu ownership, current session identity once gameplay starts, one exclusive top-level-operation guard, non-playing build, explicit entry to play, explicit pause/resume distinct from lifecycle stop, synchronous teardown, restart/ordinary replacement, exit back to the application menu, fresh runtime state, stale-work rejection, separation between persistent application/authored configuration and session runtime state, application-owned gameplay/look input permission with stale intent/gesture cancellation, exclusive application/UI/cutscene ownership, world-session gameplay-time pause semantics, an application-owned setting surviving world replacement, and curated development-target selection through the same lifecycle/input path.
 
-Phase 2.1 adds one package-local TrenchBroom source/wrapper to that already-proven lifetime path. Phase 2.2 adds the authored `MissionDefinition` configuration boundary: a mission session carries the definition that selected its world/map, restart reuses that authored configuration while creating fresh runtime state, and teardown clears the session reference. Phase 2.4 adds pre-`READY` authored persistent-identity validation, Phase 2.5 extends that boundary to duplicate non-empty semantic `content_id` values, and Phase 2.6 adds the first real mutable world-scoped service: a current-session entity registry that is cleared before teardown and rebuilt only from the replacement world. Phase 2.7 adds the first real semantic point roles without changing that ownership. Raw development worlds continue to have no invented mission definition or persistence requirement. Future semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive. Phase 1 does **not** need a simultaneous old/candidate world fixture.
+Phase 2.1 adds one package-local TrenchBroom source/wrapper to that already-proven lifetime path. Phase 2.2 adds the authored `MissionDefinition` configuration boundary: a mission session carries the definition that selected its world/map, restart reuses that authored configuration while creating fresh runtime state, and teardown clears the session reference. Phase 2.4 adds pre-`READY` authored persistent-identity validation, Phase 2.5 extends that boundary to duplicate non-empty semantic `content_id` values, and Phase 2.6 adds the first real mutable world-scoped service: a current-session entity registry that is cleared before teardown and rebuilt only from the replacement world. Phase 2.7 adds the first real semantic point roles without changing that ownership. Phase 2.8 proves representative source edit/rebuild/run through the same wrapper/session path. Raw development worlds continue to have no invented mission definition or persistence requirement. Future semantic event queues, gameplay timers, deferred/async work, and other mutable services must remain current-session-owned as those real systems arrive. Phase 1 does **not** need a simultaneous old/candidate world fixture.
 
 When Phase 4 implements real restore, extend this fixture to the chosen restore topology. If old and restored worlds overlap in memory, prove their mutable world-scoped services/resources remain isolated and they never both produce authoritative gameplay consequences. If restore uses sole-world replacement after prevalidation, prove failure reaches the defined coherent recovery state.
 
@@ -381,7 +395,7 @@ As real timed gameplay appears, extend this fixture to prove guard search, mecha
 
 Phase 2.3 uses the real `missions/playground/mission.map` as the base source for a temporary authoring fixture and proves the source/writeback mechanics before production entities depend on them: the Vark TrenchBroom FGD explicitly declares `persistent_id` on the mapper-facing `func_detail` proof entity, move/reorder preserves existing IDs, duplication is repaired to a distinct ID while the first source owner stays stable, delete/recreate gets a new ID, generated/repaired IDs survive real FuncGodot parsing, valid source is not rewritten, repeat repair is idempotent, stale source hashes cannot overwrite newer mapper text, the refreshed mapper config has a valid PNG material path, and any external repair write requires a TrenchBroom reload before further edits.
 
-Phase 2.4 wires the same Vark FGD into runtime FuncGodot map settings, carries authored persistent IDs onto generated nodes, and makes missing/duplicate persistent IDs fail closed at `WorldSession` build with useful paths. Phase 2.5 adds optional mapper-owned `content_id`, proves it survives the real FuncGodot path, treats blank as unaddressed, and makes duplicate non-empty semantic IDs fail closed with both owner paths. Phase 2.6 registers those validated persistent/non-empty semantic IDs in the current `WorldSession`, proves successful/missing lookup plus teardown/replacement isolation, and still does not define authored reference schemas. Phase 2.7 adds the mapper/runtime vocabulary for player start, generic marker, and exit and directly declares both identity fields in each point's own FGD block so TrenchBroom treats the on-disk point keys as real entity properties; the tracked Playground proves those points build, register, and resolve the semantic player-start selector. Missing semantic-reference checks require actual references and therefore remain 2.9. Phase 2.8 extends the same fixture to full ordinary TrenchBroom save → Godot import/rebuild → run stability.
+Phase 2.4 wires the same Vark FGD into runtime FuncGodot map settings, carries authored persistent IDs onto generated nodes, and makes missing/duplicate persistent IDs fail closed at `WorldSession` build with useful paths. Phase 2.5 adds optional mapper-owned `content_id`, proves it survives the real FuncGodot path, treats blank as unaddressed, and makes duplicate non-empty semantic IDs fail closed with both owner paths. Phase 2.6 registers those validated persistent/non-empty semantic IDs in the current `WorldSession`, proves successful/missing lookup plus teardown/replacement isolation, and still does not define authored reference schemas. Phase 2.7 adds the mapper/runtime vocabulary for player start, generic marker, and exit and directly declares both identity fields in each point's own FGD block so TrenchBroom treats the on-disk point keys as real entity properties; the tracked Playground proves those points build, register, and resolve the semantic player-start selector. Missing semantic-reference checks require actual references and therefore remain 2.9. Phase 2.8 now adds an automated representative player-start edit on a disposable real-Playground copy, read-only no-repair verification, real wrapper rebuild to `PLAYING`, stable persistent/content IDs, and an intended-only transform change. Windows mapper acceptance still owns the actual TrenchBroom save/reopen/edit loop.
 
 ## Gameplay-event / controlled-mutation / stable-boundary fixture
 
@@ -606,7 +620,7 @@ The checklist below is the broad integration pass for changes that could affect 
 
 A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit irrelevant global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
 
-When `Manual:` requires a specialized validator, name the role explicitly (user/playtester, Windows operator, mapper, writer, cold author, external developer, etc.). The implementing agent may prepare the fixture/procedure but cannot self-certify an independent-human validation requirement.
+When `Manual:` requires a specific kind of validator, name that role rather than treating every manual criterion as interchangeable. User/playtester, Windows operator, mapper, writer, cold author, and external developer are different acceptance roles. In particular, the implementing agent cannot self-certify the independent-human purpose of 8.7, 11.6, or 15.2; it prepares the workflow and the reported external result closes the criterion.
 
 ## Phase 2.3 mapper persistent-identity feasibility check — accepted
 
@@ -650,13 +664,13 @@ godot --headless --path . --script res://tools/authoring/persistent_identity_pro
 
 The completed Windows run satisfied these cases. Source-order reordering and stale expected-hash write races remain deterministic file/tool concerns covered automatically rather than mapper UI operations.
 
-## Phase 2.7 TrenchBroom point-entity foundation check — pending
+## Phase 2.7 TrenchBroom point-entity foundation check — accepted
 
 Validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**.
 
-Keep this check focused on the new vocabulary and authored player-start path. Full ordinary edit/save/import/rebuild stability is Phase 2.8.
+The accepted 2.7 run confirmed the three point classes and the real authored player-start path. The first pass exposed an authoring-schema defect: with identity fields supplied only by FGD base inheritance, TrenchBroom showed them as empty defaults. After the point definitions were flattened, a second diagnostic found a stale already-open document still exposing only `classname` and `origin`; a fresh copy of the same `.map` bytes showed all five properties, and closing that stale document without saving then explicitly reopening `missions/playground/mission.map` restored the correct in-memory property set with no source diff.
 
-The first 2.7 Windows pass found an authoring-schema defect: the `.map` contained the correct `persistent_id` and `content_id` strings, but with those fields supplied only by FGD base inheritance TrenchBroom displayed them as empty defaults and hid them when default properties were disabled. The point definitions now declare both fields directly; this rerun verifies the mapper-facing fix rather than changing map data.
+For a fresh machine or future regression rerun:
 
 1. Close TrenchBroom and refresh the installed Vark config from project root:
 
@@ -664,14 +678,48 @@ The first 2.7 Windows pass found an authoring-schema defect: the `.map` containe
 godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- sync-config
 ```
 
-2. Reopen TrenchBroom using the **Vark** game configuration and open `missions/playground/mission.map`.
+2. Reopen TrenchBroom using the **Vark** game configuration and explicitly open `missions/playground/mission.map` from disk rather than relying on an already-open stale document.
 3. Confirm the point classes `vark_player_start`, `vark_marker`, and `vark_exit` are available in the entity browser.
-4. Select each tracked point individually, turn **Show default properties OFF**, and confirm `persistent_id` and `content_id` remain visible as actual entity properties. Do not hand-edit or replace any `persistent_id`.
+4. Select each tracked point individually, turn **Show default properties OFF**, and confirm `angle`, `classname`, `content_id`, `origin`, and `persistent_id` are visible. Do not hand-edit or replace any `persistent_id`.
 5. Confirm the semantic IDs are `default`, `marker.playground_reference`, and `exit.default` respectively; each `persistent_id` should remain its existing non-empty `vark_...` value.
-6. Without turning this into a 2.8 map-edit/reimport exercise, run Vark and use **Development Launch → Playground**.
+6. Run Vark and use **Development Launch → Playground**.
 7. Confirm the real Player starts from the authored `vark_player_start` location/orientation and ordinary movement/mouse-look behavior is normal.
 
-Acceptance is the mapper-visible vocabulary, actual (not default-only) identity/content properties, plus the real authored player-start result. Editing/moving/re-saving these point entities and proving reimport stability belongs to 2.8.
+The completed Windows run satisfied these cases and accepted the mapper-visible vocabulary, actual identity/content properties, authored selector/start result, and ordinary movement/look behavior.
+
+## Phase 2.8 TrenchBroom reimport-stability check — pending
+
+Validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**.
+
+This check proves an actual mapper edit/save/rebuild/run cycle rather than another schema-only inspection. Because the 2.7 diagnosis demonstrated stale document state, close any already-open Playground document first and explicitly open the authoritative path from disk; do not rely on an old tab or Recent-document state.
+
+1. Pull the latest `test` branch.
+2. Close TrenchBroom and refresh the installed Vark config:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- sync-config
+```
+
+3. Reopen TrenchBroom with the **Vark** game configuration and explicitly **File → Open** `missions/playground/mission.map`.
+4. Select only `vark_player_start`, turn **Show default properties OFF**, and record its existing non-empty `persistent_id` plus `content_id = default`.
+5. Move `vark_player_start` exactly **+32 mapper units on X**. Do not edit either identity field. Save the map.
+6. From the project root run:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/playground_reimport_probe.gd
+```
+
+Expected: verification passes, reports no persistent-ID repair, prints the same tracked IDs, and reports that the real Playground wrapper reached `PLAYING`.
+7. Run Vark → **Development Launch → Playground**. Confirm the real Player starts at the moved authored point and ordinary movement/mouse-look behavior remains normal.
+8. In TrenchBroom move the same player start exactly back to its original authored transform and save.
+9. Rerun `playground_reimport_probe.gd` and Development Launch → Playground; the same IDs must remain and the Player must be back at the original start.
+10. Run:
+
+```powershell
+git diff -- missions/playground/mission.map
+```
+
+Expected: no output. If a diff remains, report it rather than hand-normalizing or editing identity values.
 
 ---
 
@@ -867,7 +915,7 @@ The current CI barrier:
 
 - runs on the pinned `ubuntu-24.04` GitHub-hosted runner;
 - installs Godot `4.7.2` without .NET or export templates;
-- performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load;
+- performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load; this clean import is also the authority that ignored/removed `.map.import` sidecars are generated metadata rather than source;
 - runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
 - executes the independent authoring, application menu/development-launch/mission-package/definition/ownership/lifecycle/input/pause-time, and movement suites through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;

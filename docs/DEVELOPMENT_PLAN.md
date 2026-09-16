@@ -379,7 +379,7 @@ Established policy:
 - `maps/autosave/` is generated TrenchBroom recovery material, has been removed from tracked content, and is ignored;
 - `.godot/` and other current Godot-generated local state remain ignored;
 - top-level `maps/*.map` files are treated as authored/development map source unless deliberately retired;
-- tracked `.map.import` sidecars are generated import metadata rather than authored mission truth and must not receive irreplaceable manual edits; keep the current sidecars until the FuncGodot import/reimport workflow explicitly proves they can be removed safely;
+- FuncGodot/Godot `.map.import` sidecars are generated import metadata rather than authored mission truth; Phase 2.8 removed the legacy tracked top-level sidecars after clean import/rebuild proved they are disposable, and all `*.map.import` files are ignored;
 - new `missions/**/mission.map` files are authoritative authored source; package-local TrenchBroom autosaves and generated `.map.import` sidecars are ignored rather than becoming mission truth;
 - do not blanket-place text `.map` source in Git LFS merely because a map becomes large; evaluate LFS for future large binary assets where Git text diffs are not useful;
 - existing `test.map`, `test2.map`, and `test3.map` remain development/graybox source for now;
@@ -607,7 +607,7 @@ missions/
         world.gd
 ```
 
-`mission.map` is the authoritative TrenchBroom spatial source. `world.tscn` is the launchable Godot world wrapper that participates in the existing application/`WorldSession` lifecycle. The tiny `world.gd` is technical development glue that asks FuncGodot to build the package-local map before the session enters ordinary play; it is not the future mission-behavior script surface. Generated `.godot/` data, package-local `.map.import` sidecars, and TrenchBroom autosaves are not authored mission truth and are ignored. Legacy top-level `maps/*.map.import` sidecars retain their existing tracked policy until 2.8 proves the reimport/migration workflow. `mission.tres` is added by 2.2 as the package's typed metadata owner without changing the 2.1 source/generated boundary.
+`mission.map` is the authoritative TrenchBroom spatial source. `world.tscn` is the launchable Godot world wrapper that participates in the existing application/`WorldSession` lifecycle. The tiny `world.gd` is technical development glue that asks FuncGodot to build the package-local map before the session enters ordinary play; it is not the future mission-behavior script surface. Generated `.godot/` data, all `.map.import` sidecars, and TrenchBroom autosaves are not authored mission truth and are ignored. Phase 2.8 retired the former legacy top-level tracked-sidecar exception after the real import/rebuild path proved those sidecars are disposable. `mission.tres` is added by 2.2 as the package's typed metadata owner without changing the 2.1 source/generated boundary.
 
 The Playground contains only a broad zebra floor plus one low reference step and the real `Player.tscn`. It is registered in the existing curated Development Launch route beside `VarkTest`.
 
@@ -725,25 +725,35 @@ This step intentionally does not define authored references, required semantic I
 
 **Manual:** none — this is deterministic runtime ownership/lookup plumbing with no mapper workflow or player-facing behavior change. 2.7/2.8 own the next author-facing entity/reimport checks.
 
-## 2.7 TrenchBroom Vark entity foundation `[~]`
+## 2.7 TrenchBroom Vark entity foundation `[x]`
 
 Create only the entity vocabulary needed for the playground: player start, generic semantic marker, minimal exit, and spike entities as they arrive.
 
-Vark now owns three project-side FuncGodot/TrenchBroom point classes: `vark_player_start`, `vark_marker`, and `vark_exit`. Each composes the already-proven persistent-identity and optional semantic-addressing bases, builds as a lightweight `Node3D`, and participates in the current `WorldSession` registry. No vendor FuncGodot resources are modified. The marker and exit are semantic endpoints only at this stage; they do not pull forward interaction, mission objectives, transitions, or the Phase 3 gameplay-event system. Additional spike-specific entity roles are added only when a real later spike needs them rather than being invented here.
+Vark owns three project-side FuncGodot/TrenchBroom point classes: `vark_player_start`, `vark_marker`, and `vark_exit`. Each directly declares the already-proven `persistent_id`, optional `content_id`, and angle fields in its own mapper-facing definition, builds as a lightweight `Node3D`, attaches the shared Vark persistent runtime carrier, and participates in the current `WorldSession` registry. TrenchBroom 2026.2 required the identity fields to be flattened onto the point definitions rather than supplied only through FGD base inheritance; no vendor FuncGodot resources are modified. The marker and exit are semantic endpoints only at this stage; they do not pull forward interaction, mission objectives, transitions, or the Phase 3 gameplay-event system. Additional spike-specific entity roles are added only when a real later spike needs them rather than being invented here.
 
-The tracked Playground `.map` now contains one of each role with stable authored `persistent_id` values and semantic IDs `default`, `marker.playground_reference`, and `exit.default`. `MissionDefinition.player_start_selector = &"default"` resolves exactly one generated `vark_player_start` after FuncGodot builds. The Playground wrapper then copies that authored point's global transform to the real Player before ordinary play, so the `.map` owns start position/orientation and `world.tscn` no longer carries a competing start transform.
+The tracked Playground `.map` contains one of each role with stable authored `persistent_id` values and semantic IDs `default`, `marker.playground_reference`, and `exit.default`. `MissionDefinition.player_start_selector = &"default"` resolves exactly one generated `vark_player_start` after FuncGodot builds. The Playground wrapper then copies that authored point's global transform to the real Player before ordinary play, so the `.map` owns start position/orientation and `world.tscn` no longer carries a competing start transform.
 
-`persistent_identity_probe.gd -- sync-config` now verifies the exported Vark FGD contains all three point roles in addition to the existing identity/content/material checks. This keeps the mapper installation/config refresh route aligned with the runtime FGD rather than creating a second entity schema.
+`persistent_identity_probe.gd -- sync-config` verifies the exported Vark FGD contains all three point roles in addition to the existing identity/content/material checks. This keeps the mapper installation/config refresh route aligned with the runtime FGD rather than creating a second entity schema.
 
 **Done when:** the exported Vark FGD exposes `vark_player_start`, `vark_marker`, and `vark_exit`; the tracked Playground can author/build one valid persistent and semantically addressed runtime point for each role; `MissionDefinition.player_start_selector` resolves exactly one map-authored start and places the real Player from that source without a scene-owned transform; all three points register through the existing current-session registry; the mapper can see/use the refreshed vocabulary; and no full 2.8 edit/reimport-stability proof, 2.9 authored-reference validator, or future gameplay behavior is pulled forward.
 
 **Automated:** passed — the exact-head Godot 4.7.2 post-push `Regression suite` verifies the exported Vark FGD point vocabulary, builds the tracked Playground source and finds one valid persistent/content-addressed `Node3D` per point role, proves the Playground resolves `player_start_selector` to the map-authored start and registers all three semantic points, keeps the earlier content-ID/registry regressions green, and finishes with `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
 
-**Manual:** pending — validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**. Refresh the installed Vark config with `persistent_identity_probe.gd -- sync-config`, confirm the three point classes and their fields are visible/selectable in the real Playground without hand-editing IDs, then launch Development Launch → Playground and confirm the Player starts from the authored point with normal movement/mouse-look behavior. Do not turn this into the 2.8 edit/save/reimport proof; that remains the next dedicated item.
+**Manual:** passed — the Windows mapper/user refreshed the Vark config, explicitly reopened the authoritative Playground document, confirmed `vark_player_start`, `vark_marker`, and `vark_exit` expose `angle`, `classname`, `content_id`, `origin`, and `persistent_id` with **Show default properties OFF**, confirmed semantic IDs `default`, `marker.playground_reference`, and `exit.default` plus the existing non-empty `vark_...` persistent IDs, and confirmed Development Launch → Playground uses the authored start with normal movement/mouse look. During diagnosis, a stale already-open TrenchBroom document initially exposed only `classname`/`origin`; a fresh copy parsed all five properties, and closing the stale document without saving then explicitly reopening the authoritative path restored the correct property set. That editor-state issue did not modify the clean `.map` source.
 
-## 2.8 Reimport stability `[ ]`
+## 2.8 Reimport stability `[~]`
 
 Prove `edit .map → save → import/rebuild → run` without unrelated repair and with stable persistent identity.
+
+The deterministic authoring regression now clones the real Playground source into `user://`, makes one representative move of the authored `vark_player_start`, and verifies both the baseline and edited sources through the same read-only reimport verifier. The verifier requires valid authored identities, requires a dry `PersistentIdSource.repair_source()` pass to be byte-for-byte unchanged, builds the real Playground wrapper through `WorldSession`, resolves all three semantic points, applies the authored player start to the real Player, and enters `PLAYING`. The regression compares the two builds to prove all three `persistent_id`/`content_id` mappings remain stable, the edited start transform changes, and the marker/exit transforms do not churn.
+
+`tools/authoring/playground_reimport_probe.gd` exposes the same read-only verification against the tracked Playground source for the Windows mapper handoff. It never repairs or writes the authoritative `.map`; a source that would need repair fails instead. Phase 2.8 also closes the deferred generated-sidecar policy: `.map` remains authored source, all `*.map.import` files are generated FuncGodot/Godot metadata and are ignored, and the four legacy tracked top-level sidecars are removed. Clean-checkout Godot import/CI is the authority that this generated metadata can be recreated rather than versioned.
+
+**Done when:** an ordinary TrenchBroom move/save of the tracked Playground player start preserves all existing persistent and semantic IDs, the real Godot/FuncGodot wrapper rebuild consumes the edited transform and reaches `PLAYING` without identity repair, restoring the start to its original authored pose produces a clean source diff, and no tracked `.map.import` metadata is required as source truth.
+
+**Automated:** the focused authoring suite exercises the temporary representative edit, byte-for-byte no-op identity-repair check, stable identity/content mappings, intended-only point-transform change, real `WorldSession` rebuild, and `READY → PLAYING` transition; the authoritative clean-checkout all-tests CI must pass after upload, which also proves removed `.map.import` sidecars are regenerable/non-source.
+
+**Manual:** pending — validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**. Explicitly reopen `missions/playground/mission.map` from disk rather than relying on a stale already-open/Recent document, record the existing player-start IDs, move `vark_player_start` 32 mapper units on X, save, run `playground_reimport_probe.gd`, launch Development Launch → Playground and confirm the Player starts at the moved point with normal movement/look; then move the point exactly back, save, rerun the probe/Playground, and confirm `git diff -- missions/playground/mission.map` is empty. Never hand-edit `persistent_id`.
 
 ## 2.9 Basic content validation `[ ]`
 
@@ -1519,7 +1529,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Complete the focused 2.7 Windows/TrenchBroom mapper acceptance, then implement 2.8 ordinary edit → save → import/rebuild → run stability and 2.9 basic content validation through the same real authoring path.
+1. Complete the focused 2.8 Windows/TrenchBroom reimport-stability acceptance, then implement 2.9 basic content validation through the same real authoring path.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
