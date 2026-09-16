@@ -77,7 +77,7 @@ The project currently contains:
 - a minimal application main-menu shell with New Game, curated Development Launch, Quit, and one working look-sensitivity setting
 - an initial `missions/playground/` package with authoritative TrenchBroom spatial source and a launchable application-owned world wrapper
 - a minimal typed `MissionDefinition` for Playground carrying authored mission ID, world/map references, player-start selection, and content revision
-- an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, fail-closed identity validation, and a current-session-owned persistent/content-ID registry
+- an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, fail-closed identity validation, a current-session-owned persistent/content-ID registry, and the first Vark point-entity foundation for player start, semantic marker, and exit
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -86,7 +86,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, final Vark entity vocabulary, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, final Vark entity library, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -629,13 +629,13 @@ Reserve one authoritative mission metadata owner for future `mission_content_rev
 
 Development Launch now points the Playground entry at `mission.tres`. `VarkApplication` validates the definition, resolves its `world_scene`, and passes the same authored resource into `WorldSession` before the wrapper enters the scene tree. The Playground wrapper consumes `map_source_path` from that definition before FuncGodot builds, so the wrapper no longer duplicates the map-source path. Restart creates a fresh world/session while retaining the same authored definition as shared configuration; teardown clears the session reference. Raw development scenes such as `VarkTest` and the alternate fixture still run with no invented mission metadata.
 
-`player_start_selector = &"default"` is deliberately semantic selection metadata only at this step. Phase 2.7 still owns the actual TrenchBroom Vark player-start entity and selector resolution. Until then, the already accepted wrapper-owned Player placement remains unchanged. `MissionDefinition` contains no player transform/position/rotation fields, so it does not create a second spatial source of truth.
+`player_start_selector = &"default"` was introduced here as semantic selection metadata without a duplicated transform. Phase 2.7 now supplies the actual TrenchBroom `vark_player_start` point and resolves that selector after FuncGodot builds; the `.map` owns the selected start transform while `MissionDefinition` continues to own only the semantic selector. `MissionDefinition` contains no player transform/position/rotation fields, so it does not create a second spatial source of truth.
 
 **Done when:** Playground has one loadable authored `MissionDefinition`; the application launches it through that definition; the active session carries the definition as configuration; the definition owns mission ID, world/map references, player-start selection, and content revision without owning a player transform; restart preserves the authored definition while replacing runtime session state; and raw scene development targets still work without fake metadata.
 
 **Automated:** passed — the application suite loads and validates `missions/playground/mission.tres`, verifies all five current fields and the absence of duplicated player-start transform fields, exercises invalid required-field diagnostics, launches Playground through the definition, proves the definition supplies the FuncGodot map path before gameplay, verifies the active world/session carry the same definition across restart, verifies raw scene targets carry no definition, and the clean-checkout authoritative all-tests CI barrier passed.
 
-**Manual:** none — this step changes authored metadata/loading ownership only. The accepted 2.1 Windows Playground playtest covers the unchanged player-facing geometry/start/movement/look behavior.
+**Manual:** none — this step changes authored metadata/loading ownership only. The accepted 2.1 Windows Playground playtest covers the unchanged player-facing geometry/start/movement/look behavior; 2.7 owns the later map-authored selector integration check.
 
 ## 2.3 Persistent identity feasibility and authoring-workflow proof `[x]`
 
@@ -685,7 +685,7 @@ The deterministic authoring suite derives a temporary fixture from the real `mis
 
 Implement the proven authored persistent identity mechanism. Missing/duplicate IDs fail closed with useful diagnostics.
 
-Vark now has a project-owned `FuncGodotMapSettings` resource that uses the same project-owned Vark FGD exported to TrenchBroom, and the project default plus Playground wrapper both use it. The current identity-bearing proof `func_detail` attaches the small `VarkPersistentEntity` script while retaining its existing `StaticBody3D` behavior; FuncGodot automatically applies the authored `persistent_id` string to that runtime node. This is the production identity carrier/boundary, not the Phase 2.6 lookup registry and not the Phase 2.7 final entity vocabulary.
+Vark now has a project-owned `FuncGodotMapSettings` resource that uses the same project-owned Vark FGD exported to TrenchBroom, and the project default plus Playground wrapper both use it. The current identity-bearing proof `func_detail` attaches the small `VarkPersistentEntity` script while retaining its existing `StaticBody3D` behavior; FuncGodot automatically applies the authored `persistent_id` string to that runtime node. At 2.4 this established the production identity carrier/boundary without pulling forward the registry, semantic IDs, or the later Vark point-entity vocabulary.
 
 `VarkPersistentIdentityValidator` is deliberately stateless: it scans only nodes explicitly carrying the Vark persistent-entity marker, reports missing IDs with node paths, reports duplicates with both owner paths, and discards its temporary seen-ID table after validation. `WorldSession.build()` runs this validation after synchronous world/FuncGodot construction but before the session can become `READY`; invalid authored identity tears the candidate world down and returns failure. Worlds with no persistent entities remain valid, so raw development scenes do not gain invented persistence requirements.
 
@@ -699,17 +699,17 @@ Vark now has a project-owned `FuncGodotMapSettings` resource that uses the same 
 
 Implement author-facing IDs only for entities mission logic actually needs to address.
 
-Vark now defines a separate project-owned `VarkContentAddressable` FGD base with optional `content_id`. The Phase-2 `func_detail` proof carrier composes that base only so the real TrenchBroom → FuncGodot property path can be proven before 2.7 introduces the actual Vark entity vocabulary; the tracked Playground does not assign semantic IDs to ordinary geometry. `VarkPersistentEntity` carries the optional runtime string alongside `persistent_id`, but the two concepts remain distinct: persistent identity is generated/repaired durable instance identity, while `content_id` is a mapper-chosen semantic name such as `door.vault` and is never auto-generated.
+Vark defines a separate project-owned `VarkContentAddressable` FGD base with optional `content_id`. The Phase-2 `func_detail` proof carrier composes that base so the real TrenchBroom → FuncGodot property path was proven before actual Vark semantic point entities existed; 2.7 now reuses the same base for the first player-start, marker, and exit roles. The tracked Playground still does not assign semantic IDs to ordinary geometry. `VarkPersistentEntity` carries the optional runtime string alongside `persistent_id`, but the two concepts remain distinct: persistent identity is generated/repaired durable instance identity, while `content_id` is a mapper-chosen semantic name such as `door.vault` and is never auto-generated.
 
-Blank `content_id` is valid and means the entity is not addressed by mission logic. Non-empty semantic IDs must be unique within the built world so future mission references cannot become ambiguous. The existing pre-`READY` stateless identity validation reports a duplicate `content_id` with both owner paths and causes `WorldSession` to tear down the invalid candidate. 2.5 itself adds validation only; 2.6 consumes the validated IDs for current-session lookup, while reference-schema validation remains 2.9 and 2.7 decides which real Vark entity classes opt into author-facing addressing.
+Blank `content_id` is valid and means the entity is not addressed by mission logic. Non-empty semantic IDs must be unique within the built world so future mission references cannot become ambiguous. The existing pre-`READY` stateless identity validation reports a duplicate `content_id` with both owner paths and causes `WorldSession` to tear down the invalid candidate. 2.5 itself added validation/property propagation only; 2.6 consumes the validated IDs for current-session lookup, 2.7 chooses the first real point roles that are semantically addressable, and reference-schema validation remains 2.9.
 
 **Done when:** the Vark TrenchBroom FGD exposes optional `content_id` separately from generated `persistent_id`; the real FuncGodot path carries an authored semantic ID onto the runtime entity; blank semantic IDs remain valid; duplicate non-empty semantic IDs fail closed with both owner paths before `READY`; no semantic ID is auto-generated; and no lookup/registry/final entity vocabulary is introduced.
 
 **Automated:** passed — the focused authoring suite verifies the exported Vark FGD contains the separate content-addressable schema, builds a temporary mapper-style `func_detail` with both IDs through the real Vark FuncGodot settings, proves the runtime `StaticBody3D` receives the exact authored `content_id`, proves blank semantic IDs validate, proves duplicate non-empty IDs report both owners, proves `WorldSession` rejects a duplicate-content-ID packed world, and the exact-head post-push `Regression suite` passed.
 
-**Manual:** none — this step adds deterministic authoring/runtime metadata and failure validation only. The real semantic entity vocabulary and normal mapper usage arrive in 2.7, while full edit/import/run stability remains 2.8.
+**Manual:** none — this step adds deterministic authoring/runtime metadata and failure validation only. Phase 2.7 now uses the same semantic-addressing contract for the first real point entities; full edit/import/run stability remains 2.8.
 
-## 2.6 Minimal registry `[~]`
+## 2.6 Minimal registry `[x]`
 
 Provide world-session-owned registration/lookup with duplicate/missing reporting. Do not force behavior into a giant base entity class.
 
@@ -721,13 +721,25 @@ This step intentionally does not define authored references, required semantic I
 
 **Done when:** a successful `WorldSession` build owns exactly one registry for its validated world; persistent and non-empty semantic IDs resolve to exact current-world Nodes; blank/missing lookups report useful failure without returning a Node; invalid identity cannot leave a partial registry; teardown clears/discards registrations before world destruction; a replacement session cannot resolve IDs from the old world; and no global registry/entity base/reference system is pulled forward.
 
-**Automated:** the focused authoring/runtime regression builds valid registry fixtures through the real `WorldSession`, verifies persistent/content lookup and counts, verifies blank/missing diagnostics, verifies missing/duplicate identity failures leave no registry, retains an old registry reference across teardown to prove it is cleared, rebuilds a replacement session to prove stale IDs do not resolve, and the clean-checkout authoritative post-push `Regression suite` must remain green.
+**Automated:** passed — the focused authoring/runtime regression builds valid registry fixtures through the real `WorldSession`, verifies persistent/content lookup and counts, verifies blank/missing diagnostics, verifies missing/duplicate identity failures leave no registry, retains an old registry reference across teardown to prove it is cleared, rebuilds a replacement session to prove stale IDs do not resolve, and the exact-head post-push `Regression suite` completed successfully. The later 2.7 exact-head regression also remained green over the same registry coverage.
 
 **Manual:** none — this is deterministic runtime ownership/lookup plumbing with no mapper workflow or player-facing behavior change. 2.7/2.8 own the next author-facing entity/reimport checks.
 
-## 2.7 TrenchBroom Vark entity foundation `[ ]`
+## 2.7 TrenchBroom Vark entity foundation `[~]`
 
 Create only the entity vocabulary needed for the playground: player start, generic semantic marker, minimal exit, and spike entities as they arrive.
+
+Vark now owns three project-side FuncGodot/TrenchBroom point classes: `vark_player_start`, `vark_marker`, and `vark_exit`. Each composes the already-proven persistent-identity and optional semantic-addressing bases, builds as a lightweight `Node3D`, and participates in the current `WorldSession` registry. No vendor FuncGodot resources are modified. The marker and exit are semantic endpoints only at this stage; they do not pull forward interaction, mission objectives, transitions, or the Phase 3 gameplay-event system. Additional spike-specific entity roles are added only when a real later spike needs them rather than being invented here.
+
+The tracked Playground `.map` now contains one of each role with stable authored `persistent_id` values and semantic IDs `default`, `marker.playground_reference`, and `exit.default`. `MissionDefinition.player_start_selector = &"default"` resolves exactly one generated `vark_player_start` after FuncGodot builds. The Playground wrapper then copies that authored point's global transform to the real Player before ordinary play, so the `.map` owns start position/orientation and `world.tscn` no longer carries a competing start transform.
+
+`persistent_identity_probe.gd -- sync-config` now verifies the exported Vark FGD contains all three point roles in addition to the existing identity/content/material checks. This keeps the mapper installation/config refresh route aligned with the runtime FGD rather than creating a second entity schema.
+
+**Done when:** the exported Vark FGD exposes `vark_player_start`, `vark_marker`, and `vark_exit`; the tracked Playground can author/build one valid persistent and semantically addressed runtime point for each role; `MissionDefinition.player_start_selector` resolves exactly one map-authored start and places the real Player from that source without a scene-owned transform; all three points register through the existing current-session registry; the mapper can see/use the refreshed vocabulary; and no full 2.8 edit/reimport-stability proof, 2.9 authored-reference validator, or future gameplay behavior is pulled forward.
+
+**Automated:** passed — the exact-head Godot 4.7.2 post-push `Regression suite` verifies the exported Vark FGD point vocabulary, builds the tracked Playground source and finds one valid persistent/content-addressed `Node3D` per point role, proves the Playground resolves `player_start_selector` to the map-authored start and registers all three semantic points, keeps the earlier content-ID/registry regressions green, and finishes with `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
+
+**Manual:** pending — validator: **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**. Refresh the installed Vark config with `persistent_identity_probe.gd -- sync-config`, confirm the three point classes and their fields are visible/selectable in the real Playground without hand-editing IDs, then launch Development Launch → Playground and confirm the Player starts from the authored point with normal movement/mouse-look behavior. Do not turn this into the 2.8 edit/save/reimport proof; that remains the next dedicated item.
 
 ## 2.8 Reimport stability `[ ]`
 
@@ -1432,7 +1444,7 @@ Prove ordinary gameplay durations stop with world simulation/pause and do not ad
 
 ## Persistent identity editing
 
-Exercise create/move/reorder/duplicate/delete/reimport plus idempotent source writeback/repair. Runtime validation must reject missing/duplicate authored persistent IDs and duplicate non-empty semantic `content_id` values before a world session becomes ready. The current-session registry must resolve validated persistent/content IDs, report blank/missing lookup, and be cleared across teardown/replacement.
+Exercise create/move/reorder/duplicate/delete/reimport plus idempotent source writeback/repair. Runtime validation must reject missing/duplicate authored persistent IDs and duplicate non-empty semantic `content_id` values before a world session becomes ready. The current-session registry must resolve validated persistent/content IDs, report blank/missing lookup, and be cleared across teardown/replacement. The first Vark point roles must use that same identity/addressing path rather than a separate authoring schema.
 
 ## Gameplay-event/stable boundary
 
@@ -1507,7 +1519,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `2.6` post-push automated validation. Because `Manual: none`, reconcile it to `[x]` on the next authorized patch once the exact-head `Regression suite` is green, then implement 2.7–2.9 through the real TrenchBroom/reimport path.
+1. Complete the focused 2.7 Windows/TrenchBroom mapper acceptance, then implement 2.8 ordinary edit → save → import/rebuild → run stability and 2.9 basic content validation through the same real authoring path.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
