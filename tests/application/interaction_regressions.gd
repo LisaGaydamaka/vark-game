@@ -46,12 +46,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		await tree.process_frame
 		return
 
-	var camera: Camera3D = player.get_node("Head/Camera3D") as Camera3D
 	var door: Node3D = world.get_node("DoorProbe") as Node3D
 	var prop: Node3D = world.get_node("PropProbe") as Node3D
 	var divider: Node3D = world.get_node("Divider") as Node3D
+	var door_position: Vector3 = door.position
+	var prop_position: Vector3 = prop.position
+	var divider_position: Vector3 = divider.position
 
-	_aim(camera, door)
+	# The lab starts with the door exactly on the player's normal forward camera axis.
+	# Keeping the camera under its real PlayerLook owner makes this proof exercise the
+	# production center-view direction rather than mutating a child camera in tests.
 	await tree.physics_frame
 	var centered_state: Dictionary = player.call("get_interaction_semantic_state")
 	assert_true.call(
@@ -63,7 +67,6 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	player.global_position = Vector3(0, 0, 5)
 	player.set("velocity", Vector3.ZERO)
-	_aim(camera, door)
 	await tree.physics_frame
 	assert_true.call(
 		not bool(door.call("is_interaction_highlighted"))
@@ -73,20 +76,27 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	player.global_position = Vector3(0, 0, 2)
 	player.set("velocity", Vector3.ZERO)
-	_aim(camera, prop)
+	# Put the prop unambiguously inside range on the same forward axis, with the
+	# divider between camera and prop. Move the door aside so first-hit semantics
+	# cannot be confused with another interactable.
+	door.position = Vector3(-3.0, door_position.y, door_position.z)
+	prop.position = Vector3(0, 0.8, 0)
+	divider.position = Vector3(0, 0.9, 1.0)
+	await tree.physics_frame
 	await tree.physics_frame
 	assert_true.call(
-		not bool(prop.call("is_interaction_highlighted")),
+		not bool(prop.call("is_interaction_highlighted"))
+		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
 		"Interaction targeting treats the first blocking physics hit as occlusion"
 	)
 
-	var divider_position: Vector3 = divider.position
 	divider.position = Vector3(-3, divider_position.y, divider_position.z)
-	_aim(camera, prop)
+	await tree.physics_frame
 	await tree.physics_frame
 	assert_true.call(
-		bool(prop.call("is_interaction_highlighted")),
-		"An eligible target highlights once the center-view line is unobstructed"
+		bool(prop.call("is_interaction_highlighted"))
+		and (player.call("get_interaction_semantic_state") as Dictionary).get("target_name", "") == "PropProbe",
+		"An eligible in-range target highlights once the center-view line is unobstructed"
 	)
 
 	prop.call("set_interaction_enabled", false)
@@ -98,8 +108,19 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 	prop.call("set_interaction_enabled", true)
 
-	_aim(camera, door)
+	# Restore the authored lab layout before exercising primary interaction so the
+	# door is again the real center-view target and the manual fixture stays legible.
+	door.position = door_position
+	prop.position = prop_position
+	divider.position = divider_position
 	await tree.physics_frame
+	await tree.physics_frame
+	assert_true.call(
+		bool(door.call("is_interaction_highlighted"))
+		and (player.call("get_interaction_semantic_state") as Dictionary).get("target_name", "") == "DoorProbe",
+		"Door probe is reacquired on the normal center-view axis before primary interaction"
+	)
+
 	var door_count_before: int = int(door.call("get_interaction_count"))
 	Input.action_press("interact")
 	await tree.physics_frame
@@ -135,7 +156,6 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	player.call("set_world_interaction_available", true)
-	_aim(camera, door)
 	await tree.physics_frame
 	assert_true.call(
 		bool(door.call("is_interaction_highlighted"))
@@ -147,10 +167,6 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	application.call("exit_current_world")
 	application.queue_free()
 	await tree.process_frame
-
-
-func _aim(camera: Camera3D, target: Node3D) -> void:
-	camera.look_at(target.global_position, Vector3.UP)
 
 
 func _release_interact() -> void:
