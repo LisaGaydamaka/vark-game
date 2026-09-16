@@ -77,7 +77,7 @@ The project currently contains:
 - a minimal application main-menu shell with New Game, curated Development Launch, Quit, and one working look-sensitivity setting
 - an initial `missions/playground/` package with authoritative TrenchBroom spatial source and a launchable application-owned world wrapper
 - a minimal typed `MissionDefinition` for Playground carrying authored mission ID, world/map references, player-start selection, and content revision
-- an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring and fail-closed missing/duplicate validation
+- an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, and fail-closed identity validation
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -86,7 +86,7 @@ Its implementation is not frozen. Input sampling, command routing, component own
 
 Later gameplay may deliberately apply explicit contextual modifiers such as carrying a body. Such modifiers must be owned by the gameplay feature that requests them and must not silently rewrite the accepted unmodified locomotion contract.
 
-The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, persistent-ID registry/semantic content IDs/final Vark entity vocabulary, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
+The project does not yet have the complete production gameplay platform: persistence-backed Continue/campaign flow, generalized production mission loading beyond the minimal Playground definition, persistent-ID/content-ID registry and lookup, final Vark entity vocabulary, saveable world state, interaction, doors, gameplay lighting/exposure, acoustic propagation, NPC/nav/stealth, mission logic, bodies/combat, inventory, campaign state, dialogue presentation, cutscenes, and production authoring/validation.
 
 ---
 
@@ -679,7 +679,7 @@ The deterministic authoring suite derives a temporary fixture from the real `mis
 
 **Manual:** passed — the Windows mapper/user completed the TrenchBroom 2026.2 proof using the ignored workspace and refreshed Vark config. After each external repair write the map was reloaded before more mapper edits. The original ID survived move/save; unrelated entities preserved their loaded IDs; duplication preserved the source-first original and repair assigned the duplicate a distinct ID; delete/recreate received a fresh ID; a plain TrenchBroom save preserved all loaded IDs; the zebra materials remained available; and no `persistent_id` value was hand-authored.
 
-## 2.4 Persistent IDs `[~]`
+## 2.4 Persistent IDs `[x]`
 
 Implement the proven authored persistent identity mechanism. Missing/duplicate IDs fail closed with useful diagnostics.
 
@@ -689,13 +689,23 @@ Vark now has a project-owned `FuncGodotMapSettings` resource that uses the same 
 
 **Done when:** the runtime FuncGodot path uses the Vark FGD rather than the vendor default; an authored identity-bearing entity receives its `.map` `persistent_id` on the generated runtime Node; unique identity validates; missing/duplicate identity prevents the world session from reaching `READY` with path-specific diagnostics; and no registry, semantic `content_id`, runtime-created identity, or final Vark entity library is pulled forward.
 
-**Automated:** the authoring suite builds mapper-style `func_detail` fixtures through the real Vark `FuncGodotMapSettings`, proves authored IDs land on generated `StaticBody3D` nodes, proves missing/duplicate IDs are visible to runtime validation with useful diagnostics, and uses test-only invalid worlds to prove `WorldSession` fails closed and tears down before `READY`. Clean-checkout import and the authoritative post-push `Regression suite` must remain green.
+**Automated:** passed — the authoring suite builds mapper-style `func_detail` fixtures through the real Vark `FuncGodotMapSettings`, proves authored IDs land on generated `StaticBody3D` nodes, proves missing/duplicate IDs are visible to runtime validation with useful diagnostics, uses test-only invalid worlds to prove `WorldSession` fails closed and tears down before `READY`, and the exact-head post-push `Regression suite` passed.
 
 **Manual:** none — 2.3 already accepted the Windows mapper/source-writeback workflow; 2.4 adds deterministic runtime wiring/validation without changing player-facing behavior. Full ordinary map edit → import/rebuild → run stability remains the dedicated 2.8 proof.
 
-## 2.5 Optional semantic content IDs `[ ]`
+## 2.5 Optional semantic content IDs `[~]`
 
 Implement author-facing IDs only for entities mission logic actually needs to address.
+
+Vark now defines a separate project-owned `VarkContentAddressable` FGD base with optional `content_id`. The Phase-2 `func_detail` proof carrier composes that base only so the real TrenchBroom → FuncGodot property path can be proven before 2.7 introduces the actual Vark entity vocabulary; the tracked Playground does not assign semantic IDs to ordinary geometry. `VarkPersistentEntity` carries the optional runtime string alongside `persistent_id`, but the two concepts remain distinct: persistent identity is generated/repaired durable instance identity, while `content_id` is a mapper-chosen semantic name such as `door.vault` and is never auto-generated.
+
+Blank `content_id` is valid and means the entity is not addressed by mission logic. Non-empty semantic IDs must be unique within the built world so future mission references cannot become ambiguous. The existing pre-`READY` stateless identity validation reports a duplicate `content_id` with both owner paths and causes `WorldSession` to tear down the invalid candidate. This is validation only: 2.5 does not add lookup APIs, reference resolution, a registry, or required semantic IDs. Those remain 2.6/2.9, and 2.7 decides which real Vark entity classes opt into author-facing addressing.
+
+**Done when:** the Vark TrenchBroom FGD exposes optional `content_id` separately from generated `persistent_id`; the real FuncGodot path carries an authored semantic ID onto the runtime entity; blank semantic IDs remain valid; duplicate non-empty semantic IDs fail closed with both owner paths before `READY`; no semantic ID is auto-generated; and no lookup/registry/final entity vocabulary is introduced.
+
+**Automated:** the focused authoring suite verifies the exported Vark FGD contains the separate content-addressable schema, builds a temporary mapper-style `func_detail` with both IDs through the real Vark FuncGodot settings, proves the runtime `StaticBody3D` receives the exact authored `content_id`, proves blank semantic IDs validate, proves duplicate non-empty IDs report both owners, and proves `WorldSession` rejects a duplicate-content-ID packed world. Clean-checkout import and the authoritative post-push `Regression suite` must remain green.
+
+**Manual:** none — this step adds deterministic authoring/runtime metadata and failure validation only. The real semantic entity vocabulary and normal mapper usage arrive in 2.7, while full edit/import/run stability remains 2.8.
 
 ## 2.6 Minimal registry `[ ]`
 
@@ -1408,7 +1418,7 @@ Prove ordinary gameplay durations stop with world simulation/pause and do not ad
 
 ## Persistent identity editing
 
-Exercise create/move/reorder/duplicate/delete/reimport plus idempotent source writeback/repair. Runtime validation must reject missing/duplicate authored persistent IDs before a world session becomes ready.
+Exercise create/move/reorder/duplicate/delete/reimport plus idempotent source writeback/repair. Runtime validation must reject missing/duplicate authored persistent IDs and duplicate non-empty semantic `content_id` values before a world session becomes ready.
 
 ## Gameplay-event/stable boundary
 
@@ -1456,7 +1466,7 @@ Automate deterministic objective behavior where valuable, including:
 - event FIFO/re-entrant/lifecycle behavior and runaway-cascade failure diagnostics;
 - resolved random-choice persistence when choices have become gameplay truth;
 - persistent-ID uniqueness/editing/reimport/repair/writeback/idempotence and fail-closed runtime validation;
-- semantic-ID duplicate/missing-reference errors;
+- semantic-ID uniqueness now, plus missing-reference errors when real references exist;
 - mission restart freshness;
 - detached save snapshot capture that cannot mutate after live state changes;
 - save-slot request/commit ordering and latest-committed load behavior;
@@ -1482,7 +1492,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish `2.4` post-push automated validation. Because `Manual: none`, reconcile it to `[x]` on the next authorized patch once the exact-head `Regression suite` is green, then implement 2.5–2.9 through the real TrenchBroom/reimport path.
+1. Finish `2.5` post-push automated validation. Because `Manual: none`, reconcile it to `[x]` on the next authorized patch once the exact-head `Regression suite` is green, then implement 2.6–2.9 through the real TrenchBroom/reimport path.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.

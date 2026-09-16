@@ -120,9 +120,9 @@ func _sync_trenchbroom_config() -> bool:
 		return false
 
 	var fgd_text: String = FileAccess.get_file_as_string(fgd_path)
-	if not fgd_text.contains("persistent_id"):
+	if not fgd_text.contains("persistent_id") or not fgd_text.contains("content_id"):
 		push_error(
-			"Exported Vark FGD does not declare persistent_id; refusing to continue the mapper proof."
+			"Exported Vark FGD must declare persistent_id and optional content_id on the Phase-2 func_detail carrier."
 		)
 		return false
 
@@ -133,7 +133,7 @@ func _sync_trenchbroom_config() -> bool:
 	print("Refreshed the installed Vark TrenchBroom game configuration:")
 	print("  folder: ", config_folder)
 	print("  FGD:    ", fgd_path)
-	print("The exported Vark FGD declares persistent_id for func_detail.")
+	print("The exported Vark FGD declares persistent_id and optional content_id for func_detail.")
 	print("The exported Vark material config resolves PNGs under textures/ with no palette dependency.")
 	print("Close/reopen TrenchBroom before continuing so it reloads the updated game configuration.")
 	return true

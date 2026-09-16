@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=7 format=3]
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_solid"]
 [ext_resource type="Resource" path="res://addons/func_godot/fgd/phong_base.tres" id="2_phong"]
@@ -6,6 +6,7 @@
 [ext_resource type="Resource" path="res://addons/func_godot/fgd/cull_interior_faces.tres" id="4_cull"]
 [ext_resource type="Resource" path="res://authoring/fgd/vark_persistent_identity_base.tres" id="5_identity"]
 [ext_resource type="Script" path="res://missions/persistence/persistent_entity.gd" id="6_persistent"]
+[ext_resource type="Resource" path="res://authoring/fgd/vark_content_addressable_base.tres" id="7_content"]
 
 [resource]
 script = ExtResource("1_solid")
@@ -13,7 +14,7 @@ collision_shape_type = 2
 collision_mask = 0
 classname = "func_detail"
 description = "Static collidable geometry. Builds a StaticBody3D with a MeshInstance3D and a single concave CollisionShape3D. Does not occlude other VisualInstance3D nodes."
-base_classes = Array[Resource]([ExtResource("2_phong"), ExtResource("3_vertex"), ExtResource("4_cull"), ExtResource("5_identity")])
+base_classes = Array[Resource]([ExtResource("2_phong"), ExtResource("3_vertex"), ExtResource("4_cull"), ExtResource("5_identity"), ExtResource("7_content")])
 auto_apply_to_matching_node_properties = true
 meta_properties = Dictionary[String, Variant]({
 "color": Color(0.8, 0.8, 0.8, 1)
