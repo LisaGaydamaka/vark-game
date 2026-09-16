@@ -52,9 +52,8 @@ func _run_tests() -> void:
 		PLAYGROUND_SOURCE_PATH
 	)
 	_assert_true(
-		bool(playground_read["ok"])
-		and str(playground_read["text"]).contains("// Phase 2 playground: authoritative spatial source."),
-		"Persistent-identity proof derives from the real Playground authored map"
+		bool(playground_read["ok"]),
+		"Persistent-identity proof reads the real Playground authored map without depending on mapper-rewritten comments"
 	)
 	if not bool(playground_read["ok"]):
 		_print_summary()
