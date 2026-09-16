@@ -1,0 +1,98 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+[ext_resource type="Script" path="res://scenes/interaction_probe.gd" id="2_probe"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(8, 0.2, 8)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(8, 0.2, 8)
+
+[sub_resource type="BoxShape3D" id="DoorShape"]
+size = Vector3(0.8, 1.6, 0.3)
+
+[sub_resource type="BoxMesh" id="DoorMesh"]
+size = Vector3(0.8, 1.6, 0.3)
+
+[sub_resource type="BoxShape3D" id="PropShape"]
+size = Vector3(0.7, 0.7, 0.7)
+
+[sub_resource type="BoxMesh" id="PropMesh"]
+size = Vector3(0.7, 0.7, 0.7)
+
+[sub_resource type="BoxShape3D" id="DividerShape"]
+size = Vector3(0.45, 1.8, 0.55)
+
+[sub_resource type="BoxMesh" id="DividerMesh"]
+size = Vector3(0.45, 1.8, 0.55)
+
+[node name="InteractionLab" type="Node3D"]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -30, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 0, 2)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="DoorProbe" type="StaticBody3D" parent="."]
+position = Vector3(0, 0.8, 0)
+script = ExtResource("2_probe")
+interaction_label = "Door Contract Probe"
+base_color = Color(0.2, 0.42, 0.75, 1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DoorProbe"]
+shape = SubResource("DoorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="DoorProbe"]
+mesh = SubResource("DoorMesh")
+
+[node name="StatusLabel" type="Label3D" parent="DoorProbe"]
+position = Vector3(0, 1.15, 0)
+text = "Door Contract Probe\nREADY · uses: 0"
+billboard = 1
+font_size = 28
+
+[node name="PropProbe" type="StaticBody3D" parent="."]
+position = Vector3(1.4, 0.4, 0.25)
+script = ExtResource("2_probe")
+interaction_label = "Prop Contract Probe"
+disable_after_interact = true
+base_color = Color(0.72, 0.38, 0.18, 1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PropProbe"]
+shape = SubResource("PropShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PropProbe"]
+mesh = SubResource("PropMesh")
+
+[node name="StatusLabel" type="Label3D" parent="PropProbe"]
+position = Vector3(0, 0.65, 0)
+text = "Prop Contract Probe\nREADY · uses: 0"
+billboard = 1
+font_size = 28
+
+[node name="Divider" type="StaticBody3D" parent="."]
+position = Vector3(0.75, 0.9, 1.1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Divider"]
+shape = SubResource("DividerShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Divider"]
+mesh = SubResource("DividerMesh")
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(0, 2.3, 0.7)
+text = "3.1 INTERACTION LAB\nCenter + range + clear line = highlight\nE = primary interaction"
+billboard = 1
+font_size = 30

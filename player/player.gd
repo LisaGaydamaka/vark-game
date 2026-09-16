@@ -2,6 +2,7 @@ extends CharacterBody3D
 
 
 @onready var head: Node3D = $Head
+@onready var view_camera: Camera3D = $Head/Camera3D
 @onready var collision_shape: CollisionShape3D = $CollisionShape3D
 @onready var player_mesh: MeshInstance3D = $MeshInstance3D
 
@@ -14,6 +15,10 @@ extends CharacterBody3D
 
 @export_category("Look")
 @export var mouse_sensitivity: float = 0.007
+
+
+@export_category("Interaction")
+@export var interaction_range: float = 2.5
 
 
 var gameplay_input_boundary: Node = null
@@ -32,6 +37,7 @@ var ledge_corner: PlayerLedgeCorner
 var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
 var locomotion_controller: PlayerLocomotionController
+var player_interaction: PlayerInteraction
 
 
 func _ready() -> void:
@@ -47,6 +53,12 @@ func _physics_process(delta: float) -> void:
 		# The production F5 path always binds the application-owned boundary before
 		# the WorldSession enters PLAYING.
 		command = player_input.sample()
+
+	var interact_pressed: bool = false
+	if gameplay_input_boundary != null and is_instance_valid(gameplay_input_boundary):
+		interact_pressed = bool(gameplay_input_boundary.call("sample_interaction_pressed"))
+	else:
+		interact_pressed = Input.is_action_just_pressed("interact")
 
 	player_input.current_command = command
 	velocity_state.apply_to_body(self)
@@ -64,6 +76,9 @@ func _physics_process(delta: float) -> void:
 		if ledge_controller.is_active():
 			velocity_state.capture_body_as_controlled(self)
 
+	if player_interaction != null:
+		player_interaction.update(interact_pressed)
+
 
 func _unhandled_input(event: InputEvent) -> void:
 	# Production input is routed by the application boundary. Standalone scenes
@@ -75,6 +90,26 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func bind_gameplay_input_boundary(boundary: Node) -> void:
 	gameplay_input_boundary = boundary
+
+
+func set_interaction_input_enabled(enabled: bool) -> void:
+	if player_interaction != null:
+		player_interaction.set_input_enabled(enabled)
+
+
+func set_world_interaction_available(available: bool) -> void:
+	if player_interaction != null:
+		player_interaction.set_world_interaction_available(available)
+
+
+func get_interaction_semantic_state() -> Dictionary:
+	if player_interaction == null:
+		return {
+			"available": false,
+			"has_target": false,
+			"target_name": "",
+		}
+	return player_interaction.get_semantic_state()
 
 
 func handle_look_input(event: InputEvent) -> void:
@@ -157,6 +192,11 @@ func _create_components() -> void:
 		self,
 		head,
 		mouse_sensitivity
+	)
+	player_interaction = PlayerInteraction.new(
+		self,
+		view_camera,
+		interaction_range
 	)
 	support = PlayerSupport.new(
 		locomotion_settings.max_walkable_slope,

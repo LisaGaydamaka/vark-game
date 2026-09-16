@@ -12,6 +12,9 @@ const MenuShellRegressions = preload(
 const InputBoundaryRegressions = preload(
 	"res://tests/application/input_boundary_regressions.gd"
 )
+const InteractionRegressions = preload(
+	"res://tests/application/interaction_regressions.gd"
+)
 const PauseArbitrationRegressions = preload(
 	"res://tests/application/pause_arbitration_regressions.gd"
 )
@@ -63,6 +66,12 @@ func _run_tests() -> void:
 	_assert_true(
 		invalid_load_errors.size() == 5,
 		"MissionDefinition reports every currently required load field when invalid"
+	)
+
+	var interaction_regressions: RefCounted = InteractionRegressions.new()
+	await interaction_regressions.run(
+		self,
+		Callable(self, "_assert_true")
 	)
 
 	var application: Node = ApplicationScene.instantiate()

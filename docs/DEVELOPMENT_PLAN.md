@@ -78,6 +78,7 @@ The project currently contains:
 - an initial `missions/playground/` package with authoritative TrenchBroom spatial source and a launchable application-owned world wrapper
 - a minimal typed `MissionDefinition` for Playground carrying authored mission ID, world/map references, player-start selection, and content revision
 - an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, fail-closed identity validation, a current-session-owned persistent/content-ID registry, and the first Vark point-entity foundation for player start, semantic marker, and exit
+- a minimal player-owned interaction selector with application-owned primary-interaction intent, center-view range/occlusion/state eligibility, central ordinary-interaction availability, and visible target highlight feedback
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -779,13 +780,23 @@ Goal: answer dangerous subsystem questions independently enough to debug them, t
 
 The integrated graybox contains one room/corridor arrangement, ordinary door, gameplay light, two footstep surfaces, throwable/stackable prop, simple patrolling guard, primitive vision/hearing, one audible typed NPC line, one objective, and one exit.
 
-## 3.1 Minimal interaction contract `[ ]`
+## 3.1 Minimal interaction contract `[~]`
 
 Introduce only enough common behavior for center-view target selection, range/occlusion/state eligibility, one primary interaction command, and minimal highlight/feedback.
 
 The ordinary door and physical prop use the same interaction contract.
 
 Interaction ownership, not every interactable object, decides whether ordinary world interaction is currently available. In particular, later held-prop/body states should not require every door/switch/loot object to know private carrying state.
+
+The first implementation keeps interaction intent separate from locomotion `PlayerCommand`. `ApplicationInputBoundary` owns one fresh `interact` edge per gameplay physics frame, suppresses a held interaction across gameplay-domain loss until release, and publishes gameplay-domain availability to the bound player. `PlayerInteraction` is a small player-owned selector that casts from the real view camera center to a configurable short range, treats the first physics hit as the occlusion boundary, asks only the hit `vark_interactable` whether its current state is eligible, and owns target highlight changes. A separate `world_interaction_available` gate gives later held-prop/body ownership one central place to suppress ordinary interaction without checks copied into every interactable.
+
+The interactable surface is intentionally narrow and concrete: an object joins `vark_interactable` and implements `can_interact(interactor)`, `interact(interactor)`, and `set_interaction_highlighted(highlighted)`. The development-only `Interaction Lab` contains door-like and prop-like probes that both use that exact contract, including an occluder and a one-shot state-ineligible probe. They are contract probes only; actual door state/navigation/acoustics and Thief-style prop carrying/support remain 3.4/3.5, and no 3.2 semantic event queue/stable-boundary framework is pulled forward.
+
+**Done when:** the production player can select only the first center-view interactable within range and clear line of sight; target-owned current state can reject selection; one primary interaction press is a one-frame application-owned gameplay edge that cannot replay after domain loss; highlight follows the eligible current target and clears on loss; ordinary world interaction can be centrally disabled/resumed without interactables knowing the private reason; the door-like and prop-like probes consume the same contract; locomotion `PlayerCommand` remains interaction-free; and no door/prop/event/objective framework is introduced.
+
+**Automated:** deterministic coverage is wired into the focused application suite and authoritative all-tests barrier. It exercises the real application/session/player path in `Interaction Lab`, center targeting, out-of-range rejection, first-hit occlusion, state eligibility, fresh-edge/no-hold-repeat behavior, central availability suppression/resume, and application-domain stale-edge suppression while retaining all existing application/input/movement coverage. Exact-head post-push CI is still required for acceptance.
+
+**Manual:** required — validator: **Windows x64 user/playtester**. In F5 → Development Launch → Interaction Lab, confirm there is no permanent central crosshair; the Door Contract Probe visibly highlights only while centered, in range, and unobstructed and clears when looking away/backing off; the Prop Contract Probe cannot highlight through the divider but does after moving around it; pressing **E** changes only the highlighted probe once per press and holding E does not repeat; the prop probe becomes `INACTIVE` and loses highlight after its one accepted use; and ordinary walk/jump/crouch/sprint/mouse-look still feel like the accepted controller.
 
 ## 3.2 Minimal semantic gameplay-event queue and stable boundary `[ ]`
 
@@ -1507,6 +1518,7 @@ Automate deterministic objective behavior where valuable, including:
 - mutable Resource/autoload isolation across world sessions;
 - pause/gameplay-time ownership;
 - gameplay-intent one-tick edge lifetime, domain-loss gesture cancellation, and no look/input-feel drift;
+- center-view interaction range/first-hit occlusion/current-state eligibility, one-frame primary-interaction intent, highlight clearing, and central ordinary-interaction availability;
 - coherent stable-boundary capture of event-driven player view pose;
 - controlled semantic mutation and stable-boundary semantics, including mission-script commands requested out of pass;
 - event FIFO/re-entrant/lifecycle behavior and runaway-cascade failure diagnostics;
@@ -1539,7 +1551,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Begin Phase 3 with 3.1 minimal interaction contract; continue the event/sound contracts only in their ordered roadmap items.
+1. Complete 3.1 minimal-interaction CI/manual acceptance, then continue with 3.2; keep the event/sound contracts in their ordered roadmap items.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.

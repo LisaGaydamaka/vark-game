@@ -49,7 +49,9 @@ func _test_gameplay_frame_lifetime(
 	Input.action_press("move_forward")
 	Input.action_press("sprint")
 	Input.action_press("jump")
+	Input.action_press("interact")
 	var first: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
+	var first_interact: bool = bool(probe.call("sample_interaction_pressed"))
 	assert_true.call(
 		first.movement_vector.y < -0.9
 		and first.sprint_held
@@ -57,60 +59,78 @@ func _test_gameplay_frame_lifetime(
 		and first.jump_held,
 		"Gameplay intent frame samples held state and a fresh press together"
 	)
+	assert_true.call(
+		first_interact,
+		"Interaction uses a separate fresh one-frame gameplay edge"
+	)
 
 	var same_frame: PlayerCommand = probe.call("sample_locomotion_command") as PlayerCommand
+	var same_frame_interact: bool = bool(probe.call("sample_interaction_pressed"))
 	assert_true.call(
-		same_frame == first and same_frame.jump_pressed,
-		"Gameplay input is sampled only once for one physics frame"
+		same_frame == first and same_frame.jump_pressed and same_frame_interact,
+		"Gameplay input edges are sampled only once for one physics frame"
 	)
 
 	var held_next_frame: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
+	var held_interact: bool = bool(probe.call("sample_interaction_pressed"))
 	assert_true.call(
 		held_next_frame.movement_vector.y < -0.9
 		and held_next_frame.sprint_held
 		and held_next_frame.jump_held
-		and not held_next_frame.jump_pressed,
-		"Held gameplay state persists while the pressed edge lasts one gameplay frame"
+		and not held_next_frame.jump_pressed
+		and not held_interact,
+		"Held gameplay state persists while pressed edges expire after one gameplay frame"
 	)
 
 	probe.call("set_gameplay_enabled", false)
 	var disabled: PlayerCommand = probe.call("sample_locomotion_command") as PlayerCommand
+	var disabled_interact: bool = bool(probe.call("sample_interaction_pressed"))
 	assert_true.call(
 		disabled.movement_vector == Vector2.ZERO
 		and not disabled.sprint_held
 		and not disabled.jump_pressed
-		and not disabled.jump_held,
-		"Disabled gameplay domain produces a neutral intent frame"
+		and not disabled.jump_held
+		and not disabled_interact,
+		"Disabled gameplay domain produces neutral locomotion and interaction intent"
 	)
 
 	probe.call("set_gameplay_enabled", true)
 	var resumed_while_held: PlayerCommand = probe.call("sample_locomotion_command") as PlayerCommand
+	var resumed_interact: bool = bool(probe.call("sample_interaction_pressed"))
 	assert_true.call(
 		resumed_while_held.movement_vector.y < -0.9
 		and resumed_while_held.sprint_held
 		and not resumed_while_held.jump_pressed
-		and not resumed_while_held.jump_held,
-		"Domain resume restores continuous intent but does not replay an edge-dependent held gesture"
+		and not resumed_while_held.jump_held
+		and not resumed_interact,
+		"Domain resume restores continuous intent but does not replay held edge-dependent actions"
 	)
 
 	Input.action_release("jump")
+	Input.action_release("interact")
 	var released: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
+	var released_interact: bool = bool(probe.call("sample_interaction_pressed"))
 	assert_true.call(
-		not released.jump_pressed and not released.jump_held,
-		"Releasing after domain loss clears the blocked edge-dependent gesture"
+		not released.jump_pressed and not released.jump_held and not released_interact,
+		"Releasing after domain loss clears blocked edge-dependent actions"
 	)
 
 	Input.action_press("jump")
+	Input.action_press("interact")
 	var fresh_press: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
+	var fresh_interact: bool = bool(probe.call("sample_interaction_pressed"))
 	assert_true.call(
-		fresh_press.jump_pressed and fresh_press.jump_held,
-		"A fresh post-resume press creates a new gameplay edge"
+		fresh_press.jump_pressed and fresh_press.jump_held and fresh_interact,
+		"Fresh post-resume presses create new locomotion and interaction edges"
 	)
 
 	var edge_expired: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
+	var interaction_edge_expired: bool = bool(probe.call("sample_interaction_pressed"))
 	assert_true.call(
-		not edge_expired.jump_pressed and edge_expired.jump_held,
-		"Fresh gameplay press edge expires after one physics frame"
+		not edge_expired.jump_pressed
+		and edge_expired.jump_held
+		and not interaction_edge_expired,
+		"Fresh gameplay press edges expire after one physics frame"
 	)
 
 	_release_actions()
@@ -207,3 +227,4 @@ func _release_actions() -> void:
 	Input.action_release("jump")
 	Input.action_release("crouch")
 	Input.action_release("sprint")
+	Input.action_release("interact")
