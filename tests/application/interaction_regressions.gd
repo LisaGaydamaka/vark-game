@@ -29,7 +29,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	var launched: bool = bool(application.call("launch_development_target", 0))
 	await tree.process_frame
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	var world: Node = application.get("current_world") as Node
 	var player: Node3D = application.get("current_player") as Node3D
 	assert_true.call(
@@ -56,7 +56,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	# The lab starts with the door exactly on the player's normal forward camera axis.
 	# Keeping the camera under its real PlayerLook owner makes this proof exercise the
 	# production center-view direction rather than mutating a child camera in tests.
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	var centered_state: Dictionary = player.call("get_interaction_semantic_state")
 	assert_true.call(
 		bool(door.call("is_interaction_highlighted"))
@@ -67,7 +67,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	player.global_position = Vector3(0, 0, 5)
 	player.set("velocity", Vector3.ZERO)
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	assert_true.call(
 		not bool(door.call("is_interaction_highlighted"))
 		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
@@ -76,14 +76,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	player.global_position = Vector3(0, 0, 2)
 	player.set("velocity", Vector3.ZERO)
-	# Put the prop unambiguously inside range on the same forward axis, with the
-	# divider between camera and prop. Move the door aside so first-hit semantics
-	# cannot be confused with another interactable.
+	# Put the prop unambiguously inside range and raise its small box through the
+	# player's normal horizontal camera ray. The divider sits between camera and
+	# prop, while the door moves aside so first-hit semantics are unambiguous.
 	door.position = Vector3(-3.0, door_position.y, door_position.z)
-	prop.position = Vector3(0, 0.8, 0)
+	prop.position = Vector3(0, 1.3, 0)
 	divider.position = Vector3(0, 0.9, 1.0)
-	await tree.physics_frame
-	await tree.physics_frame
+	await _settle_player_physics(tree, 2)
 	assert_true.call(
 		not bool(prop.call("is_interaction_highlighted"))
 		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
@@ -91,8 +90,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	divider.position = Vector3(-3, divider_position.y, divider_position.z)
-	await tree.physics_frame
-	await tree.physics_frame
+	await _settle_player_physics(tree, 2)
 	assert_true.call(
 		bool(prop.call("is_interaction_highlighted"))
 		and (player.call("get_interaction_semantic_state") as Dictionary).get("target_name", "") == "PropProbe",
@@ -100,7 +98,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	prop.call("set_interaction_enabled", false)
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	assert_true.call(
 		not bool(prop.call("is_interaction_highlighted"))
 		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
@@ -113,8 +111,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	door.position = door_position
 	prop.position = prop_position
 	divider.position = divider_position
-	await tree.physics_frame
-	await tree.physics_frame
+	await _settle_player_physics(tree, 2)
 	assert_true.call(
 		bool(door.call("is_interaction_highlighted"))
 		and (player.call("get_interaction_semantic_state") as Dictionary).get("target_name", "") == "DoorProbe",
@@ -123,17 +120,17 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	var door_count_before: int = int(door.call("get_interaction_count"))
 	Input.action_press("interact")
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	var first_count: int = int(door.call("get_interaction_count"))
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	var held_count: int = int(door.call("get_interaction_count"))
 	Input.action_release("interact")
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	Input.action_press("interact")
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	var second_count: int = int(door.call("get_interaction_count"))
 	Input.action_release("interact")
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	assert_true.call(
 		first_count == door_count_before + 1
 		and held_count == first_count
@@ -145,9 +142,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var unavailable_state: Dictionary = player.call("get_interaction_semantic_state")
 	var unavailable_count_before: int = int(door.call("get_interaction_count"))
 	Input.action_press("interact")
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	Input.action_release("interact")
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	assert_true.call(
 		not bool(unavailable_state.get("available", true))
 		and not bool(door.call("is_interaction_highlighted"))
@@ -156,7 +153,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	player.call("set_world_interaction_available", true)
-	await tree.physics_frame
+	await _settle_player_physics(tree)
 	assert_true.call(
 		bool(door.call("is_interaction_highlighted"))
 		and bool((player.call("get_interaction_semantic_state") as Dictionary).get("available", false)),
@@ -167,6 +164,14 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	application.call("exit_current_world")
 	application.queue_free()
 	await tree.process_frame
+
+
+func _settle_player_physics(tree: SceneTree, frame_count: int = 1) -> void:
+	for _frame_index: int in frame_count:
+		# SceneTree.physics_frame is emitted before node _physics_process callbacks.
+		# Waiting for process_frame afterward observes the completed physics update.
+		await tree.physics_frame
+		await tree.process_frame
 
 
 func _release_interact() -> void:
