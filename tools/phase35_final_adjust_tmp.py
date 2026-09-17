@@ -15,6 +15,12 @@ path = Path("gameplay/props/ordinary_prop.gd")
 text = path.read_text(encoding="utf-8")
 text = replace_once(
     text,
+    "var _temporary_player_collision_exception: PhysicsBody3D = null\n",
+    "var _temporary_player_collision_exception: PhysicsBody3D = null\nvar _player_escape_collision_suppressed: bool = false\n",
+    "player escape suppression field",
+)
+text = replace_once(
+    text,
     "\t\tadd_collision_exception_with(releasing_player)\n\t\t_temporary_player_collision_exception = releasing_player\n",
     "\t\tadd_collision_exception_with(releasing_player)\n\t\treleasing_player.add_collision_exception_with(self)\n\t\t_temporary_player_collision_exception = releasing_player\n",
     "symmetric release exception add",
@@ -26,12 +32,13 @@ text = replace_once(
     "symmetric release exception clear",
 )
 
-# The carried body has collision layer/mask zero. Detect whether this release
-# needs the temporary player exception while the prop is still frozen, restore
-# its ordinary world collision participation, install the pairwise exception on
-# that live collision state, and only then unfreeze/start rigid motion. This
-# prevents the first solver tick from resolving the intentional player overlap
-# before the exception owns the pair.
+# The carried body has collision layer/mask zero. If a valid world-clear release
+# transform still overlaps the player, Jolt 4.7.2 can resolve that pair on the
+# first rigid tick even though both public collision-exception lists contain the
+# other body. Keep the prop dynamic and preserve its launch velocity, but keep
+# its collision layer/mask suppressed only while its actual collision volume
+# overlaps the releasing player. The geometric separation predicate, not time or
+# distance travelled, owns restoration of normal rigid collision.
 old_release_order = '''\t_holder = null
 \tglobal_transform = release_transform
 \tif (
@@ -57,6 +64,9 @@ new_release_order = '''\t_holder = null
 \t\tadd_collision_exception_with(releasing_player)
 \t\treleasing_player.add_collision_exception_with(self)
 \t\t_temporary_player_collision_exception = releasing_player
+\t\tcollision_layer = 0
+\t\tcollision_mask = 0
+\t\t_player_escape_collision_suppressed = true
 \t_begin_motion(motion_kind, initial_velocity)
 '''
 text = replace_once(text, old_release_order, new_release_order, "release collision activation order")
@@ -116,6 +126,52 @@ new_overlap = '''func _shape_overlaps_body_at_transform(body_transform: Transfor
 \treturn false
 '''
 text = replace_once(text, old_overlap, new_overlap, "player overlap collider identity")
+
+old_exception_update = '''func _update_temporary_player_collision_exception() -> void:
+\tif _temporary_player_collision_exception == null:
+\t\treturn
+\tif not is_instance_valid(_temporary_player_collision_exception):
+\t\t_temporary_player_collision_exception = null
+\t\treturn
+\tif _shape_overlaps_body_at_transform(global_transform, _temporary_player_collision_exception):
+\t\treturn
+\t_clear_temporary_player_collision_exception()
+
+
+func _clear_temporary_player_collision_exception() -> void:
+\tif (
+\t\t_temporary_player_collision_exception != null
+\t\tand is_instance_valid(_temporary_player_collision_exception)
+\t):
+\t\tremove_collision_exception_with(_temporary_player_collision_exception)
+\t\t_temporary_player_collision_exception.remove_collision_exception_with(self)
+\t_temporary_player_collision_exception = null
+'''
+new_exception_update = '''func _update_temporary_player_collision_exception() -> void:
+\tif _temporary_player_collision_exception == null:
+\t\treturn
+\tif not is_instance_valid(_temporary_player_collision_exception):
+\t\t_clear_temporary_player_collision_exception()
+\t\treturn
+\tif _shape_overlaps_body_at_transform(global_transform, _temporary_player_collision_exception):
+\t\treturn
+\t_clear_temporary_player_collision_exception()
+
+
+func _clear_temporary_player_collision_exception() -> void:
+\tif (
+\t\t_temporary_player_collision_exception != null
+\t\tand is_instance_valid(_temporary_player_collision_exception)
+\t):
+\t\tremove_collision_exception_with(_temporary_player_collision_exception)
+\t\t_temporary_player_collision_exception.remove_collision_exception_with(self)
+\t_temporary_player_collision_exception = null
+\tif _player_escape_collision_suppressed:
+\t\tcollision_layer = _ordinary_collision_layer
+\t\tcollision_mask = _ordinary_collision_mask
+\t\t_player_escape_collision_suppressed = false
+'''
+text = replace_once(text, old_exception_update, new_exception_update, "geometric player escape restoration")
 
 # Preserve the inexpensive authored-placement support rays, but let the real
 # collision shape provide a shallow rest query when a legitimate edge/corner
@@ -204,7 +260,7 @@ text = replace_once(
 text = replace_once(
     text,
     "\t\tcleared and not bool(prop.call(\"has_temporary_player_collision_exception\"))\n\t\tand not (player in prop.get_collision_exceptions()),\n",
-    "\t\tcleared and not bool(prop.call(\"has_temporary_player_collision_exception\"))\n\t\tand not (player in prop.get_collision_exceptions())\n\t\tand not (prop in player.get_collision_exceptions()),\n",
+    "\t\tcleared and not bool(prop.call(\"has_temporary_player_collision_exception\"))\n\t\tand not (player in prop.get_collision_exceptions())\n\t\tand not (prop in player.get_collision_exceptions())\n\t\tand prop.collision_layer == 1 and prop.collision_mask == 1,\n",
     "pairwise exception clear assertion",
 )
 text = replace_once(
@@ -223,6 +279,8 @@ text = replace_once(
 \t\t\tnot bool(prop.call("has_temporary_player_collision_exception"))
 \t\t\tand not (player in prop.get_collision_exceptions())
 \t\t\tand not (prop in player.get_collision_exceptions())
+\t\t\tand prop.collision_layer == 1
+\t\t\tand prop.collision_mask == 1
 \t\t):
 \t\t\treturn true
 \t\tawait tree.physics_frame
