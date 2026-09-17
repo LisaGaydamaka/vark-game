@@ -82,13 +82,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Center-view interaction targeting highlights the first eligible in-range hit"
 	)
 	assert_true.call(
-		door_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		door_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		and door_material != null
 		and door_material.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED
 		and door_material.disable_receive_shadows
 		and not door_material.emission_enabled
 		and door_material.albedo_color == door.get("base_color"),
-		"Selected interaction feedback is shadowless/fullbright without tinting the object"
+		"Selected interaction feedback removes surface shadowing while preserving the object's ordinary cast shadow"
 	)
 
 	player.global_position = Vector3(0, 0, 5)
@@ -103,7 +103,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		door_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		and door_material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL
 		and not door_material.disable_receive_shadows,
-		"Losing interaction selection restores the object's ordinary shadowed rendering"
+		"Losing interaction selection restores the object's ordinary shaded surface while keeping normal cast-shadow behavior"
 	)
 
 	player.global_position = Vector3(0, 0, 2)
@@ -129,11 +129,11 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"An eligible in-range target highlights once the center-view line is unobstructed"
 	)
 	assert_true.call(
-		prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		and prop_material != null
 		and prop_material.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED
 		and prop_material.disable_receive_shadows,
-		"Door-like and prop-like interactables share the same shadowless selection feedback"
+		"Door-like and prop-like interactables share the same surface-shadow-free selection feedback without losing their cast shadows"
 	)
 
 	prop.call("set_interaction_enabled", false)
@@ -146,7 +146,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		and prop_material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL,
-		"State-ineligible interactables restore ordinary shadowed presentation"
+		"State-ineligible interactables restore ordinary shaded presentation while keeping normal cast shadows"
 	)
 	prop.call("set_interaction_enabled", true)
 
@@ -198,7 +198,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		door_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		and door_material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL,
-		"Central interaction suppression also clears shadowless selection presentation"
+		"Central interaction suppression clears the fullbright surface selection state without changing cast-shadow behavior"
 	)
 
 	player.call("set_world_interaction_available", true)

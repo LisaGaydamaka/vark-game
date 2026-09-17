@@ -12,12 +12,10 @@ extends StaticBody3D
 var _highlighted: bool = false
 var _interaction_count: int = 0
 var _material: StandardMaterial3D
-var _base_cast_shadow: int = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 
 func _ready() -> void:
 	add_to_group(&"vark_interactable")
-	_base_cast_shadow = int(mesh.cast_shadow)
 	_material = StandardMaterial3D.new()
 	mesh.material_override = _material
 	_refresh_visual()
@@ -59,8 +57,9 @@ func get_interaction_count() -> int:
 
 func _refresh_visual() -> void:
 	if _material != null:
-		# Thief-style selection feedback keeps the authored/base color but removes
-		# light/shadow response while selected instead of tinting the object.
+		# Thief-style selection keeps the authored/base color and the object's
+		# ordinary cast shadow, but removes all lighting/shadow response from the
+		# selected object's own visible surface.
 		_material.albedo_color = base_color
 		_material.emission_enabled = false
 		_material.disable_receive_shadows = _highlighted
@@ -68,12 +67,6 @@ func _refresh_visual() -> void:
 			BaseMaterial3D.SHADING_MODE_UNSHADED
 			if _highlighted
 			else BaseMaterial3D.SHADING_MODE_PER_PIXEL
-		)
-	if mesh != null:
-		mesh.cast_shadow = (
-			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			if _highlighted
-			else _base_cast_shadow
 		)
 	if status_label != null:
 		var state_text: String = "READY" if interaction_enabled else "INACTIVE"
