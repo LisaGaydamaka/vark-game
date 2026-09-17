@@ -1,5 +1,4 @@
-name: Diagnose Phase 3.5 overlap handoff
-# Read-only validation of the staged overlap-only escape and rigid handoff.
+name: Diagnose Phase 3.5 world-safe overlap handoff
 
 on:
   push:
@@ -10,8 +9,8 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-phase-3-5-overlap-handoff:
-    if: github.event.head_commit.message == 'Run Phase 3.5 overlap handoff diagnostic'
+  diagnose-phase-3-5-world-safe-overlap:
+    if: github.event.head_commit.message == 'Run Phase 3.5 world-safe overlap diagnostic'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -37,8 +36,10 @@ jobs:
           PY
           python -m py_compile tools/phase35_transition_fix_tmp.py
           python -m py_compile tools/phase35_final_adjust_tmp.py
+          python -m py_compile tools/phase35_escape_sweep_tmp.py
           python tools/phase35_transition_fix_tmp.py
           python tools/phase35_final_adjust_tmp.py
+          python tools/phase35_escape_sweep_tmp.py
           git diff --check
 
       - name: Setup Godot 4.7.2
