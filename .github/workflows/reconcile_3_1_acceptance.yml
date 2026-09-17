@@ -1,0 +1,62 @@
+name: Reconcile 3.1 acceptance
+
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.event.head_commit.message == 'Prepare 3.1 acceptance reconciliation'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+      - name: Finalize accepted 3.1 documentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/DEVELOPMENT_PLAN.md')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '## 3.1 Minimal interaction contract `[~]`',
+                  '## 3.1 Minimal interaction contract `[x]`',
+              ),
+              (
+                  '**Automated:** deterministic coverage is wired into the focused application suite and authoritative all-tests barrier. It exercises the real application/session/player path in `Interaction Lab`, the **F** input mapping, center targeting, out-of-range rejection, first-hit occlusion, state eligibility, fullbright/no-received-shadow selected surfaces with preserved cast shadows plus normal shaded-surface restoration, fresh-edge/no-hold-repeat behavior, central availability suppression/resume, and application-domain stale-edge suppression while retaining all existing application/input/movement coverage. Exact-head post-push CI is still required for acceptance.',
+                  '**Automated:** passed — deterministic coverage is wired into the focused application suite and authoritative all-tests barrier. It exercises the real application/session/player path in `Interaction Lab`, the **F** input mapping, center targeting, out-of-range rejection, first-hit occlusion, state eligibility, fullbright/no-received-shadow selected surfaces with preserved cast shadows plus normal shaded-surface restoration, fresh-edge/no-hold-repeat behavior, central availability suppression/resume, and application-domain stale-edge suppression while retaining all existing application/input/movement coverage. Exact accepted implementation head `7da6b969e90a507163f931b2820062e07d58299a` passed Godot 4.7.2 `Regression suite` run #68 with `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.',
+              ),
+              (
+                  '**Manual:** required — validator: **Windows x64 user/playtester**. In F5 → Development Launch → Interaction Lab, confirm there is no permanent central crosshair; the Door Contract Probe keeps casting its normal world shadow but its own visible surface becomes fully unshaded/fullbright with no received/self-shadow-style darkening and no color tint only while centered, in range, and unobstructed, then restores normal surface shading when looking away/backing off; the Prop Contract Probe cannot select through the divider but uses the same fullbright/no-received-shadow surface feedback after moving around it; pressing **F** changes only the selected probe once per press and holding F does not repeat; the prop probe becomes `INACTIVE` and loses the selected-surface state after its one accepted use; and ordinary walk/jump/crouch/sprint/mouse-look still feel like the accepted controller.',
+                  '**Manual:** passed — validator: **Windows x64 user/playtester**. The user accepted the final `Interaction Lab` behavior: no permanent central crosshair; Door and Prop probes select only when centered/in range/unobstructed; selected surfaces become fully unshaded/fullbright with no received/self-shadow-style darkening or tint while preserving their ordinary cast shadows; normal surface shading returns when selection clears; **F** is the primary interaction key with no held-repeat; the one-shot prop becomes `INACTIVE` and clears selection; and ordinary walk/jump/crouch/sprint/mouse-look remain accepted.',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one match, found {count}: {old[:120]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- docs/DEVELOPMENT_PLAN.md
+      - name: Commit acceptance reconciliation and remove helper
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/reconcile_3_1_acceptance.yml
+          git add docs/DEVELOPMENT_PLAN.md
+          git commit -m "Finalize 3.1 acceptance reconciliation"
+          git push origin HEAD:test
