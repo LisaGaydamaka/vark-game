@@ -1,0 +1,62 @@
+name: Reconcile 3.2 acceptance
+
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile:
+    if: github.event.head_commit.message == 'Prepare 3.2 acceptance reconciliation'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+      - name: Finalize accepted 3.2 documentation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('docs/DEVELOPMENT_PLAN.md')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '## 3.2 Minimal semantic gameplay-event queue and stable boundary `[~]`',
+                  '## 3.2 Minimal semantic gameplay-event queue and stable boundary `[x]`',
+              ),
+              (
+                  '**Automated:** deterministic 3.2 coverage is wired into the focused application suite and authoritative all-tests barrier. It covers explicit BUILDING/RESTORING/TEARING_DOWN/READY rejection, stale-session rejection, live-Object payload rejection, deep payload detachment and per-handler isolation, emitted-order FIFO, nested append rather than recursion, a default-priority physics emitter draining at the later session point, out-of-pass queue-without-immediate-mutation behavior, synchronous-handler acknowledgement failure withholding the stable boundary, bounded runaway-loop diagnostics/recovery, teardown cleanup, and replacement-session isolation. Exact-head post-push CI is still required for acceptance.',
+                  '**Automated:** passed — deterministic 3.2 coverage is wired into the focused application suite and authoritative all-tests barrier. It covers explicit BUILDING/RESTORING/TEARING_DOWN/READY rejection, stale-session rejection, live-Object payload rejection, deep payload detachment and per-handler isolation, emitted-order FIFO, nested append rather than recursion, a default-priority physics emitter draining at the later session point, out-of-pass queue-without-immediate-mutation behavior, synchronous-handler acknowledgement failure withholding the stable boundary, bounded runaway-loop diagnostics/recovery, teardown cleanup, and replacement-session isolation. Exact implementation verification head `9a37d0589456a2abe3ebcc3064a605586494ef5a` passed Godot 4.7.2 `Regression suite` run #72 with the new 3.2 cases plus `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.',
+              ),
+              (
+                  '**Manual:** none — 3.2 establishes deterministic internal timing/ownership semantics and intentionally adds no new player-facing behavior.',
+                  '**Manual:** none — accepted from deterministic automated coverage because 3.2 establishes internal timing/ownership semantics and intentionally adds no new player-facing behavior.',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one match, found {count}: {old[:140]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- docs/DEVELOPMENT_PLAN.md
+      - name: Commit acceptance reconciliation and remove helper
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/reconcile_3_2_acceptance.yml
+          git add docs/DEVELOPMENT_PLAN.md
+          git commit -m "Finalize 3.2 acceptance reconciliation"
+          git push origin HEAD:test
