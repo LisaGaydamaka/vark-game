@@ -45,8 +45,9 @@ jobs:
         run: |
           set -euo pipefail
           rm .github/workflows/close_phase_3_4.yml
-          test "$(git status --short --untracked-files=all)" = " M docs/DEVELOPMENT_PLAN.md
-           D .github/workflows/close_phase_3_4.yml" || {
+          changed_paths="$(git status --short --untracked-files=all | sed 's/^...//' | sort)"
+          expected_paths="$(printf '%s\n' '.github/workflows/close_phase_3_4.yml' 'docs/DEVELOPMENT_PLAN.md' | sort)"
+          test "$changed_paths" = "$expected_paths" || {
             git status --short --untracked-files=all
             exit 1
           }
