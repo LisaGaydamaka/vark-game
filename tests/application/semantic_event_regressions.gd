@@ -84,6 +84,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"WorldSession registers ordered synchronous semantic-event handlers"
 	)
 	assert_true.call(
+		not bool(session.call(
+			"queue_gameplay_sound",
+			source_session_id,
+			&"door.use",
+			Vector3.ZERO,
+			1.0
+		)),
+		"Gameplay-significant sound cannot queue before the world session is PLAYING"
+	)
+	assert_true.call(
 		bool(session.call("begin_play")),
 		"3.2 semantic-event fixture enters PLAYING before normal emission"
 	)
@@ -302,6 +312,74 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		recovery_log == ["recovered"]
 		and str(session.call("get_last_semantic_event_error")).is_empty(),
 		"A later valid semantic pass reaches a stable boundary after the guarded failure is cleared"
+	)
+
+	var gameplay_sound_events: Array[Dictionary] = []
+	var gameplay_sound_handler: Callable = func(event: Dictionary) -> bool:
+		gameplay_sound_events.append(event)
+		return true
+	assert_true.call(
+		bool(session.call(
+			"register_semantic_event_handler",
+			WorldSession.GAMEPLAY_SOUND_EVENT_NAME,
+			gameplay_sound_handler
+		)),
+		"3.3 gameplay sound uses the existing world-session semantic event route"
+	)
+	assert_true.call(
+		not bool(session.call(
+			"queue_gameplay_sound", source_session_id + 1, &"door.use", Vector3.ZERO, 1.0
+		))
+		and not bool(session.call(
+			"queue_gameplay_sound", source_session_id, &"", Vector3.ZERO, 1.0
+		))
+		and not bool(session.call(
+			"queue_gameplay_sound", source_session_id, &"door.use", Vector3.ZERO, 0.0
+		))
+		and not bool(session.call(
+			"queue_semantic_gameplay_event",
+			source_session_id,
+			WorldSession.GAMEPLAY_SOUND_EVENT_NAME,
+			{
+				"kind": &"door.use",
+				"origin": Vector3.ZERO,
+				"strength": 1.0,
+				"volume_db": -6.0,
+			}
+		)),
+		"Gameplay-sound validation rejects stale, empty, nonpositive, and presentation-audio-shaped facts"
+	)
+	var sound_origin := Vector3(2.0, 1.5, -3.0)
+	var sound_serial_before: int = int(session.call("get_stable_gameplay_boundary_serial"))
+	assert_true.call(
+		bool(session.call(
+			"queue_gameplay_sound",
+			source_session_id,
+			&"door.use",
+			sound_origin,
+			0.75
+		))
+		and gameplay_sound_events.is_empty()
+		and int(session.call("get_pending_semantic_event_count")) == 1
+		and int(session.call("get_stable_gameplay_boundary_serial")) == sound_serial_before,
+		"Gameplay sound queues semantic hearing work without immediate dispatch or presentation playback ownership"
+	)
+	await _settle_physics(tree)
+	var sound_payload: Dictionary = {}
+	if gameplay_sound_events.size() == 1:
+		sound_payload = gameplay_sound_events[0].get("payload", {})
+	assert_true.call(
+		gameplay_sound_events.size() == 1
+		and sound_payload.size() == 3
+		and sound_payload.get("kind", &"") == &"door.use"
+		and sound_payload.get("origin", Vector3.ZERO) == sound_origin
+		and is_equal_approx(float(sound_payload.get("strength", 0.0)), 0.75)
+		and not sound_payload.has("audio_stream")
+		and not sound_payload.has("volume_db")
+		and not sound_payload.has("bus")
+		and not sound_payload.has("pitch_scale")
+		and int(session.call("get_stable_gameplay_boundary_serial")) == sound_serial_before + 1,
+		"Gameplay sound arrives as only kind/origin/relative-strength semantic data at the controlled consequence boundary"
 	)
 
 	session.call("teardown")

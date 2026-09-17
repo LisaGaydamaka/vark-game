@@ -11,6 +11,7 @@ const WorldEntityRegistry = preload(
 const SEMANTIC_EVENT_CASCADE_LIMIT: int = 256
 const SEMANTIC_EVENT_TRACE_LIMIT: int = 24
 const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000
+const GAMEPLAY_SOUND_EVENT_NAME: StringName = &"gameplay.sound"
 
 
 enum State {
@@ -128,6 +129,11 @@ func queue_semantic_gameplay_event(
 		return false
 	if event_name.is_empty():
 		return false
+	if (
+		event_name == GAMEPLAY_SOUND_EVENT_NAME
+		and not _is_valid_gameplay_sound_payload(payload)
+	):
+		return false
 	if not _is_detached_semantic_value(payload):
 		return false
 
@@ -139,6 +145,25 @@ func queue_semantic_gameplay_event(
 	})
 	_next_semantic_event_sequence += 1
 	return true
+
+
+func queue_gameplay_sound(
+	source_session_id: int,
+	sound_kind: StringName,
+	origin: Vector3,
+	strength: float
+) -> bool:
+	# Gameplay sound is semantic hearing input, not presentation audio. Keep
+	# streams, buses, volume/pitch, and AudioStreamPlayer ownership elsewhere.
+	return queue_semantic_gameplay_event(
+		source_session_id,
+		GAMEPLAY_SOUND_EVENT_NAME,
+		{
+			"kind": sound_kind,
+			"origin": origin,
+			"strength": strength,
+		}
+	)
 
 
 func build(
@@ -404,6 +429,31 @@ func _is_detached_semantic_value(value: Variant, depth: int = 0) -> bool:
 					return false
 
 	return true
+
+
+func _is_valid_gameplay_sound_payload(payload: Dictionary) -> bool:
+	# This is intentionally a tiny source fact, not an acoustic result. 3.6
+	# remains free to choose attenuation, portals/zones, and hearing semantics.
+	if payload.size() != 3:
+		return false
+	if (
+		not payload.has("kind")
+		or not payload.has("origin")
+		or not payload.has("strength")
+	):
+		return false
+	if typeof(payload["kind"]) != TYPE_STRING_NAME:
+		return false
+	var sound_kind: StringName = payload["kind"]
+	if sound_kind.is_empty():
+		return false
+	if typeof(payload["origin"]) != TYPE_VECTOR3:
+		return false
+	var strength_value: Variant = payload["strength"]
+	if typeof(strength_value) != TYPE_FLOAT and typeof(strength_value) != TYPE_INT:
+		return false
+	var strength: float = float(strength_value)
+	return is_finite(strength) and strength > 0.0
 
 
 func _registry_unavailable_result() -> Dictionary:

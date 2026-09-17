@@ -80,6 +80,7 @@ The project currently contains:
 - an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, fail-closed identity validation, a current-session-owned persistent/content-ID registry, and the first Vark point-entity foundation for player start, semantic marker, and exit
 - a minimal player-owned interaction selector with application-owned primary-interaction intent, center-view range/occlusion/state eligibility, central ordinary-interaction availability, and Thief-style fullbright/no-received-shadow target-selection feedback that preserves ordinary cast shadows
 - a minimal `WorldSession`-owned semantic gameplay-event route with FIFO consequence draining, nested append semantics, lifecycle/session rejection, detached payloads, cascade diagnostics, and an explicit stable gameplay-boundary serial
+- a minimal semantic `gameplay.sound` source fact carrying kind, world origin, and relative positive source strength independently of presentation audio
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -825,9 +826,19 @@ The implementation is deliberately session-local rather than a new manager layer
 
 **Manual:** none — accepted from deterministic automated coverage because 3.2 establishes internal timing/ownership semantics and intentionally adds no new player-facing behavior.
 
-## 3.3 Minimal semantic gameplay-sound event `[ ]`
+## 3.3 Minimal semantic gameplay-sound event `[~]`
 
 Separate gameplay-significant sound from presentation audio before acoustic propagation is prototyped.
+
+The first contract is one reserved world-session semantic fact, `gameplay.sound`. Its payload contains exactly `kind: StringName`, `origin: Vector3`, and a finite positive `strength`. `strength` is only a relative source-strength input for later acoustics; it does **not** define a radius, decibel model, attenuation curve, portal/zone model, or final hearing threshold. Presentation details such as `AudioStream`, audio bus, volume dB, pitch, and `AudioStreamPlayer` ownership are deliberately absent. A gameplay sound can therefore exist and be tested headlessly even when no presentation sound is played, and presentation audio cannot become stealth truth merely by being loud.
+
+`WorldSession.queue_gameplay_sound()` validates and queues this fact through the accepted 3.2 FIFO/stable-boundary route. The reserved event name is validated even when a caller uses the generic semantic-event entry point, so ad-hoc presentation-shaped payloads cannot bypass the sound contract. This step does not propagate sound, decide who hears it, play audio, define a sound taxonomy framework, or add footsteps/door/prop/speech emitters; those real consumers arrive in their scheduled micro-proofs.
+
+**Done when:** the current `PLAYING` world session can queue a gameplay-significant sound as only semantic kind/origin/relative-strength data; stale/foreign or non-`PLAYING` session work is rejected through the existing event boundary; empty kinds, nonpositive/non-finite strength, and presentation-audio-shaped payloads are rejected; valid sounds dispatch only at the controlled semantic consequence point and advance the stable boundary normally; no presentation audio is required or created; and no acoustic propagation, hearing reaction, radius/attenuation model, general sound taxonomy, or concrete door/prop/footstep/speech emitter is pulled forward.
+
+**Automated:** deterministic 3.3 coverage is wired into the existing focused application semantic-event regression and therefore the authoritative all-tests barrier. It checks READY rejection, stale-session rejection, empty/nonpositive semantic validation, rejection of a reserved `gameplay.sound` payload carrying presentation `volume_db`, queue-without-immediate-dispatch behavior, exact detached semantic payload shape, and stable-boundary delivery through the accepted 3.2 route. Acceptance remains `[~]` until exact-head CI is terminal green.
+
+**Manual:** none — 3.3 establishes an internal semantic separation and intentionally plays no audible sound or other player-facing presentation.
 
 ## 3.4 Ordinary door micro-proof `[ ]`
 
