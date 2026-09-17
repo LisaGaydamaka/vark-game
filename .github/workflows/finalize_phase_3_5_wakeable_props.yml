@@ -28,17 +28,21 @@ jobs:
           git fetch origin test
           test "$(git rev-parse origin/test)" = "$GITHUB_SHA"
 
-      - name: Apply wakeable prop correction
+      - name: Apply explicit prop physics correction
         shell: bash
         run: |
           set -euo pipefail
           python tools/phase35_wakeable_props_fix_tmp.py
-          python -m py_compile tools/phase35_wakeable_props_tmp.py
+          python -m py_compile \
+            tools/phase35_wakeable_props_tmp.py \
+            tools/phase35_explicit_prop_physics_tmp.py
           python tools/phase35_wakeable_props_tmp.py
+          python tools/phase35_explicit_prop_physics_tmp.py
           rm -f \
             .github/workflows/finalize_phase_3_5_wakeable_props.yml \
             tools/phase35_wakeable_props_tmp.py \
-            tools/phase35_wakeable_props_fix_tmp.py
+            tools/phase35_wakeable_props_fix_tmp.py \
+            tools/phase35_explicit_prop_physics_tmp.py
           find tools -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
 
@@ -52,9 +56,9 @@ jobs:
               ".github/workflows/finalize_phase_3_5_wakeable_props.yml",
               "tools/phase35_wakeable_props_tmp.py",
               "tools/phase35_wakeable_props_fix_tmp.py",
+              "tools/phase35_explicit_prop_physics_tmp.py",
               "gameplay/props/ordinary_prop.gd",
-              "gameplay/props/OrdinaryProp.tscn",
-              "player/locomotion/player_locomotion_controller.gd",
+              "player/locomotion/player_contact_motion_solver.gd",
               "scenes/PropLab.tscn",
               "tests/props/prop_regressions.gd",
               "tests/props/phase_3_5_transition_regressions.gd",
@@ -76,7 +80,7 @@ jobs:
                   "bounded tree mismatch\nexpected=" + repr(sorted(expected)) +
                   "\nactual=" + repr(sorted(changed))
               )
-          print("BOUNDED WAKEABLE PROP TREE PASSED")
+          print("BOUNDED EXPLICIT PROP PHYSICS TREE PASSED")
           PY
 
       - name: Setup Godot 4.7.2
@@ -107,9 +111,9 @@ jobs:
             .github/workflows/finalize_phase_3_5_wakeable_props.yml \
             tools/phase35_wakeable_props_tmp.py \
             tools/phase35_wakeable_props_fix_tmp.py \
+            tools/phase35_explicit_prop_physics_tmp.py \
             gameplay/props/ordinary_prop.gd \
-            gameplay/props/OrdinaryProp.tscn \
-            player/locomotion/player_locomotion_controller.gd \
+            player/locomotion/player_contact_motion_solver.gd \
             scenes/PropLab.tscn \
             tests/props/prop_regressions.gd \
             tests/props/phase_3_5_transition_regressions.gd \
@@ -117,5 +121,5 @@ jobs:
             docs/DEVELOPMENT_PLAN.md \
             docs/TESTING.md
           git diff --cached --check
-          git commit -m "Make settled props wakeable and smooth settling"
+          git commit -m "Add explicit prop physics and smooth settling"
           git push origin HEAD:test
