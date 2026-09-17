@@ -1,4 +1,4 @@
-name: Diagnose Phase 3.5 world-safe overlap handoff
+name: Finalize Phase 3.5 overlap handoff
 
 on:
   push:
@@ -6,13 +6,13 @@ on:
       - test
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-phase-3-5-world-safe-overlap:
-    if: github.event.head_commit.message == 'Run Phase 3.5 world-safe overlap diagnostic'
+  finalize-phase-3-5-overlap-handoff:
+    if: github.event.head_commit.message == 'Finalize Phase 3.5 overlap handoff'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Checkout authoritative test head
         uses: actions/checkout@v5
@@ -20,9 +20,18 @@ jobs:
           ref: test
           fetch-depth: 0
 
-      - name: Apply staged candidate
+      - name: Verify authoritative trigger head
         shell: bash
         run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          git fetch origin test
+          test "$(git rev-parse origin/test)" = "$GITHUB_SHA"
+
+      - name: Apply verified Phase 3.5 candidate and remove helpers
+        shell: bash
+        run: |
+          set -euo pipefail
           python - <<'PY'
           from pathlib import Path
           path = Path('tools/phase35_transition_fix_tmp.py')
@@ -40,7 +49,92 @@ jobs:
           python tools/phase35_transition_fix_tmp.py
           python tools/phase35_final_adjust_tmp.py
           python tools/phase35_escape_sweep_tmp.py
+
+          rm -f \
+            .github/workflows/finalize_phase_3_5_transition_clean.yml \
+            .github/workflows/finalize_phase_3_5_transition_fix2.yml \
+            .github/workflows/finalize_phase_3_5_transition_fix3.yml \
+            .github/workflows/finalize_phase_3_5_transition_fix4.yml \
+            .github/workflows/finalize_phase_3_5_transition_ownership.yml \
+            .github/workflows/finalize_phase_3_5_transition_publish.yml \
+            .github/workflows/finalize_phase_3_5_transition_retry.yml \
+            .github/workflows/inspect_phase_3_5_transition_patch.yml \
+            tools/phase35_transition_fix_tmp.py \
+            tools/phase35_final_adjust_tmp.py \
+            tools/phase35_first_tick_diag_tmp.py \
+            tools/phase35_escape_sweep_tmp.py
+          find . -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
+
+      - name: Verify bounded final tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          production = {
+              'docs/DEVELOPMENT_PLAN.md',
+              'docs/GAME_VISION.md',
+              'docs/TESTING.md',
+              'gameplay/props/ordinary_prop.gd',
+              'player/interaction/player_prop_carry.gd',
+              'player/locomotion/player_support.gd',
+              'player/player.gd',
+              'player/traversal/player_ledge_controller.gd',
+              'player/traversal/player_ledge_detector.gd',
+              'tests/props/phase_3_5_transition_regressions.gd',
+              'tests/props/run_prop_tests.gd',
+          }
+          helpers = {
+              '.github/workflows/finalize_phase_3_5_transition_clean.yml',
+              '.github/workflows/finalize_phase_3_5_transition_fix2.yml',
+              '.github/workflows/finalize_phase_3_5_transition_fix3.yml',
+              '.github/workflows/finalize_phase_3_5_transition_fix4.yml',
+              '.github/workflows/finalize_phase_3_5_transition_ownership.yml',
+              '.github/workflows/finalize_phase_3_5_transition_publish.yml',
+              '.github/workflows/finalize_phase_3_5_transition_retry.yml',
+              '.github/workflows/inspect_phase_3_5_transition_patch.yml',
+              'tools/phase35_transition_fix_tmp.py',
+              'tools/phase35_final_adjust_tmp.py',
+              'tools/phase35_first_tick_diag_tmp.py',
+              'tools/phase35_escape_sweep_tmp.py',
+          }
+          raw = subprocess.check_output(
+              ['git', 'status', '--porcelain=v1', '-uall'], text=True
+          )
+          changed = set()
+          for line in raw.splitlines():
+              if not line:
+                  continue
+              path = line[3:]
+              if ' -> ' in path:
+                  path = path.split(' -> ', 1)[1]
+              changed.add(path)
+          unexpected = changed - production - helpers
+          if unexpected:
+              raise SystemExit('unexpected final-tree changes: ' + ', '.join(sorted(unexpected)))
+          missing = production - changed
+          if missing:
+              raise SystemExit('missing required production changes: ' + ', '.join(sorted(missing)))
+          missing_helper_deletions = helpers - changed
+          if missing_helper_deletions:
+              raise SystemExit('missing helper deletions: ' + ', '.join(sorted(missing_helper_deletions)))
+
+          remaining_workflows = sorted(
+              str(p) for p in Path('.github/workflows').glob('*phase_3_5_transition*.yml')
+          )
+          if remaining_workflows:
+              raise SystemExit('temporary Phase 3.5 workflows remain: ' + ', '.join(remaining_workflows))
+          remaining_tools = sorted(str(p) for p in Path('tools').glob('phase35*tmp.py'))
+          if remaining_tools:
+              raise SystemExit('temporary Phase 3.5 scripts remain: ' + ', '.join(remaining_tools))
+          if not Path('.github/workflows/test.yml').is_file():
+              raise SystemExit('authoritative test workflow missing')
+          print('BOUNDED FINAL TREE PASSED')
+          print('\n'.join(sorted(changed)))
+          PY
 
       - name: Setup Godot 4.7.2
         uses: chickensoft-games/setup-godot@v2
@@ -54,3 +148,19 @@ jobs:
 
       - name: Run focused Props suite
         run: timeout 150s godot --headless --path . --script res://tests/props/run_prop_tests.gd
+
+      - name: Run authoritative full barrier
+        run: timeout 240s godot --headless --path . --script res://tests/run_all_tests.gd
+
+      - name: Commit and push verified production tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin test
+          test "$(git rev-parse origin/test)" = "$GITHUB_SHA"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix Phase 3.5 release overlap handoff"
+          git push origin HEAD:test
