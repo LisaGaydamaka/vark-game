@@ -1,4 +1,4 @@
-name: Finalize Phase 3.5 production correction
+name: Diagnose Phase 3.5 player exception release
 
 on:
   push:
@@ -9,10 +9,10 @@ permissions:
   contents: write
 
 jobs:
-  finalize-phase-3-5-production:
-    if: github.event.head_commit.message == 'Finalize Phase 3.5 production correction after pycache cleanup'
+  diagnose-phase-3-5-player-exception:
+    if: github.event.head_commit.message == 'Diagnose Phase 3.5 player exception release'
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout authoritative test head
         uses: actions/checkout@v5
@@ -20,7 +20,7 @@ jobs:
           ref: test
           fetch-depth: 0
 
-      - name: Apply readable diagnostics-backed candidate
+      - name: Apply candidate and diagnostic probe
         shell: bash
         run: |
           python - <<'PY'
@@ -38,70 +38,35 @@ jobs:
           python -m py_compile tools/phase35_final_adjust_tmp.py
           python tools/phase35_transition_fix_tmp.py
           python tools/phase35_final_adjust_tmp.py
-          git diff --check
-
-      - name: Remove every temporary Phase 3.5 helper
-        shell: bash
-        run: |
-          rm -f tools/phase35_transition_fix_tmp.py
-          rm -f tools/phase35_final_adjust_tmp.py
-          rm -rf tools/__pycache__
-          rm -f .github/workflows/finalize_phase_3_5_transition_ownership.yml
-          rm -f .github/workflows/finalize_phase_3_5_transition_retry.yml
-          rm -f .github/workflows/inspect_phase_3_5_transition_patch.yml
-          rm -f .github/workflows/finalize_phase_3_5_transition_clean.yml
-          rm -f .github/workflows/finalize_phase_3_5_transition_fix2.yml
-          rm -f .github/workflows/finalize_phase_3_5_transition_fix3.yml
-          rm -f .github/workflows/finalize_phase_3_5_transition_fix4.yml
-          rm -f .github/workflows/finalize_phase_3_5_transition_publish.yml
-          git diff --check
-
-      - name: Verify bounded final tree
-        shell: bash
-        run: |
           python - <<'PY'
-          import subprocess
-          baseline = 'b6c1a71cbaca74b730fd74be3a5f4c98f3fbf142'
-          allowed = {
-              'docs/DEVELOPMENT_PLAN.md',
-              'docs/GAME_VISION.md',
-              'docs/TESTING.md',
-              'gameplay/props/ordinary_prop.gd',
-              'player/interaction/player_prop_carry.gd',
-              'player/locomotion/player_support.gd',
-              'player/player.gd',
-              'player/traversal/player_ledge_controller.gd',
-              'player/traversal/player_ledge_detector.gd',
-              'tests/props/phase_3_5_transition_regressions.gd',
-              'tests/props/run_prop_tests.gd',
-          }
-          tracked = set(subprocess.check_output(
-              ['git', 'diff', '--name-only', baseline], text=True
-          ).splitlines())
-          untracked = set(subprocess.check_output(
-              ['git', 'ls-files', '--others', '--exclude-standard'], text=True
-          ).splitlines())
-          changed = tracked | untracked
-          unexpected = changed - allowed
-          if unexpected:
-              raise SystemExit(f'Unexpected final Phase 3.5 files: {sorted(unexpected)}')
-          required = {
-              'gameplay/props/ordinary_prop.gd',
-              'player/interaction/player_prop_carry.gd',
-              'player/locomotion/player_support.gd',
-              'player/player.gd',
-              'player/traversal/player_ledge_controller.gd',
-              'player/traversal/player_ledge_detector.gd',
-              'tests/props/phase_3_5_transition_regressions.gd',
-              'tests/props/run_prop_tests.gd',
-          }
-          missing = required - changed
-          if missing:
-              raise SystemExit(f'Missing final Phase 3.5 files: {sorted(missing)}')
-          print('Final bounded Phase 3.5 files:')
-          for item in sorted(changed):
-              print(' -', item)
+          from pathlib import Path
+          path = Path('tests/props/phase_3_5_transition_regressions.gd')
+          text = path.read_text(encoding='utf-8')
+          old = '''func _wait_for_player_exception_clear(tree: SceneTree, prop: RigidBody3D, player: CharacterBody3D, max_frames: int) -> bool:
+\tfor _frame_index: int in max_frames:
+\t\tif not bool(prop.call("has_temporary_player_collision_exception")) and not (player in prop.get_collision_exceptions()):
+\t\t\treturn true
+\t\tawait tree.physics_frame
+\t\tawait tree.process_frame
+\treturn false
+'''
+          new = '''func _wait_for_player_exception_clear(tree: SceneTree, prop: RigidBody3D, player: CharacterBody3D, max_frames: int) -> bool:
+\tfor frame_index: int in max_frames:
+\t\tvar overlap_now: bool = bool(prop.call("_shape_overlaps_body_at_transform", prop.global_transform, player))
+\t\tif frame_index == 0 or frame_index % 5 == 0 or frame_index == max_frames - 1:
+\t\t\tprint("PHASE35 EXCEPTION DIAG frame=", frame_index, " prop=", prop.global_position, " player=", player.global_position, " distance=", prop.global_position.distance_to(player.global_position), " velocity=", prop.linear_velocity, " overlap_query=", overlap_now, " temp_exception=", bool(prop.call("has_temporary_player_collision_exception")), " prop_has_player=", player in prop.get_collision_exceptions(), " player_has_prop=", prop in player.get_collision_exceptions())
+\t\tif not bool(prop.call("has_temporary_player_collision_exception")) and not (player in prop.get_collision_exceptions()) and not (prop in player.get_collision_exceptions()):
+\t\t\treturn true
+\t\tawait tree.physics_frame
+\t\tawait tree.process_frame
+\treturn false
+'''
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'diagnostic wait marker count={count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
+          git diff --check
 
       - name: Setup Godot 4.7.2
         uses: chickensoft-games/setup-godot@v2
@@ -113,18 +78,11 @@ jobs:
       - name: Import project
         run: timeout 120s godot --headless --path . --import
 
-      - name: Run focused Props regressions
-        run: timeout 150s godot --headless --path . --script res://tests/props/run_prop_tests.gd
-
-      - name: Run authoritative regression barrier
-        run: timeout 240s godot --headless --path . --script res://tests/run_all_tests.gd
-
-      - name: Commit and push final Phase 3.5 production correction
+      - name: Run focused Props diagnostic
         shell: bash
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m 'Fix Phase 3.5 prop transition ownership'
-          git push origin HEAD:test
+          set +e
+          timeout 150s godot --headless --path . --script res://tests/props/run_prop_tests.gd
+          status=$?
+          echo "Focused diagnostic exit status: $status"
+          exit 1
