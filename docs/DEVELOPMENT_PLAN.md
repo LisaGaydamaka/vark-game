@@ -826,7 +826,7 @@ The implementation is deliberately session-local rather than a new manager layer
 
 **Manual:** none — accepted from deterministic automated coverage because 3.2 establishes internal timing/ownership semantics and intentionally adds no new player-facing behavior.
 
-## 3.3 Minimal semantic gameplay-sound event `[~]`
+## 3.3 Minimal semantic gameplay-sound event `[x]`
 
 Separate gameplay-significant sound from presentation audio before acoustic propagation is prototyped.
 
@@ -836,7 +836,7 @@ The first contract is one reserved world-session semantic fact, `gameplay.sound`
 
 **Done when:** the current `PLAYING` world session can queue a gameplay-significant sound as only semantic kind/origin/relative-strength data; stale/foreign or non-`PLAYING` session work is rejected through the existing event boundary; empty kinds, nonpositive/non-finite strength, and presentation-audio-shaped payloads are rejected; valid sounds dispatch only at the controlled semantic consequence point and advance the stable boundary normally; no presentation audio is required or created; and no acoustic propagation, hearing reaction, radius/attenuation model, general sound taxonomy, or concrete door/prop/footstep/speech emitter is pulled forward.
 
-**Automated:** deterministic 3.3 coverage is wired into the existing focused application semantic-event regression and therefore the authoritative all-tests barrier. It checks READY rejection, stale-session rejection, empty/nonpositive semantic validation, rejection of a reserved `gameplay.sound` payload carrying presentation `volume_db`, queue-without-immediate-dispatch behavior, exact detached semantic payload shape, and stable-boundary delivery through the accepted 3.2 route. Acceptance remains `[~]` until exact-head CI is terminal green.
+**Automated:** passed — deterministic 3.3 coverage is wired into the existing focused application semantic-event regression and authoritative all-tests barrier. It checks READY rejection, stale-session rejection, empty/nonpositive semantic validation, rejection of a reserved `gameplay.sound` payload carrying presentation `volume_db`, queue-without-immediate-dispatch behavior, exact detached semantic payload shape, and stable-boundary delivery through the accepted 3.2 route. Exact implementation verification head `35297d21e864d08c1e8192ceee666cc6d63c3361` passed Godot 4.7.2 `Regression suite` run #76 with the 3.3 cases plus `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
 
 **Manual:** none — 3.3 establishes an internal semantic separation and intentionally plays no audible sound or other player-facing presentation.
 
