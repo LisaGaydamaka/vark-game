@@ -526,6 +526,8 @@ Large carried objects are presented in a first-person held position on the same 
 
 The player cannot freely rotate a held ordinary world object.
 
+The default ordinary-prop control reuses the primary **F** interaction: **F** picks up a targeted ordinary prop when the player is empty-handed, and **F** throws the held prop while carrying it. There is no separate default throw key for ordinary props.
+
 The player cannot use ordinary world interactions while carrying a physical object.
 
 Physical props can be used as:

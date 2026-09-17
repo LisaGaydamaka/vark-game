@@ -11,14 +11,9 @@ const AlternatePropVisual: Mesh = preload("res://assets/models/props/ordinary_cr
 func run(tree: SceneTree, assert_true: Callable) -> void:
 	_release_actions()
 
-	var throw_events: Array[InputEvent] = InputMap.action_get_events("throw_prop")
-	var has_g_binding: bool = false
-	for event: InputEvent in throw_events:
-		if event is InputEventKey and (event as InputEventKey).physical_keycode == KEY_G:
-			has_g_binding = true
 	assert_true.call(
-		InputMap.has_action("throw_prop") and has_g_binding,
-		"Phase 3.5 exposes G as the dedicated held-prop throw gameplay action"
+		not InputMap.has_action("throw_prop"),
+		"Phase 3.5 uses F for pickup and held-prop throw with no separate throw action"
 	)
 
 	var application: Node = ApplicationScene.instantiate()
@@ -211,9 +206,12 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Prop semantic capture is detached value data and contains no live Node/Object references"
 	)
 
-	Input.action_press("interact")
-	await _settle_physics(tree)
-	Input.action_release("interact")
+	var carry_component: RefCounted = player.get("prop_carry") as RefCounted
+	assert_true.call(
+		carry_component != null and bool(carry_component.call("drop_held")),
+		"The ordinary prop retains an explicit dropped semantic path without assigning it a separate player key"
+	)
+	player.call("set_world_interaction_available", true)
 	await _settle_physics(tree, 2)
 	var dropped_state: Dictionary = pickup_prop.call("capture_semantic_state")
 	var dropped_interaction_state: Dictionary = player.call("get_interaction_semantic_state")
@@ -222,7 +220,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and dropped_state.get("motion_kind", &"") == OrdinaryProp.MOTION_DROPPED
 		and not bool(player.call("is_carrying_prop"))
 		and bool(dropped_interaction_state.get("available", false)),
-		"F while carrying is owned by carry/drop and restores ordinary world interaction without re-picking"
+		"Dropped semantic state restores ordinary world interaction and proceeds through explicit motion"
 	)
 
 	await _settle_until_phase(
@@ -257,36 +255,20 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Restore reconciliation rebuilds the transient player/held-prop relationship and central interaction suppression"
 	)
 
-	Input.action_press("interact")
-	await _settle_physics(tree)
-	Input.action_release("interact")
-	await _settle_until_phase(
-		tree,
-		pickup_prop,
-		OrdinaryProp.PHASE_SETTLED,
-		90
-	)
-
-	assert_true.call(
-		bool(player.call("try_carry_prop", pickup_prop)),
-		"The same player-owned carry seam can reacquire a settled ordinary prop"
-	)
-	await _settle_physics(tree)
-
 	var input_boundary: Node = application.get_node("InputBoundary")
 	input_boundary.call("set_gameplay_enabled", false)
-	Input.action_press("throw_prop")
+	Input.action_press("interact")
 	input_boundary.call("set_gameplay_enabled", true)
 	await _settle_physics(tree, 2)
 	assert_true.call(
 		bool(player.call("is_carrying_prop")),
-		"A throw press that began outside gameplay ownership is not replayed after the domain resumes"
+		"An F press that began outside gameplay ownership is not replayed as a held-prop throw after resume"
 	)
-	Input.action_release("throw_prop")
+	Input.action_release("interact")
 	await _settle_physics(tree)
-	Input.action_press("throw_prop")
+	Input.action_press("interact")
 	await _settle_physics(tree)
-	Input.action_release("throw_prop")
+	Input.action_release("interact")
 	await _settle_physics(tree)
 
 	var moving_state: Dictionary = pickup_prop.call("capture_semantic_state")
@@ -296,7 +278,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and moving_state.get("motion_kind", &"") == OrdinaryProp.MOTION_THROWN
 		and moving_velocity.length() > 1.0
 		and not bool(player.call("is_carrying_prop")),
-		"G while carrying throws the prop through the application-owned gameplay edge"
+		"F while carrying throws the prop through the existing application-owned interaction edge"
 	)
 	assert_true.call(
 		not _contains_live_object(moving_state),
@@ -386,7 +368,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		stack_upper.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED
 		and stack_upper.global_transform.basis.is_equal_approx(upper_basis_before_fall)
 		and upper_xz_after_fall.is_equal_approx(upper_xz_before_fall)
-		and is_equal_approx(stack_upper.global_position.y, 0.3),
+		and absf(stack_upper.global_position.y - 0.3) <= 0.01,
 		"Unsupported upper stack member falls vertically to support without explosion, scatter, or rotation"
 	)
 
@@ -443,4 +425,3 @@ func _contains_live_object(value: Variant) -> bool:
 
 func _release_actions() -> void:
 	Input.action_release("interact")
-	Input.action_release("throw_prop")

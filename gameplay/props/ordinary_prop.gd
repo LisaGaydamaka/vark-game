@@ -23,7 +23,7 @@ const IMPACT_SOUND_KIND: StringName = &"prop.impact"
 @export var throw_speed: float = 6.0
 @export var impact_sound_strength: float = 0.55
 @export var support_probe_distance: float = 0.14
-@export var support_probe_inset: float = 0.9
+@export var support_probe_inset: float = 1.0
 @export var minimum_support_normal_y: float = 0.55
 
 @onready var prop_mesh: MeshInstance3D = $PropMesh
@@ -36,6 +36,7 @@ var _material: StandardMaterial3D = null
 var _world_session: Node = null
 var _holder: Node = null
 var _settling_frames_remaining: int = 0
+var _unsupported_frames: int = 0
 var _ordinary_collision_layer: int = 1
 var _ordinary_collision_mask: int = 1
 
@@ -56,17 +57,21 @@ func _physics_process(delta: float) -> void:
 	match _phase:
 		PHASE_SETTLED:
 			velocity = Vector3.ZERO
-			if not _has_support():
-				_begin_motion(MOTION_UNSUPPORTED, Vector3.ZERO)
+			if _has_support():
+				_unsupported_frames = 0
+			else:
+				_unsupported_frames += 1
+				if _unsupported_frames >= 2:
+					_begin_motion(MOTION_UNSUPPORTED, Vector3.ZERO)
 		PHASE_HELD:
 			velocity = Vector3.ZERO
+			_unsupported_frames = 0
 		PHASE_MOVING:
+			_unsupported_frames = 0
 			_advance_motion(delta)
 		PHASE_SETTLING:
 			velocity = Vector3.ZERO
-			if not _has_support():
-				_begin_motion(MOTION_UNSUPPORTED, Vector3.ZERO)
-				return
+			_unsupported_frames = 0
 			_settling_frames_remaining -= 1
 			if _settling_frames_remaining <= 0:
 				_phase = PHASE_SETTLED
@@ -131,6 +136,7 @@ func begin_held(holder: Node) -> bool:
 	_phase = PHASE_HELD
 	_motion_kind = MOTION_NONE
 	_settling_frames_remaining = 0
+	_unsupported_frames = 0
 	velocity = Vector3.ZERO
 	set_interaction_highlighted(false)
 	_set_collision_enabled(false)
@@ -214,6 +220,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	velocity = restored_velocity
 	_holder = null
 	_settling_frames_remaining = 1 if phase == PHASE_SETTLING else 0
+	_unsupported_frames = 0
 	_set_collision_enabled(phase != PHASE_HELD)
 	set_interaction_highlighted(false)
 	return true
@@ -234,6 +241,7 @@ func _begin_motion(motion_kind: StringName, initial_velocity: Vector3) -> void:
 	_phase = PHASE_MOVING
 	_motion_kind = motion_kind
 	_settling_frames_remaining = 0
+	_unsupported_frames = 0
 	velocity = initial_velocity
 
 
@@ -252,13 +260,11 @@ func _advance_motion(delta: float) -> void:
 		velocity.x *= 0.35
 		velocity.z *= 0.35
 
-	if velocity.y <= 0.0 and _has_support():
-		_enter_settling()
-
 
 func _enter_settling() -> void:
 	_phase = PHASE_SETTLING
 	_settling_frames_remaining = 1
+	_unsupported_frames = 0
 	velocity = Vector3.ZERO
 
 

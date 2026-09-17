@@ -58,15 +58,10 @@ func _physics_process(delta: float) -> void:
 		command = player_input.sample()
 
 	var interact_pressed: bool = false
-	var throw_prop_pressed: bool = false
 	if gameplay_input_boundary != null and is_instance_valid(gameplay_input_boundary):
 		interact_pressed = bool(gameplay_input_boundary.call("sample_interaction_pressed"))
-		throw_prop_pressed = bool(
-			gameplay_input_boundary.call("sample_prop_throw_pressed")
-		)
 	else:
 		interact_pressed = Input.is_action_just_pressed("interact")
-		throw_prop_pressed = Input.is_action_just_pressed("throw_prop")
 
 	player_input.current_command = command
 	velocity_state.apply_to_body(self)
@@ -86,15 +81,12 @@ func _physics_process(delta: float) -> void:
 
 	if prop_carry != null and prop_carry.has_held_prop():
 		prop_carry.update_held_pose()
-		if throw_prop_pressed:
+		if interact_pressed:
 			prop_carry.throw_held()
 			_refresh_world_interaction_availability()
-		elif interact_pressed:
-			prop_carry.drop_held()
-			_refresh_world_interaction_availability()
 		if player_interaction != null:
-			# A release input belongs to carry ownership; it must not immediately
-			# re-trigger the world object that was just released.
+			# The F edge belongs to carry ownership while a prop is held; it must
+			# not immediately re-trigger the world object that was just thrown.
 			player_interaction.update(false)
 	elif player_interaction != null:
 		player_interaction.update(interact_pressed)
