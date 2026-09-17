@@ -1,0 +1,1126 @@
+name: Fix Phase 3.5 prop physics
+
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: write
+
+jobs:
+  fix-phase-3-5-prop-physics:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout authoritative test head
+        uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Apply prop rendering and rigid-body correction
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)
+
+          write('gameplay/props/ordinary_prop.gd', '''class_name VarkOrdinaryProp
+          extends RigidBody3D
+
+
+          const PHASE_SETTLED: StringName = &"settled"
+          const PHASE_CARRIED_JUNK: StringName = &"carried_junk"
+          const PHASE_MOVING: StringName = &"moving"
+          const PHASE_SETTLING: StringName = &"settling"
+
+          const MOTION_NONE: StringName = &"none"
+          const MOTION_RELEASED: StringName = &"released"
+          const MOTION_THROWN: StringName = &"thrown"
+          const MOTION_UNSUPPORTED: StringName = &"unsupported"
+
+          const IMPACT_SOUND_KIND: StringName = &"prop.impact"
+
+
+          @export var prop_id: StringName = &"prop"
+          @export var visual_model: Mesh
+          @export var base_color: Color = Color(0.42, 0.27, 0.12, 1.0)
+          @export var throw_speed: float = 6.0
+          @export var impact_sound_strength: float = 0.55
+          @export var gentle_release_sound_scale: float = 0.35
+          @export var settle_linear_speed: float = 0.12
+          @export var settle_contact_frames_required: int = 5
+          @export var support_probe_distance: float = 0.08
+          @export var support_probe_inset: float = 1.0
+          @export var minimum_support_normal_y: float = 0.55
+
+          @onready var prop_mesh: MeshInstance3D = $PropMesh
+          @onready var prop_collision: CollisionShape3D = $CollisionShape3D
+
+          var _phase: StringName = PHASE_SETTLED
+          var _motion_kind: StringName = MOTION_NONE
+          var _highlighted: bool = false
+          var _material: StandardMaterial3D = null
+          var _world_session: Node = null
+          var _holder: Node = null
+          var _settle_yaw: float = 0.0
+          var _settle_contact_frames: int = 0
+          var _unsupported_frames: int = 0
+          var _last_contact_count: int = 0
+          var _ordinary_collision_layer: int = 1
+          var _ordinary_collision_mask: int = 1
+
+
+          func _ready() -> void:
+          \tadd_to_group(&"vark_interactable")
+          \t_ordinary_collision_layer = collision_layer
+          \t_ordinary_collision_mask = collision_mask
+          \t_settle_yaw = _yaw_from_basis(global_transform.basis)
+          \t_world_session = _find_world_session()
+
+          \t# Ordinary props are frozen while settled, but released/unsupported props
+          \t# use the real rigid-body solver for gravity and translational collision.
+          \tcontact_monitor = true
+          \tif max_contacts_reported < 8:
+          \t\tmax_contacts_reported = 8
+          \tcontinuous_cd = true
+          \tlock_rotation = true
+          \tcan_sleep = true
+          \tfreeze = true
+          \tsleeping = true
+          \tlinear_velocity = Vector3.ZERO
+          \tangular_velocity = Vector3.ZERO
+
+          \t_material = StandardMaterial3D.new()
+          \t_material.cull_mode = BaseMaterial3D.CULL_BACK
+          \t_material.roughness = 0.82
+          \t_material.metallic = 0.0
+          \tprop_mesh.material_override = _material
+          \tprop_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+          \tif not set_visual_model(visual_model):
+          \t\tpush_error("VarkOrdinaryProp requires a configured visual_model Mesh.")
+          \t_refresh_visual()
+
+
+          func _physics_process(_delta: float) -> void:
+          \tmatch _phase:
+          \t\tPHASE_SETTLED:
+          \t\t\tlinear_velocity = Vector3.ZERO
+          \t\t\tangular_velocity = Vector3.ZERO
+          \t\t\t_last_contact_count = 0
+          \t\t\tif _has_support():
+          \t\t\t\t_unsupported_frames = 0
+          \t\t\telse:
+          \t\t\t\t_unsupported_frames += 1
+          \t\t\t\tif _unsupported_frames >= 2:
+          \t\t\t\t\t_begin_motion(MOTION_UNSUPPORTED, Vector3.ZERO)
+          \t\tPHASE_CARRIED_JUNK:
+          \t\t\tlinear_velocity = Vector3.ZERO
+          \t\t\tangular_velocity = Vector3.ZERO
+          \t\t\t_unsupported_frames = 0
+          \t\t\t_settle_contact_frames = 0
+          \t\t\t_last_contact_count = 0
+          \t\tPHASE_MOVING, PHASE_SETTLING:
+          \t\t\t_unsupported_frames = 0
+          \t\t\tangular_velocity = Vector3.ZERO
+          \t\t\t_update_dynamic_settling()
+
+
+          func can_interact(interactor: Node) -> bool:
+          \treturn _phase != PHASE_CARRIED_JUNK and interactor != null and interactor.has_method("try_carry_prop")
+
+
+          func interact(interactor: Node) -> void:
+          \tif can_interact(interactor):
+          \t\tinteractor.call("try_carry_prop", self)
+
+
+          func set_interaction_highlighted(highlighted: bool) -> void:
+          \t_highlighted = highlighted
+          \t_refresh_visual()
+
+
+          func is_interaction_highlighted() -> bool:
+          \treturn _highlighted
+
+
+          func set_visual_model(model: Mesh) -> bool:
+          \tif model == null:
+          \t\treturn false
+          \tvisual_model = model
+          \tif prop_mesh != null:
+          \t\tprop_mesh.mesh = model
+          \treturn true
+
+
+          func get_visual_model() -> Mesh:
+          \treturn visual_model
+
+
+          func get_semantic_phase() -> StringName:
+          \treturn _phase
+
+
+          func get_motion_kind() -> StringName:
+          \treturn _motion_kind
+
+
+          func is_supported() -> bool:
+          \tif _phase == PHASE_CARRIED_JUNK:
+          \t\treturn false
+          \treturn _has_support()
+
+
+          func is_world_presentation_enabled() -> bool:
+          \treturn prop_mesh != null and prop_mesh.visible and collision_layer != 0 and collision_mask != 0
+
+
+          func get_release_clearance_along(world_direction: Vector3, release_basis: Basis) -> float:
+          \tvar box: BoxShape3D = prop_collision.shape as BoxShape3D if prop_collision != null else null
+          \tif box == null:
+          \t\treturn 0.3
+          \tvar direction: Vector3 = world_direction.normalized()
+          \tif direction.is_zero_approx():
+          \t\treturn box.size.length() * 0.5
+          \tvar local_direction: Vector3 = release_basis.inverse() * direction
+          \tvar half: Vector3 = box.size * 0.5
+          \treturn (
+          \t\tabsf(local_direction.x) * half.x
+          \t\t+ absf(local_direction.y) * half.y
+          \t\t+ absf(local_direction.z) * half.z
+          \t)
+
+
+          func begin_carried_junk(holder: Node) -> bool:
+          \tif holder == null or _phase == PHASE_CARRIED_JUNK:
+          \t\treturn false
+          \t_holder = holder
+          \t_phase = PHASE_CARRIED_JUNK
+          \t_motion_kind = MOTION_NONE
+          \t_settle_contact_frames = 0
+          \t_unsupported_frames = 0
+          \t_last_contact_count = 0
+          \tlinear_velocity = Vector3.ZERO
+          \tangular_velocity = Vector3.ZERO
+          \tfreeze = true
+          \tsleeping = true
+          \tset_interaction_highlighted(false)
+          \t_set_world_presentation_enabled(false)
+          \treturn true
+
+
+          func release_from_carry(
+          \tmotion_kind: StringName,
+          \trelease_transform: Transform3D,
+          \tinitial_velocity: Vector3
+          ) -> bool:
+          \tif _phase != PHASE_CARRIED_JUNK:
+          \t\treturn false
+          \tif motion_kind != MOTION_RELEASED and motion_kind != MOTION_THROWN:
+          \t\treturn false
+          \tif not _is_finite_transform(release_transform) or not _is_finite_vector(initial_velocity):
+          \t\treturn false
+          \t_holder = null
+          \tglobal_transform = release_transform
+          \t_set_world_presentation_enabled(true)
+          \t_begin_motion(motion_kind, initial_velocity)
+          \treturn true
+
+
+          func capture_semantic_state() -> Dictionary:
+          \treturn {
+          \t\t"phase": _phase,
+          \t\t"motion_kind": _motion_kind,
+          \t\t"transform": global_transform,
+          \t\t"linear_velocity": linear_velocity,
+          \t\t"settle_yaw": _settle_yaw,
+          \t}
+
+
+          func apply_semantic_state(snapshot: Dictionary) -> bool:
+          \tif snapshot.size() != 4 and snapshot.size() != 5:
+          \t\treturn false
+          \tif not snapshot.has("phase") or not snapshot.has("motion_kind") or not snapshot.has("transform") or not snapshot.has("linear_velocity"):
+          \t\treturn false
+          \tif typeof(snapshot["phase"]) != TYPE_STRING_NAME or typeof(snapshot["motion_kind"]) != TYPE_STRING_NAME:
+          \t\treturn false
+          \tif typeof(snapshot["transform"]) != TYPE_TRANSFORM3D or typeof(snapshot["linear_velocity"]) != TYPE_VECTOR3:
+          \t\treturn false
+          \tif snapshot.has("settle_yaw") and typeof(snapshot["settle_yaw"]) != TYPE_FLOAT and typeof(snapshot["settle_yaw"]) != TYPE_INT:
+          \t\treturn false
+          \tvar phase: StringName = snapshot["phase"]
+          \tvar motion_kind: StringName = snapshot["motion_kind"]
+          \tvar restored_transform: Transform3D = snapshot["transform"]
+          \tvar restored_velocity: Vector3 = snapshot["linear_velocity"]
+          \tif not _is_valid_phase(phase) or not _is_valid_motion_kind(motion_kind):
+          \t\treturn false
+          \tif not _is_finite_transform(restored_transform) or not _is_finite_vector(restored_velocity):
+          \t\treturn false
+          \tif (phase == PHASE_SETTLED or phase == PHASE_CARRIED_JUNK) and (motion_kind != MOTION_NONE or not restored_velocity.is_zero_approx()):
+          \t\treturn false
+          \tif (phase == PHASE_MOVING or phase == PHASE_SETTLING) and motion_kind == MOTION_NONE:
+          \t\treturn false
+
+          \t_phase = phase
+          \t_motion_kind = motion_kind
+          \tglobal_transform = restored_transform
+          \tlinear_velocity = restored_velocity
+          \tangular_velocity = Vector3.ZERO
+          \t_settle_yaw = float(snapshot.get("settle_yaw", _yaw_from_basis(restored_transform.basis)))
+          \t_holder = null
+          \t_settle_contact_frames = 0
+          \t_unsupported_frames = 0
+          \t_last_contact_count = 0
+          \t_set_world_presentation_enabled(phase != PHASE_CARRIED_JUNK)
+          \tset_interaction_highlighted(false)
+          \tif phase == PHASE_SETTLED or phase == PHASE_CARRIED_JUNK:
+          \t\tfreeze = true
+          \t\tsleeping = true
+          \telse:
+          \t\tfreeze = false
+          \t\tsleeping = false
+          \treturn true
+
+
+          func reconcile_after_restore(holder: Node = null) -> bool:
+          \tif _phase == PHASE_CARRIED_JUNK:
+          \t\tif holder == null or not holder.has_method("reconcile_carried_junk_prop"):
+          \t\t\treturn false
+          \t\treturn bool(holder.call("reconcile_carried_junk_prop", self))
+          \t_holder = null
+          \t_set_world_presentation_enabled(true)
+          \tif _phase == PHASE_SETTLED:
+          \t\tfreeze = true
+          \t\tsleeping = true
+          \telse:
+          \t\tfreeze = false
+          \t\tsleeping = false
+          \treturn true
+
+
+          func _begin_motion(motion_kind: StringName, initial_velocity: Vector3) -> void:
+          \t_phase = PHASE_MOVING
+          \t_motion_kind = motion_kind
+          \t_settle_yaw = _yaw_from_basis(global_transform.basis)
+          \t_settle_contact_frames = 0
+          \t_unsupported_frames = 0
+          \t_last_contact_count = 0
+          \tlinear_velocity = initial_velocity
+          \tangular_velocity = Vector3.ZERO
+          \tfreeze = false
+          \tsleeping = false
+
+
+          func _update_dynamic_settling() -> void:
+          \tvar contact_count: int = get_colliding_bodies().size()
+          \tif contact_count > 0 and _last_contact_count == 0:
+          \t\t_queue_impact_sound(linear_velocity.length())
+          \t_last_contact_count = contact_count
+
+          \tif contact_count > 0 and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):
+          \t\t_settle_contact_frames += 1
+          \t\t_phase = PHASE_SETTLING
+          \t\tif _settle_contact_frames >= maxi(settle_contact_frames_required, 1):
+          \t\t\t_settle_now()
+          \t\treturn
+
+          \t_settle_contact_frames = 0
+          \t_phase = PHASE_MOVING
+
+
+          func _settle_now() -> void:
+          \tvar settled_origin: Vector3 = global_position
+          \tfreeze = true
+          \tlinear_velocity = Vector3.ZERO
+          \tangular_velocity = Vector3.ZERO
+          \tglobal_transform = Transform3D(_top_up_basis_for_yaw(_settle_yaw), settled_origin)
+          \tsleeping = true
+          \t_phase = PHASE_SETTLED
+          \t_motion_kind = MOTION_NONE
+          \t_settle_contact_frames = 0
+          \t_unsupported_frames = 0
+          \t_last_contact_count = 0
+
+
+          func _has_support() -> bool:
+          \tif prop_collision == null or prop_collision.shape == null or not is_inside_tree():
+          \t\treturn false
+          \tvar box: BoxShape3D = prop_collision.shape as BoxShape3D
+          \tif box == null:
+          \t\treturn false
+          \tvar half: Vector3 = box.size * 0.5
+          \tvar inset: float = clampf(support_probe_inset, 0.0, 1.0)
+          \tvar x: float = half.x * inset
+          \tvar z: float = half.z * inset
+          \tvar local_points: Array[Vector3] = [
+          \t\tVector3(0.0, -half.y, 0.0),
+          \t\tVector3(-x, -half.y, -z), Vector3(x, -half.y, -z),
+          \t\tVector3(-x, -half.y, z), Vector3(x, -half.y, z),
+          \t\tVector3(-x, -half.y, 0.0), Vector3(x, -half.y, 0.0),
+          \t\tVector3(0.0, -half.y, -z), Vector3(0.0, -half.y, z),
+          \t]
+          \tfor local_point: Vector3 in local_points:
+          \t\tvar bottom: Vector3 = global_transform * local_point
+          \t\tvar origin: Vector3 = bottom + Vector3.UP * 0.02
+          \t\tvar query := PhysicsRayQueryParameters3D.create(
+          \t\t\torigin,
+          \t\t\tbottom + Vector3.DOWN * maxf(support_probe_distance, 0.03)
+          \t\t)
+          \t\tquery.exclude = [get_rid()]
+          \t\tquery.collision_mask = _ordinary_collision_mask
+          \t\tquery.collide_with_areas = false
+          \t\tquery.collide_with_bodies = true
+          \t\tvar hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+          \t\tif not hit.is_empty():
+          \t\t\tvar normal: Vector3 = hit.get("normal", Vector3.UP)
+          \t\t\tif normal.y >= minimum_support_normal_y:
+          \t\t\t\treturn true
+          \treturn false
+
+
+          func _set_world_presentation_enabled(enabled: bool) -> void:
+          \tif prop_mesh != null:
+          \t\tprop_mesh.visible = enabled
+          \tif enabled:
+          \t\tcollision_layer = _ordinary_collision_layer
+          \t\tcollision_mask = _ordinary_collision_mask
+          \telse:
+          \t\tcollision_layer = 0
+          \t\tcollision_mask = 0
+
+
+          func _refresh_visual() -> void:
+          \tif _material == null:
+          \t\treturn
+          \t_material.albedo_color = base_color
+          \t_material.emission_enabled = false
+          \t_material.disable_receive_shadows = _highlighted
+          \t_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if _highlighted else BaseMaterial3D.SHADING_MODE_PER_PIXEL
+
+
+          func _queue_impact_sound(impact_speed: float) -> void:
+          \tif _world_session == null:
+          \t\treturn
+          \tvar speed_scale: float = clampf(impact_speed / maxf(throw_speed, 0.1), 0.15, 1.0)
+          \tvar strength: float = impact_sound_strength * speed_scale
+          \tif _motion_kind == MOTION_RELEASED:
+          \t\tstrength *= clampf(gentle_release_sound_scale, 0.0, 1.0)
+          \tvar source_session_id: int = int(_world_session.get("session_id"))
+          \t_world_session.call("queue_gameplay_sound", source_session_id, IMPACT_SOUND_KIND, global_position, maxf(strength, 0.001))
+
+
+          func _find_world_session() -> Node:
+          \tvar cursor: Node = get_parent()
+          \twhile cursor != null:
+          \t\tif cursor.has_method("queue_gameplay_sound"):
+          \t\t\treturn cursor
+          \t\tcursor = cursor.get_parent()
+          \treturn null
+
+
+          func _yaw_from_basis(source_basis: Basis) -> float:
+          \tvar basis: Basis = source_basis.orthonormalized()
+          \tvar forward: Vector3 = -basis.z
+          \tforward.y = 0.0
+          \tif forward.length_squared() <= 0.000001:
+          \t\tvar right: Vector3 = basis.x
+          \t\tright.y = 0.0
+          \t\tif right.length_squared() <= 0.000001:
+          \t\t\treturn 0.0
+          \t\tright = right.normalized()
+          \t\tforward = Vector3(right.z, 0.0, -right.x)
+          \tforward = forward.normalized()
+          \treturn atan2(-forward.x, -forward.z)
+
+
+          func _top_up_basis_for_yaw(yaw: float) -> Basis:
+          \treturn Basis(Vector3.UP, yaw).orthonormalized()
+
+
+          func _is_valid_phase(phase: StringName) -> bool:
+          \treturn phase == PHASE_SETTLED or phase == PHASE_CARRIED_JUNK or phase == PHASE_MOVING or phase == PHASE_SETTLING
+
+
+          func _is_valid_motion_kind(motion_kind: StringName) -> bool:
+          \treturn motion_kind == MOTION_NONE or motion_kind == MOTION_RELEASED or motion_kind == MOTION_THROWN or motion_kind == MOTION_UNSUPPORTED
+
+
+          func _is_finite_vector(value: Vector3) -> bool:
+          \treturn is_finite(value.x) and is_finite(value.y) and is_finite(value.z)
+
+
+          func _is_finite_transform(value: Transform3D) -> bool:
+          \treturn _is_finite_vector(value.origin) and _is_finite_vector(value.basis.x) and _is_finite_vector(value.basis.y) and _is_finite_vector(value.basis.z)
+          '''.replace('          ', ''))
+
+          write('gameplay/props/OrdinaryProp.tscn', '''[gd_scene load_steps=5 format=3]
+
+          [ext_resource type="Script" path="res://gameplay/props/ordinary_prop.gd" id="1_prop"]
+          [ext_resource type="ArrayMesh" path="res://assets/models/props/ordinary_crate.obj" id="2_visual"]
+
+          [sub_resource type="PhysicsMaterial" id="PropPhysicsMaterial"]
+          friction = 0.8
+          bounce = 0.05
+
+          [sub_resource type="BoxShape3D" id="PropShape"]
+          size = Vector3(0.6, 0.6, 0.6)
+
+          [node name="OrdinaryProp" type="RigidBody3D"]
+          mass = 1.5
+          physics_material_override = SubResource("PropPhysicsMaterial")
+          continuous_cd = true
+          contact_monitor = true
+          max_contacts_reported = 8
+          linear_damp = 0.1
+          lock_rotation = true
+          freeze = true
+          script = ExtResource("1_prop")
+          visual_model = ExtResource("2_visual")
+
+          [node name="PropMesh" type="MeshInstance3D" parent="."]
+
+          [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+          shape = SubResource("PropShape")
+          '''.replace('          ', ''))
+
+          write('player/interaction/player_prop_carry.gd', '''class_name PlayerPropCarry
+          extends RefCounted
+
+
+          var player: CharacterBody3D
+          var camera: Camera3D
+          var held_prop: Node = null
+          var hud_container: Control
+          var hud_mesh: MeshInstance3D
+          var hud_material: StandardMaterial3D
+
+          var release_distance: float = 1.15
+          var release_surface_padding: float = 0.006
+          var release_speed: float = 0.55
+
+
+          func _init(
+          \towner: CharacterBody3D,
+          \tview_camera: Camera3D,
+          \tcarried_hud_container: Control,
+          \tcarried_hud_mesh: MeshInstance3D,
+          \tcarried_hud_material: StandardMaterial3D
+          ) -> void:
+          \tplayer = owner
+          \tcamera = view_camera
+          \thud_container = carried_hud_container
+          \thud_mesh = carried_hud_mesh
+          \thud_material = carried_hud_material
+          \t_refresh_hud(null)
+
+
+          func has_held_prop() -> bool:
+          \treturn held_prop != null and is_instance_valid(held_prop)
+
+
+          func get_held_prop() -> Node:
+          \treturn held_prop if has_held_prop() else null
+
+
+          func try_pick_up(prop: Node) -> bool:
+          \tif has_held_prop() or prop == null or not (prop is Node3D):
+          \t\treturn false
+          \tif not prop.has_method("begin_carried_junk") or not prop.has_method("release_from_carry"):
+          \t\treturn false
+          \tif not bool(prop.call("begin_carried_junk", player)):
+          \t\treturn false
+          \theld_prop = prop
+          \t_refresh_hud(prop)
+          \treturn true
+
+
+          func adopt_restored_held_prop(prop: Node) -> bool:
+          \tif has_held_prop() or prop == null or not (prop is Node3D):
+          \t\treturn false
+          \tif not prop.has_method("get_semantic_phase") or prop.call("get_semantic_phase") != &"carried_junk":
+          \t\treturn false
+          \theld_prop = prop
+          \t_refresh_hud(prop)
+          \treturn true
+
+
+          func release_held_gently() -> bool:
+          \tif not has_held_prop():
+          \t\treturn false
+          \tvar forward: Vector3 = -camera.global_transform.basis.z.normalized()
+          \tvar initial_velocity: Vector3 = forward * release_speed + player.velocity * 0.15
+          \treturn _release(&"released", initial_velocity)
+
+
+          func throw_held() -> bool:
+          \tif not has_held_prop():
+          \t\treturn false
+          \tvar speed: float = maxf(float(held_prop.get("throw_speed")), 0.0)
+          \tvar forward: Vector3 = -camera.global_transform.basis.z.normalized()
+          \tvar initial_velocity: Vector3 = forward * speed + player.velocity
+          \treturn _release(&"thrown", initial_velocity)
+
+
+          func clear_reference() -> void:
+          \theld_prop = null
+          \t_refresh_hud(null)
+
+
+          func _release(motion_kind: StringName, initial_velocity: Vector3) -> bool:
+          \tvar prop: Node = held_prop
+          \tvar released: bool = bool(prop.call(
+          \t\t"release_from_carry",
+          \t\tmotion_kind,
+          \t\t_compute_release_transform(),
+          \t\tinitial_velocity
+          \t))
+          \tif released:
+          \t\theld_prop = null
+          \t\t_refresh_hud(null)
+          \treturn released
+
+
+          func _compute_release_transform() -> Transform3D:
+          \tvar view_basis: Basis = camera.global_transform.basis.orthonormalized()
+          \tvar forward: Vector3 = -view_basis.z.normalized()
+          \tvar release_basis: Basis = (
+          \t\tview_basis * Basis(Vector3.BACK, PI * 0.5)
+          \t).orthonormalized()
+          \tvar origin: Vector3 = camera.global_position
+          \tvar desired: Vector3 = origin + forward * release_distance
+          \tvar query := PhysicsRayQueryParameters3D.create(origin, desired)
+          \tquery.exclude = [player.get_rid()]
+          \tquery.collision_mask = 0xFFFFFFFF
+          \tquery.collide_with_areas = false
+          \tquery.collide_with_bodies = true
+          \tvar hit: Dictionary = camera.get_world_3d().direct_space_state.intersect_ray(query)
+          \tif not hit.is_empty():
+          \t\tvar clearance: float = 0.3
+          \t\tif held_prop != null and held_prop.has_method("get_release_clearance_along"):
+          \t\t\tclearance = float(held_prop.call("get_release_clearance_along", forward, release_basis))
+          \t\tdesired = hit.get("position", desired) - forward * (maxf(clearance, 0.0) + release_surface_padding)
+          \treturn Transform3D(release_basis, desired)
+
+
+          func _refresh_hud(prop: Node) -> void:
+          \tif hud_container == null or hud_mesh == null:
+          \t\treturn
+          \tvar active: bool = prop != null and is_instance_valid(prop)
+          \thud_container.visible = active
+          \tif not active:
+          \t\thud_mesh.mesh = null
+          \t\treturn
+          \tif prop.has_method("get_visual_model"):
+          \t\thud_mesh.mesh = prop.call("get_visual_model") as Mesh
+          \tif hud_material != null:
+          \t\thud_material.albedo_color = prop.get("base_color") as Color
+          '''.replace('          ', ''))
+
+          def hard_box_obj(hx: float, hy: float, hz: float, name: str, comment: str) -> str:
+              faces = [
+                  ((0, 0, -1), [(-hx, -hy, -hz), (-hx, hy, -hz), (hx, hy, -hz), (hx, -hy, -hz)]),
+                  ((0, 0, 1), [(-hx, -hy, hz), (hx, -hy, hz), (hx, hy, hz), (-hx, hy, hz)]),
+                  ((1, 0, 0), [(hx, -hy, -hz), (hx, hy, -hz), (hx, hy, hz), (hx, -hy, hz)]),
+                  ((-1, 0, 0), [(-hx, -hy, -hz), (-hx, -hy, hz), (-hx, hy, hz), (-hx, hy, -hz)]),
+                  ((0, 1, 0), [(-hx, hy, -hz), (-hx, hy, hz), (hx, hy, hz), (hx, hy, -hz)]),
+                  ((0, -1, 0), [(-hx, -hy, -hz), (hx, -hy, -hz), (hx, -hy, hz), (-hx, -hy, hz)]),
+              ]
+              lines = [f'# {comment}', f'o {name}', 's off']
+              for _, vertices in faces:
+                  for x, y, z in vertices:
+                      lines.append(f'v {x:.6f} {y:.6f} {z:.6f}')
+              for nx, ny, nz in [face[0] for face in faces]:
+                  lines.append(f'vn {nx:.6f} {ny:.6f} {nz:.6f}')
+              for face_index in range(6):
+                  base = face_index * 4 + 1
+                  normal_index = face_index + 1
+                  lines.append(f'f {base}//{normal_index} {base + 1}//{normal_index} {base + 2}//{normal_index} {base + 3}//{normal_index}')
+              return '\n'.join(lines) + '\n'
+
+          write(
+              'assets/models/props/ordinary_crate.obj',
+              hard_box_obj(0.3, 0.3, 0.3, 'OrdinaryCrate', 'Hard-edged outward-facing Vark ordinary crate; explicit face normals prevent smoothed inside/rounded shading.'),
+          )
+          write(
+              'assets/models/props/ordinary_crate_tall.obj',
+              hard_box_obj(0.25, 0.35, 0.25, 'OrdinaryCrateTall', 'Hard-edged outward-facing alternate Vark crate model used to prove presentation replacement.'),
+          )
+
+          p = Path('scenes/PropLab.tscn')
+          text = p.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              'text = "3.5 PROP LAB\\nF = pick up / throw · R = gentle release\\nCarried Junk appears bottom-center and is not in the world\\nGreen stand: edge support · right stack: remove lower box"',
+              'text = "3.5 PROP LAB\\nF = pick up / throw · R = gentle release\\nReleased props use real rigid-body collision; rotation stays fixed until settle\\nOn settle: top-up only, yaw preserved · no floor hover gap"',
+              'Prop Lab instructions',
+          )
+          p.write_text(text, encoding='utf-8')
+
+          write('tests/props/prop_regressions.gd', '''extends RefCounted
+
+
+          const ApplicationScene = preload("res://application/Application.tscn")
+          const ApplicationRoot = preload("res://application/application_root.gd")
+          const OrdinaryProp = preload("res://gameplay/props/ordinary_prop.gd")
+          const DefaultPropVisual: Mesh = preload("res://assets/models/props/ordinary_crate.obj")
+          const AlternatePropVisual: Mesh = preload("res://assets/models/props/ordinary_crate_tall.obj")
+
+
+          func run(tree: SceneTree, assert_true: Callable) -> void:
+          \t_release_actions()
+          \tvar release_bound_to_r: bool = false
+          \tfor event: InputEvent in InputMap.action_get_events("release_prop"):
+          \t\tif event is InputEventKey and event.physical_keycode == KEY_R:
+          \t\t\trelease_bound_to_r = true
+          \tassert_true.call(InputMap.has_action("release_prop") and release_bound_to_r, "Phase 3.5 binds gentle Junk release to R")
+          \tassert_true.call(not InputMap.has_action("throw_prop"), "Ordinary prop throw continues to reuse F rather than a second throw action")
+          \tassert_true.call(
+          \t\t_obj_faces_point_outward("res://assets/models/props/ordinary_crate.obj")
+          \t\tand _obj_faces_point_outward("res://assets/models/props/ordinary_crate_tall.obj"),
+          \t\t"Representative prop OBJ face winding points outward"
+          \t)
+          \tassert_true.call(
+          \t\t_obj_has_hard_face_normals("res://assets/models/props/ordinary_crate.obj")
+          \t\tand _obj_has_hard_face_normals("res://assets/models/props/ordinary_crate_tall.obj"),
+          \t\t"Representative box meshes use explicit per-face hard normals instead of shared smoothed corner shading"
+          \t)
+
+          \tvar application: Node = ApplicationScene.instantiate()
+          \tapplication.set("development_launch_labels", PackedStringArray(["Prop Lab"]))
+          \tapplication.set("development_launch_resource_paths", PackedStringArray(["res://scenes/PropLab.tscn"]))
+          \ttree.get_root().add_child(application)
+          \tawait tree.process_frame
+          \tvar launched: bool = bool(application.call("launch_development_target", 0))
+          \tawait tree.process_frame
+          \tawait _settle_physics(tree, 3)
+          \tvar world: Node3D = application.get("current_world") as Node3D
+          \tvar player: CharacterBody3D = application.get("current_player") as CharacterBody3D
+          \tvar session: Node = application.get("current_session") as Node
+          \tassert_true.call(launched and world != null and player != null and session != null and int(application.call("get_control_mode")) == ApplicationRoot.ControlMode.GAMEPLAY, "Prop Lab launches through the production application/session/input path")
+          \tif world == null or player == null or session == null:
+          \t\treturn
+
+          \tvar pickup_prop: RigidBody3D = world.get_node("PickupProp") as RigidBody3D
+          \tvar edge_prop: RigidBody3D = world.get_node("EdgeProp") as RigidBody3D
+          \tvar stack_lower: RigidBody3D = world.get_node("StackLower") as RigidBody3D
+          \tvar stack_upper: RigidBody3D = world.get_node("StackUpper") as RigidBody3D
+          \tassert_true.call(pickup_prop != null and edge_prop != null and stack_lower != null and stack_upper != null, "Ordinary world props are real RigidBody3D physics bodies")
+          \tif pickup_prop == null or edge_prop == null or stack_lower == null or stack_upper == null:
+          \t\treturn
+
+          \tvar prop_mesh: MeshInstance3D = pickup_prop.get_node("PropMesh") as MeshInstance3D
+          \tvar prop_collision: CollisionShape3D = pickup_prop.get_node("CollisionShape3D") as CollisionShape3D
+          \tvar original_instance_id: int = pickup_prop.get_instance_id()
+          \tvar sound_events: Array[Dictionary] = []
+          \tvar sound_handler: Callable = func(event: Dictionary) -> bool:
+          \t\tsound_events.append(event)
+          \t\treturn true
+          \tassert_true.call(bool(session.call("register_semantic_event_handler", &"gameplay.sound", sound_handler)), "Ordinary prop impacts use the semantic gameplay-sound route")
+
+          \tpickup_prop.call("set_interaction_highlighted", false)
+          \tvar normal_material: StandardMaterial3D = prop_mesh.material_override as StandardMaterial3D
+          \tassert_true.call(
+          \t\tnormal_material != null
+          \t\tand normal_material.shading_mode == BaseMaterial3D.SHADING_MODE_PER_PIXEL
+          \t\tand not normal_material.disable_receive_shadows
+          \t\tand prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON,
+          \t\t"Unselected prop presentation uses normal lit shading and ordinary cast/receive shadows"
+          \t)
+          \tassert_true.call(pickup_prop.freeze and pickup_prop.lock_rotation and pickup_prop.continuous_cd, "Settled props are frozen while retaining rigid-body collision configuration for later release")
+          \tassert_true.call(pickup_prop.call("get_visual_model") == DefaultPropVisual and bool(pickup_prop.call("set_visual_model", AlternatePropVisual)) and pickup_prop.get_instance_id() == original_instance_id and prop_collision.shape != null, "Compatible external prop model replacement preserves the gameplay instance and collider")
+
+          \tvar edge_start: Transform3D = edge_prop.global_transform
+          \tvar lower_start: Transform3D = stack_lower.global_transform
+          \tvar upper_start: Transform3D = stack_upper.global_transform
+          \tawait _settle_physics(tree, 20)
+          \tassert_true.call(edge_prop.global_transform.is_equal_approx(edge_start) and stack_lower.global_transform.is_equal_approx(lower_start) and stack_upper.global_transform.is_equal_approx(upper_start), "Supported edge placement and a simple stack remain exactly stationary while settled")
+
+          \tInput.action_press("interact")
+          \tawait _settle_physics(tree)
+          \tInput.action_release("interact")
+          \tawait _settle_physics(tree, 2)
+          \tvar carried_state: Dictionary = pickup_prop.call("capture_semantic_state")
+          \tvar carry_state: Dictionary = player.call("get_prop_carry_semantic_state")
+          \tvar hud: Control = player.get("junk_hud_container") as Control
+          \tvar hud_mesh: MeshInstance3D = player.get("junk_hud_mesh") as MeshInstance3D
+          \tassert_true.call(pickup_prop.call("get_semantic_phase") == OrdinaryProp.PHASE_CARRIED_JUNK and bool(carry_state.get("holding", false)) and player.call("get_held_prop") == pickup_prop, "F pickup transfers the same prop into the single carried_junk semantic slot")
+          \tassert_true.call(pickup_prop.freeze and not prop_mesh.visible and pickup_prop.collision_layer == 0 and pickup_prop.collision_mask == 0 and not bool(pickup_prop.call("is_world_presentation_enabled")), "Carried Junk is frozen and removed from world rendering/collision rather than hovering in front of the camera")
+          \tassert_true.call(hud != null and hud.visible and hud_mesh != null and hud_mesh.mesh == AlternatePropVisual, "Carried Junk is represented at the bottom-center HUD using the same configured prop model")
+          \tvar interaction_state: Dictionary = player.call("get_interaction_semantic_state")
+          \tassert_true.call(not bool(interaction_state.get("available", true)) and not bool(player.call("are_hand_actions_available")), "Carried Junk centrally suppresses ordinary world and hand-occupying actions")
+          \tassert_true.call(not _contains_live_object(carried_state), "Carried Junk semantic capture contains no live holder/Node references")
+
+          \tvar player_start_x: float = player.global_position.x
+          \tInput.action_press("move_right")
+          \tawait _settle_physics(tree, 6)
+          \tInput.action_release("move_right")
+          \tassert_true.call(absf(player.global_position.x - player_start_x) > 0.01 and bool(player.call("is_carrying_prop")), "Walking remains available while Junk is carried")
+
+          \tvar input_boundary: Node = application.get_node("InputBoundary")
+          \tinput_boundary.call("set_gameplay_enabled", false)
+          \tInput.action_press("interact")
+          \tinput_boundary.call("set_gameplay_enabled", true)
+          \tawait _settle_physics(tree, 2)
+          \tassert_true.call(bool(player.call("is_carrying_prop")), "An F press begun outside gameplay ownership is not replayed as a throw")
+          \tInput.action_release("interact")
+          \tawait _settle_physics(tree)
+          \tinput_boundary.call("set_gameplay_enabled", false)
+          \tInput.action_press("release_prop")
+          \tinput_boundary.call("set_gameplay_enabled", true)
+          \tawait _settle_physics(tree, 2)
+          \tassert_true.call(bool(player.call("is_carrying_prop")), "An R press begun outside gameplay ownership is not replayed as a release")
+          \tInput.action_release("release_prop")
+          \tawait _settle_physics(tree)
+
+          \tvar head: Node3D = player.get_node("Head") as Node3D
+          \tvar camera: Camera3D = player.get_node("Head/Camera3D") as Camera3D
+          \tplayer.rotation.y = 0.58
+          \thead.rotation.x = -0.55
+          \tawait _settle_physics(tree)
+          \tvar release_origin: Vector3 = camera.global_position
+          \tvar release_forward: Vector3 = -camera.global_transform.basis.z.normalized()
+          \tvar released_sound_start: int = sound_events.size()
+          \tInput.action_press("release_prop")
+          \tawait _settle_physics(tree)
+          \tInput.action_release("release_prop")
+          \tvar released_state: Dictionary = pickup_prop.call("capture_semantic_state")
+          \tvar released_velocity: Vector3 = released_state.get("linear_velocity", Vector3.ZERO)
+          \tvar release_direction: Vector3 = (pickup_prop.global_position - release_origin).normalized()
+          \tvar released_facing: Vector3 = _horizontal_forward_from_basis(pickup_prop.global_transform.basis)
+          \tassert_true.call(not pickup_prop.freeze and released_state.get("motion_kind", &"") == OrdinaryProp.MOTION_RELEASED and released_velocity.length() < 2.0 and release_direction.dot(release_forward) > 0.72, "R gently restores the prop as a live rigid body at a view-derived release point")
+          \tassert_true.call(absf(pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP)) < 0.25, "Released moving box starts side-on rather than canonical top-up")
+          \tawait _settle_until_phase(tree, pickup_prop, OrdinaryProp.PHASE_SETTLED, 160)
+          \tvar released_strength: float = _max_impact_strength(sound_events, released_sound_start)
+          \tvar released_settled_facing: Vector3 = _horizontal_forward_from_basis(pickup_prop.global_transform.basis)
+          \tassert_true.call(pickup_prop.freeze and pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999 and released_settled_facing.dot(released_facing) > 0.995, "Gentle release settles top-up by removing pitch/roll while preserving its yaw")
+          \tassert_true.call(absf(pickup_prop.global_position.y - 0.3) <= 0.015, "A released crate settles directly on the floor instead of freezing with a visible air gap")
+
+          \tassert_true.call(bool(pickup_prop.call("apply_semantic_state", carried_state)) and bool(pickup_prop.call("reconcile_after_restore", player)), "Restore reconciliation rebuilds the carried_junk relationship without serializing a live player reference")
+          \tassert_true.call(hud.visible and not prop_mesh.visible and bool(player.call("is_carrying_prop")), "Restored carried Junk rebuilds HUD presentation and keeps world presentation inactive")
+
+          \tplayer.global_position = Vector3(0.9, 0.0, 3.1)
+          \tplayer.rotation.y = -0.47
+          \thead.rotation.x = 0.0
+          \tawait _settle_physics(tree)
+          \tvar thrown_sound_start: int = sound_events.size()
+          \tInput.action_press("interact")
+          \tawait _settle_physics(tree)
+          \tInput.action_release("interact")
+          \tvar thrown_state: Dictionary = pickup_prop.call("capture_semantic_state")
+          \tvar thrown_basis: Basis = pickup_prop.global_transform.basis.orthonormalized()
+          \tvar thrown_facing: Vector3 = _horizontal_forward_from_basis(thrown_basis)
+          \tvar thrown_velocity: Vector3 = thrown_state.get("linear_velocity", Vector3.ZERO)
+          \tassert_true.call(not pickup_prop.freeze and thrown_state.get("motion_kind", &"") == OrdinaryProp.MOTION_THROWN and thrown_velocity.length() > released_velocity.length() + 2.0 and pickup_prop.get_instance_id() == original_instance_id, "F throws the same prop identity as an active rigid body with substantially stronger motion than R release")
+          \tvar observed_collision: bool = await _wait_for_contact(tree, pickup_prop, 120)
+          \tassert_true.call(observed_collision, "Thrown rigid prop reaches a real physics contact")
+          \tif observed_collision and pickup_prop.call("get_semantic_phase") != OrdinaryProp.PHASE_SETTLED:
+          \t\tassert_true.call(pickup_prop.global_transform.basis.orthonormalized().is_equal_approx(thrown_basis), "Rigid-body collision changes translation without rotating the thrown box")
+          \tawait _settle_until_phase(tree, pickup_prop, OrdinaryProp.PHASE_SETTLED, 220)
+          \tvar thrown_strength: float = _max_impact_strength(sound_events, thrown_sound_start)
+          \tvar thrown_settled_facing: Vector3 = _horizontal_forward_from_basis(pickup_prop.global_transform.basis)
+          \tassert_true.call(pickup_prop.freeze and pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999 and thrown_settled_facing.dot(thrown_facing) > 0.995 and pickup_prop.linear_velocity.is_zero_approx(), "Thrown box settles top-up and stationary without a global compass-facing snap")
+          \tassert_true.call(thrown_strength > released_strength and released_strength > 0.0, "Gentle release emits lower semantic impact strength than a throw")
+
+          \tvar upper_facing: Vector3 = _horizontal_forward_from_basis(stack_upper.global_transform.basis)
+          \tvar upper_xz := Vector2(stack_upper.global_position.x, stack_upper.global_position.z)
+          \tassert_true.call(bool(player.call("try_carry_prop", stack_lower)), "The lower stack support can be removed into the same carried Junk slot")
+          \tawait _settle_physics(tree, 3)
+          \tassert_true.call(stack_upper.call("get_motion_kind") == OrdinaryProp.MOTION_UNSUPPORTED and not stack_upper.freeze, "Removing lower support activates the upper prop as a real unsupported rigid body")
+          \tawait _settle_until_phase(tree, stack_upper, OrdinaryProp.PHASE_SETTLED, 160)
+          \tvar upper_after := Vector2(stack_upper.global_position.x, stack_upper.global_position.z)
+          \tvar upper_settled_facing: Vector3 = _horizontal_forward_from_basis(stack_upper.global_transform.basis)
+          \tassert_true.call(upper_settled_facing.dot(upper_facing) > 0.995 and upper_after.distance_to(upper_xz) <= 0.01 and absf(stack_upper.global_position.y - 0.3) <= 0.015, "Unsupported upper stack member falls through rigid-body physics, settles on the floor with no hover gap, and preserves yaw")
+
+          \t_release_actions()
+          \tapplication.call("exit_current_world")
+          \tapplication.queue_free()
+          \tawait tree.process_frame
+
+
+          func _settle_until_phase(tree: SceneTree, prop: Node, target_phase: StringName, max_frames: int) -> void:
+          \tfor _frame_index: int in max_frames:
+          \t\tif prop.call("get_semantic_phase") == target_phase:
+          \t\t\treturn
+          \t\tawait tree.physics_frame
+          \t\tawait tree.process_frame
+
+
+          func _wait_for_contact(tree: SceneTree, body: RigidBody3D, max_frames: int) -> bool:
+          \tfor _frame_index: int in max_frames:
+          \t\tawait tree.physics_frame
+          \t\tawait tree.process_frame
+          \t\tif not body.get_colliding_bodies().is_empty():
+          \t\t\treturn true
+          \treturn false
+
+
+          func _settle_physics(tree: SceneTree, frame_count: int = 1) -> void:
+          \tfor _frame_index: int in frame_count:
+          \t\tawait tree.physics_frame
+          \t\tawait tree.process_frame
+
+
+          func _horizontal_forward_from_basis(source_basis: Basis) -> Vector3:
+          \tvar forward: Vector3 = -source_basis.orthonormalized().z
+          \tforward.y = 0.0
+          \tif forward.length_squared() <= 0.000001:
+          \t\treturn Vector3.FORWARD
+          \treturn forward.normalized()
+
+
+          func _max_impact_strength(events: Array[Dictionary], start_index: int) -> float:
+          \tvar result: float = 0.0
+          \tfor index: int in range(start_index, events.size()):
+          \t\tvar payload: Dictionary = events[index].get("payload", {})
+          \t\tif payload.get("kind", &"") == OrdinaryProp.IMPACT_SOUND_KIND:
+          \t\t\tresult = maxf(result, float(payload.get("strength", 0.0)))
+          \treturn result
+
+
+          func _contains_live_object(value: Variant) -> bool:
+          \tif value is Object:
+          \t\treturn true
+          \tif value is Array:
+          \t\tfor child: Variant in value:
+          \t\t\tif _contains_live_object(child):
+          \t\t\t\treturn true
+          \tif value is Dictionary:
+          \t\tfor key: Variant in value.keys():
+          \t\t\tif _contains_live_object(key) or _contains_live_object(value[key]):
+          \t\t\t\treturn true
+          \treturn false
+
+
+          func _obj_faces_point_outward(path: String) -> bool:
+          \tvar source: String = FileAccess.get_file_as_string(path)
+          \tvar vertices: Array[Vector3] = []
+          \tvar faces: Array[PackedInt32Array] = []
+          \tfor raw_line: String in source.split("\\n"):
+          \t\tvar line: String = raw_line.strip_edges()
+          \t\tif line.begins_with("v "):
+          \t\t\tvar p: PackedStringArray = line.split(" ", false)
+          \t\t\tvertices.append(Vector3(float(p[1]), float(p[2]), float(p[3])))
+          \t\telif line.begins_with("f "):
+          \t\t\tvar parts: PackedStringArray = line.split(" ", false)
+          \t\t\tvar face := PackedInt32Array()
+          \t\t\tfor i: int in range(1, parts.size()):
+          \t\t\t\tface.append(int(parts[i].split("/")[0]) - 1)
+          \t\t\tfaces.append(face)
+          \tif vertices.is_empty() or faces.is_empty():
+          \t\treturn false
+          \tvar center := Vector3.ZERO
+          \tfor vertex: Vector3 in vertices:
+          \t\tcenter += vertex
+          \tcenter /= float(vertices.size())
+          \tfor face: PackedInt32Array in faces:
+          \t\tif face.size() < 3:
+          \t\t\treturn false
+          \t\tvar a: Vector3 = vertices[face[0]]
+          \t\tvar b: Vector3 = vertices[face[1]]
+          \t\tvar c: Vector3 = vertices[face[2]]
+          \t\tvar normal: Vector3 = (b - a).cross(c - a).normalized()
+          \t\tvar face_center := Vector3.ZERO
+          \t\tfor index: int in face:
+          \t\t\tface_center += vertices[index]
+          \t\tface_center /= float(face.size())
+          \t\tif normal.dot(face_center - center) <= 0.0:
+          \t\t\treturn false
+          \treturn true
+
+
+          func _obj_has_hard_face_normals(path: String) -> bool:
+          \tvar source: String = FileAccess.get_file_as_string(path)
+          \tvar normal_count: int = 0
+          \tvar face_count: int = 0
+          \tvar hard_smoothing: bool = false
+          \tfor raw_line: String in source.split("\\n"):
+          \t\tvar line: String = raw_line.strip_edges()
+          \t\tif line == "s off":
+          \t\t\thard_smoothing = true
+          \t\telif line.begins_with("vn "):
+          \t\t\tnormal_count += 1
+          \t\telif line.begins_with("f "):
+          \t\t\tface_count += 1
+          \t\t\tfor part: String in line.split(" ", false).slice(1):
+          \t\t\t\tif not "//" in part:
+          \t\t\t\t\treturn false
+          \treturn hard_smoothing and normal_count == 6 and face_count == 6
+
+
+          func _release_actions() -> void:
+          \tInput.action_release("interact")
+          \tInput.action_release("release_prop")
+          \tInput.action_release("move_right")
+          '''.replace('          ', ''))
+
+          # GAME_VISION: moving props use real rigid-body translation, normal hard-edge shading,
+          # fixed moving orientation, and yaw-preserving top-up normalization.
+          p = Path('docs/GAME_VISION.md')
+          text = p.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              'Supported movable props follow **Thief 1 & 2-style object behavior**, not a continuously active general rigid-body simulation.',
+              'Settled movable props follow **Thief 1 & 2-style object behavior** rather than remaining continuously simulated. While a prop is actively thrown, gently released, or unsupported, it temporarily participates as a real dynamic rigid body so gravity, friction, bounce/slide, and solid collision response are resolved by the physics engine; once it genuinely comes to rest it becomes settled/frozen again.',
+              'GAME_VISION rigid-body moving rule',
+          )
+          text = replace_once(
+              text,
+              'Ordinary furniture/prop archetypes may use different reusable external 3D model assets without changing these physical rules. Visual model choice is presentation/configuration, not a separate physics behavior or persistent identity.\n',
+              'Ordinary furniture/prop archetypes may use different reusable external 3D model assets without changing these physical rules. Visual model choice is presentation/configuration, not a separate physics behavior or persistent identity. Ordinary hard-edged prop models must provide outward-facing geometry and hard/explicit face normals where appropriate so unselected props receive normal lighting and scene shadows; the temporary interaction highlight must not become their permanent render mode.\n',
+              'GAME_VISION prop render rule',
+          )
+          text = replace_once(
+              text,
+              'Thrown/released objects may move through the world and collide, but ordinary props do not enter indefinite realistic rigid-body simulation. For box-like props, the orientation established at throw/release is held during moving/unsupported/settling motion: the same side continues to face back along the release/throw line instead of freely tumbling or spinning. It does not continuously track later camera turns. When the prop finally becomes `settled`, it normalizes back to its canonical top-up orientation.\n',
+              'Thrown/released/unsupported objects use real rigid-body translation while moving: gravity and collisions may change their position, linear velocity, slide, and bounce. Ordinary box-like Junk keeps angular motion locked during this moving phase, so hitting a floor, wall, prop, or actor does **not** rotate the box in flight. It does not continuously track later camera turns. When the prop genuinely settles, only pitch/roll are normalized so the top points upward; its current yaw is preserved. Settling must never rotate a particular side toward world north or any other global compass direction. The settled collider rests directly on its support rather than freezing early from a proximity probe and leaving a visible air gap.\n',
+              'GAME_VISION moving orientation and settle rule',
+          )
+          p.write_text(text, encoding='utf-8')
+
+          # DEVELOPMENT_PLAN: rewrite the Phase 3.5 acceptance around real moving rigid bodies.
+          p = Path('docs/DEVELOPMENT_PLAN.md')
+          text = p.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '- a first ordinary-prop prototype with explicit settled/held/moving/settling state, central interaction suppression, simple support/stack behavior, and semantic capture/reconcile seams; Phase 3.5 remains `[~]` because the player-facing carry contract has since been revised to single-slot carried Junk with HUD presentation plus F throw / R gentle release, so the current camera-held implementation/tests must be corrected before acceptance\n',
+              '- a Phase 3.5 ordinary-prop implementation with single-slot carried Junk HUD presentation, F throw / R gentle release, real dynamic rigid-body translation while moving, frozen settled support/stack behavior, yaw-preserving top-up normalization, hard-edged external-model shading, and semantic capture/reconcile seams; Phase 3.5 remains `[~]` pending the final Windows x64 user acceptance pass\n',
+              'DEVELOPMENT_PLAN baseline prop status',
+          )
+          new_35 = '''## 3.5 Thief-style prop micro-proof `[~]`
+
+          Implement ordinary prop states sufficient to prove:
+
+          ```text
+          settled/world → carried_junk → thrown/released/unsupported → moving → settling → settled/world
+          ```
+
+          Use at least one representative replaceable external 3D model asset for the ordinary prop/furniture visual. The prop gameplay archetype owns support/carry/interaction/save semantics; the model is replaceable presentation and must not become semantic identity.
+
+          Protect the LOCKED rules:
+
+          - supported/settled props remain exactly where authored until explicitly acted on or their support disappears;
+          - edge-supported boxes remain;
+          - simple supported stacks remain still;
+          - removing a simple lower support activates unsupported objects above so they fall under real physics until supported, without an invented horizontal impulse or forced rotation;
+          - settled props become frozen/stationary again;
+          - **F/Frob** picks up an eligible highlighted ordinary prop as the player's one carried Junk object;
+          - pickup immediately removes/disables that prop's physical world presentation and collision while preserving the same semantic/persistent identity;
+          - the player can carry exactly one Junk object at a time;
+          - carried Junk is shown at the bottom-center HUD and is never a camera-attached physical world body;
+          - carried Junk cannot collide with world geometry while stored;
+          - ordinary movement/look/crouch/jump/traversal remain available while carrying;
+          - carrying occupies the player's hands and centrally suppresses ordinary world interaction, attack, and normal inventory-item use;
+          - **F/Frob** while carrying throws the same prop forward in the current view direction;
+          - **R** while carrying gently releases/drops the same prop using a view-derived placement point;
+          - release placement uses the actual collision half-extents along the view ray plus only a tiny safety padding, rather than an arbitrary large center offset;
+          - while thrown, released, or unsupported, the prop is an active `RigidBody3D`: gravity, friction, bounce/slide, continuous collision detection, and solid-body collision response are owned by the physics engine rather than hand-written `move_and_collide()` motion;
+          - ordinary box-like Junk keeps angular motion locked while dynamically moving, so collisions change translation/velocity but do not rotate its release-facing orientation;
+          - when genuine resting contact persists, the prop settles/freeze-transitions and normalizes **only pitch/roll** to top-up while preserving its current yaw; there is no world-north or canonical-side snap;
+          - settling is based on real rigid-body contact/rest rather than support-probe proximity, so a settled box does not hover above the floor;
+          - representative hard-edged OBJ props use outward face winding plus explicit hard face normals, and unselected props use ordinary lit shading with normal cast/receive shadows;
+          - thrown/released impacts can emit the existing semantic gameplay-sound source fact for later acoustic/NPC use, with gentle release lower in source strength than a throw.
+
+          Do not build a universal support-graph engine or a general inventory framework. Settled props may be frozen for the Thief-style stable-world rule; real rigid-body simulation is required while they are actively moving, not continuously after rest.
+
+          The intended semantic ownership remains one player-owned `carried_junk` relationship to the same ordinary prop identity. While carried, world presentation/collision are derived inactive state; the object is not converted into inventory data and is not destroyed/recreated as a different gameplay identity. Throw/release restore that same `RigidBody3D` to world participation. Save capture preserves phase, motion kind, transform, linear velocity, and enough yaw-normalization state to restore moving/settling behavior without serializing live player/Node references.
+
+          The focused `Prop Lab` remains the development fixture. Its instructions and regressions must make the render fix, dynamic collision behavior, orientation lock, yaw-preserving top-up settle, no-floor-gap result, edge support, and stack support-removal behavior obvious.
+
+          **Done when:** the ordinary prop reuses center-view/F selection and replaceable external-model presentation; unselected crates render as normal hard-edged boxes with correct one-sided faces and ordinary scene shadows; settled/edge-supported props and a simple stack remain stable; lower-support removal activates a real rigid-body fall; F pickup makes the world prop disappear into exactly one bottom-center carried-Junk HUD slot with no world collision; normal locomotion remains available while carrying while ordinary interaction/hand actions are centrally suppressed; F throws and R gently releases the same prop back into the world from a geometry-aware view-derived release point; thrown/released/unsupported props use real rigid-body translational collision; their orientation stays fixed while dynamically moving/colliding; genuine rest freezes them top-up without changing yaw; no settled prop hovers above its support; semantic capture/apply/reconcile preserves the state without live references; and no universal support graph or general inventory framework is introduced.
+
+          **Automated:** required — keep the dedicated `tests/props/run_prop_tests.gd` suite wired into `tests/run_all_tests.gd`. Coverage must prove hard outward OBJ normals plus normal unselected shadowed shading; `RigidBody3D` ownership and frozen settled state; external model replacement; F pickup into exactly one `carried_junk` slot; physical presentation/collision inactive while carried; bottom-center HUD presentation; normal movement while carrying; central world/hand-action suppression; stale F/R edge suppression; F throw versus R gentle release; geometry-aware release placement; moving bodies unfrozen with continuous collision; a real collision that changes motion without changing orientation; top-up settle preserving yaw rather than snapping to a canonical/global heading; direct floor contact with no hover gap; same semantic identity across world → carried Junk → world; detached capture/apply/reconciliation; lower semantic impact strength for release; edge support; stable stacking; lower-support removal; controlled unsupported rigid-body fall; and no post-settle drift/spin.
+
+          **Manual:** pending — validator: **Windows x64 user/playtester**. Launch **Development Launch → Prop Lab**. Confirm ordinary crates look like normal solid hard-edged boxes when not selected: outside faces visible, lighting/shadows correct, no smoothed/inside-out appearance. Confirm F pickup removes the physical crate and shows one bottom-center Junk HUD object. Confirm movement/look/crouch/jump remain normal and stored Junk has no world collision. Confirm F throws and R gently releases. While a released/thrown crate is flying and colliding, confirm it reacts physically to floors/walls/other bodies but its orientation does not rotate. When it genuinely comes to rest, confirm it rotates only enough to put the top upward while keeping whatever left/right yaw it already had—no side is forced north. Confirm the final collider/visual rests directly on the floor/support with no visible air gap. Retain the edge-support, lower-stack-removal, stable-settle, and locomotion sanity checks.'''.replace('          ', '')
+          text, count = re.subn(
+              r'## 3\.5 Thief-style prop micro-proof `\[~\]`\n.*?\n## 3\.6 Acoustic propagation micro-proof `\[ \]`',
+              new_35 + '\n\n## 3.6 Acoustic propagation micro-proof `[ ]`',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'DEVELOPMENT_PLAN Phase 3.5 block: expected 1 match, found {count}')
+          p.write_text(text, encoding='utf-8')
+
+          # TESTING: protect the production failure boundaries that caused the visual/physics defects.
+          p = Path('docs/TESTING.md')
+          text = p.read_text(encoding='utf-8')
+          new_testing = (
+              'Phase 3.5 has a dedicated Props suite wired through the authoritative all-tests barrier. '
+              'It launches the real `Prop Lab` through the production application/session/player path and proves outward-facing OBJ winding plus explicit per-face hard normals, normal unselected lit/shadowed presentation, the external-model seam, real `RigidBody3D` prop ownership, frozen settled state, F pickup into exactly one semantic `carried_junk` slot, physical world presentation/collision disabled while carried, bottom-center HUD Junk presentation, normal movement while carrying, central world/hand-action suppression, stale F/R edge suppression, F throw versus R gentle release, geometry-aware view-derived placement, same prop identity across world → carried Junk → world, detached capture/apply/reconciliation, active rigid-body translation with continuous collision while moving, collision without angular orientation change, yaw-preserving top-up normalization only on genuine settle, direct floor contact without support-probe hover gaps, lower semantic impact strength for gentle release, semantic `prop.impact` sound, edge support, stable stacking, lower-support removal, controlled unsupported rigid-body fall, and no post-settle drift/spin. Acoustic propagation remains Phase 3.6.'
+          )
+          text, count = re.subn(
+              r'Phase 3\.5 has a dedicated Props suite wired through the authoritative all-tests barrier\..*?Acoustic propagation remains Phase 3\.6\.',
+              new_testing,
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'TESTING Phase 3.5 paragraph: expected 1 match, found {count}')
+          p.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Remove helper and verify bounded diff
+        shell: bash
+        run: |
+          rm .github/workflows/fix_phase_3_5_prop_physics.yml
+          git diff --check
+          test "$(git status --short | sed 's/^...//' | sort)" = "$(printf '%s\n' \
+            .github/workflows/fix_phase_3_5_prop_physics.yml \
+            application/application_input_boundary.gd \
+            assets/models/props/ordinary_crate.obj \
+            assets/models/props/ordinary_crate_tall.obj \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/GAME_VISION.md \
+            docs/TESTING.md \
+            gameplay/props/OrdinaryProp.tscn \
+            gameplay/props/ordinary_prop.gd \
+            player/interaction/player_prop_carry.gd \
+            scenes/PropLab.tscn \
+            tests/props/prop_regressions.gd | sort)"
+
+      - name: Setup Godot 4.7.2
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: false
+
+      - name: Import project
+        run: godot --headless --path . --import
+
+      - name: Run authoritative regression barrier
+        run: godot --headless --path . --script res://tests/run_all_tests.gd
+
+      - name: Commit corrected prop physics
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            assets/models/props/ordinary_crate.obj \
+            assets/models/props/ordinary_crate_tall.obj \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/GAME_VISION.md \
+            docs/TESTING.md \
+            gameplay/props/OrdinaryProp.tscn \
+            gameplay/props/ordinary_prop.gd \
+            player/interaction/player_prop_carry.gd \
+            scenes/PropLab.tscn \
+            tests/props/prop_regressions.gd \
+            .github/workflows/fix_phase_3_5_prop_physics.yml
+          git diff --cached --check
+          git commit -m "Use real rigid physics for Phase 3.5 props"
+          git push origin HEAD:test
