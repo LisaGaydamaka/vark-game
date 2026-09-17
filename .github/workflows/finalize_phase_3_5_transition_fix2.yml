@@ -1,0 +1,99 @@
+name: Retry Phase 3.5 transition with bounded runner
+
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: write
+
+jobs:
+  finalize-phase-3-5-transition:
+    if: github.event.head_commit.message == 'Retry Phase 3.5 transition with bounded runner'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout authoritative test head
+        uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Correct readable patch splice and apply
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/phase35_transition_fix_tmp.py')
+          text = path.read_text(encoding='utf-8')
+          old = '    dynamic_settle + "func _has_support() -> bool:\\n",\n'
+          new = '    dynamic_settle,\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'dynamic settle splice marker count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python -m py_compile tools/phase35_transition_fix_tmp.py
+          python tools/phase35_transition_fix_tmp.py
+
+      - name: Remove temporary helpers and verify bounded diff
+        shell: bash
+        run: |
+          rm -f \
+            tools/phase35_transition_fix_tmp.py \
+            .github/workflows/finalize_phase_3_5_transition_ownership.yml \
+            .github/workflows/finalize_phase_3_5_transition_retry.yml \
+            .github/workflows/inspect_phase_3_5_transition_patch.yml \
+            .github/workflows/finalize_phase_3_5_transition_clean.yml \
+            .github/workflows/finalize_phase_3_5_transition_fix2.yml
+          python - <<'PY'
+          import subprocess
+          allowed = {
+              'gameplay/props/ordinary_prop.gd',
+              'player/interaction/player_prop_carry.gd',
+              'player/locomotion/player_support.gd',
+              'player/player.gd',
+              'player/traversal/player_ledge_controller.gd',
+              'player/traversal/player_ledge_detector.gd',
+              'tests/props/phase_3_5_transition_regressions.gd',
+              'tests/props/run_prop_tests.gd',
+              'docs/GAME_VISION.md',
+              'docs/DEVELOPMENT_PLAN.md',
+              'docs/TESTING.md',
+          }
+          changed = set(subprocess.check_output(
+              ['git', 'diff', '--name-only', 'b6c1a71cbaca74b730fd74be3a5f4c98f3fbf142'],
+              text=True,
+          ).splitlines())
+          unexpected = changed - allowed
+          if unexpected:
+              raise SystemExit(f'Unexpected Phase 3.5 files: {sorted(unexpected)}')
+          print('Bounded Phase 3.5 files:')
+          for item in sorted(changed):
+              print(' -', item)
+          PY
+          git diff --check
+
+      - name: Setup Godot 4.7.2
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: false
+
+      - name: Import project
+        run: timeout 120s godot --headless --path . --import
+
+      - name: Run focused Props regressions
+        run: timeout 150s godot --headless --path . --script res://tests/props/run_prop_tests.gd
+
+      - name: Run authoritative regression barrier
+        run: timeout 240s godot --headless --path . --script res://tests/run_all_tests.gd
+
+      - name: Commit corrected Phase 3.5 implementation
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Fix Phase 3.5 prop transition ownership'
+          git push origin HEAD:test
