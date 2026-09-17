@@ -1,0 +1,254 @@
+name: Finalize Phase 3.5 prop physics correction
+
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: write
+
+jobs:
+  finalize-phase-3-5-prop-physics:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Checkout authoritative test head
+        uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Apply candidate and correct support seating
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)
+
+          source = Path('.github/workflows/fix_phase_3_5_prop_physics.yml').read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(source) if "python - <<'PY'" in line) + 1
+          end = next(i for i in range(start, len(source)) if source[i].strip() == 'PY')
+          code_lines = []
+          for line in source[start:end]:
+              code_lines.append(line[10:] if line.startswith('          ') else line)
+          exec(compile('\n'.join(code_lines), 'phase_3_5_prop_physics_fix.py', 'exec'), {})
+
+          path = Path('gameplay/props/ordinary_prop.gd')
+          text = path.read_text(encoding='utf-8')
+          old = '''func _update_dynamic_settling() -> void:
+\tvar contact_count: int = get_colliding_bodies().size()
+\tif contact_count > 0 and _last_contact_count == 0:
+\t\t_queue_impact_sound(linear_velocity.length())
+\t_last_contact_count = contact_count
+
+\tif contact_count > 0 and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):
+\t\t_settle_contact_frames += 1
+\t\t_phase = PHASE_SETTLING
+\t\tif _settle_contact_frames >= maxi(settle_contact_frames_required, 1):
+\t\t\t_settle_now()
+\t\treturn
+
+\t_settle_contact_frames = 0
+\t_phase = PHASE_MOVING
+
+
+func _settle_now() -> void:
+\tvar settled_origin: Vector3 = global_position
+\tfreeze = true
+\tlinear_velocity = Vector3.ZERO
+\tangular_velocity = Vector3.ZERO
+\tglobal_transform = Transform3D(_top_up_basis_for_yaw(_settle_yaw), settled_origin)
+\tsleeping = true
+\t_phase = PHASE_SETTLED
+\t_motion_kind = MOTION_NONE
+\t_settle_contact_frames = 0
+\t_unsupported_frames = 0
+\t_last_contact_count = 0
+'''
+          new = '''func _update_dynamic_settling() -> void:
+\tvar contact_count: int = get_colliding_bodies().size()
+\tif contact_count > 0 and _last_contact_count == 0:
+\t\t_queue_impact_sound(linear_velocity.length())
+\t_last_contact_count = contact_count
+
+\tvar support_y: float = _find_dynamic_support_surface_y()
+\tif is_finite(support_y) and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):
+\t\t_settle_contact_frames += 1
+\t\t_phase = PHASE_SETTLING
+\t\tif _settle_contact_frames >= maxi(settle_contact_frames_required, 1):
+\t\t\t_settle_now(support_y)
+\t\treturn
+
+\t_settle_contact_frames = 0
+\t_phase = PHASE_MOVING
+
+
+func _settle_now(support_y: float) -> void:
+\tvar top_up_basis: Basis = _top_up_basis_for_yaw(_settle_yaw)
+\tvar settled_origin: Vector3 = global_position
+\tvar box: BoxShape3D = prop_collision.shape as BoxShape3D if prop_collision != null else null
+\tif box != null and is_finite(support_y):
+\t\tsettled_origin.y = support_y + _vertical_support_extent(top_up_basis, box.size * 0.5)
+\tfreeze = true
+\tlinear_velocity = Vector3.ZERO
+\tangular_velocity = Vector3.ZERO
+\tglobal_transform = Transform3D(top_up_basis, settled_origin)
+\tsleeping = true
+\t_phase = PHASE_SETTLED
+\t_motion_kind = MOTION_NONE
+\t_settle_contact_frames = 0
+\t_unsupported_frames = 0
+\t_last_contact_count = 0
+
+
+func _find_dynamic_support_surface_y() -> float:
+\tif prop_collision == null or prop_collision.shape == null or not is_inside_tree():
+\t\treturn NAN
+\tvar box: BoxShape3D = prop_collision.shape as BoxShape3D
+\tif box == null:
+\t\treturn NAN
+\tvar half: Vector3 = box.size * 0.5
+\tvar local_corners: Array[Vector3] = [
+\t\tVector3(-half.x, -half.y, -half.z), Vector3(half.x, -half.y, -half.z),
+\t\tVector3(-half.x, -half.y, half.z), Vector3(half.x, -half.y, half.z),
+\t\tVector3(-half.x, half.y, -half.z), Vector3(half.x, half.y, -half.z),
+\t\tVector3(-half.x, half.y, half.z), Vector3(half.x, half.y, half.z),
+\t]
+\tvar world_corners: Array[Vector3] = []
+\tvar lowest_y: float = INF
+\tfor local_corner: Vector3 in local_corners:
+\t\tvar world_corner: Vector3 = global_transform * local_corner
+\t\tworld_corners.append(world_corner)
+\t\tlowest_y = minf(lowest_y, world_corner.y)
+
+\tvar best_support_y: float = -INF
+\tfor world_corner: Vector3 in world_corners:
+\t\tif world_corner.y > lowest_y + 0.025:
+\t\t\tcontinue
+\t\tvar query := PhysicsRayQueryParameters3D.create(
+\t\t\tworld_corner + Vector3.UP * 0.035,
+\t\t\tworld_corner + Vector3.DOWN * 0.09
+\t\t)
+\t\tquery.exclude = [get_rid()]
+\t\tquery.collision_mask = _ordinary_collision_mask
+\t\tquery.collide_with_areas = false
+\t\tquery.collide_with_bodies = true
+\t\tvar hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+\t\tif hit.is_empty():
+\t\t\tcontinue
+\t\tvar normal: Vector3 = hit.get("normal", Vector3.UP)
+\t\tif normal.y < minimum_support_normal_y:
+\t\t\tcontinue
+\t\tbest_support_y = maxf(best_support_y, float(hit.get("position", world_corner).y))
+\treturn best_support_y if is_finite(best_support_y) else NAN
+
+
+func _vertical_support_extent(source_basis: Basis, half: Vector3) -> float:
+\tvar basis: Basis = source_basis.orthonormalized()
+\treturn (
+\t\tabsf(basis.x.y) * half.x
+\t\t+ absf(basis.y.y) * half.y
+\t\t+ absf(basis.z.y) * half.z
+\t)
+'''
+          text = replace_once(text, old, new, 'rigid-body settle seating')
+          path.write_text(text, encoding='utf-8')
+
+          path = Path('tests/props/prop_regressions.gd')
+          text = path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '\tassert_true.call(absf(pickup_prop.global_position.y - 0.3) <= 0.015, "A released crate settles directly on the floor instead of freezing with a visible air gap")\n',
+              '\tassert_true.call(absf(pickup_prop.global_position.y - 0.3) <= 0.015 and bool(pickup_prop.call("is_supported")), "A released crate is re-seated onto its real support plane after top-up normalization instead of freezing with a visible air gap")\n',
+              'release floor seating regression',
+          )
+          path.write_text(text, encoding='utf-8')
+
+          path = Path('docs/GAME_VISION.md')
+          text = path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              'The settled collider rests directly on its support rather than freezing early from a proximity probe and leaving a visible air gap.',
+              'Top-up normalization must re-seat the rotated collision shape onto the real detected support plane before freezing, so the settled collider rests directly on its support instead of inheriting the larger vertical extent of its tilted moving pose and leaving a visible air gap.',
+              'GAME_VISION settle seating rule',
+          )
+          path.write_text(text, encoding='utf-8')
+
+          path = Path('docs/DEVELOPMENT_PLAN.md')
+          text = path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '- settling is based on real rigid-body contact/rest rather than support-probe proximity, so a settled box does not hover above the floor;',
+              '- settling is based on real rigid-body support/rest rather than early proximity; after yaw-preserving top-up normalization, the rotated collision shape is re-seated onto the detected support plane before freezing so a settled box does not hover above the floor;',
+              'DEVELOPMENT_PLAN settle seating rule',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Remove temporary helpers and verify bounded diff
+        shell: bash
+        run: |
+          rm .github/workflows/fix_phase_3_5_prop_physics.yml
+          rm .github/workflows/run_phase_3_5_prop_physics_fix.yml
+          rm .github/workflows/diagnose_phase_3_5_prop_gap.yml
+          rm .github/workflows/finalize_phase_3_5_prop_physics.yml
+          git diff --check
+          test "$(git status --short | sed 's/^...//' | sort)" = "$(printf '%s\n' \
+            .github/workflows/diagnose_phase_3_5_prop_gap.yml \
+            .github/workflows/finalize_phase_3_5_prop_physics.yml \
+            .github/workflows/fix_phase_3_5_prop_physics.yml \
+            .github/workflows/run_phase_3_5_prop_physics_fix.yml \
+            assets/models/props/ordinary_crate.obj \
+            assets/models/props/ordinary_crate_tall.obj \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/GAME_VISION.md \
+            docs/TESTING.md \
+            gameplay/props/OrdinaryProp.tscn \
+            gameplay/props/ordinary_prop.gd \
+            player/interaction/player_prop_carry.gd \
+            scenes/PropLab.tscn \
+            tests/props/prop_regressions.gd | sort)"
+
+      - name: Setup Godot 4.7.2
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: false
+
+      - name: Import project
+        run: godot --headless --path . --import
+
+      - name: Run authoritative regression barrier
+        run: godot --headless --path . --script res://tests/run_all_tests.gd
+
+      - name: Commit corrected prop rendering and physics
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            assets/models/props/ordinary_crate.obj \
+            assets/models/props/ordinary_crate_tall.obj \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/GAME_VISION.md \
+            docs/TESTING.md \
+            gameplay/props/OrdinaryProp.tscn \
+            gameplay/props/ordinary_prop.gd \
+            player/interaction/player_prop_carry.gd \
+            scenes/PropLab.tscn \
+            tests/props/prop_regressions.gd \
+            .github/workflows/fix_phase_3_5_prop_physics.yml \
+            .github/workflows/run_phase_3_5_prop_physics_fix.yml \
+            .github/workflows/diagnose_phase_3_5_prop_gap.yml \
+            .github/workflows/finalize_phase_3_5_prop_physics.yml
+          git diff --cached --check
+          git commit -m "Use real rigid physics for Phase 3.5 props"
+          git push origin HEAD:test
