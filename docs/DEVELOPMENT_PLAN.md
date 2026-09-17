@@ -130,10 +130,15 @@ Do not create universal entity, action, effect, interaction, AI, time, scheduler
 
 If a feature is ordinary mission content, its normal authoring path must be developed with it.
 
-- TrenchBroom: geometry and ordinary spatial entities
+- TrenchBroom: structural brush geometry plus placement/configuration of ordinary spatial entities
+- external Godot-supported 3D model assets: reusable visual geometry for ordinary objects such as doors/openable windows, furniture, containers, movable props, mechanisms, and loot presentation
 - typed Godot Resources/config: reusable non-spatial authored configuration
 - GDScript: genuinely procedural or unusual mission behavior through supported APIs
 - writer-facing text data: dialogue/narrative content without gameplay-code editing
+
+Structural architecture such as rooms, walls, floors, ceilings, stairs, and major built forms remains natural TrenchBroom brush geometry. Reusable object visuals should use external model assets when that is the natural representation rather than forcing furniture/doors/props into brush geometry.
+
+The Vark gameplay archetype/entity owns semantic behavior, persistent/content identity, interaction/state, and the stable authoring contract. The selected external model is replaceable presentation/configuration and must not become the object's semantic identity or make gameplay depend on fragile mesh/node names. Openable windows are ordinary door/opening variants and reuse the same door behavior/integration contracts; do not create a separate window gameplay subsystem.
 
 Shared authored/configuration Resources are treated as configuration, not mission-local mutable runtime state. Mutable gameplay state belongs to the current world/session or concrete runtime owner.
 
@@ -322,9 +327,9 @@ Windows x64 desktop is the official development/export target. The Ubuntu GitHub
 
 ## TrenchBroom
 
-Primary spatial authoring tool for brush geometry/materials, routes/rooms, player starts, guards/patrol markers, doors/lights, loot/containers/props, triggers/exits, and ordinary spatial mission objects.
+Primary spatial authoring tool for brush geometry/materials, routes/rooms, player starts, guards/patrol markers, doors/lights, loot/containers/props, triggers/exits, and ordinary spatial mission objects. TrenchBroom also places/configures model-backed ordinary entities; reusable furniture, doors/openable windows, containers, props, and similar objects do not need to be rebuilt as brushes merely to participate in mission authoring.
 
-The `.map` file is authored source. Generated/imported geometry must not contain irreplaceable manual edits.
+The `.map` file is authored source. Generated/imported geometry must not contain irreplaceable manual edits. External 3D model assets are authored visual source alongside the map: the map/entity selects a model or variant while Vark's gameplay archetype remains the semantic owner.
 
 ## Godot
 
@@ -359,7 +364,7 @@ missions/
         assets/
 ```
 
-`mission.tres` is the authored `MissionDefinition` metadata owner for a package. `mission.gd` is optional; a simple mission must not require custom mission behavior GDScript. `world.tscn` is the current Godot runtime wrapper around the package's authored spatial source; the exact amount of technical loader glue may shrink as Phase 2 proves the final import/loading workflow.
+`mission.tres` is the authored `MissionDefinition` metadata owner for a package. `mission.gd` is optional; a simple mission must not require custom mission behavior GDScript. `world.tscn` is the current Godot runtime wrapper around the package's authored spatial source; the exact amount of technical loader glue may shrink as Phase 2 proves the final import/loading workflow. Reusable external models may live in shared project asset locations while mission-specific models may live under the package `assets/` directory; an asset path/filename is presentation configuration, not persistent identity or saved semantic type.
 
 ---
 
@@ -852,15 +857,17 @@ Do not build keys/locks/barred behavior yet unless required by the proof.
 
 The first ordinary door is a reusable `AnimatableBody3D` hinge leaf rather than the 3.1 door-like probe. It consumes the same `vark_interactable` surface and Thief-style selection presentation, owns explicit `closed/opening/open/closing` semantic phase plus `open_fraction`, and advances its physical hinge transform from gameplay physics rather than a tween/coroutine as durable truth. A completed transition emits `door.state_changed`; each accepted use emits the 3.3 `gameplay.sound` source fact with kind `door.use`. The physical leaf collider is also the closed-door vision obstruction, so opening clears the actual doorway rather than toggling a separate invisible blocker.
 
+The current 3.4 implementation proves those behavior seams with project-owned placeholder box presentation. Before 3.4 can become `[x]`, move the visible leaf behind a replaceable external 3D-model presentation seam and prove that choosing/swapping the model does not replace the ordinary-door semantic owner, interaction contract, collision/vision behavior, events, or save-state contract. An openable window is simply a door/opening variant using this same archetype/integration path; no separate window subsystem is planned.
+
 Two deliberately narrow consumer seams are exposed for later proofs: `get_acoustic_openness()` reports only the door-side 0..1 opening state for 3.6 to interpret through whatever propagation model proves correct, and `is_navigation_passage_open()` reports whether the leaf is fully open for the first 3.7 guard/nav consumer. The door does not implement propagation, hearing, a nav framework, or guard logic. `capture_semantic_state()` / `apply_semantic_state()` preserve phase plus progress and rebuild the derived hinge pose without replaying sound or state-change consequences.
 
 A development-only `Door Lab` launches through the normal application/session/input path with a framed doorway and a visible target behind it so closed/open collision and straight-through vision behavior are legible. The accepted 3.1 Interaction Lab remains unchanged as the narrow selector/highlight fixture.
 
-**Done when:** one real ordinary door uses the accepted center-view/F interaction contract and selection feedback; interaction visibly animates one physical collision leaf between explicit closed/open states; the closed leaf blocks the doorway and straight-through vision while the fully open leaf clears both; accepted use emits one semantic `door.use` gameplay sound and completed transitions emit one semantic door-state event through the current world session; acoustic openness and navigation-passage state are exposed only as door-side source-state seams; semantic capture/apply preserves stable and in-progress state without serializing/replaying runtime continuation machinery; and no keys/locks/barred behavior, acoustic propagation, hearing consumer, guard AI, or general navigation framework is introduced.
+**Done when:** one real ordinary door uses the accepted center-view/F interaction contract and selection feedback; its visible leaf comes from a replaceable external 3D model asset while the ordinary-door archetype remains the semantic/gameplay owner; interaction visibly animates one physical collision leaf between explicit closed/open states; the closed leaf blocks the doorway and straight-through vision while the fully open leaf clears both; accepted use emits one semantic `door.use` gameplay sound and completed transitions emit one semantic door-state event through the current world session; acoustic openness and navigation-passage state are exposed only as door-side source-state seams; semantic capture/apply preserves stable and in-progress state without serializing/replaying runtime continuation machinery; swapping a compatible visual model does not require changing gameplay rules; and no keys/locks/barred behavior, separate window subsystem, acoustic propagation, hearing consumer, guard AI, or general navigation framework is introduced.
 
-**Automated:** pending post-push CI — the new focused Application regression launches `Door Lab` through the real application/session/player path and deterministically covers accepted interaction/highlight reuse, closed/open physical-overlap and vision-ray behavior, animated phase/progress, one semantic `door.use` source fact per accepted use, completed `door.state_changed` events, acoustic/navigation door-side seams, in-progress semantic capture/apply with invalid-state rejection, no consequence replay during apply, and closing restoration. It is wired into the authoritative Application suite and all-tests barrier.
+**Automated:** the existing focused Application regression covers the current door behavior seams through `Door Lab`. Before `[x]`, extend that deterministic coverage to prove the configured external-model presentation instantiates through the same ordinary-door archetype and that compatible model replacement does not change its semantic/collision/interaction/state behavior; then run the authoritative all-tests barrier on the resulting implementation head.
 
-**Manual:** required — validator: **Windows x64 user/playtester**. F5 → Development Launch → Door Lab; confirm the closed door selects with the accepted fullbright/no-received-shadow surface while retaining its ordinary cast shadow; one **F** press makes the physical leaf visibly swing open rather than snap, revealing the green marker and allowing the player through the doorway; aim at the open leaf and press **F** to visibly close it, after which the doorway is physically blocked and the green marker is occluded again; confirm there is no obvious ghost collision or locomotion/mouse-look regression. No audible door clip is expected in 3.4—the required sound proof here is the semantic gameplay-sound fact, not presentation audio.
+**Manual:** required after the external-model follow-up — validator: **Windows x64 user/playtester**. F5 → Development Launch → Door Lab; confirm the model-backed closed door selects with the accepted fullbright/no-received-shadow surface while retaining its ordinary cast shadow; one **F** press makes the physical leaf visibly swing open rather than snap, revealing the green marker and allowing the player through the doorway; aim at the open leaf and press **F** to visibly close it, after which the doorway is physically blocked and the green marker is occluded again; confirm there is no obvious ghost collision, presentation detachment, or locomotion/mouse-look regression. No audible door clip is expected in 3.4—the required sound proof here is the semantic gameplay-sound fact, not presentation audio.
 
 ## 3.5 Thief-style prop micro-proof `[ ]`
 
@@ -869,6 +876,8 @@ Implement ordinary prop states sufficient to prove:
 ```text
 settled → held → dropped/thrown/unsupported → settling → settled
 ```
+
+Use at least one representative replaceable external 3D model asset for the ordinary prop/furniture visual. The prop gameplay archetype owns support/carry/interaction/save semantics; the model is replaceable presentation and must not become semantic identity.
 
 Protect the LOCKED rules:
 
@@ -1102,7 +1111,7 @@ Harden center-view targeting, range/occlusion/state checks, highlight, and one p
 
 ## 6.2 Door completion `[ ]`
 
-Keys/locks/barred restrictions, authoring properties, obstruction behavior, NPC use, events, save state.
+Keys/locks/barred restrictions, authoring properties, obstruction behavior, NPC use, events, save state. Complete the mapper-facing external-model/variant authoring path so wooden, metal, ornate, window-like, or other compatible opening presentations can reuse the same ordinary door/opening gameplay archetype. Openable windows are variants of this system, not a separate gameplay subsystem.
 
 ## 6.3 Loot, keys, minimal possession, and run-stat ownership `[ ]`
 
@@ -1118,7 +1127,7 @@ Because collecting authored loot removes an authored world instance, implement t
 
 ## 6.4 Containers `[ ]`
 
-Physical opening/exposed contents where appropriate.
+Physical opening/exposed contents where appropriate. Ordinary cabinets, chests, drawers, and furniture-like containers use reusable external model assets/variants where appropriate rather than requiring bespoke brush geometry or gameplay code per visual model.
 
 ## 6.5 Switches and switchable/extinguishable lights `[ ]`
 
@@ -1126,7 +1135,7 @@ Integrate with gameplay light state, sound/events, and saves.
 
 ## 6.6 Physical prop completion `[ ]`
 
-Expand support relationships, stacking/climbing, held presentation, drop/throw, impacts/noise, obstruction, and save state only as real content needs them.
+Expand support relationships, stacking/climbing, held presentation, drop/throw, impacts/noise, obstruction, save state, and reusable external-model presentation/variant authoring only as real content needs them. Furniture/prop visual replacement must not require rewriting the shared physical-prop gameplay rules.
 
 Preserve the Phase 3 held-prop interaction restrictions through central interaction/input ownership.
 
@@ -1192,13 +1201,13 @@ Provide rule/event/fact inspection sufficient to answer why a rule did/didn't fi
 
 Goal: test authoring workflow/system architecture with an actual small mission.
 
-The mission uses real TrenchBroom geometry/entities, multiple routes where practical, doors/keys, darkness/light, surfaces, throwable props, guard patrol/investigation, typed audible speech, loot/container interaction, objectives, one declarative rule, one mission-specific GDScript example where useful, quicksave/load, restart, and minimal results/run-stat inspection.
+The mission uses real TrenchBroom geometry/entities, multiple routes where practical, reusable external-model-backed doors/openings and furniture/props, doors/keys, darkness/light, surfaces, throwable props, guard patrol/investigation, typed audible speech, loot/container interaction, objectives, one declarative rule, one mission-specific GDScript example where useful, quicksave/load, restart, and minimal results/run-stat inspection.
 
 Full polished results UI remains Phase 13; Phase 8 must consume the real semantic `MissionRunState` rather than create a temporary scraper/counter system.
 
 ## 8.1 Mapper workflow proof `[ ]`
 
-A mapper should not need hand-edits in generated output.
+A mapper should not need hand-edits in generated output. The ordinary workflow includes placing/configuring model-backed gameplay entities and selecting compatible reusable model variants without editing core gameplay scenes/code.
 
 ## 8.2 Reimport proof `[ ]`
 
@@ -1340,7 +1349,7 @@ Remove/correct accidental abstractions rather than preserving bad Phase 7 shapes
 
 ## 11.2 Vark TrenchBroom entity library `[ ]`
 
-Promote ordinary entities/fields proven in real mission authoring.
+Promote ordinary entities/fields proven in real mission authoring, including the stable model/variant-facing fields needed for reusable model-backed doors/openings, containers/furniture, props, and other ordinary modeled world objects. Do not expose fragile imported mesh hierarchy as gameplay API.
 
 ## 11.3 Validation suite `[ ]`
 
@@ -1436,7 +1445,7 @@ Goal: prove systems at representative content scale and allow art/audio replacem
 
 ## 14.1 Art replacement paths `[ ]`
 
-Models/textures/animations/HUD/menu assets can be replaced without changing gameplay rules.
+Models/textures/animations/HUD/menu assets can be replaced without changing gameplay rules. This phase hardens production replacement at scale; it is **not** the first proof of model-backed world objects. Doors/openable windows, containers/furniture, and representative props must already have used replaceable external 3D model presentation through their earlier gameplay/authoring proofs.
 
 ## 14.2 Audio replacement paths `[ ]`
 
@@ -1519,6 +1528,8 @@ Prove FIFO for emitted order, nested append, lifecycle suppression, stale-world 
 
 Keep small representative fixtures and progressively use the same ordinary gameplay objects rather than subsystem-specific fakes.
 
+Prove the external-model presentation seam early on those real objects: the ordinary door/opening and representative prop use replaceable model assets while gameplay identity/state/collision/integration remain owned by their Vark archetypes. An openable window reuses the ordinary door/opening path rather than creating a parallel subsystem.
+
 The prop fixture includes locked held-prop presentation/no-free-rotation/no-ordinary-interaction behavior.
 
 ## Save snapshot/restore transaction
@@ -1585,7 +1596,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Complete 3.1 minimal-interaction CI/manual acceptance, then continue with 3.2; keep the event/sound contracts in their ordered roadmap items.
+1. Finish the current 3.4 ordinary-door item by adding/proving its replaceable external-model presentation seam, then complete its authoritative automated validation and focused Windows manual acceptance before moving to 3.5.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.

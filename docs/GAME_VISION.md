@@ -377,6 +377,22 @@ Examples include doors, drawers, containers, switches, loot, keys, inventory ite
 
 ---
 
+# Reusable modeled world objects — LOCKED authoring direction
+
+Major structural architecture such as rooms, walls, floors, ceilings, stairs, and other built forms may remain brush-authored through TrenchBroom.
+
+Reusable ordinary objects use external Godot-supported 3D model assets when that is the natural representation. This includes doors/openable windows, furniture, containers, movable props, mechanisms, loot presentation, and other repeated modeled world objects.
+
+The gameplay archetype/entity and the visual model are separate concerns. The Vark archetype owns gameplay behavior, semantic/persistent identity, interaction/state, and cross-system integration. A model asset supplies replaceable presentation/configuration and must not become semantic identity or require gameplay code to depend on fragile imported mesh/node names.
+
+Different compatible visual models should therefore be able to reuse the same gameplay archetype—for example wooden, metal, and ornate door models using ordinary door behavior, or chair/crate/vase models using ordinary prop behavior.
+
+Openable windows are treated as ordinary door/opening variants. They reuse the same interaction, movement/open-state, collision/vision/acoustic/navigation/save integration as appropriate and do **not** require a separate window gameplay subsystem. A purely static/decorative window may simply be ordinary architecture/model presentation.
+
+Final art replacement must preserve these gameplay contracts rather than forcing gameplay rewrites.
+
+---
+
 # Doors — LOCKED capabilities, integration spine
 
 The base door archetype supports:
@@ -392,7 +408,7 @@ Lockpicking is not part of the base game.
 
 The normal base door is not destructible.
 
-Doors physically animate between open and closed states. The player does not need a special mechanic for holding a normal door at an arbitrary partial angle.
+Doors physically animate between open and closed states. The player does not need a special mechanic for holding a normal door at an arbitrary partial angle. Compatible external model variants provide the visible door/openable-window presentation without replacing the shared ordinary-door gameplay contract.
 
 There is no keyhole-peeking mode.
 
@@ -468,6 +484,8 @@ Supported physical objects:
 - can be climbed on where suitable
 
 An object remains where the mission creator placed it until something explicitly acts on it or its support disappears.
+
+Ordinary furniture/prop archetypes may use different reusable external 3D model assets without changing these physical rules. Visual model choice is presentation/configuration, not a separate physics behavior or persistent identity.
 
 ## Support and stacks
 
@@ -668,7 +686,7 @@ Vark consists of authored missions rather than one mandatory open world.
 
 A mission is a self-contained playable sandbox with objectives, an entry state, world state, and one or more possible completion/exit conditions.
 
-A mission may contain geometry, lighting, surfaces, NPCs, patrols, routines, doors, containers, props, loot, keys, items, mechanisms, triggers, objectives, narrative events, cutscenes, hazards, rules, exits, statistics, and campaign consequences.
+A mission may contain brush geometry, external 3D model assets/variants, lighting, surfaces, NPCs, patrols, routines, doors/openable windows, containers, furniture/props, loot, keys, items, mechanisms, triggers, objectives, narrative events, cutscenes, hazards, rules, exits, statistics, and campaign consequences.
 
 A good mission usually offers multiple useful approaches, but the core systems do not prescribe exact entrances, paths, enemies, objectives, or solutions.
 
@@ -862,7 +880,7 @@ Final sound assets may be replaced without changing gameplay noise semantics.
 
 # Visual presentation — LOCKED direction
 
-The game uses a readable low-fi first-person visual language inspired by Thief 1 & 2 and compatible with brush-based TrenchBroom construction.
+The game uses a readable low-fi first-person visual language inspired by Thief 1 & 2 and compatible with brush-based TrenchBroom construction. Structural spaces can remain brush-authored while reusable doors/openable windows, furniture, containers, props, mechanisms, and similar world objects use replaceable external 3D model assets through their gameplay archetypes.
 
 Gameplay-important distinctions must remain clear:
 
@@ -917,7 +935,7 @@ Within stable core rules, mission creators should be able to decide:
 - lighting/surfaces
 - loot/objectives/fail conditions
 - NPC placement/patrols/routines/dialogue
-- keys/doors/containers/props
+- keys/doors/openable-window variants/containers/furniture/props and their reusable external model variants
 - tools/alarms/reactions
 - cutscenes/maps/briefings/statistics
 - mission/campaign consequences
@@ -938,7 +956,7 @@ Vark is ready to hand to mission creators when a developer who understands Godot
 - ordinary guards/patrols
 - suspicion, investigation, detection, pursuit, search, recovery
 - NPC state feedback
-- doors/keys/containers
+- reusable external-model doors/openable-window variants/keys/containers/furniture
 - switchable/extinguishable lights
 - loot
 - Thief-style movable/throwable physical objects
