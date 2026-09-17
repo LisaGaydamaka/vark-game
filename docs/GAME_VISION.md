@@ -534,9 +534,15 @@ The ordinary-prop controls are:
 
 Throw and release restore the same prop to ordinary world participation with collision enabled. Throw applies substantial forward velocity. Release is deliberately gentler and should normally create less impact/noise than throwing.
 
+Release placement uses the prop's real collision volume. World geometry and other physical objects remain solid blockers. If the nearest valid release pose still overlaps the releasing player's capsule, the same prop enters a short overlap-only escape handoff so Jolt cannot destroy the intended throw/release impulse on its first rigid tick. During that handoff the prop's solver collision participation is suppressed, but its collision shape is swept against ordinary world blockers while ignoring only the releasing player. Normal rigid collision and the prop↔player relationship are restored as soon as the collision volumes are geometrically separated; if world geometry blocks the escape first, ordinary rigid collision is restored there instead of allowing the prop to ghost through the blocker. This is per-prop derived transient physics state, never a timer, arbitrary travel-distance expiry, project-wide collision-layer reassignment, or saved semantic state.
+
+A prop that leaves world participation also invalidates player state derived from that exact collider. Standing support and active catch/hang/corner/mantle attachment cannot outlive a prop that has been picked up as carried Junk.
+
 The release point is derived from the player's current view rather than from a fixed world-space hand position. Looking downward and pressing **R** should place the object's center predictably beneath/in front of the player, approximately along the center-view release line, so deliberate crate stacking is practical.
 
 Thrown/released/unsupported objects use real rigid-body translation while moving: gravity and collisions may change their position, linear velocity, slide, and bounce. Ordinary box-like Junk keeps angular motion locked during this moving phase, so hitting a floor, wall, prop, or actor does **not** rotate the box in flight. It does not continuously track later camera turns. When the prop genuinely settles, only pitch/roll are normalized so the top points upward; its current yaw is preserved. Settling must never rotate a particular side toward world north or any other global compass direction. Top-up normalization must re-seat the rotated collision shape onto the real detected support plane before freezing, so the settled collider rests directly on its support instead of inheriting the larger vertical extent of its tilted moving pose and leaving a visible air gap.
+
+Genuine dynamic rest is recognized from the rigid body's actual support/contact state rather than guessed proximity samples. This keeps edge/corner box-on-box contacts eligible to finish settling when the physics solver is already holding the object at rest.
 
 Once motion resolves, the object becomes settled again. Supported/settled props then resume the ordinary stylized support rules above.
 

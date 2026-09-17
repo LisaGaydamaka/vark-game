@@ -42,6 +42,14 @@ var _unsupported_frames: int = 0
 var _last_contact_count: int = 0
 var _ordinary_collision_layer: int = 1
 var _ordinary_collision_mask: int = 1
+var _dynamic_contact_count: int = 0
+var _dynamic_support_valid: bool = false
+var _dynamic_support_point: Vector3 = Vector3.ZERO
+var _dynamic_support_normal: Vector3 = Vector3.UP
+var _temporary_player_collision_exception: PhysicsBody3D = null
+var _player_escape_collision_suppressed: bool = false
+var _player_escape_launch_velocity: Vector3 = Vector3.ZERO
+var _player_escape_step_velocity: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -75,12 +83,16 @@ func _ready() -> void:
 	_refresh_visual()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	if _player_escape_collision_suppressed:
+		_advance_player_escape(delta)
+		return
 	match _phase:
 		PHASE_SETTLED:
 			linear_velocity = Vector3.ZERO
 			angular_velocity = Vector3.ZERO
 			_last_contact_count = 0
+			_clear_dynamic_contact_state()
 			if _has_support():
 				_unsupported_frames = 0
 			else:
@@ -93,10 +105,39 @@ func _physics_process(_delta: float) -> void:
 			_unsupported_frames = 0
 			_settle_contact_frames = 0
 			_last_contact_count = 0
+			_clear_dynamic_contact_state()
 		PHASE_MOVING, PHASE_SETTLING:
 			_unsupported_frames = 0
 			angular_velocity = Vector3.ZERO
 			_update_dynamic_settling()
+	_update_temporary_player_collision_exception()
+
+
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if _phase != PHASE_MOVING and _phase != PHASE_SETTLING:
+		return
+	_dynamic_contact_count = state.get_contact_count()
+	_dynamic_support_valid = false
+	_dynamic_support_point = Vector3.ZERO
+	_dynamic_support_normal = Vector3.UP
+	var body_origin: Vector3 = state.transform.origin
+	for contact_index: int in range(_dynamic_contact_count):
+		var local_point: Vector3 = state.get_contact_local_position(contact_index)
+		if local_point.y > body_origin.y + 0.05:
+			continue
+		var normal: Vector3 = state.get_contact_local_normal(contact_index)
+		if normal.length_squared() <= 0.000001:
+			continue
+		normal = normal.normalized()
+		if normal.y < 0.0:
+			normal = -normal
+		if normal.y < minimum_support_normal_y:
+			continue
+		var support_point: Vector3 = state.get_contact_collider_position(contact_index)
+		if not _dynamic_support_valid or support_point.y > _dynamic_support_point.y:
+			_dynamic_support_valid = true
+			_dynamic_support_point = support_point
+			_dynamic_support_normal = normal
 
 
 func can_interact(interactor: Node) -> bool:
@@ -164,9 +205,38 @@ func get_release_clearance_along(world_direction: Vector3, release_basis: Basis)
 	)
 
 
+func is_release_transform_world_clear(
+	release_transform: Transform3D,
+	ignored_body: PhysicsBody3D = null
+) -> bool:
+	if prop_collision == null or prop_collision.shape == null or not is_inside_tree():
+		return false
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = prop_collision.shape
+	query.transform = release_transform * prop_collision.transform
+	query.collision_mask = _ordinary_collision_mask
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.margin = 0.001
+	var excluded: Array[RID] = [get_rid()]
+	if ignored_body != null and is_instance_valid(ignored_body):
+		excluded.append(ignored_body.get_rid())
+	query.exclude = excluded
+	return get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+
+
+func has_temporary_player_collision_exception() -> bool:
+	return (
+		_temporary_player_collision_exception != null
+		and is_instance_valid(_temporary_player_collision_exception)
+	)
+
+
 func begin_carried_junk(holder: Node) -> bool:
 	if holder == null or _phase == PHASE_CARRIED_JUNK:
 		return false
+	_clear_temporary_player_collision_exception()
+	_clear_dynamic_contact_state()
 	_holder = holder
 	_phase = PHASE_CARRIED_JUNK
 	_motion_kind = MOTION_NONE
@@ -185,7 +255,8 @@ func begin_carried_junk(holder: Node) -> bool:
 func release_from_carry(
 	motion_kind: StringName,
 	release_transform: Transform3D,
-	initial_velocity: Vector3
+	initial_velocity: Vector3,
+	releasing_player: PhysicsBody3D = null
 ) -> bool:
 	if _phase != PHASE_CARRIED_JUNK:
 		return false
@@ -193,10 +264,42 @@ func release_from_carry(
 		return false
 	if not _is_finite_transform(release_transform) or not _is_finite_vector(initial_velocity):
 		return false
+	_clear_temporary_player_collision_exception()
 	_holder = null
 	global_transform = release_transform
+	var overlaps_releasing_player: bool = (
+		releasing_player != null
+		and is_instance_valid(releasing_player)
+		and _shape_overlaps_body_at_transform(release_transform, releasing_player)
+	)
 	_set_world_presentation_enabled(true)
-	_begin_motion(motion_kind, initial_velocity)
+	if overlaps_releasing_player:
+		add_collision_exception_with(releasing_player)
+		releasing_player.add_collision_exception_with(self)
+		_temporary_player_collision_exception = releasing_player
+		collision_layer = 0
+		collision_mask = 0
+		_player_escape_collision_suppressed = true
+		_player_escape_launch_velocity = initial_velocity
+		_player_escape_step_velocity = initial_velocity
+		if _player_escape_step_velocity.length() < 0.5:
+			var away_from_player: Vector3 = release_transform.origin - releasing_player.global_position
+			if away_from_player.length_squared() <= 0.000001:
+				away_from_player = -release_transform.basis.z
+			_player_escape_step_velocity = away_from_player.normalized() * 1.5
+		_phase = PHASE_MOVING
+		_motion_kind = motion_kind
+		_settle_yaw = _yaw_from_basis(global_transform.basis)
+		_settle_contact_frames = 0
+		_unsupported_frames = 0
+		_last_contact_count = 0
+		_clear_dynamic_contact_state()
+		linear_velocity = initial_velocity
+		angular_velocity = Vector3.ZERO
+		freeze = true
+		sleeping = true
+	else:
+		_begin_motion(motion_kind, initial_velocity)
 	return true
 
 
@@ -234,6 +337,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if (phase == PHASE_MOVING or phase == PHASE_SETTLING) and motion_kind == MOTION_NONE:
 		return false
 
+	_clear_temporary_player_collision_exception()
+	_clear_dynamic_contact_state()
 	_phase = phase
 	_motion_kind = motion_kind
 	global_transform = restored_transform
@@ -261,6 +366,7 @@ func reconcile_after_restore(holder: Node = null) -> bool:
 			return false
 		return bool(holder.call("reconcile_carried_junk_prop", self))
 	_holder = null
+	_clear_temporary_player_collision_exception()
 	_set_world_presentation_enabled(true)
 	if _phase == PHASE_SETTLED:
 		freeze = true
@@ -278,6 +384,7 @@ func _begin_motion(motion_kind: StringName, initial_velocity: Vector3) -> void:
 	_settle_contact_frames = 0
 	_unsupported_frames = 0
 	_last_contact_count = 0
+	_clear_dynamic_contact_state()
 	linear_velocity = initial_velocity
 	angular_velocity = Vector3.ZERO
 	freeze = false
@@ -285,29 +392,39 @@ func _begin_motion(motion_kind: StringName, initial_velocity: Vector3) -> void:
 
 
 func _update_dynamic_settling() -> void:
-	var contact_count: int = get_colliding_bodies().size()
+	var contact_count: int = _dynamic_contact_count
 	if contact_count > 0 and _last_contact_count == 0:
 		_queue_impact_sound(linear_velocity.length())
 	_last_contact_count = contact_count
-
-	var support_y: float = _find_dynamic_support_surface_y()
-	if is_finite(support_y) and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):
+	if _dynamic_support_valid and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):
 		_settle_contact_frames += 1
 		_phase = PHASE_SETTLING
 		if _settle_contact_frames >= maxi(settle_contact_frames_required, 1):
-			_settle_now(support_y)
+			_settle_now(_dynamic_support_point, _dynamic_support_normal)
 		return
-
 	_settle_contact_frames = 0
 	_phase = PHASE_MOVING
 
 
-func _settle_now(support_y: float) -> void:
+func _settle_now(support_point: Vector3, support_normal: Vector3) -> void:
 	var top_up_basis: Basis = _top_up_basis_for_yaw(_settle_yaw)
 	var settled_origin: Vector3 = global_position
 	var box: BoxShape3D = prop_collision.shape as BoxShape3D if prop_collision != null else null
-	if box != null and is_finite(support_y):
-		settled_origin.y = support_y + _vertical_support_extent(top_up_basis, box.size * 0.5)
+	var normal: Vector3 = support_normal
+	if normal.length_squared() > 0.000001:
+		normal = normal.normalized()
+	if box != null and normal.y >= minimum_support_normal_y:
+		var support_extent: float = _support_extent_along_normal(top_up_basis, box.size * 0.5, normal)
+		var horizontal_delta := Vector3(
+			settled_origin.x - support_point.x,
+			0.0,
+			settled_origin.z - support_point.z
+		)
+		settled_origin.y = support_point.y + (
+			support_extent
+			- normal.x * horizontal_delta.x
+			- normal.z * horizontal_delta.z
+		) / normal.y
 	freeze = true
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
@@ -318,57 +435,139 @@ func _settle_now(support_y: float) -> void:
 	_settle_contact_frames = 0
 	_unsupported_frames = 0
 	_last_contact_count = 0
+	_clear_dynamic_contact_state()
 
 
-func _find_dynamic_support_surface_y() -> float:
-	if prop_collision == null or prop_collision.shape == null or not is_inside_tree():
-		return NAN
-	var box: BoxShape3D = prop_collision.shape as BoxShape3D
-	if box == null:
-		return NAN
-	var half: Vector3 = box.size * 0.5
-	var local_corners: Array[Vector3] = [
-		Vector3(-half.x, -half.y, -half.z), Vector3(half.x, -half.y, -half.z),
-		Vector3(-half.x, -half.y, half.z), Vector3(half.x, -half.y, half.z),
-		Vector3(-half.x, half.y, -half.z), Vector3(half.x, half.y, -half.z),
-		Vector3(-half.x, half.y, half.z), Vector3(half.x, half.y, half.z),
-	]
-	var world_corners: Array[Vector3] = []
-	var lowest_y: float = INF
-	for local_corner: Vector3 in local_corners:
-		var world_corner: Vector3 = global_transform * local_corner
-		world_corners.append(world_corner)
-		lowest_y = minf(lowest_y, world_corner.y)
-
-	var best_support_y: float = -INF
-	for world_corner: Vector3 in world_corners:
-		if world_corner.y > lowest_y + 0.025:
-			continue
-		var query := PhysicsRayQueryParameters3D.create(
-			world_corner + Vector3.UP * 0.035,
-			world_corner + Vector3.DOWN * 0.09
-		)
-		query.exclude = [get_rid()]
-		query.collision_mask = _ordinary_collision_mask
-		query.collide_with_areas = false
-		query.collide_with_bodies = true
-		var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
-		if hit.is_empty():
-			continue
-		var normal: Vector3 = hit.get("normal", Vector3.UP)
-		if normal.y < minimum_support_normal_y:
-			continue
-		best_support_y = maxf(best_support_y, float(hit.get("position", world_corner).y))
-	return best_support_y if is_finite(best_support_y) else NAN
-
-
-func _vertical_support_extent(source_basis: Basis, half: Vector3) -> float:
+func _support_extent_along_normal(source_basis: Basis, half: Vector3, normal: Vector3) -> float:
 	var basis: Basis = source_basis.orthonormalized()
 	return (
-		absf(basis.x.y) * half.x
-		+ absf(basis.y.y) * half.y
-		+ absf(basis.z.y) * half.z
+		absf(basis.x.dot(normal)) * half.x
+		+ absf(basis.y.dot(normal)) * half.y
+		+ absf(basis.z.dot(normal)) * half.z
 	)
+
+
+func _clear_dynamic_contact_state() -> void:
+	_dynamic_contact_count = 0
+	_dynamic_support_valid = false
+	_dynamic_support_point = Vector3.ZERO
+	_dynamic_support_normal = Vector3.UP
+
+
+func _advance_player_escape(delta: float) -> void:
+	var launch_velocity: Vector3 = _player_escape_launch_velocity
+	if (
+		_temporary_player_collision_exception == null
+		or not is_instance_valid(_temporary_player_collision_exception)
+	):
+		_clear_temporary_player_collision_exception()
+		_player_escape_launch_velocity = Vector3.ZERO
+		_player_escape_step_velocity = Vector3.ZERO
+		_begin_motion(_motion_kind, launch_velocity)
+		return
+	var requested_motion: Vector3 = _player_escape_step_velocity * maxf(delta, 0.0)
+	var safe_motion: Vector3 = _sweep_player_escape_motion(
+		requested_motion,
+		_temporary_player_collision_exception
+	)
+	global_position += safe_motion
+	linear_velocity = _player_escape_launch_velocity
+	angular_velocity = Vector3.ZERO
+	if not _shape_overlaps_body_at_transform(global_transform, _temporary_player_collision_exception):
+		_clear_temporary_player_collision_exception()
+		_player_escape_launch_velocity = Vector3.ZERO
+		_player_escape_step_velocity = Vector3.ZERO
+		_begin_motion(_motion_kind, launch_velocity)
+		return
+	if requested_motion.length_squared() > 0.000001 and safe_motion.length() + 0.0001 < requested_motion.length():
+		# World geometry won the sweep before the player volume cleared. Restore
+		# ordinary rigid collision here rather than ghosting through the blocker.
+		_clear_temporary_player_collision_exception()
+		_player_escape_launch_velocity = Vector3.ZERO
+		_player_escape_step_velocity = Vector3.ZERO
+		_begin_motion(_motion_kind, launch_velocity)
+
+
+func _sweep_player_escape_motion(motion: Vector3, ignored_player: PhysicsBody3D) -> Vector3:
+	if (
+		motion.length_squared() <= 0.000001
+		or prop_collision == null
+		or prop_collision.shape == null
+		or not is_inside_tree()
+	):
+		return Vector3.ZERO
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = prop_collision.shape
+	query.transform = global_transform * prop_collision.transform
+	query.motion = motion
+	query.collision_mask = _ordinary_collision_mask
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.margin = 0.001
+	var excluded: Array[RID] = [get_rid()]
+	if ignored_player != null and is_instance_valid(ignored_player):
+		excluded.append(ignored_player.get_rid())
+	query.exclude = excluded
+	var fractions: PackedFloat32Array = get_world_3d().direct_space_state.cast_motion(query)
+	if fractions.size() < 1:
+		return Vector3.ZERO
+	return motion * clampf(fractions[0], 0.0, 1.0)
+
+
+func _update_temporary_player_collision_exception() -> void:
+	if _player_escape_collision_suppressed:
+		return
+	if _temporary_player_collision_exception == null:
+		return
+	if not is_instance_valid(_temporary_player_collision_exception):
+		_clear_temporary_player_collision_exception()
+		return
+	if _shape_overlaps_body_at_transform(global_transform, _temporary_player_collision_exception):
+		return
+	_clear_temporary_player_collision_exception()
+
+
+func _clear_temporary_player_collision_exception() -> void:
+	if (
+		_temporary_player_collision_exception != null
+		and is_instance_valid(_temporary_player_collision_exception)
+	):
+		remove_collision_exception_with(_temporary_player_collision_exception)
+		_temporary_player_collision_exception.remove_collision_exception_with(self)
+	_temporary_player_collision_exception = null
+	if _player_escape_collision_suppressed:
+		collision_layer = _ordinary_collision_layer
+		collision_mask = _ordinary_collision_mask
+		_player_escape_collision_suppressed = false
+
+
+func _shape_overlaps_body_at_transform(body_transform: Transform3D, other_body: PhysicsBody3D) -> bool:
+	if (
+		other_body == null
+		or not is_instance_valid(other_body)
+		or prop_collision == null
+		or prop_collision.shape == null
+		or not is_inside_tree()
+	):
+		return false
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = prop_collision.shape
+	query.transform = body_transform * prop_collision.transform
+	query.collision_mask = 0xFFFFFFFF
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	query.margin = 0.001
+	query.exclude = [get_rid()]
+	var other_rid: RID = other_body.get_rid()
+	for hit: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 32):
+		var hit_collider: Variant = hit.get("collider")
+		if hit_collider == other_body:
+			return true
+		var hit_rid: Variant = hit.get("rid")
+		if hit_rid is RID and hit_rid == other_rid:
+			return true
+	return false
+
 
 func _has_support() -> bool:
 	if prop_collision == null or prop_collision.shape == null or not is_inside_tree():
@@ -403,7 +602,25 @@ func _has_support() -> bool:
 			var normal: Vector3 = hit.get("normal", Vector3.UP)
 			if normal.y >= minimum_support_normal_y:
 				return true
-	return false
+
+	var support_query := PhysicsShapeQueryParameters3D.new()
+	support_query.shape = prop_collision.shape
+	var support_transform: Transform3D = global_transform * prop_collision.transform
+	support_transform.origin += Vector3.DOWN * clampf(support_probe_distance, 0.01, 0.04)
+	support_query.transform = support_transform
+	support_query.exclude = [get_rid()]
+	support_query.collision_mask = _ordinary_collision_mask
+	support_query.collide_with_areas = false
+	support_query.collide_with_bodies = true
+	support_query.margin = 0.001
+	var rest_info: Dictionary = get_world_3d().direct_space_state.get_rest_info(support_query)
+	if rest_info.is_empty():
+		return false
+	var rest_normal: Vector3 = rest_info.get("normal", Vector3.ZERO)
+	return (
+		rest_normal.length_squared() > 0.000001
+		and rest_normal.normalized().y >= minimum_support_normal_y
+	)
 
 
 func _set_world_presentation_enabled(enabled: bool) -> void:

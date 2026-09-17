@@ -872,49 +872,18 @@ A development-only `Door Lab` launches through the normal application/session/in
 
 ## 3.5 Thief-style prop micro-proof `[~]`
 
-Implement ordinary prop states sufficient to prove:
+The carried-Junk implementation is complete enough for focused correction and acceptance. Keep the dependency order explicit:
 
-```text
-settled/world → carried_junk → thrown/released/unsupported → moving → settling → settled/world
-```
+1. **Release/throw collision transaction.** Release placement uses the prop's real collision volume and keeps world/other-prop blockers authoritative. A release pose may enter an overlap-only escape handoff when it intersects the releasing player: the prop ignores that player while its shape is still swept against ordinary world blockers, then returns to normal rigid collision from geometric separation rather than a timer or distance guess.
+2. **Player dependency invalidation.** Picking up a prop immediately invalidates standing support and active catch/hang/corner/mantle state derived from that exact collider RID. Unrelated support/traversal state remains untouched.
+3. **Dynamic settling authority.** Moving/settling props use the real rigid-body contact manifold to identify support/rest candidates. The old lowest-corner proximity-ray heuristic is not settling authority. Final top-up normalization preserves yaw and re-seats the box on the detected support plane before freezing.
+4. **Acceptance.** Keep the existing carried-Junk HUD, F throw, R gentle release, hard-edged rendering, real rigid translation, stable settled edge/stack behavior, semantic sound/capture/reconcile seams, and accepted player movement feel unchanged.
 
-Use at least one representative replaceable external 3D model asset for the ordinary prop/furniture visual. The prop gameplay archetype owns support/carry/interaction/save semantics; the model is replaceable presentation and must not become semantic identity.
+**Done when:** world/prop blockers remain solid during release placement; an initially player-overlapping throw retains its intended impulse and restores normal player collision after separation; picking up the exact supporting/traversal prop ends that dependency immediately; low-speed tilted box-on-box contact can reach supported top-up settle from real contact state; yaw/no-gap/no-drift behavior remains; and the authoritative all-tests barrier plus Windows x64 user acceptance pass.
 
-Protect the LOCKED rules:
+**Automated:** required — the dedicated Props suite must exercise shape-aware world-blocked placement, overlapping-player throw impulse preservation, pairwise exception lifetime, exact support RID invalidation, catch/hang/corner/mantle collider invalidation, real-contact narrow-support settling, existing prop behavior, and the unchanged movement regression suite through `tests/run_all_tests.gd`.
 
-- supported/settled props remain exactly where authored until explicitly acted on or their support disappears;
-- edge-supported boxes remain;
-- simple supported stacks remain still;
-- removing a simple lower support activates unsupported objects above so they fall under real physics until supported, without an invented horizontal impulse or forced rotation;
-- settled props become frozen/stationary again;
-- **F/Frob** picks up an eligible highlighted ordinary prop as the player's one carried Junk object;
-- pickup immediately removes/disables that prop's physical world presentation and collision while preserving the same semantic/persistent identity;
-- the player can carry exactly one Junk object at a time;
-- carried Junk is shown at the bottom-center HUD and is never a camera-attached physical world body;
-- carried Junk cannot collide with world geometry while stored;
-- ordinary movement/look/crouch/jump/traversal remain available while carrying;
-- carrying occupies the player's hands and centrally suppresses ordinary world interaction, attack, and normal inventory-item use;
-- **F/Frob** while carrying throws the same prop forward in the current view direction;
-- **R** while carrying gently releases/drops the same prop using a view-derived placement point;
-- release placement uses the actual collision half-extents along the view ray plus only a tiny safety padding, rather than an arbitrary large center offset;
-- while thrown, released, or unsupported, the prop is an active `RigidBody3D`: gravity, friction, bounce/slide, continuous collision detection, and solid-body collision response are owned by the physics engine rather than hand-written `move_and_collide()` motion;
-- ordinary box-like Junk keeps angular motion locked while dynamically moving, so collisions change translation/velocity but do not rotate its release-facing orientation;
-- when genuine resting contact persists, the prop settles/freeze-transitions and normalizes **only pitch/roll** to top-up while preserving its current yaw; there is no world-north or canonical-side snap;
-- settling is based on real rigid-body support/rest rather than early proximity; after yaw-preserving top-up normalization, the rotated collision shape is re-seated onto the detected support plane before freezing so a settled box does not hover above the floor;
-- representative hard-edged OBJ props use outward face winding plus explicit hard face normals, and unselected props use ordinary lit shading with normal cast/receive shadows;
-- thrown/released impacts can emit the existing semantic gameplay-sound source fact for later acoustic/NPC use, with gentle release lower in source strength than a throw.
-
-Do not build a universal support-graph engine or a general inventory framework. Settled props may be frozen for the Thief-style stable-world rule; real rigid-body simulation is required while they are actively moving, not continuously after rest.
-
-The intended semantic ownership remains one player-owned `carried_junk` relationship to the same ordinary prop identity. While carried, world presentation/collision are derived inactive state; the object is not converted into inventory data and is not destroyed/recreated as a different gameplay identity. Throw/release restore that same `RigidBody3D` to world participation. Save capture preserves phase, motion kind, transform, linear velocity, and enough yaw-normalization state to restore moving/settling behavior without serializing live player/Node references.
-
-The focused `Prop Lab` remains the development fixture. Its instructions and regressions must make the render fix, dynamic collision behavior, orientation lock, yaw-preserving top-up settle, no-floor-gap result, edge support, and stack support-removal behavior obvious.
-
-**Done when:** the ordinary prop reuses center-view/F selection and replaceable external-model presentation; unselected crates render as normal hard-edged boxes with correct one-sided faces and ordinary scene shadows; settled/edge-supported props and a simple stack remain stable; lower-support removal activates a real rigid-body fall; F pickup makes the world prop disappear into exactly one bottom-center carried-Junk HUD slot with no world collision; normal locomotion remains available while carrying while ordinary interaction/hand actions are centrally suppressed; F throws and R gently releases the same prop back into the world from a geometry-aware view-derived release point; thrown/released/unsupported props use real rigid-body translational collision; their orientation stays fixed while dynamically moving/colliding; genuine rest freezes them top-up without changing yaw; no settled prop hovers above its support; semantic capture/apply/reconcile preserves the state without live references; and no universal support graph or general inventory framework is introduced.
-
-**Automated:** required — keep the dedicated `tests/props/run_prop_tests.gd` suite wired into `tests/run_all_tests.gd`. Coverage must prove hard outward OBJ normals plus normal unselected shadowed shading; `RigidBody3D` ownership and frozen settled state; external model replacement; F pickup into exactly one `carried_junk` slot; physical presentation/collision inactive while carried; bottom-center HUD presentation; normal movement while carrying; central world/hand-action suppression; stale F/R edge suppression; F throw versus R gentle release; geometry-aware release placement; moving bodies unfrozen with continuous collision; a real collision that changes motion without changing orientation; top-up settle preserving yaw rather than snapping to a canonical/global heading; direct floor contact with no hover gap; same semantic identity across world → carried Junk → world; detached capture/apply/reconciliation; lower semantic impact strength for release; edge support; stable stacking; lower-support removal; controlled unsupported rigid-body fall; and no post-settle drift/spin.
-
-**Manual:** pending — validator: **Windows x64 user/playtester**. Launch **Development Launch → Prop Lab**. Confirm ordinary crates look like normal solid hard-edged boxes when not selected: outside faces visible, lighting/shadows correct, no smoothed/inside-out appearance. Confirm F pickup removes the physical crate and shows one bottom-center Junk HUD object. Confirm movement/look/crouch/jump remain normal and stored Junk has no world collision. Confirm F throws and R gently releases. While a released/thrown crate is flying and colliding, confirm it reacts physically to floors/walls/other bodies but its orientation does not rotate. When it genuinely comes to rest, confirm it rotates only enough to put the top upward while keeping whatever left/right yaw it already had—no side is forced north. Confirm the final collider/visual rests directly on the floor/support with no visible air gap. Retain the edge-support, lower-stack-removal, stable-settle, and locomotion sanity checks.
+**Manual:** pending — validator: **Windows x64 user/playtester**. Launch **Development Launch → Prop Lab**. Confirm F pickup/HUD, movement/look/crouch/jump, F throw, R release, edge support, stacking, lower-support fall, hard-edged rendering, yaw-preserving top-up, and no hover/drift. Also test cramped release/throw near the player: the box may leave an initial player overlap without losing the throw, must still respect walls/props, and must collide with the player normally after separation. Stand on a prop and pick it up: support must end and the player must fall. Exercise a prop-based hang/catch/corner/mantle where practical and confirm pickup immediately ends the attachment. Repeatedly release tilted boxes onto box edges/corners and confirm genuine rest reaches top-up supported settle.
 
 ## 3.6 Acoustic propagation micro-proof `[ ]`
 

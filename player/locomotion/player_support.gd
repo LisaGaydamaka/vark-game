@@ -286,6 +286,17 @@ func release_walkable_support(player: CharacterBody3D) -> void:
 	_clear_support(player)
 
 
+func invalidate_collider(collider_rid: RID, origin: Vector3) -> bool:
+	if (
+		not collider_rid.is_valid()
+		or not current_contact.valid
+		or current_contact.collider_rid != collider_rid
+	):
+		return false
+	current_contact.clear(origin)
+	return true
+
+
 func _clear_support(player: CharacterBody3D) -> void:
 	current_contact.clear(player.global_position)
 

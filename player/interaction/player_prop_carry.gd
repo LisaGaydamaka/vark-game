@@ -2,6 +2,10 @@ class_name PlayerPropCarry
 extends RefCounted
 
 
+const RELEASE_POSE_SCAN_STEPS: int = 16
+const RELEASE_POSE_REFINE_STEPS: int = 8
+
+
 var player: CharacterBody3D
 var camera: Camera3D
 var held_prop: Node = null
@@ -44,6 +48,8 @@ func try_pick_up(prop: Node) -> bool:
 		return false
 	if not bool(prop.call("begin_carried_junk", player)):
 		return false
+	if prop is CollisionObject3D and player.has_method("invalidate_world_collider_dependency"):
+		player.call("invalidate_world_collider_dependency", (prop as CollisionObject3D).get_rid())
 	held_prop = prop
 	_refresh_hud(prop)
 	return true
@@ -82,12 +88,17 @@ func clear_reference() -> void:
 
 
 func _release(motion_kind: StringName, initial_velocity: Vector3) -> bool:
+	var release_result: Dictionary = _compute_release_transform()
+	var transform_value: Variant = release_result.get("transform")
+	if not (transform_value is Transform3D):
+		return false
 	var prop: Node = held_prop
 	var released: bool = bool(prop.call(
 		"release_from_carry",
 		motion_kind,
-		_compute_release_transform(),
-		initial_velocity
+		transform_value,
+		initial_velocity,
+		player
 	))
 	if released:
 		held_prop = null
@@ -95,26 +106,48 @@ func _release(motion_kind: StringName, initial_velocity: Vector3) -> bool:
 	return released
 
 
-func _compute_release_transform() -> Transform3D:
+func _compute_release_transform() -> Dictionary:
 	var view_basis: Basis = camera.global_transform.basis.orthonormalized()
 	var forward: Vector3 = -view_basis.z.normalized()
-	var release_basis: Basis = (
-		view_basis * Basis(Vector3.BACK, PI * 0.5)
-	).orthonormalized()
+	var release_basis: Basis = (view_basis * Basis(Vector3.BACK, PI * 0.5)).orthonormalized()
 	var origin: Vector3 = camera.global_position
-	var desired: Vector3 = origin + forward * release_distance
-	var query := PhysicsRayQueryParameters3D.create(origin, desired)
-	query.exclude = [player.get_rid()]
-	query.collision_mask = 0xFFFFFFFF
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	var hit: Dictionary = camera.get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty():
-		var clearance: float = 0.3
-		if held_prop != null and held_prop.has_method("get_release_clearance_along"):
-			clearance = float(held_prop.call("get_release_clearance_along", forward, release_basis))
-		desired = hit.get("position", desired) - forward * (maxf(clearance, 0.0) + release_surface_padding)
-	return Transform3D(release_basis, desired)
+	var maximum_distance: float = maxf(release_distance, 0.0)
+	var candidate := Transform3D(release_basis, origin + forward * maximum_distance)
+	if _is_release_pose_world_clear(candidate):
+		return {"transform": candidate}
+	var blocked_distance: float = maximum_distance
+	var clear_distance: float = -1.0
+	for scan_step: int in range(1, RELEASE_POSE_SCAN_STEPS + 1):
+		var distance: float = maximum_distance * (1.0 - float(scan_step) / float(RELEASE_POSE_SCAN_STEPS))
+		candidate.origin = origin + forward * distance
+		if _is_release_pose_world_clear(candidate):
+			clear_distance = distance
+			break
+		blocked_distance = distance
+	if clear_distance < 0.0:
+		return {}
+	var safe_distance: float = clear_distance
+	var unsafe_distance: float = blocked_distance
+	for _refine_step: int in range(RELEASE_POSE_REFINE_STEPS):
+		var distance: float = (safe_distance + unsafe_distance) * 0.5
+		candidate.origin = origin + forward * distance
+		if _is_release_pose_world_clear(candidate):
+			safe_distance = distance
+		else:
+			unsafe_distance = distance
+	var padded_distance: float = maxf(0.0, safe_distance - maxf(release_surface_padding, 0.0))
+	candidate.origin = origin + forward * padded_distance
+	if not _is_release_pose_world_clear(candidate):
+		candidate.origin = origin + forward * safe_distance
+	return {"transform": candidate}
+
+
+func _is_release_pose_world_clear(candidate: Transform3D) -> bool:
+	if held_prop == null or not is_instance_valid(held_prop):
+		return false
+	if not held_prop.has_method("is_release_transform_world_clear"):
+		return false
+	return bool(held_prop.call("is_release_transform_world_clear", candidate, player))
 
 
 func _refresh_hud(prop: Node) -> void:

@@ -215,6 +215,30 @@ func clear_candidate() -> void:
 	current_candidates.clear()
 
 
+func invalidate_collider(collider_rid: RID) -> bool:
+	if not collider_rid.is_valid():
+		return false
+	var retained: Array[LedgeCandidate] = []
+	var removed: bool = false
+	for candidate: LedgeCandidate in current_candidates:
+		if _candidate_uses_collider(candidate, collider_rid):
+			removed = true
+			continue
+		retained.append(candidate)
+	current_candidates = retained
+	current_candidate = current_candidates[0] if not current_candidates.is_empty() else null
+	return removed
+
+
+func _candidate_uses_collider(candidate: LedgeCandidate, collider_rid: RID) -> bool:
+	if candidate == null or not collider_rid.is_valid():
+		return false
+	return (
+		(candidate.wall_collider_rid.is_valid() and candidate.wall_collider_rid == collider_rid)
+		or (candidate.top_collider_rid.is_valid() and candidate.top_collider_rid == collider_rid)
+	)
+
+
 func find_candidate(
 	player: CharacterBody3D,
 	support: PlayerSupport,

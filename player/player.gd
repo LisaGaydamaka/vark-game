@@ -141,6 +141,17 @@ func try_carry_prop(prop: Node) -> bool:
 	return picked_up
 
 
+func invalidate_world_collider_dependency(collider_rid: RID) -> void:
+	if not collider_rid.is_valid():
+		return
+	if ledge_controller != null:
+		ledge_controller.invalidate_collider(collider_rid)
+	if ledge_detector != null:
+		ledge_detector.invalidate_collider(collider_rid)
+	if support != null:
+		support.invalidate_collider(collider_rid, global_position)
+
+
 func reconcile_carried_junk_prop(prop: Node) -> bool:
 	if prop_carry == null:
 		return false

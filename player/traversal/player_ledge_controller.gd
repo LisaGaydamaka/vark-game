@@ -97,6 +97,51 @@ func is_active() -> bool:
 	return state != State.NONE
 
 
+func invalidate_collider(collider_rid: RID) -> bool:
+	if not collider_rid.is_valid() or state == State.NONE:
+		return false
+	var depends_on_collider: bool = false
+	match state:
+		State.CATCHING:
+			depends_on_collider = _candidate_uses_collider(active_catch_candidate, collider_rid)
+		State.HANGING:
+			depends_on_collider = _candidate_uses_collider(ledge_hang.get_candidate(), collider_rid)
+		State.CORNERING:
+			for candidate: PlayerLedgeDetector.LedgeCandidate in ledge_corner.get_release_candidates():
+				if _candidate_uses_collider(candidate, collider_rid):
+					depends_on_collider = true
+					break
+		State.MANTLING:
+			depends_on_collider = _candidate_uses_collider(ledge_mantle.get_release_candidate(), collider_rid)
+	if not depends_on_collider:
+		return false
+	match state:
+		State.CATCHING:
+			ledge_catch.cancel()
+			active_catch_candidate = null
+		State.HANGING:
+			ledge_hang.cancel()
+		State.CORNERING:
+			ledge_corner.cancel()
+		State.MANTLING:
+			ledge_mantle.cancel()
+	body.velocity = Vector3.ZERO
+	_exit_traversal_state()
+	return true
+
+
+func _candidate_uses_collider(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	collider_rid: RID
+) -> bool:
+	if candidate == null or not collider_rid.is_valid():
+		return false
+	return (
+		(candidate.wall_collider_rid.is_valid() and candidate.wall_collider_rid == collider_rid)
+		or (candidate.top_collider_rid.is_valid() and candidate.top_collider_rid == collider_rid)
+	)
+
+
 func update(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 	match state:
 		State.CATCHING:
