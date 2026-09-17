@@ -10,16 +10,16 @@ size = Vector3(8, 0.2, 8)
 size = Vector3(8, 0.2, 8)
 
 [sub_resource type="BoxShape3D" id="SideWallShape"]
-size = Vector3(3.25, 2.6, 0.3)
+size = Vector3(3.34, 2.6, 0.3)
 
 [sub_resource type="BoxMesh" id="SideWallMesh"]
-size = Vector3(3.25, 2.6, 0.3)
+size = Vector3(3.34, 2.6, 0.3)
 
 [sub_resource type="BoxShape3D" id="HeaderShape"]
-size = Vector3(1.5, 0.5, 0.3)
+size = Vector3(1.32, 0.5, 0.3)
 
 [sub_resource type="BoxMesh" id="HeaderMesh"]
-size = Vector3(1.5, 0.5, 0.3)
+size = Vector3(1.32, 0.5, 0.3)
 
 [sub_resource type="BoxShape3D" id="TargetShape"]
 size = Vector3(0.35, 0.35, 0.35)
@@ -49,7 +49,7 @@ shape = SubResource("FloorShape")
 mesh = SubResource("FloorMesh")
 
 [node name="LeftWall" type="StaticBody3D" parent="."]
-position = Vector3(-2.375, 1.3, 0)
+position = Vector3(-2.33, 1.3, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="LeftWall"]
 shape = SubResource("SideWallShape")
@@ -58,7 +58,7 @@ shape = SubResource("SideWallShape")
 mesh = SubResource("SideWallMesh")
 
 [node name="RightWall" type="StaticBody3D" parent="."]
-position = Vector3(2.375, 1.3, 0)
+position = Vector3(2.33, 1.3, 0)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="RightWall"]
 shape = SubResource("SideWallShape")
@@ -91,6 +91,6 @@ material_override = SubResource("TargetMaterial")
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(0, 2.9, 1.0)
-text = "3.4 DOOR LAB\nF = toggle ordinary door\nClosed = blocks doorway/green marker · Open = passage clear"
+text = "3.4 DOOR LAB\nF = toggle ordinary door\nClosed = blocks doorway/green marker · Moving door stops on obstacles · F again reverses"
 billboard = 1
 font_size = 28

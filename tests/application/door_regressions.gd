@@ -50,8 +50,14 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	var door: AnimatableBody3D = world.get_node("OrdinaryDoor") as AnimatableBody3D
 	var vision_target: StaticBody3D = world.get_node("VisionTarget") as StaticBody3D
+	var left_wall: StaticBody3D = world.get_node("LeftWall") as StaticBody3D
+	var right_wall: StaticBody3D = world.get_node("RightWall") as StaticBody3D
 	var door_mesh: MeshInstance3D = door.get_node("DoorMesh") as MeshInstance3D
 	var door_collision: CollisionShape3D = door.get_node("CollisionShape3D") as CollisionShape3D
+	var left_wall_collision: CollisionShape3D = left_wall.get_node("CollisionShape3D") as CollisionShape3D
+	var right_wall_collision: CollisionShape3D = right_wall.get_node("CollisionShape3D") as CollisionShape3D
+	var left_wall_shape: BoxShape3D = left_wall_collision.shape as BoxShape3D
+	var right_wall_shape: BoxShape3D = right_wall_collision.shape as BoxShape3D
 	var door_material: StandardMaterial3D = door_mesh.material_override as StandardMaterial3D
 
 	var door_events: Array[StringName] = []
@@ -83,6 +89,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		initial_state == {
 			"phase": OrdinaryDoor.PHASE_CLOSED,
 			"open_fraction": 0.0,
+			"motion_blocked": false,
 		}
 		and not bool(door.call("is_navigation_passage_open"))
 		and is_zero_approx(float(door.call("get_acoustic_openness"))),
@@ -114,6 +121,17 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and door_mesh.mesh == DefaultDoorVisual
 		and configured_visual.resource_path == "res://assets/models/doors/ordinary_door_leaf.obj",
 		"Ordinary door instantiates its visible leaf from the configured external model resource"
+	)
+
+	var door_aabb: AABB = configured_visual.get_aabb()
+	var left_frame_inner_x: float = left_wall.global_position.x + left_wall_shape.size.x * 0.5
+	var right_frame_inner_x: float = right_wall.global_position.x - right_wall_shape.size.x * 0.5
+	var door_left_x: float = door_mesh.global_position.x + door_aabb.position.x
+	var door_right_x: float = door_left_x + door_aabb.size.x
+	assert_true.call(
+		is_equal_approx(door_left_x - left_frame_inner_x, 0.01)
+		and is_equal_approx(right_frame_inner_x - door_right_x, 0.01),
+		"Door Lab frame fits the ordinary 1.30 m leaf with only 1 cm side clearance"
 	)
 
 	var swapped_model: bool = bool(door.call("set_visual_model", AlternateDoorVisual))
@@ -148,6 +166,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	await _settle_player_physics(tree, 3)
 	assert_true.call(
 		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPENING
+		and not bool(door.call("is_motion_blocked"))
 		and sound_events.size() == 1
 		and door_events.is_empty(),
 		"Fresh F interaction starts the real door transition and emits gameplay sound without prematurely publishing OPEN"
@@ -171,7 +190,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		mid_state.get("phase", &"") == OrdinaryDoor.PHASE_OPENING
 		and float(mid_state.get("open_fraction", 0.0)) > 0.0
-		and float(mid_state.get("open_fraction", 1.0)) < 1.0,
+		and float(mid_state.get("open_fraction", 1.0)) < 1.0
+		and not bool(mid_state.get("motion_blocked", true)),
 		"Door semantic capture preserves explicit in-progress opening state instead of a timer/coroutine"
 	)
 
@@ -179,6 +199,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPEN
 		and is_equal_approx(float(door.call("get_open_fraction")), 1.0)
+		and not bool(door.call("is_motion_blocked"))
 		and bool(door.call("is_navigation_passage_open"))
 		and is_equal_approx(float(door.call("get_acoustic_openness")), 1.0)
 		and door_events == [OrdinaryDoor.PHASE_OPEN],
@@ -200,6 +221,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			float(door.call("get_open_fraction")),
 			float(mid_state.get("open_fraction", -1.0))
 		)
+		and not bool(door.call("is_motion_blocked"))
 		and door_events.size() == event_count_before_apply
 		and sound_events.size() == sound_count_before_apply,
 		"Applying captured door progress restores semantic/derived state without replaying interaction consequences"
@@ -208,31 +230,103 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		not bool(door.call("apply_semantic_state", {
 			"phase": OrdinaryDoor.PHASE_OPEN,
 			"open_fraction": 0.5,
+			"motion_blocked": false,
 		})),
 		"Ordinary door rejects internally inconsistent semantic restore state"
 	)
 	assert_true.call(
+		not bool(door.call("apply_semantic_state", {
+			"phase": OrdinaryDoor.PHASE_OPEN,
+			"open_fraction": 1.0,
+			"motion_blocked": true,
+		})),
+		"Ordinary door rejects impossible terminal state marked as motion-blocked"
+	)
+	assert_true.call(
 		bool(door.call("apply_semantic_state", open_state))
 		and door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPEN
+		and not bool(door.call("is_motion_blocked"))
 		and bool(door.call("is_navigation_passage_open")),
 		"Applying a captured OPEN state restores the door-side consumer seams from semantic truth"
 	)
 	await _settle_player_physics(tree, 2)
 
+	var original_player_transform: Transform3D = player.global_transform
+	player.global_position = Vector3(0, 0, -0.7)
+	player.set("velocity", Vector3.ZERO)
+	await _settle_player_physics(tree, 2)
+
+	door.call("interact", player)
+	await _settle_player_physics(tree, 45)
+	var blocked_fraction: float = float(door.call("get_open_fraction"))
+	var blocked_state: Dictionary = door.call("capture_semantic_state")
+	assert_true.call(
+		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSING
+		and bool(door.call("is_motion_blocked"))
+		and blocked_fraction > 0.0
+		and blocked_fraction < 1.0
+		and bool(blocked_state.get("motion_blocked", false))
+		and sound_events.size() == 2
+		and door_events == [OrdinaryDoor.PHASE_OPEN],
+		"Closing door stops before entering the real player body and publishes no false CLOSED state"
+	)
+	await _settle_player_physics(tree, 8)
+	assert_true.call(
+		is_equal_approx(float(door.call("get_open_fraction")), blocked_fraction)
+		and bool(door.call("is_motion_blocked")),
+		"Obstacle blockage latches instead of resuming automatically while the close command remains active"
+	)
+	assert_true.call(
+		bool(door.call("apply_semantic_state", blocked_state)),
+		"Blocked in-progress door state can be applied through the semantic restore seam"
+	)
+	door.call("reconcile_after_restore")
+	assert_true.call(
+		bool(door.call("is_motion_blocked"))
+		and is_equal_approx(float(door.call("get_open_fraction")), blocked_fraction),
+		"Restore reconciliation preserves a latched obstacle stop instead of restarting door motion"
+	)
+
+	door.call("interact", player)
+	await _settle_player_physics(tree, 3)
+	assert_true.call(
+		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPENING
+		and not bool(door.call("is_motion_blocked"))
+		and float(door.call("get_open_fraction")) > blocked_fraction
+		and sound_events.size() == 3,
+		"Using a blocked closing door again reverses it into opening without clipping through the obstacle"
+	)
+	player.global_transform = original_player_transform
+	player.set("velocity", Vector3.ZERO)
+	await _settle_player_physics(tree, 45)
+	assert_true.call(
+		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPEN
+		and is_equal_approx(float(door.call("get_open_fraction")), 1.0)
+		and not bool(door.call("is_motion_blocked"))
+		and door_events == [OrdinaryDoor.PHASE_OPEN, OrdinaryDoor.PHASE_OPEN],
+		"Reversed blocked door completes opening and publishes the terminal OPEN state once"
+	)
+
 	door.call("interact", player)
 	await _settle_player_physics(tree, 3)
 	assert_true.call(
 		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSING
-		and sound_events.size() == 2,
+		and not bool(door.call("is_motion_blocked"))
+		and sound_events.size() == 4,
 		"The same ordinary interaction contract reverses an open door into a closing transition"
 	)
 	await _settle_player_physics(tree, 45)
 	assert_true.call(
 		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSED
 		and is_zero_approx(float(door.call("get_open_fraction")))
+		and not bool(door.call("is_motion_blocked"))
 		and not bool(door.call("is_navigation_passage_open"))
 		and is_zero_approx(float(door.call("get_acoustic_openness")))
-		and door_events == [OrdinaryDoor.PHASE_OPEN, OrdinaryDoor.PHASE_CLOSED],
+		and door_events == [
+			OrdinaryDoor.PHASE_OPEN,
+			OrdinaryDoor.PHASE_OPEN,
+			OrdinaryDoor.PHASE_CLOSED,
+		],
 		"Completed closing republishes CLOSED and returns both door-side consumer seams to closed state"
 	)
 	assert_true.call(

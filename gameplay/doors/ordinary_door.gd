@@ -16,12 +16,15 @@ const USE_SOUND_KIND: StringName = &"door.use"
 @export var gameplay_sound_strength: float = 0.65
 @export var base_color: Color = Color(0.34, 0.20, 0.10, 1.0)
 @export var visual_model: Mesh
+@export var obstacle_probe_step_degrees: float = 2.0
 
 @onready var door_mesh: MeshInstance3D = $DoorMesh
+@onready var door_collision: CollisionShape3D = $CollisionShape3D
 
 var _phase: StringName = PHASE_CLOSED
 var _open_fraction: float = 0.0
 var _closed_rotation_y: float = 0.0
+var _motion_blocked: bool = false
 var _highlighted: bool = false
 var _material: StandardMaterial3D = null
 var _world_session: Node = null
@@ -41,25 +44,36 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	if _phase != PHASE_OPENING and _phase != PHASE_CLOSING:
 		return
+	if _motion_blocked:
+		return
 
 	var duration: float = maxf(transition_seconds, 0.001)
 	var step: float = delta / duration
+	var next_fraction: float = _open_fraction
 	if _phase == PHASE_OPENING:
-		_open_fraction = minf(1.0, _open_fraction + step)
-		if is_equal_approx(_open_fraction, 1.0):
-			_open_fraction = 1.0
-			_phase = PHASE_OPEN
-			_sync_derived_state()
-			_queue_state_changed()
-			return
+		next_fraction = minf(1.0, _open_fraction + step)
 	else:
-		_open_fraction = maxf(0.0, _open_fraction - step)
-		if is_zero_approx(_open_fraction):
-			_open_fraction = 0.0
-			_phase = PHASE_CLOSED
-			_sync_derived_state()
-			_queue_state_changed()
-			return
+		next_fraction = maxf(0.0, _open_fraction - step)
+
+	if _would_motion_sweep_hit(next_fraction):
+		_motion_blocked = true
+		return
+
+	_open_fraction = next_fraction
+	if _phase == PHASE_OPENING and is_equal_approx(_open_fraction, 1.0):
+		_open_fraction = 1.0
+		_phase = PHASE_OPEN
+		_motion_blocked = false
+		_sync_derived_state()
+		_queue_state_changed()
+		return
+	if _phase == PHASE_CLOSING and is_zero_approx(_open_fraction):
+		_open_fraction = 0.0
+		_phase = PHASE_CLOSED
+		_motion_blocked = false
+		_sync_derived_state()
+		_queue_state_changed()
+		return
 
 	_sync_derived_state()
 
@@ -73,6 +87,7 @@ func interact(_interactor: Node) -> void:
 		_phase = PHASE_OPENING
 	else:
 		_phase = PHASE_CLOSING
+	_motion_blocked = false
 	_queue_use_sound()
 
 
@@ -106,6 +121,10 @@ func get_open_fraction() -> float:
 	return _open_fraction
 
 
+func is_motion_blocked() -> bool:
+	return _motion_blocked
+
+
 func get_acoustic_openness() -> float:
 	# This is a door-side source-state seam only. Phase 3.6 still owns how
 	# openness affects propagated audibility through actual architecture.
@@ -122,13 +141,18 @@ func capture_semantic_state() -> Dictionary:
 	return {
 		"phase": _phase,
 		"open_fraction": _open_fraction,
+		"motion_blocked": _motion_blocked,
 	}
 
 
 func apply_semantic_state(snapshot: Dictionary) -> bool:
-	if snapshot.size() != 2:
+	if snapshot.size() != 3:
 		return false
-	if not snapshot.has("phase") or not snapshot.has("open_fraction"):
+	if (
+		not snapshot.has("phase")
+		or not snapshot.has("open_fraction")
+		or not snapshot.has("motion_blocked")
+	):
 		return false
 	if typeof(snapshot["phase"]) != TYPE_STRING_NAME:
 		return false
@@ -141,20 +165,33 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	var fraction: float = float(fraction_value)
 	if not is_finite(fraction) or fraction < 0.0 or fraction > 1.0:
 		return false
+	if typeof(snapshot["motion_blocked"]) != TYPE_BOOL:
+		return false
+	var motion_blocked: bool = bool(snapshot["motion_blocked"])
 	if phase == PHASE_CLOSED and not is_zero_approx(fraction):
 		return false
 	if phase == PHASE_OPEN and not is_equal_approx(fraction, 1.0):
 		return false
+	if (
+		motion_blocked
+		and (
+			(phase != PHASE_OPENING and phase != PHASE_CLOSING)
+			or is_zero_approx(fraction)
+			or is_equal_approx(fraction, 1.0)
+		)
+	):
+		return false
 
 	_phase = phase
 	_open_fraction = fraction
+	_motion_blocked = motion_blocked
 	_sync_derived_state()
 	return true
 
 
 func reconcile_after_restore() -> void:
-	# Transform, interaction presentation, and the consumer seams are derived
-	# from semantic phase/progress rather than serialized engine machinery.
+	# Transform, interaction presentation, blockage, and the consumer seams are
+	# derived from semantic phase/progress rather than serialized engine machinery.
 	_sync_derived_state()
 
 
@@ -164,6 +201,43 @@ func _sync_derived_state() -> void:
 		+ deg_to_rad(open_angle_degrees) * _open_fraction
 	)
 	_refresh_visual()
+
+
+func _would_motion_sweep_hit(next_fraction: float) -> bool:
+	if (
+		door_collision == null
+		or door_collision.shape == null
+		or not is_inside_tree()
+		or is_equal_approx(next_fraction, _open_fraction)
+	):
+		return false
+
+	var sweep_degrees: float = (
+		absf(open_angle_degrees) * absf(next_fraction - _open_fraction)
+	)
+	var probe_step: float = maxf(absf(obstacle_probe_step_degrees), 0.25)
+	var sample_count: int = maxi(1, ceili(sweep_degrees / probe_step))
+	for sample_index: int in range(1, sample_count + 1):
+		var sample_weight: float = float(sample_index) / float(sample_count)
+		var sample_fraction: float = lerpf(_open_fraction, next_fraction, sample_weight)
+		if _overlaps_obstacle_at_fraction(sample_fraction):
+			return true
+	return false
+
+
+func _overlaps_obstacle_at_fraction(sample_fraction: float) -> bool:
+	var delta_angle: float = (
+		deg_to_rad(open_angle_degrees) * (sample_fraction - _open_fraction)
+	)
+	var candidate_root: Transform3D = global_transform.rotated_local(Vector3.UP, delta_angle)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = door_collision.shape
+	query.transform = candidate_root * door_collision.transform
+	query.collision_mask = collision_mask
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.exclude = [get_rid()]
+	return not get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
 func _refresh_visual() -> void:

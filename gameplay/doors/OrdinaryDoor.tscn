@@ -4,15 +4,15 @@
 [ext_resource type="ArrayMesh" path="res://assets/models/doors/ordinary_door_leaf.obj" id="2_visual"]
 
 [sub_resource type="BoxShape3D" id="DoorShape"]
-size = Vector3(1.3, 2.1, 0.12)
+size = Vector3(1.3, 2.08, 0.1)
 
 [node name="OrdinaryDoor" type="AnimatableBody3D"]
 script = ExtResource("1_door")
 visual_model = ExtResource("2_visual")
 
 [node name="DoorMesh" type="MeshInstance3D" parent="."]
-position = Vector3(0.65, 1.05, 0)
+position = Vector3(0.65, 1.05, 0.06)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-position = Vector3(0.65, 1.05, 0)
+position = Vector3(0.65, 1.05, 0.06)
 shape = SubResource("DoorShape")
