@@ -28,14 +28,17 @@ jobs:
           git fetch origin test
           test "$(git rev-parse origin/test)" = "$GITHUB_SHA"
 
-      - name: Apply true rigid throw correction
+      - name: Apply collision-channel throw correction
         shell: bash
         run: |
           set -euo pipefail
+          python tools/phase35_true_rigid_throw_fix_tmp.py
+          python -m py_compile tools/phase35_true_rigid_throw_tmp.py
           python tools/phase35_true_rigid_throw_tmp.py
           rm -f \
             .github/workflows/finalize_phase_3_5_true_rigid_throw.yml \
-            tools/phase35_true_rigid_throw_tmp.py
+            tools/phase35_true_rigid_throw_tmp.py \
+            tools/phase35_true_rigid_throw_fix_tmp.py
           git diff --check
 
       - name: Verify bounded production tree
@@ -47,10 +50,16 @@ jobs:
           expected = {
               ".github/workflows/finalize_phase_3_5_true_rigid_throw.yml",
               "tools/phase35_true_rigid_throw_tmp.py",
+              "tools/phase35_true_rigid_throw_fix_tmp.py",
+              "project.godot",
+              "player/Player.tscn",
+              "gameplay/props/OrdinaryProp.tscn",
+              "gameplay/props/ordinary_prop.gd",
+              "gameplay/doors/OrdinaryDoor.tscn",
+              "tests/props/phase_3_5_transition_regressions.gd",
               "docs/DEVELOPMENT_PLAN.md",
               "docs/GAME_VISION.md",
-              "gameplay/props/ordinary_prop.gd",
-              "tests/props/phase_3_5_transition_regressions.gd",
+              "docs/TESTING.md",
           }
           raw = subprocess.check_output(["git", "status", "--porcelain=v1", "-uall"], text=True)
           changed = set()
@@ -96,10 +105,16 @@ jobs:
           git add \
             .github/workflows/finalize_phase_3_5_true_rigid_throw.yml \
             tools/phase35_true_rigid_throw_tmp.py \
+            tools/phase35_true_rigid_throw_fix_tmp.py \
+            project.godot \
+            player/Player.tscn \
+            gameplay/props/OrdinaryProp.tscn \
+            gameplay/props/ordinary_prop.gd \
+            gameplay/doors/OrdinaryDoor.tscn \
+            tests/props/phase_3_5_transition_regressions.gd \
             docs/DEVELOPMENT_PLAN.md \
             docs/GAME_VISION.md \
-            gameplay/props/ordinary_prop.gd \
-            tests/props/phase_3_5_transition_regressions.gd
+            docs/TESTING.md
           git diff --cached --check
           git commit -m "Restore true rigid prop throwing"
           git push origin HEAD:test
