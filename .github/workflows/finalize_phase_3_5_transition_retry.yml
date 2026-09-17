@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   finalize-phase-3-5-production:
-    if: github.event.head_commit.message == 'Retry final Phase 3.5 production correction with untracked files'
+    if: github.event.head_commit.message == 'Finalize Phase 3.5 production correction after pycache cleanup'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -45,6 +45,7 @@ jobs:
         run: |
           rm -f tools/phase35_transition_fix_tmp.py
           rm -f tools/phase35_final_adjust_tmp.py
+          rm -rf tools/__pycache__
           rm -f .github/workflows/finalize_phase_3_5_transition_ownership.yml
           rm -f .github/workflows/finalize_phase_3_5_transition_retry.yml
           rm -f .github/workflows/inspect_phase_3_5_transition_patch.yml
