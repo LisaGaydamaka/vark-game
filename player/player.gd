@@ -38,6 +38,9 @@ var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
 var locomotion_controller: PlayerLocomotionController
 var player_interaction: PlayerInteraction
+var prop_carry: PlayerPropCarry
+
+var _requested_world_interaction_available: bool = true
 
 
 func _ready() -> void:
@@ -55,10 +58,15 @@ func _physics_process(delta: float) -> void:
 		command = player_input.sample()
 
 	var interact_pressed: bool = false
+	var throw_prop_pressed: bool = false
 	if gameplay_input_boundary != null and is_instance_valid(gameplay_input_boundary):
 		interact_pressed = bool(gameplay_input_boundary.call("sample_interaction_pressed"))
+		throw_prop_pressed = bool(
+			gameplay_input_boundary.call("sample_prop_throw_pressed")
+		)
 	else:
 		interact_pressed = Input.is_action_just_pressed("interact")
+		throw_prop_pressed = Input.is_action_just_pressed("throw_prop")
 
 	player_input.current_command = command
 	velocity_state.apply_to_body(self)
@@ -76,7 +84,19 @@ func _physics_process(delta: float) -> void:
 		if ledge_controller.is_active():
 			velocity_state.capture_body_as_controlled(self)
 
-	if player_interaction != null:
+	if prop_carry != null and prop_carry.has_held_prop():
+		prop_carry.update_held_pose()
+		if throw_prop_pressed:
+			prop_carry.throw_held()
+			_refresh_world_interaction_availability()
+		elif interact_pressed:
+			prop_carry.drop_held()
+			_refresh_world_interaction_availability()
+		if player_interaction != null:
+			# A release input belongs to carry ownership; it must not immediately
+			# re-trigger the world object that was just released.
+			player_interaction.update(false)
+	elif player_interaction != null:
 		player_interaction.update(interact_pressed)
 
 
@@ -98,8 +118,8 @@ func set_interaction_input_enabled(enabled: bool) -> void:
 
 
 func set_world_interaction_available(available: bool) -> void:
-	if player_interaction != null:
-		player_interaction.set_world_interaction_available(available)
+	_requested_world_interaction_available = available
+	_refresh_world_interaction_availability()
 
 
 func get_interaction_semantic_state() -> Dictionary:
@@ -110,6 +130,42 @@ func get_interaction_semantic_state() -> Dictionary:
 			"target_name": "",
 		}
 	return player_interaction.get_semantic_state()
+
+
+func try_carry_prop(prop: Node) -> bool:
+	if prop_carry == null:
+		return false
+	var picked_up: bool = prop_carry.try_pick_up(prop)
+	if picked_up:
+		_refresh_world_interaction_availability()
+	return picked_up
+
+
+func reconcile_held_prop(prop: Node) -> bool:
+	if prop_carry == null:
+		return false
+	var reconciled: bool = prop_carry.adopt_restored_held_prop(prop)
+	if reconciled:
+		_refresh_world_interaction_availability()
+	return reconciled
+
+
+func is_carrying_prop() -> bool:
+	return prop_carry != null and prop_carry.has_held_prop()
+
+
+func get_held_prop() -> Node:
+	if prop_carry == null:
+		return null
+	return prop_carry.get_held_prop()
+
+
+func get_prop_carry_semantic_state() -> Dictionary:
+	var held: Node = get_held_prop()
+	return {
+		"holding": held != null,
+		"held_name": str(held.name) if held != null else "",
+	}
 
 
 func handle_look_input(event: InputEvent) -> void:
@@ -185,6 +241,18 @@ func get_movement_semantic_state() -> Dictionary:
 	}
 
 
+func _refresh_world_interaction_availability() -> void:
+	if player_interaction == null:
+		return
+	var carry_allows_world_interaction: bool = (
+		prop_carry == null or not prop_carry.has_held_prop()
+	)
+	player_interaction.set_world_interaction_available(
+		_requested_world_interaction_available
+		and carry_allows_world_interaction
+	)
+
+
 func _create_components() -> void:
 	player_input = PlayerInput.new()
 	velocity_state = PlayerVelocityState.new()
@@ -197,6 +265,10 @@ func _create_components() -> void:
 		self,
 		view_camera,
 		interaction_range
+	)
+	prop_carry = PlayerPropCarry.new(
+		self,
+		view_camera
 	)
 	support = PlayerSupport.new(
 		locomotion_settings.max_walkable_slope,

@@ -1,0 +1,88 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+[ext_resource type="PackedScene" path="res://gameplay/props/OrdinaryProp.tscn" id="2_prop"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(10, 0.2, 10)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(10, 0.2, 10)
+
+[sub_resource type="BoxShape3D" id="PedestalShape"]
+size = Vector3(0.9, 0.8, 0.9)
+
+[sub_resource type="BoxMesh" id="PedestalMesh"]
+size = Vector3(0.9, 0.8, 0.9)
+
+[sub_resource type="BoxShape3D" id="EdgeSupportShape"]
+size = Vector3(0.6, 0.6, 1.2)
+
+[sub_resource type="BoxMesh" id="EdgeSupportMesh"]
+size = Vector3(0.6, 0.6, 1.2)
+
+[sub_resource type="StandardMaterial3D" id="PedestalMaterial"]
+albedo_color = Color(0.28, 0.31, 0.34, 1)
+
+[sub_resource type="StandardMaterial3D" id="EdgeMaterial"]
+albedo_color = Color(0.22, 0.42, 0.30, 1)
+
+[node name="PropLab" type="Node3D"]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -30, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 0, 3.1)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="PickupPedestal" type="StaticBody3D" parent="."]
+position = Vector3(0, 0.4, 1.2)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PickupPedestal"]
+shape = SubResource("PedestalShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PickupPedestal"]
+mesh = SubResource("PedestalMesh")
+material_override = SubResource("PedestalMaterial")
+
+[node name="PickupProp" parent="." instance=ExtResource("2_prop")]
+position = Vector3(0, 1.1, 1.2)
+prop_id = &"prop.lab.pickup"
+
+[node name="EdgeSupport" type="StaticBody3D" parent="."]
+position = Vector3(-2, 0.3, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="EdgeSupport"]
+shape = SubResource("EdgeSupportShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="EdgeSupport"]
+mesh = SubResource("EdgeSupportMesh")
+material_override = SubResource("EdgeMaterial")
+
+[node name="EdgeProp" parent="." instance=ExtResource("2_prop")]
+position = Vector3(-1.68, 0.9, 0)
+prop_id = &"prop.lab.edge"
+
+[node name="StackLower" parent="." instance=ExtResource("2_prop")]
+position = Vector3(2, 0.3, 0)
+prop_id = &"prop.lab.stack.lower"
+
+[node name="StackUpper" parent="." instance=ExtResource("2_prop")]
+position = Vector3(2, 0.9, 0)
+prop_id = &"prop.lab.stack.upper"
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(0, 2.65, 0.4)
+text = "3.5 PROP LAB\nF = pick up / drop · G = throw held prop\nHeld props suppress ordinary world interaction\nGreen stand: edge support · right stack: remove lower box"
+billboard = 1
+font_size = 24

@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://gameplay/props/ordinary_prop.gd" id="1_prop"]
+[ext_resource type="ArrayMesh" path="res://assets/models/props/ordinary_crate.obj" id="2_visual"]
+
+[sub_resource type="BoxShape3D" id="PropShape"]
+size = Vector3(0.6, 0.6, 0.6)
+
+[node name="OrdinaryProp" type="CharacterBody3D"]
+script = ExtResource("1_prop")
+visual_model = ExtResource("2_visual")
+
+[node name="PropMesh" type="MeshInstance3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("PropShape")

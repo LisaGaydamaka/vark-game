@@ -11,6 +11,10 @@ const SUITES = [
 		"script": "res://tests/application/run_application_tests.gd",
 	},
 	{
+		"name": "Props",
+		"script": "res://tests/props/run_prop_tests.gd",
+	},
+	{
 		"name": "Movement",
 		"script": "res://tests/movement/run_movement_tests.gd",
 	},

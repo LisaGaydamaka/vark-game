@@ -33,8 +33,9 @@ func update(interact_pressed: bool) -> void:
 		return
 
 	current_target.call("interact", player)
-	# Interaction is allowed to change the target's own eligibility. Refresh
-	# immediately so one-shot interactions do not leave stale highlight.
+	# Interaction is allowed to change the target's own eligibility or the
+	# player's central world-interaction availability. Refresh immediately so
+	# one-shot and pickup interactions cannot leave stale highlight.
 	_set_target(_select_target())
 
 
@@ -64,6 +65,8 @@ func get_semantic_state() -> Dictionary:
 
 
 func _select_target() -> Node:
+	if not is_available():
+		return null
 	if player == null or camera == null:
 		return null
 	if not is_instance_valid(player) or not is_instance_valid(camera):
