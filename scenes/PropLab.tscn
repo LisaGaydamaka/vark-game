@@ -83,6 +83,6 @@ prop_id = &"prop.lab.stack.upper"
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(0, 2.65, 0.4)
-text = "3.5 PROP LAB\nF = pick up / throw held prop\nHeld props suppress ordinary world interaction\nGreen stand: edge support · right stack: remove lower box"
+text = "3.5 PROP LAB\nF = pick up / throw · R = gentle release\nCarried Junk appears bottom-center and is not in the world\nGreen stand: edge support · right stack: remove lower box"
 billboard = 1
 font_size = 24

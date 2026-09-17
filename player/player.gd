@@ -39,6 +39,9 @@ var ledge_controller: PlayerLedgeController
 var locomotion_controller: PlayerLocomotionController
 var player_interaction: PlayerInteraction
 var prop_carry: PlayerPropCarry
+var junk_hud_container: Control
+var junk_hud_mesh: MeshInstance3D
+var junk_hud_material: StandardMaterial3D
 
 var _requested_world_interaction_available: bool = true
 
@@ -58,10 +61,13 @@ func _physics_process(delta: float) -> void:
 		command = player_input.sample()
 
 	var interact_pressed: bool = false
+	var release_prop_pressed: bool = false
 	if gameplay_input_boundary != null and is_instance_valid(gameplay_input_boundary):
 		interact_pressed = bool(gameplay_input_boundary.call("sample_interaction_pressed"))
+		release_prop_pressed = bool(gameplay_input_boundary.call("sample_prop_release_pressed"))
 	else:
 		interact_pressed = Input.is_action_just_pressed("interact")
+		release_prop_pressed = Input.is_action_just_pressed("release_prop")
 
 	player_input.current_command = command
 	velocity_state.apply_to_body(self)
@@ -80,13 +86,15 @@ func _physics_process(delta: float) -> void:
 			velocity_state.capture_body_as_controlled(self)
 
 	if prop_carry != null and prop_carry.has_held_prop():
-		prop_carry.update_held_pose()
 		if interact_pressed:
 			prop_carry.throw_held()
 			_refresh_world_interaction_availability()
+		elif release_prop_pressed:
+			prop_carry.release_held_gently()
+			_refresh_world_interaction_availability()
 		if player_interaction != null:
-			# The F edge belongs to carry ownership while a prop is held; it must
-			# not immediately re-trigger the world object that was just thrown.
+			# F/R belong to carry ownership while Junk is carried; neither may
+			# immediately retrigger the object that was just restored to the world.
 			player_interaction.update(false)
 	elif player_interaction != null:
 		player_interaction.update(interact_pressed)
@@ -133,7 +141,7 @@ func try_carry_prop(prop: Node) -> bool:
 	return picked_up
 
 
-func reconcile_held_prop(prop: Node) -> bool:
+func reconcile_carried_junk_prop(prop: Node) -> bool:
 	if prop_carry == null:
 		return false
 	var reconciled: bool = prop_carry.adopt_restored_held_prop(prop)
@@ -157,7 +165,14 @@ func get_prop_carry_semantic_state() -> Dictionary:
 	return {
 		"holding": held != null,
 		"held_name": str(held.name) if held != null else "",
+		"phase": &"carried_junk" if held != null else &"none",
+		"hud_visible": junk_hud_container != null and junk_hud_container.visible,
+		"hand_actions_available": are_hand_actions_available(),
 	}
+
+
+func are_hand_actions_available() -> bool:
+	return prop_carry == null or not prop_carry.has_held_prop()
 
 
 func handle_look_input(event: InputEvent) -> void:
@@ -258,9 +273,13 @@ func _create_components() -> void:
 		view_camera,
 		interaction_range
 	)
+	_create_junk_hud()
 	prop_carry = PlayerPropCarry.new(
 		self,
-		view_camera
+		view_camera,
+		junk_hud_container,
+		junk_hud_mesh,
+		junk_hud_material
 	)
 	support = PlayerSupport.new(
 		locomotion_settings.max_walkable_slope,
@@ -369,3 +388,54 @@ func _create_components() -> void:
 		stance_settings.crouch_speed,
 		locomotion_settings.jump_height
 	)
+
+
+func _create_junk_hud() -> void:
+	var layer := CanvasLayer.new()
+	layer.name = "JunkHudLayer"
+	layer.layer = 20
+	add_child(layer)
+	var root := Control.new()
+	root.name = "JunkHudRoot"
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(root)
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	junk_hud_container = SubViewportContainer.new()
+	junk_hud_container.name = "CarriedJunk"
+	junk_hud_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(junk_hud_container)
+	junk_hud_container.anchor_left = 0.5
+	junk_hud_container.anchor_right = 0.5
+	junk_hud_container.anchor_top = 1.0
+	junk_hud_container.anchor_bottom = 1.0
+	junk_hud_container.offset_left = -110.0
+	junk_hud_container.offset_right = 110.0
+	junk_hud_container.offset_top = -190.0
+	junk_hud_container.offset_bottom = -10.0
+	junk_hud_container.stretch = true
+	junk_hud_container.visible = false
+	var viewport := SubViewport.new()
+	viewport.name = "Viewport"
+	viewport.size = Vector2i(220, 180)
+	viewport.transparent_bg = true
+	viewport.own_world_3d = true
+	viewport.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
+	junk_hud_container.add_child(viewport)
+	var camera := Camera3D.new()
+	camera.name = "Camera3D"
+	camera.position = Vector3(0.0, 0.0, 2.2)
+	camera.fov = 32.0
+	camera.current = true
+	viewport.add_child(camera)
+	camera.look_at(Vector3.ZERO, Vector3.UP)
+	var light := DirectionalLight3D.new()
+	light.name = "DirectionalLight3D"
+	light.rotation_degrees = Vector3(-35.0, -25.0, 0.0)
+	viewport.add_child(light)
+	junk_hud_mesh = MeshInstance3D.new()
+	junk_hud_mesh.name = "JunkMesh"
+	junk_hud_mesh.rotation_degrees = Vector3(-12.0, 28.0, 0.0)
+	viewport.add_child(junk_hud_mesh)
+	junk_hud_material = StandardMaterial3D.new()
+	junk_hud_material.cull_mode = BaseMaterial3D.CULL_BACK
+	junk_hud_mesh.material_override = junk_hud_material
