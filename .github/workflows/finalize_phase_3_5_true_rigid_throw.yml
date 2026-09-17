@@ -28,17 +28,23 @@ jobs:
           git fetch origin test
           test "$(git rev-parse origin/test)" = "$GITHUB_SHA"
 
-      - name: Apply collision-channel throw correction
+      - name: Apply collision-channel and solver launch correction
         shell: bash
         run: |
           set -euo pipefail
           python tools/phase35_true_rigid_throw_fix_tmp.py
-          python -m py_compile tools/phase35_true_rigid_throw_tmp.py
+          python tools/phase35_solver_launch_fix_tmp.py
+          python -m py_compile \
+            tools/phase35_true_rigid_throw_tmp.py \
+            tools/phase35_solver_launch_tmp.py
           python tools/phase35_true_rigid_throw_tmp.py
+          python tools/phase35_solver_launch_tmp.py
           rm -f \
             .github/workflows/finalize_phase_3_5_true_rigid_throw.yml \
             tools/phase35_true_rigid_throw_tmp.py \
-            tools/phase35_true_rigid_throw_fix_tmp.py
+            tools/phase35_true_rigid_throw_fix_tmp.py \
+            tools/phase35_solver_launch_tmp.py \
+            tools/phase35_solver_launch_fix_tmp.py
           find tools -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
 
@@ -52,6 +58,8 @@ jobs:
               ".github/workflows/finalize_phase_3_5_true_rigid_throw.yml",
               "tools/phase35_true_rigid_throw_tmp.py",
               "tools/phase35_true_rigid_throw_fix_tmp.py",
+              "tools/phase35_solver_launch_tmp.py",
+              "tools/phase35_solver_launch_fix_tmp.py",
               "project.godot",
               "player/Player.tscn",
               "gameplay/props/OrdinaryProp.tscn",
@@ -107,6 +115,8 @@ jobs:
             .github/workflows/finalize_phase_3_5_true_rigid_throw.yml \
             tools/phase35_true_rigid_throw_tmp.py \
             tools/phase35_true_rigid_throw_fix_tmp.py \
+            tools/phase35_solver_launch_tmp.py \
+            tools/phase35_solver_launch_fix_tmp.py \
             project.godot \
             player/Player.tscn \
             gameplay/props/OrdinaryProp.tscn \
