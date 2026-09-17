@@ -1,0 +1,70 @@
+name: Diagnose final Phase 3.5 transition failures
+
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose-phase-3-5-transition:
+    if: github.event.head_commit.message == 'Diagnose final Phase 3.5 transition failures'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout authoritative test head
+        uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Apply candidate and focused fixture correction
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tools/phase35_transition_fix_tmp.py')
+          text = path.read_text(encoding='utf-8')
+          old = '    dynamic_settle + "func _has_support() -> bool:\\n",\n'
+          new = '    dynamic_settle,\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'dynamic settle splice marker count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          python tools/phase35_transition_fix_tmp.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('tests/props/phase_3_5_transition_regressions.gd')
+          text = path.read_text(encoding='utf-8')
+          old = '\tsupport_body.global_position = Vector3(3.0, 0.4, 2.5)\n'
+          new = '\tsupport_body.global_position = Vector3(2.89, 0.4, 2.5)\n'
+          if text.count(old) != 1:
+              raise SystemExit(f'narrow support fixture marker count={text.count(old)}')
+          text = text.replace(old, new, 1)
+          marker = '\tvar cleared: bool = await _wait_for_player_exception_clear(tree, prop, player, 40)\n'
+          diagnostic = marker + '\tprint("PHASE35_EXCEPTION_DEBUG cleared=", cleared, " prop=", prop.global_position, " player=", player.global_position, " velocity=", prop.linear_velocity, " overlap=", prop.call("_shape_overlaps_body_at_transform", prop.global_transform, player), " exceptions=", prop.get_collision_exceptions())\n'
+          if text.count(marker) != 1:
+              raise SystemExit(f'exception debug marker count={text.count(marker)}')
+          text = text.replace(marker, diagnostic, 1)
+          settle_marker = '\tassert_true.call(\n\t\tprop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED\n'
+          settle_debug = '\tprint("PHASE35_SETTLE_DEBUG phase=", prop.call("get_semantic_phase"), " position=", prop.global_position, " basis_y=", prop.global_transform.basis.orthonormalized().y, " freeze=", prop.freeze, " supported=", prop.call("is_supported"))\n' + settle_marker
+          if text.count(settle_marker) != 1:
+              raise SystemExit(f'settle debug marker count={text.count(settle_marker)}')
+          text = text.replace(settle_marker, settle_debug, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+
+      - name: Setup Godot 4.7.2
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: false
+
+      - name: Import project
+        run: timeout 120s godot --headless --path . --import
+
+      - name: Run focused Props regressions with diagnostics
+        run: timeout 150s godot --headless --path . --script res://tests/props/run_prop_tests.gd
