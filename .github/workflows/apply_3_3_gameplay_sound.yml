@@ -1,0 +1,232 @@
+name: Apply 3.3 semantic gameplay sound
+
+on:
+  push:
+    branches: [test]
+    paths:
+      - .github/workflows/apply_3_3_gameplay_sound.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+      - name: Apply bounded 3.3 implementation
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one match in {path}, found {text.count(old)}")
+              p.write_text(text.replace(old, new, 1))
+
+          # WorldSession: reserve one validated semantic gameplay-sound fact.
+          replace_once(
+              "application/world_session.gd",
+              'const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000\n',
+              'const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000\n'
+              'const GAMEPLAY_SOUND_EVENT_NAME: StringName = &"gameplay.sound"\n'
+          )
+          replace_once(
+              "application/world_session.gd",
+              '\tif event_name.is_empty():\n\t\treturn false\n\tif not _is_detached_semantic_value(payload):\n\t\treturn false\n',
+              '\tif event_name.is_empty():\n\t\treturn false\n'
+              '\tif (\n'
+              '\t\tevent_name == GAMEPLAY_SOUND_EVENT_NAME\n'
+              '\t\tand not _is_valid_gameplay_sound_payload(payload)\n'
+              '\t):\n'
+              '\t\treturn false\n'
+              '\tif not _is_detached_semantic_value(payload):\n\t\treturn false\n'
+          )
+          replace_once(
+              "application/world_session.gd",
+              '\t_next_semantic_event_sequence += 1\n\treturn true\n\n\nfunc build(\n',
+              '\t_next_semantic_event_sequence += 1\n\treturn true\n\n\n'
+              'func queue_gameplay_sound(\n'
+              '\tsource_session_id: int,\n'
+              '\tsound_kind: StringName,\n'
+              '\torigin: Vector3,\n'
+              '\tstrength: float\n'
+              ') -> bool:\n'
+              '\t# Gameplay sound is semantic hearing input, not presentation audio. Keep\n'
+              '\t# streams, buses, volume/pitch, and AudioStreamPlayer ownership elsewhere.\n'
+              '\treturn queue_semantic_gameplay_event(\n'
+              '\t\tsource_session_id,\n'
+              '\t\tGAMEPLAY_SOUND_EVENT_NAME,\n'
+              '\t\t{\n'
+              '\t\t\t"kind": sound_kind,\n'
+              '\t\t\t"origin": origin,\n'
+              '\t\t\t"strength": strength,\n'
+              '\t\t}\n'
+              '\t)\n\n\n'
+              'func build(\n'
+          )
+          replace_once(
+              "application/world_session.gd",
+              '\treturn true\n\n\nfunc _registry_unavailable_result() -> Dictionary:\n',
+              '\treturn true\n\n\n'
+              'func _is_valid_gameplay_sound_payload(payload: Dictionary) -> bool:\n'
+              '\t# This is intentionally a tiny source fact, not an acoustic result. 3.6\n'
+              '\t# remains free to choose attenuation, portals/zones, and hearing semantics.\n'
+              '\tif payload.size() != 3:\n'
+              '\t\treturn false\n'
+              '\tif (\n'
+              '\t\tnot payload.has("kind")\n'
+              '\t\tor not payload.has("origin")\n'
+              '\t\tor not payload.has("strength")\n'
+              '\t):\n'
+              '\t\treturn false\n'
+              '\tif typeof(payload["kind"]) != TYPE_STRING_NAME:\n'
+              '\t\treturn false\n'
+              '\tvar sound_kind: StringName = payload["kind"]\n'
+              '\tif sound_kind.is_empty():\n'
+              '\t\treturn false\n'
+              '\tif typeof(payload["origin"]) != TYPE_VECTOR3:\n'
+              '\t\treturn false\n'
+              '\tvar strength_value: Variant = payload["strength"]\n'
+              '\tif typeof(strength_value) != TYPE_FLOAT and typeof(strength_value) != TYPE_INT:\n'
+              '\t\treturn false\n'
+              '\tvar strength: float = float(strength_value)\n'
+              '\treturn is_finite(strength) and strength > 0.0\n\n\n'
+              'func _registry_unavailable_result() -> Dictionary:\n'
+          )
+
+          # Existing 3.2 regression file is already wired into Application + all-tests.
+          replace_once(
+              "tests/application/semantic_event_regressions.gd",
+              '\tassert_true.call(\n\t\tbool(session.call("begin_play")),\n\t\t"3.2 semantic-event fixture enters PLAYING before normal emission"\n\t)\n',
+              '\tassert_true.call(\n'
+              '\t\tnot bool(session.call(\n'
+              '\t\t\t"queue_gameplay_sound",\n'
+              '\t\t\tsource_session_id,\n'
+              '\t\t\t&"door.use",\n'
+              '\t\t\tVector3.ZERO,\n'
+              '\t\t\t1.0\n'
+              '\t\t)),\n'
+              '\t\t"Gameplay-significant sound cannot queue before the world session is PLAYING"\n'
+              '\t)\n'
+              '\tassert_true.call(\n\t\tbool(session.call("begin_play")),\n\t\t"3.2 semantic-event fixture enters PLAYING before normal emission"\n\t)\n'
+          )
+          replace_once(
+              "tests/application/semantic_event_regressions.gd",
+              '\tassert_true.call(\n\t\trecovery_log == ["recovered"]\n\t\tand str(session.call("get_last_semantic_event_error")).is_empty(),\n\t\t"A later valid semantic pass reaches a stable boundary after the guarded failure is cleared"\n\t)\n\n\tsession.call("teardown")\n',
+              '\tassert_true.call(\n'
+              '\t\trecovery_log == ["recovered"]\n'
+              '\t\tand str(session.call("get_last_semantic_event_error")).is_empty(),\n'
+              '\t\t"A later valid semantic pass reaches a stable boundary after the guarded failure is cleared"\n'
+              '\t)\n\n'
+              '\tvar gameplay_sound_events: Array[Dictionary] = []\n'
+              '\tvar gameplay_sound_handler: Callable = func(event: Dictionary) -> bool:\n'
+              '\t\tgameplay_sound_events.append(event)\n'
+              '\t\treturn true\n'
+              '\tassert_true.call(\n'
+              '\t\tbool(session.call(\n'
+              '\t\t\t"register_semantic_event_handler",\n'
+              '\t\t\tWorldSession.GAMEPLAY_SOUND_EVENT_NAME,\n'
+              '\t\t\tgameplay_sound_handler\n'
+              '\t\t)),\n'
+              '\t\t"3.3 gameplay sound uses the existing world-session semantic event route"\n'
+              '\t)\n'
+              '\tassert_true.call(\n'
+              '\t\tnot bool(session.call(\n'
+              '\t\t\t"queue_gameplay_sound", source_session_id + 1, &"door.use", Vector3.ZERO, 1.0\n'
+              '\t\t))\n'
+              '\t\tand not bool(session.call(\n'
+              '\t\t\t"queue_gameplay_sound", source_session_id, &"", Vector3.ZERO, 1.0\n'
+              '\t\t))\n'
+              '\t\tand not bool(session.call(\n'
+              '\t\t\t"queue_gameplay_sound", source_session_id, &"door.use", Vector3.ZERO, 0.0\n'
+              '\t\t))\n'
+              '\t\tand not bool(session.call(\n'
+              '\t\t\t"queue_semantic_gameplay_event",\n'
+              '\t\t\tsource_session_id,\n'
+              '\t\t\tWorldSession.GAMEPLAY_SOUND_EVENT_NAME,\n'
+              '\t\t\t{\n'
+              '\t\t\t\t"kind": &"door.use",\n'
+              '\t\t\t\t"origin": Vector3.ZERO,\n'
+              '\t\t\t\t"strength": 1.0,\n'
+              '\t\t\t\t"volume_db": -6.0,\n'
+              '\t\t\t}\n'
+              '\t\t)),\n'
+              '\t\t"Gameplay-sound validation rejects stale, empty, nonpositive, and presentation-audio-shaped facts"\n'
+              '\t)\n'
+              '\tvar sound_origin := Vector3(2.0, 1.5, -3.0)\n'
+              '\tvar sound_serial_before: int = int(session.call("get_stable_gameplay_boundary_serial"))\n'
+              '\tassert_true.call(\n'
+              '\t\tbool(session.call(\n'
+              '\t\t\t"queue_gameplay_sound",\n'
+              '\t\t\tsource_session_id,\n'
+              '\t\t\t&"door.use",\n'
+              '\t\t\tsound_origin,\n'
+              '\t\t\t0.75\n'
+              '\t\t))\n'
+              '\t\tand gameplay_sound_events.is_empty()\n'
+              '\t\tand int(session.call("get_pending_semantic_event_count")) == 1\n'
+              '\t\tand int(session.call("get_stable_gameplay_boundary_serial")) == sound_serial_before,\n'
+              '\t\t"Gameplay sound queues semantic hearing work without immediate dispatch or presentation playback ownership"\n'
+              '\t)\n'
+              '\tawait _settle_physics(tree)\n'
+              '\tvar sound_payload: Dictionary = {}\n'
+              '\tif gameplay_sound_events.size() == 1:\n'
+              '\t\tsound_payload = gameplay_sound_events[0].get("payload", {})\n'
+              '\tassert_true.call(\n'
+              '\t\tgameplay_sound_events.size() == 1\n'
+              '\t\tand sound_payload.size() == 3\n'
+              '\t\tand sound_payload.get("kind", &"") == &"door.use"\n'
+              '\t\tand sound_payload.get("origin", Vector3.ZERO) == sound_origin\n'
+              '\t\tand is_equal_approx(float(sound_payload.get("strength", 0.0)), 0.75)\n'
+              '\t\tand not sound_payload.has("audio_stream")\n'
+              '\t\tand not sound_payload.has("volume_db")\n'
+              '\t\tand not sound_payload.has("bus")\n'
+              '\t\tand not sound_payload.has("pitch_scale")\n'
+              '\t\tand int(session.call("get_stable_gameplay_boundary_serial")) == sound_serial_before + 1,\n'
+              '\t\t"Gameplay sound arrives as only kind/origin/relative-strength semantic data at the controlled consequence boundary"\n'
+              '\t)\n\n'
+              '\tsession.call("teardown")\n'
+          )
+
+          # Roadmap acceptance contract and current baseline.
+          replace_once(
+              "docs/DEVELOPMENT_PLAN.md",
+              '- a minimal `WorldSession`-owned semantic gameplay-event route with FIFO consequence draining, nested append semantics, lifecycle/session rejection, detached payloads, cascade diagnostics, and an explicit stable gameplay-boundary serial\n- post-push GitHub Actions validation for the authoritative regression barrier\n',
+              '- a minimal `WorldSession`-owned semantic gameplay-event route with FIFO consequence draining, nested append semantics, lifecycle/session rejection, detached payloads, cascade diagnostics, and an explicit stable gameplay-boundary serial\n'
+              '- a minimal semantic `gameplay.sound` source fact carrying kind, world origin, and relative positive source strength independently of presentation audio\n'
+              '- post-push GitHub Actions validation for the authoritative regression barrier\n'
+          )
+          replace_once(
+              "docs/DEVELOPMENT_PLAN.md",
+              '## 3.3 Minimal semantic gameplay-sound event `[ ]`\n\nSeparate gameplay-significant sound from presentation audio before acoustic propagation is prototyped.\n',
+              '## 3.3 Minimal semantic gameplay-sound event `[~]`\n\n'
+              'Separate gameplay-significant sound from presentation audio before acoustic propagation is prototyped.\n\n'
+              'The first contract is one reserved world-session semantic fact, `gameplay.sound`. Its payload contains exactly `kind: StringName`, `origin: Vector3`, and a finite positive `strength`. `strength` is only a relative source-strength input for later acoustics; it does **not** define a radius, decibel model, attenuation curve, portal/zone model, or final hearing threshold. Presentation details such as `AudioStream`, audio bus, volume dB, pitch, and `AudioStreamPlayer` ownership are deliberately absent. A gameplay sound can therefore exist and be tested headlessly even when no presentation sound is played, and presentation audio cannot become stealth truth merely by being loud.\n\n'
+              '`WorldSession.queue_gameplay_sound()` validates and queues this fact through the accepted 3.2 FIFO/stable-boundary route. The reserved event name is validated even when a caller uses the generic semantic-event entry point, so ad-hoc presentation-shaped payloads cannot bypass the sound contract. This step does not propagate sound, decide who hears it, play audio, define a sound taxonomy framework, or add footsteps/door/prop/speech emitters; those real consumers arrive in their scheduled micro-proofs.\n\n'
+              '**Done when:** the current `PLAYING` world session can queue a gameplay-significant sound as only semantic kind/origin/relative-strength data; stale/foreign or non-`PLAYING` session work is rejected through the existing event boundary; empty kinds, nonpositive/non-finite strength, and presentation-audio-shaped payloads are rejected; valid sounds dispatch only at the controlled semantic consequence point and advance the stable boundary normally; no presentation audio is required or created; and no acoustic propagation, hearing reaction, radius/attenuation model, general sound taxonomy, or concrete door/prop/footstep/speech emitter is pulled forward.\n\n'
+              '**Automated:** deterministic 3.3 coverage is wired into the existing focused application semantic-event regression and therefore the authoritative all-tests barrier. It checks READY rejection, stale-session rejection, empty/nonpositive semantic validation, rejection of a reserved `gameplay.sound` payload carrying presentation `volume_db`, queue-without-immediate-dispatch behavior, exact detached semantic payload shape, and stable-boundary delivery through the accepted 3.2 route. Acceptance remains `[~]` until exact-head CI is terminal green.\n\n'
+              '**Manual:** none — 3.3 establishes an internal semantic separation and intentionally plays no audible sound or other player-facing presentation.\n'
+          )
+
+          replace_once(
+              "docs/TESTING.md",
+              'Phase 3.2 coverage runs in this same focused application suite through an isolated real `WorldSession`: it proves emitted-order FIFO, nested append rather than recursive dispatch, deep value-owned payload detachment and per-handler isolation, current-session/lifecycle gating including RESTORING, a late controlled physics drain point, out-of-pass queueing without immediate durable consequence dispatch, synchronous-handler acknowledgement, a bounded runaway-cascade diagnostic/recovery path, teardown cleanup, replacement-session isolation, and stable-boundary publication only after a successful consequence pass.\n\nThe movement runner currently:',
+              'Phase 3.2 coverage runs in this same focused application suite through an isolated real `WorldSession`: it proves emitted-order FIFO, nested append rather than recursive dispatch, deep value-owned payload detachment and per-handler isolation, current-session/lifecycle gating including RESTORING, a late controlled physics drain point, out-of-pass queueing without immediate durable consequence dispatch, synchronous-handler acknowledgement, a bounded runaway-cascade diagnostic/recovery path, teardown cleanup, replacement-session isolation, and stable-boundary publication only after a successful consequence pass. Phase 3.3 extends that already-wired regression with the reserved `gameplay.sound` source fact: only semantic kind/origin/positive relative strength are accepted, stale/non-PLAYING work is rejected through the same session boundary, presentation-audio-shaped payloads cannot enter the reserved event, and valid gameplay sound reaches handlers only at the controlled consequence/stable-boundary point without requiring or creating presentation audio.\n\nThe movement runner currently:'
+          )
+          PY
+      - name: Commit implementation and remove helper
+        shell: bash
+        run: |
+          rm .github/workflows/apply_3_3_gameplay_sound.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add application/world_session.gd tests/application/semantic_event_regressions.gd docs/DEVELOPMENT_PLAN.md docs/TESTING.md .github/workflows/apply_3_3_gameplay_sound.yml
+          git commit -m "Implement 3.3 semantic gameplay-sound event"
+          git push origin HEAD:test
