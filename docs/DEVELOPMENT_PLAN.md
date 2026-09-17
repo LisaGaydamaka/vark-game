@@ -82,7 +82,7 @@ The project currently contains:
 - a minimal `WorldSession`-owned semantic gameplay-event route with FIFO consequence draining, nested append semantics, lifecycle/session rejection, detached payloads, cascade diagnostics, and an explicit stable gameplay-boundary serial
 - a minimal semantic `gameplay.sound` source fact separated from presentation audio
 - a first reusable ordinary-door micro-proof with physical hinge collision/vision behavior, semantic door events/state capture, and narrow acoustic/navigation seams
-- a first Thief-style ordinary-prop micro-proof with explicit settled/held/moving/settling state, fixed held presentation, central interaction suppression, simple support/stack behavior, and semantic capture/reconcile seams
+- a first ordinary-prop prototype with explicit settled/held/moving/settling state, central interaction suppression, simple support/stack behavior, and semantic capture/reconcile seams; Phase 3.5 remains `[~]` because the player-facing carry contract has since been revised to single-slot carried Junk with HUD presentation plus F throw / R gentle release, so the current camera-held implementation/tests must be corrected before acceptance
 - a minimal semantic `gameplay.sound` source fact carrying kind, world origin, and relative positive source strength independently of presentation audio
 - post-push GitHub Actions validation for the authoritative regression barrier
 
@@ -796,7 +796,7 @@ Introduce only enough common behavior for center-view target selection, range/oc
 
 The ordinary door and physical prop use the same interaction contract.
 
-Interaction ownership, not every interactable object, decides whether ordinary world interaction is currently available. In particular, later held-prop/body states should not require every door/switch/loot object to know private carrying state.
+Interaction ownership, not every interactable object, decides whether ordinary world interaction is currently available. In particular, later carried-Junk/body states should not require every door/switch/loot object to know private carrying state.
 
 The first implementation keeps interaction intent separate from locomotion `PlayerCommand`. `ApplicationInputBoundary` owns one fresh `interact` edge per gameplay physics frame, suppresses a held interaction across gameplay-domain loss until release, and publishes gameplay-domain availability to the bound player. `PlayerInteraction` is a small player-owned selector that casts from the real view camera center to a configurable short range, treats the first physics hit as the occlusion boundary, asks only the hit `vark_interactable` whether its current state is eligible, and owns target highlight changes. A separate `world_interaction_available` gate gives later held-prop/body ownership one central place to suppress ordinary interaction without checks copied into every interactable. The default keyboard mapping for the primary interaction action is **F**. Selection feedback does not tint or emissively recolor the target: the target keeps its base color and ordinary cast-shadow behavior, while its own visible surface renders unshaded/fullbright and receives no scene shadows until selection clears, at which point ordinary shaded surface response is restored.
 
@@ -875,7 +875,7 @@ A development-only `Door Lab` launches through the normal application/session/in
 Implement ordinary prop states sufficient to prove:
 
 ```text
-settled → held → dropped/thrown/unsupported → settling → settled
+settled/world → carried_junk → thrown/released/unsupported → moving → settling → settled/world
 ```
 
 Use at least one representative replaceable external 3D model asset for the ordinary prop/furniture visual. The prop gameplay archetype owns support/carry/interaction/save semantics; the model is replaceable presentation and must not become semantic identity.
@@ -887,25 +887,33 @@ Protect the LOCKED rules:
 - simple supported stacks remain still;
 - removing a simple lower support causes unsupported objects above to fall until supported without uncontrolled explosion/scatter;
 - settled props become stationary again;
-- a held ordinary prop uses the intended first-person held presentation;
-- the player cannot freely rotate a held ordinary prop;
-- ordinary world interaction is unavailable while carrying an ordinary prop, enforced at interaction/input ownership rather than by checks copied into every interactable.
+- **F/Frob** picks up an eligible highlighted ordinary prop as the player's one carried Junk object;
+- pickup immediately removes/disables that prop's physical world presentation and collision while preserving the same semantic/persistent identity;
+- the player can carry exactly one Junk object at a time;
+- carried Junk is shown at the bottom-center HUD and is never a camera-attached physical world body;
+- carried Junk cannot collide with world geometry while stored;
+- ordinary movement/look/crouch/jump/traversal remain available while carrying;
+- carrying occupies the player's hands and centrally suppresses ordinary world interaction, attack, and normal inventory-item use;
+- **F/Frob** while carrying throws the same prop forward in the current view direction;
+- **R** while carrying gently releases/drops the same prop using a view-derived placement point;
+- looking downward and releasing supports predictable below/in-front placement and practical crate stacking;
+- throw has substantially greater forward motion/impact than gentle release;
+- box-like props hold their release-facing orientation throughout thrown/released/unsupported/settling motion instead of freely tumbling/spinning, then normalize to canonical top-up orientation only when they become settled;
+- thrown/released impacts can emit the existing semantic gameplay-sound source fact for later acoustic/NPC use.
 
-Do not build a universal support-graph engine. If the small fixture appears to require one, reconsider the concrete representation.
+Do not build a universal support-graph engine or a general inventory framework. The carried-Junk slot is the smallest concrete physical-prop carry owner needed for this proof.
 
-The first ordinary prop is a manually translated `CharacterBody3D`, not a continuously simulated `RigidBody3D`. While settled it performs a small footprint support check and otherwise remains exactly authored; when support disappears, after drop, or after throw it uses explicit linear velocity with fixed orientation until contact/support moves it through a one-frame `settling` state back to `settled`. A nine-point bottom-footprint probe is sufficient for the representative edge-support and simple stack cases without introducing a support graph. Removing the lower box from the Prop Lab stack disables that support collision while held, so the upper box becomes unsupported and falls vertically without torque/scatter.
+The existing implementation at head `633c6ec3f8ca3d7f5fe3a54220932f343590b6b6` is **superseded by this player-facing contract but intentionally left unchanged by this documentation patch**. It still uses a camera-relative visible held prop, has no player-bound **R** release action, and its current regressions protect that older behavior. Phase 3.5 therefore remains `[~]`; the next implementation patch must correct code, fixture presentation, input mapping, save/reconcile semantics, and tests to this contract before manual acceptance.
 
-`PlayerPropCarry` is a deliberately narrow player-owned transient relationship. **F** reuses the accepted application-owned primary-interaction edge for both prop actions: it picks up a targeted prop while empty-handed and throws the held prop while carrying. There is no separate ordinary-prop throw key. The held object follows one fixed camera-relative first-person offset and preserves one fixed relative basis, so it follows the view but has no free-rotation state. Carrying composes with the existing central `PlayerInteraction.world_interaction_available` gate, so ordinary world interaction is suppressed without teaching each door/switch/loot target about carrying. The semantic `dropped` path remains explicit for system/save behavior even though it is not assigned a separate player key in this micro-proof.
+The intended semantic ownership is one player-owned `carried_junk` relationship to the same ordinary prop identity. While carried, world presentation/collision are derived inactive state; the object is not converted into inventory data and is not destroyed/recreated as a different gameplay identity. Throw/release restore the same prop to world participation. Save capture must preserve enough semantic state to restore whether the prop is settled, carried Junk, thrown/released/unsupported, moving, or settling without serializing live player/Node references.
 
-`OrdinaryProp.tscn` selects an external OBJ through an exported `Mesh` seam and the regression swaps a compatible alternate OBJ on the same gameplay instance while preserving collision, state, interaction, and save semantics. `capture_semantic_state()` stores only explicit phase, motion kind, transform, and linear velocity; `apply_semantic_state()` restores those value-owned facts, and `reconcile_after_restore()` rebuilds the transient held-player relationship when the semantic phase is `held`. Prop collision also emits the already-proven semantic `prop.impact` gameplay-sound source fact; Phase 3.6 still owns propagation/hearing.
+A development-only `Prop Lab` remains the focused fixture and must be updated with the implementation so its instructions and HUD make the real player-facing contract obvious.
 
-A development-only `Prop Lab` exposes the real pickup prop, an intentionally edge-supported box, and a two-box stack through the normal application/session/player path.
+**Done when:** one real ordinary prop uses the accepted center-view/F selection contract and replaceable external-model presentation; settled/edge-supported props and a simple stack remain stable; lower-support removal produces controlled unsupported fall; F pickup makes the world prop disappear into exactly one bottom-center carried-Junk HUD slot with no world collision; normal locomotion remains available while carrying while ordinary interaction/attack/normal inventory use are centrally suppressed; F throws and R gently releases the same prop back into the world from a view-derived release point; looking downward permits predictable stacking placement; throw is visibly stronger/noisier in semantic impact potential than release; box-like props keep release-facing orientation while moving and normalize top-up only on final settle; capture/apply/reconcile preserves the semantic state without live references; and no universal support graph, general inventory framework, acoustic propagation, or continuously active general rigid-body simulation is introduced.
 
-**Done when:** one real ordinary prop uses the accepted center-view/F selection contract and replaceable external-model presentation; settled and edge-supported props plus a simple supported stack remain stationary without toppling/spinning/rolling/drift; removing the lower stack support causes the upper prop to enter unsupported motion, fall without scatter/rotation, and settle again; F pickup/throw reuses the application-owned primary-interaction edge, a held prop stays at a fixed first-person offset/orientation with no free rotation, and carrying centrally suppresses ordinary world interaction; dropped/thrown/unsupported props use bounded explicit motion and become stationary again on support; impact queues only the existing semantic gameplay-sound source fact; capture/apply/reconcile covers settled/held/moving/settling state without live references or serialized runtime continuation machinery; and no universal support graph, inventory framework, acoustic propagation, or general rigid-body prop simulation is introduced.
+**Automated:** required — revise the dedicated `tests/props/run_prop_tests.gd` suite and keep it wired into `tests/run_all_tests.gd`. Coverage must prove external OBJ replacement; F pickup into exactly one `carried_junk` slot; physical presentation/collision inactive while carried; bottom-center HUD carry presentation; carried object does not collide with world geometry; normal movement-state availability while carrying; central world/hand-action suppression; stale F and R edge suppression across gameplay-domain loss; F throw versus R gentle release with clearly different release velocity/impact intent; view-derived downward placement; same semantic identity across world → carried Junk → world; detached capture/apply/reconcile; release-facing orientation held through moving/settling; top-up normalization only at final settle; semantic impact sound; edge support; stable stacking; lower-support removal; controlled unsupported fall; and no post-settle drift/spin.
 
-**Automated:** required — the dedicated `tests/props/run_prop_tests.gd` suite is wired into `tests/run_all_tests.gd` and must pass through the authoritative GitHub Actions `Test` barrier. It covers external OBJ replacement, real F pickup/throw through the existing interaction edge including stale-edge suppression, fixed held presentation, central world-interaction suppression, detached held/moving semantic state and restore reconciliation, the explicit dropped semantic path plus thrown settling, semantic impact sound, edge support, stable stacking, lower-support removal, vertical unsupported fall, and no post-settle drift/rotation.
-
-**Manual:** pending — validator: **Windows x64 user/playtester**. Launch **Development Launch → Prop Lab**. Verify the center crate highlights normally; **F** picks it up into a stable first-person held position; looking/moving does not let it freely rotate; other ordinary world interaction/highlight is unavailable while it is held; press **F** again to throw it, after which it collides/falls, settles without continued wobble/spin/roll/drift, and becomes stationary; the green-stand box remains where authored despite overhang; remove the lower box from the right-hand two-box stack and confirm the upper box falls roughly straight down, settles without explosive scatter/toppling, and remains still. Also confirm ordinary movement/jump/crouch/sprint/mouse-look still feel accepted.
+**Manual:** pending — validator: **Windows x64 user/playtester** after the code correction. Launch **Development Launch → Prop Lab**. Verify the center crate highlights normally; **F** makes it disappear from the world and appear as one Junk object at the bottom-center HUD; movement/look/crouch/jump still work normally; the stored crate does not clip/collide with nearby walls; ordinary interaction and hand-occupying actions are unavailable while carrying; **F** throws the crate in the look direction; **R** releases it gently; looking downward plus **R** allows predictable beneath/in-front placement and practical stacking; throwing is visibly stronger than dropping; during throw/release the box keeps its release-facing side without free tumble/spin and only returns top-up when fully settled; edge support remains stable; removing a lower stack support still drops the upper box cleanly; and settled props remain still.
 
 ## 3.6 Acoustic propagation micro-proof `[ ]`
 
@@ -1150,9 +1158,9 @@ Integrate with gameplay light state, sound/events, and saves.
 
 ## 6.6 Physical prop completion `[ ]`
 
-Expand support relationships, stacking/climbing, held presentation, drop/throw, impacts/noise, obstruction, save state, and reusable external-model presentation/variant authoring only as real content needs them. Furniture/prop visual replacement must not require rewriting the shared physical-prop gameplay rules.
+Expand support relationships, stacking/climbing, carried-Junk HUD presentation, view-derived gentle release/throw, impacts/noise, obstruction, save state, and reusable external-model presentation/variant authoring only as real content needs them. Furniture/prop visual replacement must not require rewriting the shared physical-prop gameplay rules.
 
-Preserve the Phase 3 held-prop interaction restrictions through central interaction/input ownership.
+Preserve the Phase 3 carried-Junk hand/world-action restrictions through central interaction/input ownership.
 
 ## 6.7 Configured breakables/effects `[ ]`
 
@@ -1545,7 +1553,7 @@ Keep small representative fixtures and progressively use the same ordinary gamep
 
 Prove the external-model presentation seam early on those real objects: the ordinary door/opening and representative prop use replaceable model assets while gameplay identity/state/collision/integration remain owned by their Vark archetypes. An openable window reuses the ordinary door/opening path rather than creating a parallel subsystem.
 
-The prop fixture includes locked held-prop presentation/no-free-rotation/no-ordinary-interaction behavior.
+The prop fixture includes the locked one-slot carried-Junk HUD/no-world-collision contract, F throw / R gentle release, view-derived placement, central hand/world-action suppression, and release-facing-until-settled orientation behavior.
 
 ## Save snapshot/restore transaction
 

@@ -505,30 +505,40 @@ The stack should not explode, topple, scatter, or break apart merely because the
 
 Removing support is therefore different from applying a violent explicit impact/effect.
 
-## Held, thrown, unsupported, and settled states
+## Carried Junk, thrown, released, unsupported, and settled states
 
 The implementation should behave conceptually like:
 
 ```text
-settled/placed
-→ held
-→ thrown or dropped
-→ unsupported/moving
+settled/world
+→ carried_junk
+→ thrown or released
+→ moving/unsupported
 → settling
-→ settled/placed
+→ settled/world
 ```
 
-Thrown/dropped objects may move through the world and collide, but they should not enter indefinite realistic rigid-body simulation. Angular tumbling/toppling is not a default behavior.
+**Carried Junk** is a single-slot physical-object carry state, not ordinary inventory possession and not a world-space prop attached to the camera.
 
-Once motion resolves, the object becomes settled again.
+When an eligible highlighted ordinary prop is targeted in range, **F/Frob** picks it up immediately. The prop keeps the same semantic/persistent identity, but its physical world presentation and collision are inactive while carried. It therefore does not visibly hover in front of the player and cannot clip or collide with walls, doors, or other world geometry while in the carried state.
 
-Large carried objects are presented in a first-person held position on the same presentation plane as the player's hands rather than as freely simulated bodies floating in front of the camera.
+The player may carry exactly one Junk object at a time. Carried Junk is represented at the **bottom-center of the HUD**. Ordinary locomotion, turning, crouching, jumping, and traversal remain available unless a different explicit gameplay rule says otherwise.
 
-The player cannot freely rotate a held ordinary world object.
+Carrying Junk occupies the player's hands. While it is carried, ordinary world interaction plus hand-occupying attack and normal inventory-item use are unavailable through central interaction/input ownership rather than checks copied into every interactable, weapon, or item.
 
-The default ordinary-prop control reuses the primary **F** interaction: **F** picks up a targeted ordinary prop when the player is empty-handed, and **F** throws the held prop while carrying it. There is no separate default throw key for ordinary props.
+The ordinary-prop controls are:
 
-The player cannot use ordinary world interactions while carrying a physical object.
+- **F/Frob** on an eligible world prop while empty-handed: pick it up as the single carried Junk object;
+- **F/Frob** while carrying Junk: throw it forward in the current view direction;
+- **R** while carrying Junk: gently release/drop it using the current view for placement.
+
+Throw and release restore the same prop to ordinary world participation with collision enabled. Throw applies substantial forward velocity. Release is deliberately gentler and should normally create less impact/noise than throwing.
+
+The release point is derived from the player's current view rather than from a fixed world-space hand position. Looking downward and pressing **R** should place the object's center predictably beneath/in front of the player, approximately along the center-view release line, so deliberate crate stacking is practical.
+
+Thrown/released objects may move through the world and collide, but ordinary props do not enter indefinite realistic rigid-body simulation. For box-like props, the orientation established at throw/release is held during moving/unsupported/settling motion: the same side continues to face back along the release/throw line instead of freely tumbling or spinning. It does not continuously track later camera turns. When the prop finally becomes `settled`, it normalizes back to its canonical top-up orientation.
+
+Once motion resolves, the object becomes settled again. Supported/settled props then resume the ordinary stylized support rules above.
 
 Physical props can be used as:
 
@@ -593,7 +603,7 @@ NPCs do not have a generic "trip over loose object" behavior.
 
 # Inventory and usable items — LOCKED direction
 
-World props, loot, and usable inventory items are distinct concepts.
+World props, carried Junk, loot, and usable inventory items are distinct concepts. The one-slot carried-Junk state temporarily stores one physical world prop and does not turn that prop into a normal inventory item.
 
 The game supports Thief-style inventory selection/use without requiring every carried inventory item to remain physically simulated.
 
@@ -856,7 +866,8 @@ Core presentation includes:
 - health
 - selected usable item
 - interaction feedback when relevant
-- first-person weapon/hands/held-object presentation
+- first-person weapon/hands presentation
+- bottom-center carried-Junk presentation for the one carried physical prop
 
 There is no permanent crosshair.
 
@@ -891,7 +902,7 @@ Gameplay-important distinctions must remain clear:
 - conscious vs unconscious/dead
 - ordinary vs suspicious/alert NPC
 - usable doors/mechanisms
-- held/equipped state
+- carried-Junk/equipped state
 
 Final textures, characters, architecture theme, UI art, setting, and atmosphere belong to production content.
 
