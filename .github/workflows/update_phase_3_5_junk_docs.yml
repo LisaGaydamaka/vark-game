@@ -1,0 +1,224 @@
+name: Update Phase 3.5 carried Junk docs
+
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: write
+
+jobs:
+  update-phase-3-5-junk-docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout authoritative test head
+        uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Rewrite prop documentation contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected 1 match, found {count}")
+              return text.replace(old, new, 1)
+
+          # GAME_VISION.md: player-facing contract is authoritative.
+          path = Path('docs/GAME_VISION.md')
+          text = path.read_text(encoding='utf-8')
+          new_prop_state = '''## Carried Junk, thrown, released, unsupported, and settled states
+
+The implementation should behave conceptually like:
+
+```text
+settled/world
+→ carried_junk
+→ thrown or released
+→ moving/unsupported
+→ settling
+→ settled/world
+```
+
+**Carried Junk** is a single-slot physical-object carry state, not ordinary inventory possession and not a world-space prop attached to the camera.
+
+When an eligible highlighted ordinary prop is targeted in range, **F/Frob** picks it up immediately. The prop keeps the same semantic/persistent identity, but its physical world presentation and collision are inactive while carried. It therefore does not visibly hover in front of the player and cannot clip or collide with walls, doors, or other world geometry while in the carried state.
+
+The player may carry exactly one Junk object at a time. Carried Junk is represented at the **bottom-center of the HUD**. Ordinary locomotion, turning, crouching, jumping, and traversal remain available unless a different explicit gameplay rule says otherwise.
+
+Carrying Junk occupies the player's hands. While it is carried, ordinary world interaction plus hand-occupying attack and normal inventory-item use are unavailable through central interaction/input ownership rather than checks copied into every interactable, weapon, or item.
+
+The ordinary-prop controls are:
+
+- **F/Frob** on an eligible world prop while empty-handed: pick it up as the single carried Junk object;
+- **F/Frob** while carrying Junk: throw it forward in the current view direction;
+- **R** while carrying Junk: gently release/drop it using the current view for placement.
+
+Throw and release restore the same prop to ordinary world participation with collision enabled. Throw applies substantial forward velocity. Release is deliberately gentler and should normally create less impact/noise than throwing.
+
+The release point is derived from the player's current view rather than from a fixed world-space hand position. Looking downward and pressing **R** should place the object's center predictably beneath/in front of the player, approximately along the center-view release line, so deliberate crate stacking is practical.
+
+Thrown/released objects may move through the world and collide, but ordinary props do not enter indefinite realistic rigid-body simulation. For box-like props, the orientation established at throw/release is held during moving/unsupported/settling motion: the same side continues to face back along the release/throw line instead of freely tumbling or spinning. It does not continuously track later camera turns. When the prop finally becomes `settled`, it normalizes back to its canonical top-up orientation.
+
+Once motion resolves, the object becomes settled again. Supported/settled props then resume the ordinary stylized support rules above.'''
+          text, count = re.subn(
+              r'## Held, thrown, unsupported, and settled states\n.*?\nPhysical props can be used as:',
+              new_prop_state + '\n\nPhysical props can be used as:',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'GAME_VISION physical-object state block: expected 1 match, found {count}')
+          text = replace_once(
+              text,
+              '- first-person weapon/hands/held-object presentation\n',
+              '- first-person weapon/hands presentation\n- bottom-center carried-Junk presentation for the one carried physical prop\n',
+              'GAME_VISION HUD carried Junk presentation',
+          )
+          text = replace_once(
+              text,
+              '- held/equipped state\n',
+              '- carried-Junk/equipped state\n',
+              'GAME_VISION visual state wording',
+          )
+          text = replace_once(
+              text,
+              'World props, loot, and usable inventory items are distinct concepts.\n\nThe game supports Thief-style inventory selection/use without requiring every carried inventory item to remain physically simulated.\n',
+              'World props, carried Junk, loot, and usable inventory items are distinct concepts. The one-slot carried-Junk state temporarily stores one physical world prop and does not turn that prop into a normal inventory item.\n\nThe game supports Thief-style inventory selection/use without requiring every carried inventory item to remain physically simulated.\n',
+              'GAME_VISION inventory/Junk distinction',
+          )
+          path.write_text(text, encoding='utf-8')
+
+          # DEVELOPMENT_PLAN.md: redefine 3.5 without pretending code already matches it.
+          path = Path('docs/DEVELOPMENT_PLAN.md')
+          text = path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '- a first Thief-style ordinary-prop micro-proof with explicit settled/held/moving/settling state, fixed held presentation, central interaction suppression, simple support/stack behavior, and semantic capture/reconcile seams\n',
+              '- a first ordinary-prop prototype with explicit settled/held/moving/settling state, central interaction suppression, simple support/stack behavior, and semantic capture/reconcile seams; Phase 3.5 remains `[~]` because the player-facing carry contract has since been revised to single-slot carried Junk with HUD presentation plus F throw / R gentle release, so the current camera-held implementation/tests must be corrected before acceptance\n',
+              'DEVELOPMENT_PLAN baseline prop status',
+          )
+          text = text.replace('later held-prop/body states', 'later carried-Junk/body states')
+
+          new_35 = '''## 3.5 Thief-style prop micro-proof `[~]`
+
+Implement ordinary prop states sufficient to prove:
+
+```text
+settled/world → carried_junk → thrown/released/unsupported → moving → settling → settled/world
+```
+
+Use at least one representative replaceable external 3D model asset for the ordinary prop/furniture visual. The prop gameplay archetype owns support/carry/interaction/save semantics; the model is replaceable presentation and must not become semantic identity.
+
+Protect the LOCKED rules:
+
+- supported props do not topple/spin/roll/drift;
+- edge-supported boxes remain;
+- simple supported stacks remain still;
+- removing a simple lower support causes unsupported objects above to fall until supported without uncontrolled explosion/scatter;
+- settled props become stationary again;
+- **F/Frob** picks up an eligible highlighted ordinary prop as the player's one carried Junk object;
+- pickup immediately removes/disables that prop's physical world presentation and collision while preserving the same semantic/persistent identity;
+- the player can carry exactly one Junk object at a time;
+- carried Junk is shown at the bottom-center HUD and is never a camera-attached physical world body;
+- carried Junk cannot collide with world geometry while stored;
+- ordinary movement/look/crouch/jump/traversal remain available while carrying;
+- carrying occupies the player's hands and centrally suppresses ordinary world interaction, attack, and normal inventory-item use;
+- **F/Frob** while carrying throws the same prop forward in the current view direction;
+- **R** while carrying gently releases/drops the same prop using a view-derived placement point;
+- looking downward and releasing supports predictable below/in-front placement and practical crate stacking;
+- throw has substantially greater forward motion/impact than gentle release;
+- box-like props hold their release-facing orientation throughout thrown/released/unsupported/settling motion instead of freely tumbling/spinning, then normalize to canonical top-up orientation only when they become settled;
+- thrown/released impacts can emit the existing semantic gameplay-sound source fact for later acoustic/NPC use.
+
+Do not build a universal support-graph engine or a general inventory framework. The carried-Junk slot is the smallest concrete physical-prop carry owner needed for this proof.
+
+The existing implementation at head `633c6ec3f8ca3d7f5fe3a54220932f343590b6b6` is **superseded by this player-facing contract but intentionally left unchanged by this documentation patch**. It still uses a camera-relative visible held prop, has no player-bound **R** release action, and its current regressions protect that older behavior. Phase 3.5 therefore remains `[~]`; the next implementation patch must correct code, fixture presentation, input mapping, save/reconcile semantics, and tests to this contract before manual acceptance.
+
+The intended semantic ownership is one player-owned `carried_junk` relationship to the same ordinary prop identity. While carried, world presentation/collision are derived inactive state; the object is not converted into inventory data and is not destroyed/recreated as a different gameplay identity. Throw/release restore the same prop to world participation. Save capture must preserve enough semantic state to restore whether the prop is settled, carried Junk, thrown/released/unsupported, moving, or settling without serializing live player/Node references.
+
+A development-only `Prop Lab` remains the focused fixture and must be updated with the implementation so its instructions and HUD make the real player-facing contract obvious.
+
+**Done when:** one real ordinary prop uses the accepted center-view/F selection contract and replaceable external-model presentation; settled/edge-supported props and a simple stack remain stable; lower-support removal produces controlled unsupported fall; F pickup makes the world prop disappear into exactly one bottom-center carried-Junk HUD slot with no world collision; normal locomotion remains available while carrying while ordinary interaction/attack/normal inventory use are centrally suppressed; F throws and R gently releases the same prop back into the world from a view-derived release point; looking downward permits predictable stacking placement; throw is visibly stronger/noisier in semantic impact potential than release; box-like props keep release-facing orientation while moving and normalize top-up only on final settle; capture/apply/reconcile preserves the semantic state without live references; and no universal support graph, general inventory framework, acoustic propagation, or continuously active general rigid-body simulation is introduced.
+
+**Automated:** required — revise the dedicated `tests/props/run_prop_tests.gd` suite and keep it wired into `tests/run_all_tests.gd`. Coverage must prove external OBJ replacement; F pickup into exactly one `carried_junk` slot; physical presentation/collision inactive while carried; bottom-center HUD carry presentation; carried object does not collide with world geometry; normal movement-state availability while carrying; central world/hand-action suppression; stale F and R edge suppression across gameplay-domain loss; F throw versus R gentle release with clearly different release velocity/impact intent; view-derived downward placement; same semantic identity across world → carried Junk → world; detached capture/apply/reconcile; release-facing orientation held through moving/settling; top-up normalization only at final settle; semantic impact sound; edge support; stable stacking; lower-support removal; controlled unsupported fall; and no post-settle drift/spin.
+
+**Manual:** pending — validator: **Windows x64 user/playtester** after the code correction. Launch **Development Launch → Prop Lab**. Verify the center crate highlights normally; **F** makes it disappear from the world and appear as one Junk object at the bottom-center HUD; movement/look/crouch/jump still work normally; the stored crate does not clip/collide with nearby walls; ordinary interaction and hand-occupying actions are unavailable while carrying; **F** throws the crate in the look direction; **R** releases it gently; looking downward plus **R** allows predictable beneath/in-front placement and practical stacking; throwing is visibly stronger than dropping; during throw/release the box keeps its release-facing side without free tumble/spin and only returns top-up when fully settled; edge support remains stable; removing a lower stack support still drops the upper box cleanly; and settled props remain still.'''
+          text, count = re.subn(
+              r'## 3\.5 Thief-style prop micro-proof `\[~\]`\n.*?\n## 3\.6 Acoustic propagation micro-proof `\[ \]`',
+              new_35 + '\n\n## 3.6 Acoustic propagation micro-proof `[ ]`',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
+              raise SystemExit(f'DEVELOPMENT_PLAN 3.5 block: expected 1 match, found {count}')
+
+          text = replace_once(
+              text,
+              'Expand support relationships, stacking/climbing, held presentation, drop/throw, impacts/noise, obstruction, save state, and reusable external-model presentation/variant authoring only as real content needs them. Furniture/prop visual replacement must not require rewriting the shared physical-prop gameplay rules.\n\nPreserve the Phase 3 held-prop interaction restrictions through central interaction/input ownership.\n',
+              'Expand support relationships, stacking/climbing, carried-Junk HUD presentation, view-derived gentle release/throw, impacts/noise, obstruction, save state, and reusable external-model presentation/variant authoring only as real content needs them. Furniture/prop visual replacement must not require rewriting the shared physical-prop gameplay rules.\n\nPreserve the Phase 3 carried-Junk hand/world-action restrictions through central interaction/input ownership.\n',
+              'DEVELOPMENT_PLAN 6.6 carried Junk wording',
+          )
+          text = replace_once(
+              text,
+              'The prop fixture includes locked held-prop presentation/no-free-rotation/no-ordinary-interaction behavior.\n',
+              'The prop fixture includes the locked one-slot carried-Junk HUD/no-world-collision contract, F throw / R gentle release, view-derived placement, central hand/world-action suppression, and release-facing-until-settled orientation behavior.\n',
+              'DEVELOPMENT_PLAN early prop proof wording',
+          )
+          path.write_text(text, encoding='utf-8')
+
+          # TESTING.md: record that existing coverage must be revised with code.
+          path = Path('docs/TESTING.md')
+          text = path.read_text(encoding='utf-8')
+          old_para = 'Phase 3.5 adds a dedicated Props suite through the same authoritative all-tests barrier. It launches the real `Prop Lab` through the production application/session/player path and proves the external-model seam, F pickup/throw through the existing application-owned interaction edge with stale-edge suppression, fixed camera-relative held presentation/no free rotation, central ordinary-interaction suppression, detached semantic capture/apply/reconciliation, the explicit dropped semantic path plus thrown impact-and-settle behavior, edge support, stable two-box stacking, lower-support removal causing vertical unsupported fall, and no post-settle rotation/drift. The prop uses the existing `gameplay.sound` semantic source route for `prop.impact`; acoustic propagation remains Phase 3.6.\n'
+          new_para = '''Phase 3.5 has a dedicated Props suite wired through the authoritative all-tests barrier, but the player-facing carry contract has been revised after the current implementation. The existing assertions for a visible fixed camera-relative held prop and no player-bound release key are therefore **obsolete acceptance criteria** and must be rewritten together with the gameplay code before Phase 3.5 can close. The revised suite must launch the real `Prop Lab` through the production application/session/player path and prove: the external-model seam; F pickup into exactly one semantic `carried_junk` slot; the prop's physical world presentation/collision inactive while carried; bottom-center HUD Junk presentation; no carried-world collision; normal movement/look/crouch/jump availability; central suppression of ordinary world interaction plus hand-occupying attack/normal inventory-item use; fresh/stale-edge behavior for both F and R; F throw versus R gentle release with distinct motion/impact intent; release position derived from current view including predictable downward placement; preservation of the same prop identity across world → carried Junk → world; detached capture/apply/reconciliation without live references; release-facing orientation held through moving/unsupported/settling motion and canonical top-up normalization only on final settle; semantic `prop.impact` gameplay sound; edge support; stable two-box stacking; lower-support removal causing controlled unsupported fall; and no post-settle drift/spin. Acoustic propagation remains Phase 3.6.\n'''
+          text = replace_once(text, old_para, new_para, 'TESTING Phase 3.5 coverage paragraph')
+          path.write_text(text, encoding='utf-8')
+
+          # Guard against leaving the superseded acceptance wording in the three docs.
+          combined = '\n'.join(Path(p).read_text(encoding='utf-8') for p in (
+              'docs/GAME_VISION.md', 'docs/DEVELOPMENT_PLAN.md', 'docs/TESTING.md'
+          ))
+          forbidden = [
+              'Large carried objects are presented in a first-person held position',
+              'fixed camera-relative held presentation/no free rotation',
+              'a held prop stays at a fixed first-person offset/orientation',
+              'There is no separate default throw key for ordinary props',
+          ]
+          for phrase in forbidden:
+              if phrase in combined:
+                  raise SystemExit(f'superseded doc wording remains: {phrase}')
+          PY
+
+      - name: Remove helper and verify docs-only net change
+        shell: bash
+        run: |
+          rm .github/workflows/update_phase_3_5_junk_docs.yml
+          git diff --check
+          test "$(git status --short | sed 's/^...//' | sort)" = "$(printf '%s\n' \
+            .github/workflows/update_phase_3_5_junk_docs.yml \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/GAME_VISION.md \
+            docs/TESTING.md | sort)"
+          git diff -- docs/GAME_VISION.md docs/DEVELOPMENT_PLAN.md docs/TESTING.md
+
+      - name: Commit documentation contract
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/GAME_VISION.md docs/DEVELOPMENT_PLAN.md docs/TESTING.md .github/workflows/update_phase_3_5_junk_docs.yml
+          git diff --cached --check
+          git commit -m "Redefine Phase 3.5 carried Junk behavior"
+          git push origin HEAD:test
