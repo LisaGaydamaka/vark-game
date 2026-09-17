@@ -82,6 +82,7 @@ The project currently contains:
 - a minimal `WorldSession`-owned semantic gameplay-event route with FIFO consequence draining, nested append semantics, lifecycle/session rejection, detached payloads, cascade diagnostics, and an explicit stable gameplay-boundary serial
 - a minimal semantic `gameplay.sound` source fact separated from presentation audio
 - a first reusable ordinary-door micro-proof with physical hinge collision/vision behavior, semantic door events/state capture, and narrow acoustic/navigation seams
+- a first Thief-style ordinary-prop micro-proof with explicit settled/held/moving/settling state, fixed held presentation, central interaction suppression, simple support/stack behavior, and semantic capture/reconcile seams
 - a minimal semantic `gameplay.sound` source fact carrying kind, world origin, and relative positive source strength independently of presentation audio
 - post-push GitHub Actions validation for the authoritative regression barrier
 
@@ -869,7 +870,7 @@ A development-only `Door Lab` launches through the normal application/session/in
 
 **Manual:** passed — validator: **Windows x64 user/playtester**. The user accepted the corrected near-frame door fit, normal visible opening/closing and passage/vision behavior, and Thief-style obstacle handling: a closing door stops instead of moving through the player, stays stopped, reverses to opening on the next **F** interaction, and closes normally again once clear. No ghost collision, presentation detachment, or locomotion/mouse-look regression was reported. No audible door clip is expected in 3.4—the accepted sound proof here remains the semantic gameplay-sound fact, not presentation audio.
 
-## 3.5 Thief-style prop micro-proof `[ ]`
+## 3.5 Thief-style prop micro-proof `[~]`
 
 Implement ordinary prop states sufficient to prove:
 
@@ -891,6 +892,20 @@ Protect the LOCKED rules:
 - ordinary world interaction is unavailable while carrying an ordinary prop, enforced at interaction/input ownership rather than by checks copied into every interactable.
 
 Do not build a universal support-graph engine. If the small fixture appears to require one, reconsider the concrete representation.
+
+The first ordinary prop is a manually translated `CharacterBody3D`, not a continuously simulated `RigidBody3D`. While settled it performs a small footprint support check and otherwise remains exactly authored; when support disappears, after drop, or after throw it uses explicit linear velocity with fixed orientation until contact/support moves it through a one-frame `settling` state back to `settled`. A nine-point bottom-footprint probe is sufficient for the representative edge-support and simple stack cases without introducing a support graph. Removing the lower box from the Prop Lab stack disables that support collision while held, so the upper box becomes unsupported and falls vertically without torque/scatter.
+
+`PlayerPropCarry` is a deliberately narrow player-owned transient relationship. **F** uses the accepted primary interaction to pick up and, while carrying, is consumed as drop; **G** is a separate application-owned one-frame `throw_prop` edge. The held object follows one fixed camera-relative first-person offset and preserves one fixed relative basis, so it follows the view but has no free-rotation state. Carrying composes with the existing central `PlayerInteraction.world_interaction_available` gate, so ordinary world interaction is suppressed without teaching each door/switch/loot target about carrying.
+
+`OrdinaryProp.tscn` selects an external OBJ through an exported `Mesh` seam and the regression swaps a compatible alternate OBJ on the same gameplay instance while preserving collision, state, interaction, and save semantics. `capture_semantic_state()` stores only explicit phase, motion kind, transform, and linear velocity; `apply_semantic_state()` restores those value-owned facts, and `reconcile_after_restore()` rebuilds the transient held-player relationship when the semantic phase is `held`. Prop collision also emits the already-proven semantic `prop.impact` gameplay-sound source fact; Phase 3.6 still owns propagation/hearing.
+
+A development-only `Prop Lab` exposes the real pickup prop, an intentionally edge-supported box, and a two-box stack through the normal application/session/player path.
+
+**Done when:** one real ordinary prop uses the accepted center-view/F selection contract and replaceable external-model presentation; settled and edge-supported props plus a simple supported stack remain stationary without toppling/spinning/rolling/drift; removing the lower stack support causes the upper prop to enter unsupported motion, fall without scatter/rotation, and settle again; F pickup/drop and G throw use application-owned input, a held prop stays at a fixed first-person offset/orientation with no free rotation, and carrying centrally suppresses ordinary world interaction; dropped/thrown/unsupported props use bounded explicit motion and become stationary again on support; impact queues only the existing semantic gameplay-sound source fact; capture/apply/reconcile covers settled/held/moving/settling state without live references or serialized runtime continuation machinery; and no universal support graph, inventory framework, acoustic propagation, or general rigid-body prop simulation is introduced.
+
+**Automated:** required — the dedicated `tests/props/run_prop_tests.gd` suite is wired into `tests/run_all_tests.gd` and must pass through the authoritative GitHub Actions `Test` barrier. It covers external OBJ replacement, real F pickup/drop, G edge ownership including stale-edge suppression, fixed held presentation, central world-interaction suppression, detached held/moving semantic state and restore reconciliation, drop/throw settling, semantic impact sound, edge support, stable stacking, lower-support removal, vertical unsupported fall, and no post-settle drift/rotation.
+
+**Manual:** pending — validator: **Windows x64 user/playtester**. Launch **Development Launch → Prop Lab**. Verify the center crate highlights normally; **F** picks it up into a stable first-person held position; looking/moving does not let it freely rotate; other ordinary world interaction/highlight is unavailable while it is held; **F** drops it and it settles without continued wobble/spin/roll/drift; pick it up again and **G** throws it, after which it collides/falls and becomes stationary; the green-stand box remains where authored despite overhang; remove the lower box from the right-hand two-box stack and confirm the upper box falls roughly straight down, settles without explosive scatter/toppling, and remains still. Also confirm ordinary movement/jump/crouch/sprint/mouse-look still feel accepted.
 
 ## 3.6 Acoustic propagation micro-proof `[ ]`
 
@@ -1596,7 +1611,7 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Finish the current 3.4 ordinary-door item by adding/proving its replaceable external-model presentation seam, then complete its authoritative automated validation and focused Windows manual acceptance before moving to 3.5.
+1. Finish the current 3.5 Thief-style prop micro-proof through the authoritative automated barrier and focused Windows manual acceptance before moving to 3.6.
 2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
 3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
 4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
