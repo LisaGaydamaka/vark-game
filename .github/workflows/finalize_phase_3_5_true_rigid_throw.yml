@@ -39,6 +39,7 @@ jobs:
             .github/workflows/finalize_phase_3_5_true_rigid_throw.yml \
             tools/phase35_true_rigid_throw_tmp.py \
             tools/phase35_true_rigid_throw_fix_tmp.py
+          find tools -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
 
       - name: Verify bounded production tree
