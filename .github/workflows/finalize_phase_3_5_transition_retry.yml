@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   finalize-phase-3-5-production:
-    if: github.event.head_commit.message == 'Retry final Phase 3.5 production correction'
+    if: github.event.head_commit.message == 'Retry final Phase 3.5 production correction with untracked files'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -71,12 +71,16 @@ jobs:
               'player/player.gd',
               'player/traversal/player_ledge_controller.gd',
               'player/traversal/player_ledge_detector.gd',
-              'tests/props/prop_regressions.gd',
+              'tests/props/phase_3_5_transition_regressions.gd',
               'tests/props/run_prop_tests.gd',
           }
-          changed = set(subprocess.check_output(
+          tracked = set(subprocess.check_output(
               ['git', 'diff', '--name-only', baseline], text=True
           ).splitlines())
+          untracked = set(subprocess.check_output(
+              ['git', 'ls-files', '--others', '--exclude-standard'], text=True
+          ).splitlines())
+          changed = tracked | untracked
           unexpected = changed - allowed
           if unexpected:
               raise SystemExit(f'Unexpected final Phase 3.5 files: {sorted(unexpected)}')
@@ -87,7 +91,7 @@ jobs:
               'player/player.gd',
               'player/traversal/player_ledge_controller.gd',
               'player/traversal/player_ledge_detector.gd',
-              'tests/props/prop_regressions.gd',
+              'tests/props/phase_3_5_transition_regressions.gd',
               'tests/props/run_prop_tests.gd',
           }
           missing = required - changed
