@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   finalize-phase-3-5-production:
-    if: github.event.head_commit.message == 'Run final Phase 3.5 production correction'
+    if: github.event.head_commit.message == 'Retry final Phase 3.5 production correction'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -71,7 +71,6 @@ jobs:
               'player/player.gd',
               'player/traversal/player_ledge_controller.gd',
               'player/traversal/player_ledge_detector.gd',
-              'tests/props/phase_3_5_transition_regressions.gd',
               'tests/props/prop_regressions.gd',
               'tests/props/run_prop_tests.gd',
           }
@@ -88,7 +87,7 @@ jobs:
               'player/player.gd',
               'player/traversal/player_ledge_controller.gd',
               'player/traversal/player_ledge_detector.gd',
-              'tests/props/phase_3_5_transition_regressions.gd',
+              'tests/props/prop_regressions.gd',
               'tests/props/run_prop_tests.gd',
           }
           missing = required - changed
