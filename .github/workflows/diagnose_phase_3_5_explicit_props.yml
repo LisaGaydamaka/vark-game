@@ -1,0 +1,66 @@
+name: Diagnose Phase 3.5 explicit prop physics
+
+on:
+  push:
+    branches:
+      - test
+    paths:
+      - ".github/workflows/diagnose_phase_3_5_explicit_props.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-explicit-props:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Reconstruct candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/phase35_wakeable_props_fix_tmp.py
+          python tools/phase35_explicit_prop_physics_fix_tmp.py
+          python tools/phase35_wakeable_props_tmp.py
+          python tools/phase35_explicit_prop_physics_tmp.py
+          grep -n -A22 -B6 "func _ready" gameplay/props/ordinary_prop.gd
+          grep -n -A25 "func _update_settled_state" gameplay/props/ordinary_prop.gd
+          grep -n -A20 "func _finish_settle_alignment" gameplay/props/ordinary_prop.gd
+
+      - name: Add runtime trace
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("tests/props/prop_regressions.gd")
+          t = p.read_text(encoding="utf-8")
+          anchor = '\tassert_true.call(pickup_prop.freeze and pickup_prop.lock_rotation and pickup_prop.continuous_cd, "Settled props remain exactly stable until an explicit physical cause promotes them")\n'
+          t = t.replace(anchor, '\tprint("TRACE_INIT pickup phase=", pickup_prop.call("get_semantic_phase"), " freeze=", pickup_prop.freeze, " sleeping=", pickup_prop.sleeping, " support=", pickup_prop.call("is_supported"), " pos=", pickup_prop.global_position, " edge_freeze=", edge_prop.freeze, " lower_freeze=", stack_lower.freeze, " upper_freeze=", stack_upper.freeze)\n' + anchor, 1)
+          p.write_text(t, encoding="utf-8")
+
+          p = Path("tests/props/phase_3_5_transition_regressions.gd")
+          t = p.read_text(encoding="utf-8")
+          anchor = '\tassert_true.call(\n\t\tpush_prop.global_position.distance_to(push_start) > 0.025\n'
+          trace = '\tprint("TRACE_PUSH start=", push_start, " end=", push_prop.global_position, " delta=", push_prop.global_position.distance_to(push_start), " phase=", push_prop.call("get_semantic_phase"), " motion=", push_prop.call("get_motion_kind"), " freeze=", push_prop.freeze, " vel=", push_prop.linear_velocity, " player=", player.global_position)\n'
+          t = t.replace(anchor, trace + anchor, 1)
+          anchor2 = '\tassert_true.call(\n\t\tprop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED\n\t\tand prop.freeze\n'
+          trace2 = '\tprint("TRACE_SETTLE phase=", prop.call("get_semantic_phase"), " freeze=", prop.freeze, " sleeping=", prop.sleeping, " support=", prop.call("is_supported"), " pos=", prop.global_position, " up=", prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP))\n'
+          t = t.replace(anchor2, trace2 + anchor2, 1)
+          p.write_text(t, encoding="utf-8")
+          PY
+
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: false
+
+      - name: Import
+        run: timeout 120s godot --headless --path . --import
+
+      - name: Run traced Props suite
+        run: timeout 180s godot --headless --path . --script res://tests/props/run_prop_tests.gd
