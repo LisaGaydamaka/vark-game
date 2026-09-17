@@ -79,6 +79,7 @@ The project currently contains:
 - a minimal typed `MissionDefinition` for Playground carrying authored mission ID, world/map references, player-start selection, and content revision
 - an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, fail-closed identity validation, a current-session-owned persistent/content-ID registry, and the first Vark point-entity foundation for player start, semantic marker, and exit
 - a minimal player-owned interaction selector with application-owned primary-interaction intent, center-view range/occlusion/state eligibility, central ordinary-interaction availability, and Thief-style fullbright/no-received-shadow target-selection feedback that preserves ordinary cast shadows
+- a minimal `WorldSession`-owned semantic gameplay-event route with FIFO consequence draining, nested append semantics, lifecycle/session rejection, detached payloads, cascade diagnostics, and an explicit stable gameplay-boundary serial
 - post-push GitHub Actions validation for the authoritative regression barrier
 
 The accepted player-controller behavior and feel are **LOCKED**.
@@ -798,7 +799,7 @@ The interactable surface is intentionally narrow and concrete: an object joins `
 
 **Manual:** passed — validator: **Windows x64 user/playtester**. The user accepted the final `Interaction Lab` behavior: no permanent central crosshair; Door and Prop probes select only when centered/in range/unobstructed; selected surfaces become fully unshaded/fullbright with no received/self-shadow-style darkening or tint while preserving their ordinary cast shadows; normal surface shading returns when selection clears; **F** is the primary interaction key with no held-repeat; the one-shot prop becomes `INACTIVE` and clears selection; and ordinary walk/jump/crouch/sprint/mouse-look remain accepted.
 
-## 3.2 Minimal semantic gameplay-event queue and stable boundary `[ ]`
+## 3.2 Minimal semantic gameplay-event queue and stable boundary `[~]`
 
 Add the smallest world-session-owned semantic event route needed by the spike.
 
@@ -815,6 +816,14 @@ Before mission/objective/save logic depends on it, prove:
 - engine callbacks outside the controlled pass may update presentation/input-owned view state or queue future semantic work but cannot race durable world state across the stable boundary.
 
 Do not create a general scheduler or author-facing rule language here.
+
+The implementation is deliberately session-local rather than a new manager layer. `WorldSession` accepts detached value-owned semantic payloads only from its current `PLAYING` session identity, queues them FIFO, and drains them at a late controlled physics priority after ordinary default-priority gameplay physics. Ordered handlers must return `true` synchronously; nested emissions append to the same queue rather than recursing. The session publishes only a monotonically increasing stable-boundary serial after a successful drain, so later save capture can bind to that boundary without exposing an arbitrary callback scheduler. BUILDING, RESTORING, READY, PAUSED, STOPPED, TEARING_DOWN, stale-session, and live-Object payload attempts do not enter normal dispatch. A bounded development cascade guard clears and reports a trace instead of hanging on a self-sustaining loop. Teardown discards queue, handlers, sequence, diagnostics, and boundary state with the old world.
+
+**Done when:** a given emitted sequence drains FIFO at one controlled world-session gameplay point; nested emissions append after already-registered handlers for the current event; detached payloads cannot retain live world objects or be mutated through the emitter/another handler; stale/foreign sessions and non-`PLAYING` lifecycle states cannot enter normal dispatch; participating handlers must acknowledge synchronous completion; a runaway cascade is bounded and reported; ordinary out-of-pass callers can only queue future semantic work; teardown prevents old-world event state from reaching a replacement; and the stable-boundary serial advances only after a successful consequence drain. No global physics-order promise, general scheduler, mission-rule language, sound event, door behavior, or save system is introduced.
+
+**Automated:** deterministic 3.2 coverage is wired into the focused application suite and authoritative all-tests barrier. It covers explicit BUILDING/RESTORING/TEARING_DOWN/READY rejection, stale-session rejection, live-Object payload rejection, deep payload detachment and per-handler isolation, emitted-order FIFO, nested append rather than recursion, a default-priority physics emitter draining at the later session point, out-of-pass queue-without-immediate-mutation behavior, synchronous-handler acknowledgement failure withholding the stable boundary, bounded runaway-loop diagnostics/recovery, teardown cleanup, and replacement-session isolation. Exact-head post-push CI is still required for acceptance.
+
+**Manual:** none — 3.2 establishes deterministic internal timing/ownership semantics and intentionally adds no new player-facing behavior.
 
 ## 3.3 Minimal semantic gameplay-sound event `[ ]`
 

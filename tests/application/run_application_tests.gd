@@ -15,6 +15,9 @@ const InputBoundaryRegressions = preload(
 const InteractionRegressions = preload(
 	"res://tests/application/interaction_regressions.gd"
 )
+const SemanticEventRegressions = preload(
+	"res://tests/application/semantic_event_regressions.gd"
+)
 const PauseArbitrationRegressions = preload(
 	"res://tests/application/pause_arbitration_regressions.gd"
 )
@@ -70,6 +73,12 @@ func _run_tests() -> void:
 
 	var interaction_regressions: RefCounted = InteractionRegressions.new()
 	await interaction_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var semantic_event_regressions: RefCounted = SemanticEventRegressions.new()
+	await semantic_event_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)
