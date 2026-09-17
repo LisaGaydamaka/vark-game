@@ -454,7 +454,7 @@ The core game supports Thief-style loot collection and mission statistics.
 
 # Physical objects — LOCKED Thief-style contract
 
-Supported movable props follow **Thief 1 & 2-style object behavior**, not a continuously active general rigid-body simulation.
+Settled movable props follow **Thief 1 & 2-style object behavior** rather than remaining continuously simulated. While a prop is actively thrown, gently released, or unsupported, it temporarily participates as a real dynamic rigid body so gravity, friction, bounce/slide, and solid collision response are resolved by the physics engine; once it genuinely comes to rest it becomes settled/frozen again.
 
 The intended rule is deliberately stylized:
 
@@ -485,7 +485,7 @@ Supported physical objects:
 
 An object remains where the mission creator placed it until something explicitly acts on it or its support disappears.
 
-Ordinary furniture/prop archetypes may use different reusable external 3D model assets without changing these physical rules. Visual model choice is presentation/configuration, not a separate physics behavior or persistent identity.
+Ordinary furniture/prop archetypes may use different reusable external 3D model assets without changing these physical rules. Visual model choice is presentation/configuration, not a separate physics behavior or persistent identity. Ordinary hard-edged prop models must provide outward-facing geometry and hard/explicit face normals where appropriate so unselected props receive normal lighting and scene shadows; the temporary interaction highlight must not become their permanent render mode.
 
 ## Support and stacks
 
@@ -536,7 +536,7 @@ Throw and release restore the same prop to ordinary world participation with col
 
 The release point is derived from the player's current view rather than from a fixed world-space hand position. Looking downward and pressing **R** should place the object's center predictably beneath/in front of the player, approximately along the center-view release line, so deliberate crate stacking is practical.
 
-Thrown/released objects may move through the world and collide, but ordinary props do not enter indefinite realistic rigid-body simulation. For box-like props, the orientation established at throw/release is held during moving/unsupported/settling motion: the same side continues to face back along the release/throw line instead of freely tumbling or spinning. It does not continuously track later camera turns. When the prop finally becomes `settled`, it normalizes back to its canonical top-up orientation.
+Thrown/released/unsupported objects use real rigid-body translation while moving: gravity and collisions may change their position, linear velocity, slide, and bounce. Ordinary box-like Junk keeps angular motion locked during this moving phase, so hitting a floor, wall, prop, or actor does **not** rotate the box in flight. It does not continuously track later camera turns. When the prop genuinely settles, only pitch/roll are normalized so the top points upward; its current yaw is preserved. Settling must never rotate a particular side toward world north or any other global compass direction. Top-up normalization must re-seat the rotated collision shape onto the real detected support plane before freezing, so the settled collider rests directly on its support instead of inheriting the larger vertical extent of its tilted moving pose and leaving a visible air gap.
 
 Once motion resolves, the object becomes settled again. Supported/settled props then resume the ordinary stylized support rules above.
 

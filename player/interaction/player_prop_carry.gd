@@ -10,7 +10,7 @@ var hud_mesh: MeshInstance3D
 var hud_material: StandardMaterial3D
 
 var release_distance: float = 1.15
-var release_clearance: float = 0.34
+var release_surface_padding: float = 0.006
 var release_speed: float = 0.55
 
 
@@ -98,6 +98,9 @@ func _release(motion_kind: StringName, initial_velocity: Vector3) -> bool:
 func _compute_release_transform() -> Transform3D:
 	var view_basis: Basis = camera.global_transform.basis.orthonormalized()
 	var forward: Vector3 = -view_basis.z.normalized()
+	var release_basis: Basis = (
+		view_basis * Basis(Vector3.BACK, PI * 0.5)
+	).orthonormalized()
 	var origin: Vector3 = camera.global_position
 	var desired: Vector3 = origin + forward * release_distance
 	var query := PhysicsRayQueryParameters3D.create(origin, desired)
@@ -107,10 +110,10 @@ func _compute_release_transform() -> Transform3D:
 	query.collide_with_bodies = true
 	var hit: Dictionary = camera.get_world_3d().direct_space_state.intersect_ray(query)
 	if not hit.is_empty():
-		desired = hit.get("position", desired) - forward * release_clearance
-	var release_basis: Basis = (
-		view_basis * Basis(Vector3.BACK, PI * 0.5)
-	).orthonormalized()
+		var clearance: float = 0.3
+		if held_prop != null and held_prop.has_method("get_release_clearance_along"):
+			clearance = float(held_prop.call("get_release_clearance_along", forward, release_basis))
+		desired = hit.get("position", desired) - forward * (maxf(clearance, 0.0) + release_surface_padding)
 	return Transform3D(release_basis, desired)
 
 
