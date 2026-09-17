@@ -1,0 +1,69 @@
+name: Diagnose Phase 3.5 props
+
+on:
+  push:
+    branches:
+      - test
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-phase-3-5:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout authoritative test head
+        uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Reapply pending Phase 3.5 correction
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          lines = Path('.github/workflows/fix_phase_3_5.yml').read_text(encoding='utf-8').splitlines()
+          start = next(i for i, line in enumerate(lines) if "python - <<'PY'" in line)
+          end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == 'PY')
+          code = textwrap.dedent('\n'.join(lines[start + 1:end]))
+          exec(compile(code, 'phase_3_5_pending_patch.py', 'exec'), {})
+          PY
+
+      - name: Add transient settling diagnostics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('tests/props/prop_regressions.gd')
+          text = path.read_text(encoding='utf-8')
+          throw_anchor = "\tawait _settle_physics(tree, 15)\n\tassert_true.call(\n\t\tpickup_prop.call(\"get_semantic_phase\") == OrdinaryProp.PHASE_SETTLED"
+          throw_debug = "\tawait _settle_physics(tree, 15)\n\tprint(\"DEBUG_THROW phase=%s motion=%s pos=%s vel=%s supported=%s settled_pos=%s\" % [pickup_prop.call(\"get_semantic_phase\"), pickup_prop.call(\"get_motion_kind\"), pickup_prop.global_position, pickup_prop.velocity, pickup_prop.call(\"is_supported\"), settled_after_throw.origin])\n\tassert_true.call(\n\t\tpickup_prop.call(\"get_semantic_phase\") == OrdinaryProp.PHASE_SETTLED"
+          if text.count(throw_anchor) != 1:
+              raise SystemExit('throw diagnostic anchor mismatch')
+          text = text.replace(throw_anchor, throw_debug, 1)
+
+          stack_anchor = "\tvar upper_xz_after_fall := Vector2(\n\t\tstack_upper.global_position.x,\n\t\tstack_upper.global_position.z\n\t)\n\tassert_true.call("
+          stack_debug = "\tvar upper_xz_after_fall := Vector2(\n\t\tstack_upper.global_position.x,\n\t\tstack_upper.global_position.z\n\t)\n\tprint(\"DEBUG_STACK phase=%s motion=%s pos=%s vel=%s supported=%s xz_before=%s xz_after=%s\" % [stack_upper.call(\"get_semantic_phase\"), stack_upper.call(\"get_motion_kind\"), stack_upper.global_position, stack_upper.velocity, stack_upper.call(\"is_supported\"), upper_xz_before_fall, upper_xz_after_fall])\n\tassert_true.call("
+          if text.count(stack_anchor) != 1:
+              raise SystemExit('stack diagnostic anchor mismatch')
+          text = text.replace(stack_anchor, stack_debug, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Setup Godot 4.7.2
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+
+      - name: Import project
+        run: godot --headless --path . --import
+
+      - name: Run focused prop diagnostics
+        run: godot --headless --path . --script res://tests/props/run_prop_tests.gd
