@@ -8,16 +8,28 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-# Make the temporary player collision exception truly pairwise. The prop's
-# dynamic solver and the player's CharacterBody motion queries must both ignore
-# one another until the actual collision volumes separate.
 path = Path("gameplay/props/ordinary_prop.gd")
 text = path.read_text(encoding="utf-8")
 text = replace_once(
     text,
     "var _temporary_player_collision_exception: PhysicsBody3D = null\n",
-    "var _temporary_player_collision_exception: PhysicsBody3D = null\nvar _player_escape_collision_suppressed: bool = false\n",
-    "player escape suppression field",
+    """var _temporary_player_collision_exception: PhysicsBody3D = null
+var _player_escape_collision_suppressed: bool = false
+var _player_escape_launch_velocity: Vector3 = Vector3.ZERO
+var _player_escape_step_velocity: Vector3 = Vector3.ZERO
+""",
+    "player escape fields",
+)
+text = replace_once(
+    text,
+    "func _physics_process(_delta: float) -> void:\n\tmatch _phase:\n",
+    """func _physics_process(delta: float) -> void:
+\tif _player_escape_collision_suppressed:
+\t\t_advance_player_escape(delta)
+\t\treturn
+\tmatch _phase:
+""",
+    "player escape physics ownership",
 )
 text = replace_once(
     text,
@@ -32,13 +44,12 @@ text = replace_once(
     "symmetric release exception clear",
 )
 
-# The carried body has collision layer/mask zero. If a valid world-clear release
-# transform still overlaps the player, Jolt 4.7.2 can resolve that pair on the
-# first rigid tick even though both public collision-exception lists contain the
-# other body. Keep the prop dynamic and preserve its launch velocity, but keep
-# its collision layer/mask suppressed only while its actual collision volume
-# overlaps the releasing player. The geometric separation predicate, not time or
-# distance travelled, owns restoration of normal rigid collision.
+# Godot 4.7.2 Jolt can resolve an overlapping CharacterBody3D/RigidBody3D pair
+# on the first dynamic tick even when both public exception lists already hold
+# the other body. For that overlap-only edge case, keep the same prop frozen and
+# collision-suppressed while translating it along the intended release vector.
+# The real collision volumes, not a timer or travel-distance threshold, decide
+# when the handoff back to ordinary rigid-body physics occurs.
 old_release_order = '''\t_holder = null
 \tglobal_transform = release_transform
 \tif (
@@ -67,13 +78,29 @@ new_release_order = '''\t_holder = null
 \t\tcollision_layer = 0
 \t\tcollision_mask = 0
 \t\t_player_escape_collision_suppressed = true
-\t_begin_motion(motion_kind, initial_velocity)
+\t\t_player_escape_launch_velocity = initial_velocity
+\t\t_player_escape_step_velocity = initial_velocity
+\t\tif _player_escape_step_velocity.length() < 0.5:
+\t\t\tvar away_from_player: Vector3 = release_transform.origin - releasing_player.global_position
+\t\t\tif away_from_player.length_squared() <= 0.000001:
+\t\t\t\taway_from_player = -release_transform.basis.z
+\t\t\t_player_escape_step_velocity = away_from_player.normalized() * 1.5
+\t\t_phase = PHASE_MOVING
+\t\t_motion_kind = motion_kind
+\t\t_settle_yaw = _yaw_from_basis(global_transform.basis)
+\t\t_settle_contact_frames = 0
+\t\t_unsupported_frames = 0
+\t\t_last_contact_count = 0
+\t\t_clear_dynamic_contact_state()
+\t\tlinear_velocity = initial_velocity
+\t\tangular_velocity = Vector3.ZERO
+\t\tfreeze = true
+\t\tsleeping = true
+\telse:
+\t\t_begin_motion(motion_kind, initial_velocity)
 '''
-text = replace_once(text, old_release_order, new_release_order, "release collision activation order")
+text = replace_once(text, old_release_order, new_release_order, "release overlap escape transaction")
 
-# PhysicsDirectSpaceState3D.intersect_shape() exposes both the collider object
-# and its RID. Use actual body identity as the primary overlap predicate so the
-# pairwise exception lifetime is derived from the queried collision volume.
 old_overlap = '''func _shape_overlaps_body_at_transform(body_transform: Transform3D, other_body: PhysicsBody3D) -> bool:
 \tif (
 \t\tother_body == null
@@ -147,7 +174,31 @@ func _clear_temporary_player_collision_exception() -> void:
 \t\t_temporary_player_collision_exception.remove_collision_exception_with(self)
 \t_temporary_player_collision_exception = null
 '''
-new_exception_update = '''func _update_temporary_player_collision_exception() -> void:
+new_exception_update = '''func _advance_player_escape(delta: float) -> void:
+\tvar launch_velocity: Vector3 = _player_escape_launch_velocity
+\tif (
+\t\t_temporary_player_collision_exception == null
+\t\tor not is_instance_valid(_temporary_player_collision_exception)
+\t):
+\t\t_clear_temporary_player_collision_exception()
+\t\t_player_escape_launch_velocity = Vector3.ZERO
+\t\t_player_escape_step_velocity = Vector3.ZERO
+\t\t_begin_motion(_motion_kind, launch_velocity)
+\t\treturn
+\tglobal_position += _player_escape_step_velocity * maxf(delta, 0.0)
+\tlinear_velocity = _player_escape_launch_velocity
+\tangular_velocity = Vector3.ZERO
+\tif _shape_overlaps_body_at_transform(global_transform, _temporary_player_collision_exception):
+\t\treturn
+\t_clear_temporary_player_collision_exception()
+\t_player_escape_launch_velocity = Vector3.ZERO
+\t_player_escape_step_velocity = Vector3.ZERO
+\t_begin_motion(_motion_kind, launch_velocity)
+
+
+func _update_temporary_player_collision_exception() -> void:
+\tif _player_escape_collision_suppressed:
+\t\treturn
 \tif _temporary_player_collision_exception == null:
 \t\treturn
 \tif not is_instance_valid(_temporary_player_collision_exception):
@@ -171,11 +222,8 @@ func _clear_temporary_player_collision_exception() -> void:
 \t\tcollision_mask = _ordinary_collision_mask
 \t\t_player_escape_collision_suppressed = false
 '''
-text = replace_once(text, old_exception_update, new_exception_update, "geometric player escape restoration")
+text = replace_once(text, old_exception_update, new_exception_update, "kinematic player escape handoff")
 
-# Preserve the inexpensive authored-placement support rays, but let the real
-# collision shape provide a shallow rest query when a legitimate edge/corner
-# support falls between those discrete samples.
 old_support_tail = '''\tfor local_point: Vector3 in local_points:
 \t\tvar bottom: Vector3 = global_transform * local_point
 \t\tvar origin: Vector3 = bottom + Vector3.UP * 0.02
@@ -234,9 +282,6 @@ text = replace_once(text, old_support_tail, new_support_tail, "settled support s
 path.write_text(text, encoding="utf-8")
 
 
-# Keep the focused regression deterministic: the temporary blocker used for
-# the first release-placement assertion must be gone from the physics space
-# before the later intentional player-overlap throw begins.
 path = Path("tests/props/phase_3_5_transition_regressions.gd")
 text = path.read_text(encoding="utf-8")
 text = replace_once(
@@ -259,8 +304,14 @@ text = replace_once(
 )
 text = replace_once(
     text,
+    "\tawait _settle_physics(tree)\n\tassert_true.call(prop.linear_velocity.length() > 2.0, \"Initial player overlap does not cancel throw velocity\")\n",
+    "\tvar overlap_throw_start: Vector3 = prop.global_position\n\tawait _settle_physics(tree)\n\tassert_true.call(\n\t\tprop.global_position.distance_to(overlap_throw_start) > 0.05,\n\t\t\"Initial player overlap escapes along the throw vector instead of canceling the throw\"\n\t)\n",
+    "overlap escape first tick assertion",
+)
+text = replace_once(
+    text,
     "\t\tcleared and not bool(prop.call(\"has_temporary_player_collision_exception\"))\n\t\tand not (player in prop.get_collision_exceptions()),\n",
-    "\t\tcleared and not bool(prop.call(\"has_temporary_player_collision_exception\"))\n\t\tand not (player in prop.get_collision_exceptions())\n\t\tand not (prop in player.get_collision_exceptions())\n\t\tand prop.collision_layer == 1 and prop.collision_mask == 1,\n",
+    "\t\tcleared and not bool(prop.call(\"has_temporary_player_collision_exception\"))\n\t\tand not (player in prop.get_collision_exceptions())\n\t\tand not (prop in player.get_collision_exceptions())\n\t\tand prop.collision_layer == 1 and prop.collision_mask == 1\n\t\tand not prop.freeze and prop.linear_velocity.length() > 2.0,\n",
     "pairwise exception clear assertion",
 )
 text = replace_once(
@@ -281,6 +332,7 @@ text = replace_once(
 \t\t\tand not (prop in player.get_collision_exceptions())
 \t\t\tand prop.collision_layer == 1
 \t\t\tand prop.collision_mask == 1
+\t\t\tand not prop.freeze
 \t\t):
 \t\t\treturn true
 \t\tawait tree.physics_frame
