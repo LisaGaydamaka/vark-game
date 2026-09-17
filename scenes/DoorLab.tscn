@@ -1,0 +1,96 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+[ext_resource type="PackedScene" path="res://gameplay/doors/OrdinaryDoor.tscn" id="2_door"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(8, 0.2, 8)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(8, 0.2, 8)
+
+[sub_resource type="BoxShape3D" id="SideWallShape"]
+size = Vector3(3.25, 2.6, 0.3)
+
+[sub_resource type="BoxMesh" id="SideWallMesh"]
+size = Vector3(3.25, 2.6, 0.3)
+
+[sub_resource type="BoxShape3D" id="HeaderShape"]
+size = Vector3(1.5, 0.5, 0.3)
+
+[sub_resource type="BoxMesh" id="HeaderMesh"]
+size = Vector3(1.5, 0.5, 0.3)
+
+[sub_resource type="BoxShape3D" id="TargetShape"]
+size = Vector3(0.35, 0.35, 0.35)
+
+[sub_resource type="BoxMesh" id="TargetMesh"]
+size = Vector3(0.35, 0.35, 0.35)
+
+[sub_resource type="StandardMaterial3D" id="TargetMaterial"]
+albedo_color = Color(0.18, 0.82, 0.30, 1)
+
+[node name="DoorLab" type="Node3D"]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -30, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 0, 2.2)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="LeftWall" type="StaticBody3D" parent="."]
+position = Vector3(-2.375, 1.3, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LeftWall"]
+shape = SubResource("SideWallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="LeftWall"]
+mesh = SubResource("SideWallMesh")
+
+[node name="RightWall" type="StaticBody3D" parent="."]
+position = Vector3(2.375, 1.3, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RightWall"]
+shape = SubResource("SideWallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RightWall"]
+mesh = SubResource("SideWallMesh")
+
+[node name="Header" type="StaticBody3D" parent="."]
+position = Vector3(0, 2.35, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Header"]
+shape = SubResource("HeaderShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Header"]
+mesh = SubResource("HeaderMesh")
+
+[node name="OrdinaryDoor" parent="." instance=ExtResource("2_door")]
+position = Vector3(-0.65, 0, 0)
+door_id = &"door.lab"
+
+[node name="VisionTarget" type="StaticBody3D" parent="."]
+position = Vector3(0, 1.1, -2)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="VisionTarget"]
+shape = SubResource("TargetShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="VisionTarget"]
+mesh = SubResource("TargetMesh")
+material_override = SubResource("TargetMaterial")
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(0, 2.9, 1.0)
+text = "3.4 DOOR LAB\nF = toggle ordinary door\nClosed = blocks doorway/green marker · Open = passage clear"
+billboard = 1
+font_size = 28

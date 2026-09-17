@@ -80,6 +80,8 @@ The project currently contains:
 - an accepted authored persistent-ID source/writeback workflow plus project-owned runtime identity wiring, optional author-facing semantic content IDs, fail-closed identity validation, a current-session-owned persistent/content-ID registry, and the first Vark point-entity foundation for player start, semantic marker, and exit
 - a minimal player-owned interaction selector with application-owned primary-interaction intent, center-view range/occlusion/state eligibility, central ordinary-interaction availability, and Thief-style fullbright/no-received-shadow target-selection feedback that preserves ordinary cast shadows
 - a minimal `WorldSession`-owned semantic gameplay-event route with FIFO consequence draining, nested append semantics, lifecycle/session rejection, detached payloads, cascade diagnostics, and an explicit stable gameplay-boundary serial
+- a minimal semantic `gameplay.sound` source fact separated from presentation audio
+- a first reusable ordinary-door micro-proof with physical hinge collision/vision behavior, semantic door events/state capture, and narrow acoustic/navigation seams
 - a minimal semantic `gameplay.sound` source fact carrying kind, world origin, and relative positive source strength independently of presentation audio
 - post-push GitHub Actions validation for the authoritative regression barrier
 
@@ -840,13 +842,25 @@ The first contract is one reserved world-session semantic fact, `gameplay.sound`
 
 **Manual:** none — 3.3 establishes an internal semantic separation and intentionally plays no audible sound or other player-facing presentation.
 
-## 3.4 Ordinary door micro-proof `[ ]`
+## 3.4 Ordinary door micro-proof `[~]`
 
 Prove interaction, collision/obstruction, open/closed presentation, vision-blocking relationship, acoustic integration seam, NPC/navigation integration seam, semantic events, and semantic state capture/apply.
 
 At this step, prove the **door-side contracts/seams** needed by later acoustics and NPC/navigation use. Do not pull the primitive guard/navigation implementation from 3.7 into 3.4 merely to exercise that future consumer. The first real guard/nav proof in 3.7 must exercise this same ordinary door seam; if that integration exposes a defect, correct the seam rather than inventing a second door/nav model.
 
 Do not build keys/locks/barred behavior yet unless required by the proof.
+
+The first ordinary door is a reusable `AnimatableBody3D` hinge leaf rather than the 3.1 door-like probe. It consumes the same `vark_interactable` surface and Thief-style selection presentation, owns explicit `closed/opening/open/closing` semantic phase plus `open_fraction`, and advances its physical hinge transform from gameplay physics rather than a tween/coroutine as durable truth. A completed transition emits `door.state_changed`; each accepted use emits the 3.3 `gameplay.sound` source fact with kind `door.use`. The physical leaf collider is also the closed-door vision obstruction, so opening clears the actual doorway rather than toggling a separate invisible blocker.
+
+Two deliberately narrow consumer seams are exposed for later proofs: `get_acoustic_openness()` reports only the door-side 0..1 opening state for 3.6 to interpret through whatever propagation model proves correct, and `is_navigation_passage_open()` reports whether the leaf is fully open for the first 3.7 guard/nav consumer. The door does not implement propagation, hearing, a nav framework, or guard logic. `capture_semantic_state()` / `apply_semantic_state()` preserve phase plus progress and rebuild the derived hinge pose without replaying sound or state-change consequences.
+
+A development-only `Door Lab` launches through the normal application/session/input path with a framed doorway and a visible target behind it so closed/open collision and straight-through vision behavior are legible. The accepted 3.1 Interaction Lab remains unchanged as the narrow selector/highlight fixture.
+
+**Done when:** one real ordinary door uses the accepted center-view/F interaction contract and selection feedback; interaction visibly animates one physical collision leaf between explicit closed/open states; the closed leaf blocks the doorway and straight-through vision while the fully open leaf clears both; accepted use emits one semantic `door.use` gameplay sound and completed transitions emit one semantic door-state event through the current world session; acoustic openness and navigation-passage state are exposed only as door-side source-state seams; semantic capture/apply preserves stable and in-progress state without serializing/replaying runtime continuation machinery; and no keys/locks/barred behavior, acoustic propagation, hearing consumer, guard AI, or general navigation framework is introduced.
+
+**Automated:** pending post-push CI — the new focused Application regression launches `Door Lab` through the real application/session/player path and deterministically covers accepted interaction/highlight reuse, closed/open physical-overlap and vision-ray behavior, animated phase/progress, one semantic `door.use` source fact per accepted use, completed `door.state_changed` events, acoustic/navigation door-side seams, in-progress semantic capture/apply with invalid-state rejection, no consequence replay during apply, and closing restoration. It is wired into the authoritative Application suite and all-tests barrier.
+
+**Manual:** required — validator: **Windows x64 user/playtester**. F5 → Development Launch → Door Lab; confirm the closed door selects with the accepted fullbright/no-received-shadow surface while retaining its ordinary cast shadow; one **F** press makes the physical leaf visibly swing open rather than snap, revealing the green marker and allowing the player through the doorway; aim at the open leaf and press **F** to visibly close it, after which the doorway is physically blocked and the green marker is occluded again; confirm there is no obvious ghost collision or locomotion/mouse-look regression. No audible door clip is expected in 3.4—the required sound proof here is the semantic gameplay-sound fact, not presentation audio.
 
 ## 3.5 Thief-style prop micro-proof `[ ]`
 
