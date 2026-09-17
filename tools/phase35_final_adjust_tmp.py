@@ -26,6 +26,64 @@ text = replace_once(
     "symmetric release exception clear",
 )
 
+# PhysicsDirectSpaceState3D.intersect_shape() exposes both the collider object
+# and its RID. Use actual body identity as the primary overlap predicate so the
+# pairwise exception lifetime is derived from the real queried collision
+# volume, without depending on backend-specific RID reporting. Keep the RID as
+# a compatibility fallback.
+old_overlap = '''func _shape_overlaps_body_at_transform(body_transform: Transform3D, other_body: PhysicsBody3D) -> bool:
+\tif (
+\t\tother_body == null
+\t\tor not is_instance_valid(other_body)
+\t\tor prop_collision == null
+\t\tor prop_collision.shape == null
+\t\tor not is_inside_tree()
+\t):
+\t\treturn false
+\tvar query := PhysicsShapeQueryParameters3D.new()
+\tquery.shape = prop_collision.shape
+\tquery.transform = body_transform * prop_collision.transform
+\tquery.collision_mask = 0xFFFFFFFF
+\tquery.collide_with_areas = false
+\tquery.collide_with_bodies = true
+\tquery.margin = 0.001
+\tquery.exclude = [get_rid()]
+\tvar other_rid: RID = other_body.get_rid()
+\tfor hit: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 32):
+\t\tvar hit_rid: Variant = hit.get("rid")
+\t\tif hit_rid is RID and hit_rid == other_rid:
+\t\t\treturn true
+\treturn false
+'''
+new_overlap = '''func _shape_overlaps_body_at_transform(body_transform: Transform3D, other_body: PhysicsBody3D) -> bool:
+\tif (
+\t\tother_body == null
+\t\tor not is_instance_valid(other_body)
+\t\tor prop_collision == null
+\t\tor prop_collision.shape == null
+\t\tor not is_inside_tree()
+\t):
+\t\treturn false
+\tvar query := PhysicsShapeQueryParameters3D.new()
+\tquery.shape = prop_collision.shape
+\tquery.transform = body_transform * prop_collision.transform
+\tquery.collision_mask = 0xFFFFFFFF
+\tquery.collide_with_areas = false
+\tquery.collide_with_bodies = true
+\tquery.margin = 0.001
+\tquery.exclude = [get_rid()]
+\tvar other_rid: RID = other_body.get_rid()
+\tfor hit: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 32):
+\t\tvar hit_collider: Variant = hit.get("collider")
+\t\tif hit_collider == other_body:
+\t\t\treturn true
+\t\tvar hit_rid: Variant = hit.get("rid")
+\t\tif hit_rid is RID and hit_rid == other_rid:
+\t\t\treturn true
+\treturn false
+'''
+text = replace_once(text, old_overlap, new_overlap, "player overlap collider identity")
+
 # Preserve the inexpensive authored-placement support rays, but let the real
 # collision shape provide a shallow rest query when a legitimate edge/corner
 # support falls between those discrete samples.
