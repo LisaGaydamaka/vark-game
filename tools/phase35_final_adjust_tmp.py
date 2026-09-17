@@ -26,6 +26,41 @@ text = replace_once(
     "symmetric release exception clear",
 )
 
+# The carried body has collision layer/mask zero. Detect whether this release
+# needs the temporary player exception while the prop is still frozen, restore
+# its ordinary world collision participation, install the pairwise exception on
+# that live collision state, and only then unfreeze/start rigid motion. This
+# prevents the first solver tick from resolving the intentional player overlap
+# before the exception owns the pair.
+old_release_order = '''\t_holder = null
+\tglobal_transform = release_transform
+\tif (
+\t\treleasing_player != null
+\t\tand is_instance_valid(releasing_player)
+\t\tand _shape_overlaps_body_at_transform(release_transform, releasing_player)
+\t):
+\t\tadd_collision_exception_with(releasing_player)
+\t\treleasing_player.add_collision_exception_with(self)
+\t\t_temporary_player_collision_exception = releasing_player
+\t_set_world_presentation_enabled(true)
+\t_begin_motion(motion_kind, initial_velocity)
+'''
+new_release_order = '''\t_holder = null
+\tglobal_transform = release_transform
+\tvar overlaps_releasing_player: bool = (
+\t\treleasing_player != null
+\t\tand is_instance_valid(releasing_player)
+\t\tand _shape_overlaps_body_at_transform(release_transform, releasing_player)
+\t)
+\t_set_world_presentation_enabled(true)
+\tif overlaps_releasing_player:
+\t\tadd_collision_exception_with(releasing_player)
+\t\treleasing_player.add_collision_exception_with(self)
+\t\t_temporary_player_collision_exception = releasing_player
+\t_begin_motion(motion_kind, initial_velocity)
+'''
+text = replace_once(text, old_release_order, new_release_order, "release collision activation order")
+
 # PhysicsDirectSpaceState3D.intersect_shape() exposes both the collider object
 # and its RID. Use actual body identity as the primary overlap predicate so the
 # pairwise exception lifetime is derived from the queried collision volume.
