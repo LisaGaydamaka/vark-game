@@ -85,6 +85,13 @@ release_prop={
 ]
 }
 
+[layer_names]
+
+3d_physics/layer_1="world"
+3d_physics/layer_2="player"
+3d_physics/layer_3="ordinary_prop"
+3d_physics/layer_4="ordinary_prop_player_overlap"
+
 [physics]
 
 3d/physics_engine="Jolt Physics"

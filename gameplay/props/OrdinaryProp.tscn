@@ -11,6 +11,8 @@ bounce = 0.05
 size = Vector3(0.6, 0.6, 0.6)
 
 [node name="OrdinaryProp" type="RigidBody3D"]
+collision_layer = 4
+collision_mask = 15
 mass = 1.5
 physics_material_override = SubResource("PropPhysicsMaterial")
 continuous_cd = true

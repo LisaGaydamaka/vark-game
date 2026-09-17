@@ -14,6 +14,13 @@ const MOTION_UNSUPPORTED: StringName = &"unsupported"
 
 const IMPACT_SOUND_KIND: StringName = &"prop.impact"
 
+# Dedicated physics categories let an overlapping released prop ignore the
+# player without disabling collision with the world or other props.
+const COLLISION_LAYER_WORLD: int = 1 << 0
+const COLLISION_LAYER_PLAYER: int = 1 << 1
+const COLLISION_LAYER_ORDINARY_PROP: int = 1 << 2
+const COLLISION_LAYER_PROP_IGNORING_PLAYER: int = 1 << 3
+
 
 @export var prop_id: StringName = &"prop"
 @export var visual_model: Mesh
@@ -46,10 +53,10 @@ var _dynamic_contact_count: int = 0
 var _dynamic_support_valid: bool = false
 var _dynamic_support_point: Vector3 = Vector3.ZERO
 var _dynamic_support_normal: Vector3 = Vector3.UP
-var _temporary_player_collision_exception: PhysicsBody3D = null
-var _player_escape_collision_suppressed: bool = false
-var _player_escape_launch_velocity: Vector3 = Vector3.ZERO
-var _player_escape_step_velocity: Vector3 = Vector3.ZERO
+var _temporarily_ignored_player: PhysicsBody3D = null
+var _pending_rigid_launch: bool = false
+var _pending_launch_transform: Transform3D = Transform3D.IDENTITY
+var _pending_launch_velocity: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -83,10 +90,7 @@ func _ready() -> void:
 	_refresh_visual()
 
 
-func _physics_process(delta: float) -> void:
-	if _player_escape_collision_suppressed:
-		_advance_player_escape(delta)
-		return
+func _physics_process(_delta: float) -> void:
 	match _phase:
 		PHASE_SETTLED:
 			linear_velocity = Vector3.ZERO
@@ -110,10 +114,23 @@ func _physics_process(delta: float) -> void:
 			_unsupported_frames = 0
 			angular_velocity = Vector3.ZERO
 			_update_dynamic_settling()
-	_update_temporary_player_collision_exception()
+	_update_temporary_player_collision_ignore()
 
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if _pending_rigid_launch:
+		# Commit the carry->world handoff through the synchronized direct-body
+		# state. This avoids splitting a mode change, transform change, collision
+		# filter change, and launch velocity across unrelated PhysicsServer writes.
+		state.transform = _pending_launch_transform
+		state.collision_layer = collision_layer
+		state.collision_mask = collision_mask
+		state.linear_velocity = _pending_launch_velocity
+		state.angular_velocity = Vector3.ZERO
+		state.sleeping = false
+		_pending_rigid_launch = false
+		_pending_launch_velocity = Vector3.ZERO
+		can_sleep = true
 	if _phase != PHASE_MOVING and _phase != PHASE_SETTLING:
 		return
 	_dynamic_contact_count = state.get_contact_count()
@@ -225,17 +242,18 @@ func is_release_transform_world_clear(
 	return get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
 
 
-func has_temporary_player_collision_exception() -> bool:
+func is_temporarily_ignoring_player_collision() -> bool:
 	return (
-		_temporary_player_collision_exception != null
-		and is_instance_valid(_temporary_player_collision_exception)
+		_temporarily_ignored_player != null
+		and is_instance_valid(_temporarily_ignored_player)
 	)
 
 
 func begin_carried_junk(holder: Node) -> bool:
 	if holder == null or _phase == PHASE_CARRIED_JUNK:
 		return false
-	_clear_temporary_player_collision_exception()
+	_clear_pending_rigid_launch()
+	_clear_temporary_player_collision_ignore()
 	_clear_dynamic_contact_state()
 	_holder = holder
 	_phase = PHASE_CARRIED_JUNK
@@ -264,7 +282,7 @@ func release_from_carry(
 		return false
 	if not _is_finite_transform(release_transform) or not _is_finite_vector(initial_velocity):
 		return false
-	_clear_temporary_player_collision_exception()
+	_clear_temporary_player_collision_ignore()
 	_holder = null
 	global_transform = release_transform
 	var overlaps_releasing_player: bool = (
@@ -272,43 +290,25 @@ func release_from_carry(
 		and is_instance_valid(releasing_player)
 		and _shape_overlaps_body_at_transform(release_transform, releasing_player)
 	)
-	_set_world_presentation_enabled(true)
+	if prop_mesh != null:
+		prop_mesh.visible = true
 	if overlaps_releasing_player:
-		add_collision_exception_with(releasing_player)
-		releasing_player.add_collision_exception_with(self)
-		_temporary_player_collision_exception = releasing_player
-		collision_layer = 0
-		collision_mask = 0
-		_player_escape_collision_suppressed = true
-		_player_escape_launch_velocity = initial_velocity
-		_player_escape_step_velocity = initial_velocity
-		if _player_escape_step_velocity.length() < 0.5:
-			var away_from_player: Vector3 = release_transform.origin - releasing_player.global_position
-			if away_from_player.length_squared() <= 0.000001:
-				away_from_player = -release_transform.basis.z
-			_player_escape_step_velocity = away_from_player.normalized() * 1.5
-		_phase = PHASE_MOVING
-		_motion_kind = motion_kind
-		_settle_yaw = _yaw_from_basis(global_transform.basis)
-		_settle_contact_frames = 0
-		_unsupported_frames = 0
-		_last_contact_count = 0
-		_clear_dynamic_contact_state()
-		linear_velocity = initial_velocity
-		angular_velocity = Vector3.ZERO
-		freeze = true
-		sleeping = true
+		_begin_temporary_player_collision_ignore(releasing_player)
 	else:
-		_begin_motion(motion_kind, initial_velocity)
+		collision_layer = _ordinary_collision_layer
+		collision_mask = _ordinary_collision_mask
+	# F and R differ only by motion kind/velocity. The body becomes live now,
+	# while the exact transform + velocity commit is synchronized with Jolt in
+	# _integrate_forces() on the first active rigid-body step.
+	_stage_rigid_launch(motion_kind, release_transform, initial_velocity)
 	return true
-
 
 func capture_semantic_state() -> Dictionary:
 	return {
 		"phase": _phase,
 		"motion_kind": _motion_kind,
-		"transform": global_transform,
-		"linear_velocity": linear_velocity,
+		"transform": _pending_launch_transform if _pending_rigid_launch else global_transform,
+		"linear_velocity": _pending_launch_velocity if _pending_rigid_launch else linear_velocity,
 		"settle_yaw": _settle_yaw,
 	}
 
@@ -337,7 +337,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if (phase == PHASE_MOVING or phase == PHASE_SETTLING) and motion_kind == MOTION_NONE:
 		return false
 
-	_clear_temporary_player_collision_exception()
+	_clear_pending_rigid_launch()
+	_clear_temporary_player_collision_ignore()
 	_clear_dynamic_contact_state()
 	_phase = phase
 	_motion_kind = motion_kind
@@ -366,7 +367,7 @@ func reconcile_after_restore(holder: Node = null) -> bool:
 			return false
 		return bool(holder.call("reconcile_carried_junk_prop", self))
 	_holder = null
-	_clear_temporary_player_collision_exception()
+	_clear_temporary_player_collision_ignore()
 	_set_world_presentation_enabled(true)
 	if _phase == PHASE_SETTLED:
 		freeze = true
@@ -375,6 +376,35 @@ func reconcile_after_restore(holder: Node = null) -> bool:
 		freeze = false
 		sleeping = false
 	return true
+
+
+func _stage_rigid_launch(
+	motion_kind: StringName,
+	release_transform: Transform3D,
+	initial_velocity: Vector3
+) -> void:
+	_phase = PHASE_MOVING
+	_motion_kind = motion_kind
+	_settle_yaw = _yaw_from_basis(release_transform.basis)
+	_settle_contact_frames = 0
+	_unsupported_frames = 0
+	_last_contact_count = 0
+	_clear_dynamic_contact_state()
+	_pending_launch_transform = release_transform
+	_pending_launch_velocity = initial_velocity
+	_pending_rigid_launch = true
+	# Keep the newly activated body awake until the direct-state callback has
+	# consumed the pending launch. Afterwards normal sleeping policy resumes.
+	can_sleep = false
+	freeze = false
+	sleeping = false
+
+
+func _clear_pending_rigid_launch() -> void:
+	_pending_rigid_launch = false
+	_pending_launch_transform = Transform3D.IDENTITY
+	_pending_launch_velocity = Vector3.ZERO
+	can_sleep = true
 
 
 func _begin_motion(motion_kind: StringName, initial_velocity: Vector3) -> void:
@@ -407,6 +437,7 @@ func _update_dynamic_settling() -> void:
 
 
 func _settle_now(support_point: Vector3, support_normal: Vector3) -> void:
+	_clear_pending_rigid_launch()
 	var top_up_basis: Basis = _top_up_basis_for_yaw(_settle_yaw)
 	var settled_origin: Vector3 = global_position
 	var box: BoxShape3D = prop_collision.shape as BoxShape3D if prop_collision != null else null
@@ -454,91 +485,34 @@ func _clear_dynamic_contact_state() -> void:
 	_dynamic_support_normal = Vector3.UP
 
 
-func _advance_player_escape(delta: float) -> void:
-	var launch_velocity: Vector3 = _player_escape_launch_velocity
-	if (
-		_temporary_player_collision_exception == null
-		or not is_instance_valid(_temporary_player_collision_exception)
-	):
-		_clear_temporary_player_collision_exception()
-		_player_escape_launch_velocity = Vector3.ZERO
-		_player_escape_step_velocity = Vector3.ZERO
-		_begin_motion(_motion_kind, launch_velocity)
-		return
-	var requested_motion: Vector3 = _player_escape_step_velocity * maxf(delta, 0.0)
-	var safe_motion: Vector3 = _sweep_player_escape_motion(
-		requested_motion,
-		_temporary_player_collision_exception
+func _begin_temporary_player_collision_ignore(player: PhysicsBody3D) -> void:
+	_temporarily_ignored_player = player
+	# Jolt evaluates body pairs from both objects' layers/masks. Move only this
+	# prop onto a channel the Player does not scan, while retaining world/prop
+	# categories in its mask. This suppresses exactly the player relationship
+	# without disabling real rigid-body collision with the environment.
+	collision_layer = COLLISION_LAYER_PROP_IGNORING_PLAYER
+	collision_mask = (
+		(_ordinary_collision_mask | COLLISION_LAYER_WORLD | COLLISION_LAYER_ORDINARY_PROP | COLLISION_LAYER_PROP_IGNORING_PLAYER)
+		& ~COLLISION_LAYER_PLAYER
 	)
-	global_position += safe_motion
-	linear_velocity = _player_escape_launch_velocity
-	angular_velocity = Vector3.ZERO
-	if not _shape_overlaps_body_at_transform(global_transform, _temporary_player_collision_exception):
-		_clear_temporary_player_collision_exception()
-		_player_escape_launch_velocity = Vector3.ZERO
-		_player_escape_step_velocity = Vector3.ZERO
-		_begin_motion(_motion_kind, launch_velocity)
+
+
+func _update_temporary_player_collision_ignore() -> void:
+	if _temporarily_ignored_player == null:
 		return
-	if requested_motion.length_squared() > 0.000001 and safe_motion.length() + 0.0001 < requested_motion.length():
-		# World geometry won the sweep before the player volume cleared. Restore
-		# ordinary rigid collision here rather than ghosting through the blocker.
-		_clear_temporary_player_collision_exception()
-		_player_escape_launch_velocity = Vector3.ZERO
-		_player_escape_step_velocity = Vector3.ZERO
-		_begin_motion(_motion_kind, launch_velocity)
-
-
-func _sweep_player_escape_motion(motion: Vector3, ignored_player: PhysicsBody3D) -> Vector3:
-	if (
-		motion.length_squared() <= 0.000001
-		or prop_collision == null
-		or prop_collision.shape == null
-		or not is_inside_tree()
-	):
-		return Vector3.ZERO
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = prop_collision.shape
-	query.transform = global_transform * prop_collision.transform
-	query.motion = motion
-	query.collision_mask = _ordinary_collision_mask
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
-	query.margin = 0.001
-	var excluded: Array[RID] = [get_rid()]
-	if ignored_player != null and is_instance_valid(ignored_player):
-		excluded.append(ignored_player.get_rid())
-	query.exclude = excluded
-	var fractions: PackedFloat32Array = get_world_3d().direct_space_state.cast_motion(query)
-	if fractions.size() < 1:
-		return Vector3.ZERO
-	return motion * clampf(fractions[0], 0.0, 1.0)
-
-
-func _update_temporary_player_collision_exception() -> void:
-	if _player_escape_collision_suppressed:
+	if not is_instance_valid(_temporarily_ignored_player):
+		_clear_temporary_player_collision_ignore()
 		return
-	if _temporary_player_collision_exception == null:
+	if _shape_overlaps_body_at_transform(global_transform, _temporarily_ignored_player):
 		return
-	if not is_instance_valid(_temporary_player_collision_exception):
-		_clear_temporary_player_collision_exception()
-		return
-	if _shape_overlaps_body_at_transform(global_transform, _temporary_player_collision_exception):
-		return
-	_clear_temporary_player_collision_exception()
+	_clear_temporary_player_collision_ignore()
 
 
-func _clear_temporary_player_collision_exception() -> void:
-	if (
-		_temporary_player_collision_exception != null
-		and is_instance_valid(_temporary_player_collision_exception)
-	):
-		remove_collision_exception_with(_temporary_player_collision_exception)
-		_temporary_player_collision_exception.remove_collision_exception_with(self)
-	_temporary_player_collision_exception = null
-	if _player_escape_collision_suppressed:
-		collision_layer = _ordinary_collision_layer
-		collision_mask = _ordinary_collision_mask
-		_player_escape_collision_suppressed = false
+func _clear_temporary_player_collision_ignore() -> void:
+	_temporarily_ignored_player = null
+	collision_layer = _ordinary_collision_layer
+	collision_mask = _ordinary_collision_mask
 
 
 func _shape_overlaps_body_at_transform(body_transform: Transform3D, other_body: PhysicsBody3D) -> bool:

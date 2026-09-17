@@ -25,6 +25,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 	if world == null or player == null:
 		return
+	assert_true.call(
+		player.collision_layer == OrdinaryProp.COLLISION_LAYER_PLAYER
+		and (player.collision_mask & OrdinaryProp.COLLISION_LAYER_WORLD) != 0
+		and (player.collision_mask & OrdinaryProp.COLLISION_LAYER_ORDINARY_PROP) != 0
+		and (player.collision_mask & OrdinaryProp.COLLISION_LAYER_PROP_IGNORING_PLAYER) == 0,
+		"Player collision channels distinguish ordinary props from the transient overlap-only prop channel"
+	)
 	var pickup_prop: RigidBody3D = world.get_node("PickupProp") as RigidBody3D
 	var edge_prop: RigidBody3D = world.get_node("EdgeProp") as RigidBody3D
 	var stack_upper: RigidBody3D = world.get_node("StackUpper") as RigidBody3D
@@ -86,26 +93,31 @@ func _prove_release_transaction(
 	assert_true.call(
 		thrown
 		and prop.call("get_motion_kind") == OrdinaryProp.MOTION_THROWN
-		and prop.linear_velocity.length() > 4.0
-		and bool(prop.call("has_temporary_player_collision_exception"))
-		and player in prop.get_collision_exceptions()
-		and prop in player.get_collision_exceptions(),
-		"F throw keeps its impulse through an initial player overlap"
+		and not prop.freeze
+		and prop.collision_layer == OrdinaryProp.COLLISION_LAYER_PROP_IGNORING_PLAYER
+		and (prop.collision_mask & OrdinaryProp.COLLISION_LAYER_WORLD) != 0
+		and (prop.collision_mask & OrdinaryProp.COLLISION_LAYER_ORDINARY_PROP) != 0
+		and (prop.collision_mask & OrdinaryProp.COLLISION_LAYER_PLAYER) == 0
+		and bool(prop.call("is_temporarily_ignoring_player_collision"))
+		and player.get_collision_exceptions().is_empty()
+		and prop.get_collision_exceptions().is_empty(),
+		"F throw activates a live world/prop-colliding body while the overlapping player channel alone is filtered"
 	)
 	var overlap_throw_start: Vector3 = prop.global_position
-	await _settle_physics(tree)
+	var launched: bool = await _wait_for_solver_launch_motion(tree, prop, overlap_throw_start, 4)
 	assert_true.call(
-		prop.global_position.distance_to(overlap_throw_start) > 0.05,
-		"Initial player overlap escapes along the throw vector instead of canceling the throw"
+		launched
+		and prop.linear_velocity.length() > 4.0
+		and prop.global_position.distance_to(overlap_throw_start) > 0.05,
+		"Initial player-overlap throw receives its full velocity through the synchronized rigid-body solver handoff"
 	)
-	var cleared: bool = await _wait_for_player_exception_clear(tree, prop, player, 40)
+	var cleared: bool = await _wait_for_player_ignore_clear(tree, prop, player, 40)
 	assert_true.call(
-		cleared and not bool(prop.call("has_temporary_player_collision_exception"))
-		and not (player in prop.get_collision_exceptions())
-		and not (prop in player.get_collision_exceptions())
-		and prop.collision_layer == 1 and prop.collision_mask == 1
+		cleared and not bool(prop.call("is_temporarily_ignoring_player_collision"))
+		and prop.collision_layer == OrdinaryProp.COLLISION_LAYER_ORDINARY_PROP
+		and prop.collision_mask == 15
 		and not prop.freeze and prop.linear_velocity.length() > 2.0,
-		"Temporary prop-player collision exclusion ends after geometric separation"
+		"Temporary player-only collision filtering ends after geometric separation and restores ordinary prop collision"
 	)
 	carry.set("release_distance", full_release_distance)
 	await _settle_until_phase(tree, prop, OrdinaryProp.PHASE_SETTLED, 240)
@@ -215,15 +227,31 @@ func _prove_contact_manifold_settle(tree: SceneTree, world: Node3D, assert_true:
 	await tree.process_frame
 
 
-func _wait_for_player_exception_clear(tree: SceneTree, prop: RigidBody3D, player: CharacterBody3D, max_frames: int) -> bool:
+func _wait_for_solver_launch_motion(
+	tree: SceneTree,
+	prop: RigidBody3D,
+	start_position: Vector3,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		await tree.physics_frame
+		await tree.process_frame
+		if (
+			prop.linear_velocity.length() > 4.0
+			and prop.global_position.distance_to(start_position) > 0.05
+		):
+			return true
+	return false
+
+
+func _wait_for_player_ignore_clear(tree: SceneTree, prop: RigidBody3D, player: CharacterBody3D, max_frames: int) -> bool:
 	for _frame_index: int in max_frames:
 		if (
-			not bool(prop.call("has_temporary_player_collision_exception"))
-			and not (player in prop.get_collision_exceptions())
-			and not (prop in player.get_collision_exceptions())
-			and prop.collision_layer == 1
-			and prop.collision_mask == 1
+			not bool(prop.call("is_temporarily_ignoring_player_collision"))
+			and prop.collision_layer == OrdinaryProp.COLLISION_LAYER_ORDINARY_PROP
+			and prop.collision_mask == 15
 			and not prop.freeze
+			and not bool(prop.call("_shape_overlaps_body_at_transform", prop.global_transform, player))
 		):
 			return true
 		await tree.physics_frame
