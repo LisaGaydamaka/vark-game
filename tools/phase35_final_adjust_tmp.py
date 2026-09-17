@@ -28,9 +28,7 @@ text = replace_once(
 
 # PhysicsDirectSpaceState3D.intersect_shape() exposes both the collider object
 # and its RID. Use actual body identity as the primary overlap predicate so the
-# pairwise exception lifetime is derived from the real queried collision
-# volume, without depending on backend-specific RID reporting. Keep the RID as
-# a compatibility fallback.
+# pairwise exception lifetime is derived from the queried collision volume.
 old_overlap = '''func _shape_overlaps_body_at_transform(body_transform: Transform3D, other_body: PhysicsBody3D) -> bool:
 \tif (
 \t\tother_body == null
@@ -145,12 +143,17 @@ text = replace_once(text, old_support_tail, new_support_tail, "settled support s
 path.write_text(text, encoding="utf-8")
 
 
-# Place the narrow support under the tilted cube's real lowest edge while still
-# remaining between the retired nine ray samples, assert the pairwise collision
-# exception on both bodies, and print the exact lifetime state for the focused
-# diagnostic run.
+# Keep the focused regression deterministic: the temporary blocker used for
+# the first release-placement assertion must be gone from the physics space
+# before the later intentional player-overlap throw begins.
 path = Path("tests/props/phase_3_5_transition_regressions.gd")
 text = path.read_text(encoding="utf-8")
+text = replace_once(
+    text,
+    "\tblocker.queue_free()\n\tawait tree.process_frame\n\tassert_true.call(bool(player.call(\"try_carry_prop\", prop)), \"Released prop can re-enter carried Junk for overlap setup\")\n",
+    "\tblocker.queue_free()\n\tawait tree.process_frame\n\tawait _settle_physics(tree, 2)\n\tassert_true.call(bool(player.call(\"try_carry_prop\", prop)), \"Released prop can re-enter carried Junk for overlap setup\")\n",
+    "blocker physics-space cleanup",
+)
 text = replace_once(
     text,
     "\tsupport_body.global_position = Vector3(3.0, 0.4, 2.5)\n",
@@ -169,27 +172,28 @@ text = replace_once(
     "\t\tcleared and not bool(prop.call(\"has_temporary_player_collision_exception\"))\n\t\tand not (player in prop.get_collision_exceptions())\n\t\tand not (prop in player.get_collision_exceptions()),\n",
     "pairwise exception clear assertion",
 )
-old_wait = '''func _wait_for_player_exception_clear(tree: SceneTree, prop: RigidBody3D, player: CharacterBody3D, max_frames: int) -> bool:
+text = replace_once(
+    text,
+    '''func _wait_for_player_exception_clear(tree: SceneTree, prop: RigidBody3D, player: CharacterBody3D, max_frames: int) -> bool:
 \tfor _frame_index: int in max_frames:
 \t\tif not bool(prop.call("has_temporary_player_collision_exception")) and not (player in prop.get_collision_exceptions()):
 \t\t\treturn true
 \t\tawait tree.physics_frame
 \t\tawait tree.process_frame
 \treturn false
-'''
-new_wait = '''func _wait_for_player_exception_clear(tree: SceneTree, prop: RigidBody3D, player: CharacterBody3D, max_frames: int) -> bool:
-\tfor frame_index: int in max_frames:
-\t\tvar overlap_now: bool = bool(prop.call("_shape_overlaps_body_at_transform", prop.global_transform, player))
-\t\tvar temp_active: bool = bool(prop.call("has_temporary_player_collision_exception"))
-\t\tvar prop_has_player: bool = player in prop.get_collision_exceptions()
-\t\tvar player_has_prop: bool = prop in player.get_collision_exceptions()
-\t\tif frame_index == 0 or frame_index % 5 == 0 or frame_index == max_frames - 1:
-\t\t\tprint("PHASE35 EXCEPTION DIAG frame=", frame_index, " prop=", prop.global_position, " player=", player.global_position, " distance=", prop.global_position.distance_to(player.global_position), " velocity=", prop.linear_velocity, " overlap=", overlap_now, " temp=", temp_active, " prop_has_player=", prop_has_player, " player_has_prop=", player_has_prop)
-\t\tif not temp_active and not prop_has_player and not player_has_prop:
+''',
+    '''func _wait_for_player_exception_clear(tree: SceneTree, prop: RigidBody3D, player: CharacterBody3D, max_frames: int) -> bool:
+\tfor _frame_index: int in max_frames:
+\t\tif (
+\t\t\tnot bool(prop.call("has_temporary_player_collision_exception"))
+\t\t\tand not (player in prop.get_collision_exceptions())
+\t\t\tand not (prop in player.get_collision_exceptions())
+\t\t):
 \t\t\treturn true
 \t\tawait tree.physics_frame
 \t\tawait tree.process_frame
 \treturn false
-'''
-text = replace_once(text, old_wait, new_wait, "exception lifetime diagnostic")
+''',
+    "pairwise exception wait",
+)
 path.write_text(text, encoding="utf-8")
