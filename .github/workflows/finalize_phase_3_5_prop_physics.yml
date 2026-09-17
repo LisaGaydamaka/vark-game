@@ -20,7 +20,7 @@ jobs:
           ref: test
           fetch-depth: 0
 
-      - name: Apply candidate and correct support seating
+      - name: Apply candidate and measured support-seating correction
         shell: bash
         run: |
           python - <<'PY'
@@ -42,123 +42,96 @@ jobs:
 
           path = Path('gameplay/props/ordinary_prop.gd')
           text = path.read_text(encoding='utf-8')
-          old = '''func _update_dynamic_settling() -> void:
-\tvar contact_count: int = get_colliding_bodies().size()
-\tif contact_count > 0 and _last_contact_count == 0:
-\t\t_queue_impact_sound(linear_velocity.length())
-\t_last_contact_count = contact_count
-
-\tif contact_count > 0 and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):
-\t\t_settle_contact_frames += 1
-\t\t_phase = PHASE_SETTLING
-\t\tif _settle_contact_frames >= maxi(settle_contact_frames_required, 1):
-\t\t\t_settle_now()
-\t\treturn
-
-\t_settle_contact_frames = 0
-\t_phase = PHASE_MOVING
-
-
-func _settle_now() -> void:
-\tvar settled_origin: Vector3 = global_position
-\tfreeze = true
-\tlinear_velocity = Vector3.ZERO
-\tangular_velocity = Vector3.ZERO
-\tglobal_transform = Transform3D(_top_up_basis_for_yaw(_settle_yaw), settled_origin)
-\tsleeping = true
-\t_phase = PHASE_SETTLED
-\t_motion_kind = MOTION_NONE
-\t_settle_contact_frames = 0
-\t_unsupported_frames = 0
-\t_last_contact_count = 0
-'''
-          new = '''func _update_dynamic_settling() -> void:
-\tvar contact_count: int = get_colliding_bodies().size()
-\tif contact_count > 0 and _last_contact_count == 0:
-\t\t_queue_impact_sound(linear_velocity.length())
-\t_last_contact_count = contact_count
-
-\tvar support_y: float = _find_dynamic_support_surface_y()
-\tif is_finite(support_y) and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):
-\t\t_settle_contact_frames += 1
-\t\t_phase = PHASE_SETTLING
-\t\tif _settle_contact_frames >= maxi(settle_contact_frames_required, 1):
-\t\t\t_settle_now(support_y)
-\t\treturn
-
-\t_settle_contact_frames = 0
-\t_phase = PHASE_MOVING
-
-
-func _settle_now(support_y: float) -> void:
-\tvar top_up_basis: Basis = _top_up_basis_for_yaw(_settle_yaw)
-\tvar settled_origin: Vector3 = global_position
-\tvar box: BoxShape3D = prop_collision.shape as BoxShape3D if prop_collision != null else null
-\tif box != null and is_finite(support_y):
-\t\tsettled_origin.y = support_y + _vertical_support_extent(top_up_basis, box.size * 0.5)
-\tfreeze = true
-\tlinear_velocity = Vector3.ZERO
-\tangular_velocity = Vector3.ZERO
-\tglobal_transform = Transform3D(top_up_basis, settled_origin)
-\tsleeping = true
-\t_phase = PHASE_SETTLED
-\t_motion_kind = MOTION_NONE
-\t_settle_contact_frames = 0
-\t_unsupported_frames = 0
-\t_last_contact_count = 0
-
-
-func _find_dynamic_support_surface_y() -> float:
-\tif prop_collision == null or prop_collision.shape == null or not is_inside_tree():
-\t\treturn NAN
-\tvar box: BoxShape3D = prop_collision.shape as BoxShape3D
-\tif box == null:
-\t\treturn NAN
-\tvar half: Vector3 = box.size * 0.5
-\tvar local_corners: Array[Vector3] = [
-\t\tVector3(-half.x, -half.y, -half.z), Vector3(half.x, -half.y, -half.z),
-\t\tVector3(-half.x, -half.y, half.z), Vector3(half.x, -half.y, half.z),
-\t\tVector3(-half.x, half.y, -half.z), Vector3(half.x, half.y, -half.z),
-\t\tVector3(-half.x, half.y, half.z), Vector3(half.x, half.y, half.z),
-\t]
-\tvar world_corners: Array[Vector3] = []
-\tvar lowest_y: float = INF
-\tfor local_corner: Vector3 in local_corners:
-\t\tvar world_corner: Vector3 = global_transform * local_corner
-\t\tworld_corners.append(world_corner)
-\t\tlowest_y = minf(lowest_y, world_corner.y)
-
-\tvar best_support_y: float = -INF
-\tfor world_corner: Vector3 in world_corners:
-\t\tif world_corner.y > lowest_y + 0.025:
-\t\t\tcontinue
-\t\tvar query := PhysicsRayQueryParameters3D.create(
-\t\t\tworld_corner + Vector3.UP * 0.035,
-\t\t\tworld_corner + Vector3.DOWN * 0.09
-\t\t)
-\t\tquery.exclude = [get_rid()]
-\t\tquery.collision_mask = _ordinary_collision_mask
-\t\tquery.collide_with_areas = false
-\t\tquery.collide_with_bodies = true
-\t\tvar hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
-\t\tif hit.is_empty():
-\t\t\tcontinue
-\t\tvar normal: Vector3 = hit.get("normal", Vector3.UP)
-\t\tif normal.y < minimum_support_normal_y:
-\t\t\tcontinue
-\t\tbest_support_y = maxf(best_support_y, float(hit.get("position", world_corner).y))
-\treturn best_support_y if is_finite(best_support_y) else NAN
-
-
-func _vertical_support_extent(source_basis: Basis, half: Vector3) -> float:
-\tvar basis: Basis = source_basis.orthonormalized()
-\treturn (
-\t\tabsf(basis.x.y) * half.x
-\t\t+ absf(basis.y.y) * half.y
-\t\t+ absf(basis.z.y) * half.z
-\t)
-'''
-          text = replace_once(text, old, new, 'rigid-body settle seating')
+          block_start = text.index('func _update_dynamic_settling() -> void:')
+          block_end = text.index('\n\nfunc _has_support() -> bool:', block_start)
+          new_block = '\n'.join([
+              'func _update_dynamic_settling() -> void:',
+              '\tvar contact_count: int = get_colliding_bodies().size()',
+              '\tif contact_count > 0 and _last_contact_count == 0:',
+              '\t\t_queue_impact_sound(linear_velocity.length())',
+              '\t_last_contact_count = contact_count',
+              '',
+              '\tvar support_y: float = _find_dynamic_support_surface_y()',
+              '\tif is_finite(support_y) and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):',
+              '\t\t_settle_contact_frames += 1',
+              '\t\t_phase = PHASE_SETTLING',
+              '\t\tif _settle_contact_frames >= maxi(settle_contact_frames_required, 1):',
+              '\t\t\t_settle_now(support_y)',
+              '\t\treturn',
+              '',
+              '\t_settle_contact_frames = 0',
+              '\t_phase = PHASE_MOVING',
+              '',
+              '',
+              'func _settle_now(support_y: float) -> void:',
+              '\tvar top_up_basis: Basis = _top_up_basis_for_yaw(_settle_yaw)',
+              '\tvar settled_origin: Vector3 = global_position',
+              '\tvar box: BoxShape3D = prop_collision.shape as BoxShape3D if prop_collision != null else null',
+              '\tif box != null and is_finite(support_y):',
+              '\t\tsettled_origin.y = support_y + _vertical_support_extent(top_up_basis, box.size * 0.5)',
+              '\tfreeze = true',
+              '\tlinear_velocity = Vector3.ZERO',
+              '\tangular_velocity = Vector3.ZERO',
+              '\tglobal_transform = Transform3D(top_up_basis, settled_origin)',
+              '\tsleeping = true',
+              '\t_phase = PHASE_SETTLED',
+              '\t_motion_kind = MOTION_NONE',
+              '\t_settle_contact_frames = 0',
+              '\t_unsupported_frames = 0',
+              '\t_last_contact_count = 0',
+              '',
+              '',
+              'func _find_dynamic_support_surface_y() -> float:',
+              '\tif prop_collision == null or prop_collision.shape == null or not is_inside_tree():',
+              '\t\treturn NAN',
+              '\tvar box: BoxShape3D = prop_collision.shape as BoxShape3D',
+              '\tif box == null:',
+              '\t\treturn NAN',
+              '\tvar half: Vector3 = box.size * 0.5',
+              '\tvar local_corners: Array[Vector3] = [',
+              '\t\tVector3(-half.x, -half.y, -half.z), Vector3(half.x, -half.y, -half.z),',
+              '\t\tVector3(-half.x, -half.y, half.z), Vector3(half.x, -half.y, half.z),',
+              '\t\tVector3(-half.x, half.y, -half.z), Vector3(half.x, half.y, -half.z),',
+              '\t\tVector3(-half.x, half.y, half.z), Vector3(half.x, half.y, half.z),',
+              '\t]',
+              '\tvar world_corners: Array[Vector3] = []',
+              '\tvar lowest_y: float = INF',
+              '\tfor local_corner: Vector3 in local_corners:',
+              '\t\tvar world_corner: Vector3 = global_transform * local_corner',
+              '\t\tworld_corners.append(world_corner)',
+              '\t\tlowest_y = minf(lowest_y, world_corner.y)',
+              '',
+              '\tvar best_support_y: float = -INF',
+              '\tfor world_corner: Vector3 in world_corners:',
+              '\t\tif world_corner.y > lowest_y + 0.025:',
+              '\t\t\tcontinue',
+              '\t\tvar query := PhysicsRayQueryParameters3D.create(',
+              '\t\t\tworld_corner + Vector3.UP * 0.035,',
+              '\t\t\tworld_corner + Vector3.DOWN * 0.09',
+              '\t\t)',
+              '\t\tquery.exclude = [get_rid()]',
+              '\t\tquery.collision_mask = _ordinary_collision_mask',
+              '\t\tquery.collide_with_areas = false',
+              '\t\tquery.collide_with_bodies = true',
+              '\t\tvar hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)',
+              '\t\tif hit.is_empty():',
+              '\t\t\tcontinue',
+              '\t\tvar normal: Vector3 = hit.get("normal", Vector3.UP)',
+              '\t\tif normal.y < minimum_support_normal_y:',
+              '\t\t\tcontinue',
+              '\t\tbest_support_y = maxf(best_support_y, float(hit.get("position", world_corner).y))',
+              '\treturn best_support_y if is_finite(best_support_y) else NAN',
+              '',
+              '',
+              'func _vertical_support_extent(source_basis: Basis, half: Vector3) -> float:',
+              '\tvar basis: Basis = source_basis.orthonormalized()',
+              '\treturn (',
+              '\t\tabsf(basis.x.y) * half.x',
+              '\t\t+ absf(basis.y.y) * half.y',
+              '\t\t+ absf(basis.z.y) * half.z',
+              '\t)',
+          ])
+          text = text[:block_start] + new_block + text[block_end:]
           path.write_text(text, encoding='utf-8')
 
           path = Path('tests/props/prop_regressions.gd')
