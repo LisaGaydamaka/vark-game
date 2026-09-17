@@ -799,7 +799,7 @@ The interactable surface is intentionally narrow and concrete: an object joins `
 
 **Manual:** passed — validator: **Windows x64 user/playtester**. The user accepted the final `Interaction Lab` behavior: no permanent central crosshair; Door and Prop probes select only when centered/in range/unobstructed; selected surfaces become fully unshaded/fullbright with no received/self-shadow-style darkening or tint while preserving their ordinary cast shadows; normal surface shading returns when selection clears; **F** is the primary interaction key with no held-repeat; the one-shot prop becomes `INACTIVE` and clears selection; and ordinary walk/jump/crouch/sprint/mouse-look remain accepted.
 
-## 3.2 Minimal semantic gameplay-event queue and stable boundary `[~]`
+## 3.2 Minimal semantic gameplay-event queue and stable boundary `[x]`
 
 Add the smallest world-session-owned semantic event route needed by the spike.
 
@@ -821,9 +821,9 @@ The implementation is deliberately session-local rather than a new manager layer
 
 **Done when:** a given emitted sequence drains FIFO at one controlled world-session gameplay point; nested emissions append after already-registered handlers for the current event; detached payloads cannot retain live world objects or be mutated through the emitter/another handler; stale/foreign sessions and non-`PLAYING` lifecycle states cannot enter normal dispatch; participating handlers must acknowledge synchronous completion; a runaway cascade is bounded and reported; ordinary out-of-pass callers can only queue future semantic work; teardown prevents old-world event state from reaching a replacement; and the stable-boundary serial advances only after a successful consequence drain. No global physics-order promise, general scheduler, mission-rule language, sound event, door behavior, or save system is introduced.
 
-**Automated:** deterministic 3.2 coverage is wired into the focused application suite and authoritative all-tests barrier. It covers explicit BUILDING/RESTORING/TEARING_DOWN/READY rejection, stale-session rejection, live-Object payload rejection, deep payload detachment and per-handler isolation, emitted-order FIFO, nested append rather than recursion, a default-priority physics emitter draining at the later session point, out-of-pass queue-without-immediate-mutation behavior, synchronous-handler acknowledgement failure withholding the stable boundary, bounded runaway-loop diagnostics/recovery, teardown cleanup, and replacement-session isolation. Exact-head post-push CI is still required for acceptance.
+**Automated:** passed — deterministic 3.2 coverage is wired into the focused application suite and authoritative all-tests barrier. It covers explicit BUILDING/RESTORING/TEARING_DOWN/READY rejection, stale-session rejection, live-Object payload rejection, deep payload detachment and per-handler isolation, emitted-order FIFO, nested append rather than recursion, a default-priority physics emitter draining at the later session point, out-of-pass queue-without-immediate-mutation behavior, synchronous-handler acknowledgement failure withholding the stable boundary, bounded runaway-loop diagnostics/recovery, teardown cleanup, and replacement-session isolation. Exact implementation verification head `9a37d0589456a2abe3ebcc3064a605586494ef5a` passed Godot 4.7.2 `Regression suite` run #72 with the new 3.2 cases plus `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
 
-**Manual:** none — 3.2 establishes deterministic internal timing/ownership semantics and intentionally adds no new player-facing behavior.
+**Manual:** none — accepted from deterministic automated coverage because 3.2 establishes internal timing/ownership semantics and intentionally adds no new player-facing behavior.
 
 ## 3.3 Minimal semantic gameplay-sound event `[ ]`
 
