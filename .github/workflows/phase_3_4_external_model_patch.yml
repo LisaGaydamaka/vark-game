@@ -123,8 +123,13 @@ jobs:
         run: |
           set -euo pipefail
           rm .github/workflows/phase_3_4_external_model_patch.yml
+
+          while IFS= read -r generated_uid; do
+            rm -- "$generated_uid"
+          done < <(git ls-files --others --exclude-standard -- '*.gd.uid')
+
           git diff --check
-          mapfile -t changed < <(git status --short | sed -E 's/^.. //' | sort)
+          mapfile -t changed < <(git status --short --untracked-files=all | sed -E 's/^.. //' | sort)
           expected=(
             ".github/workflows/phase_3_4_external_model_patch.yml"
             "assets/models/doors/ordinary_door_leaf.obj"
@@ -145,8 +150,8 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -u .github/workflows/phase_3_4_external_model_patch.yml
           git add \
-            .github/workflows/phase_3_4_external_model_patch.yml \
             assets/models/doors/ordinary_door_leaf.obj \
             assets/models/doors/ordinary_door_leaf.obj.import \
             assets/models/doors/ordinary_door_leaf_narrow.obj \
