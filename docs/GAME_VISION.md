@@ -367,7 +367,7 @@ The object targeted near the center of the player's view can become interactable
 - it is not blocked
 - the current state allows interaction
 
-Interactable objects use a Thief 1 & 2-style shadowless/fullbright selection highlight: while targeted they keep their authored color but render without scene-light shadowing and do not cast a shadow; normal shaded/shadow-casting presentation returns immediately when selection is lost.
+Interactable objects use a Thief 1 & 2-style fullbright selection highlight: while targeted they keep their authored color and ordinary cast shadow, but the object's own visible surface is unshaded and receives no scene shadowing; normal shaded surface response returns immediately when selection is lost.
 
 There is no permanent central crosshair.
 
