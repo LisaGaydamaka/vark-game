@@ -15,6 +15,7 @@ const USE_SOUND_KIND: StringName = &"door.use"
 @export var open_angle_degrees: float = 90.0
 @export var gameplay_sound_strength: float = 0.65
 @export var base_color: Color = Color(0.34, 0.20, 0.10, 1.0)
+@export var visual_model: Mesh
 
 @onready var door_mesh: MeshInstance3D = $DoorMesh
 
@@ -32,6 +33,8 @@ func _ready() -> void:
 	_world_session = _find_world_session()
 	_material = StandardMaterial3D.new()
 	door_mesh.material_override = _material
+	if not set_visual_model(visual_model):
+		push_error("VarkOrdinaryDoor requires a configured visual_model Mesh.")
 	_sync_derived_state()
 
 
@@ -80,6 +83,19 @@ func set_interaction_highlighted(highlighted: bool) -> void:
 
 func is_interaction_highlighted() -> bool:
 	return _highlighted
+
+
+func set_visual_model(model: Mesh) -> bool:
+	if model == null:
+		return false
+	visual_model = model
+	if door_mesh != null:
+		door_mesh.mesh = model
+	return true
+
+
+func get_visual_model() -> Mesh:
+	return visual_model
 
 
 func get_semantic_phase() -> StringName:

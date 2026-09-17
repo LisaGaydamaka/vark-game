@@ -4,6 +4,8 @@ extends RefCounted
 const ApplicationScene = preload("res://application/Application.tscn")
 const ApplicationRoot = preload("res://application/application_root.gd")
 const OrdinaryDoor = preload("res://gameplay/doors/ordinary_door.gd")
+const DefaultDoorVisual: Mesh = preload("res://assets/models/doors/ordinary_door_leaf.obj")
+const AlternateDoorVisual: Mesh = preload("res://assets/models/doors/ordinary_door_leaf_narrow.obj")
 
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
@@ -49,6 +51,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var door: AnimatableBody3D = world.get_node("OrdinaryDoor") as AnimatableBody3D
 	var vision_target: StaticBody3D = world.get_node("VisionTarget") as StaticBody3D
 	var door_mesh: MeshInstance3D = door.get_node("DoorMesh") as MeshInstance3D
+	var door_collision: CollisionShape3D = door.get_node("CollisionShape3D") as CollisionShape3D
 	var door_material: StandardMaterial3D = door_mesh.material_override as StandardMaterial3D
 
 	var door_events: Array[StringName] = []
@@ -99,6 +102,44 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		_first_ray_collider(world, Vector3(0, 1.1, 1.5), Vector3(0, 1.1, -2.2)) == door
 		and _door_overlaps_passage_probe(world, door),
 		"Closed ordinary door is the physical and vision obstruction across its doorway"
+	)
+
+	var configured_visual: Mesh = door.call("get_visual_model") as Mesh
+	var state_before_model_swap: Dictionary = door.call("capture_semantic_state")
+	var centered_before_model_swap: Dictionary = player.call("get_interaction_semantic_state")
+	var collision_shape_before_model_swap: Shape3D = door_collision.shape
+	var door_instance_id_before_model_swap: int = door.get_instance_id()
+	assert_true.call(
+		configured_visual == DefaultDoorVisual
+		and door_mesh.mesh == DefaultDoorVisual
+		and configured_visual.resource_path == "res://assets/models/doors/ordinary_door_leaf.obj",
+		"Ordinary door instantiates its visible leaf from the configured external model resource"
+	)
+
+	var swapped_model: bool = bool(door.call("set_visual_model", AlternateDoorVisual))
+	var replacement_visual: Mesh = door.call("get_visual_model") as Mesh
+	var centered_after_model_swap: Dictionary = player.call("get_interaction_semantic_state")
+	assert_true.call(
+		swapped_model
+		and door.get_instance_id() == door_instance_id_before_model_swap
+		and door.get_script() == OrdinaryDoor
+		and replacement_visual == AlternateDoorVisual
+		and door_mesh.mesh == AlternateDoorVisual
+		and door_collision.shape == collision_shape_before_model_swap
+		and door.call("capture_semantic_state") == state_before_model_swap
+		and centered_before_model_swap.get("target_name", "") == "OrdinaryDoor"
+		and centered_after_model_swap.get("target_name", "") == "OrdinaryDoor"
+		and bool(door.call("is_interaction_highlighted"))
+		and door_mesh.material_override == door_material
+		and door.is_in_group(&"vark_interactable")
+		and not bool(door.call("is_navigation_passage_open"))
+		and is_zero_approx(float(door.call("get_acoustic_openness"))),
+		"Compatible model replacement keeps the same semantic owner, interaction target, collider, highlight, and door-side state"
+	)
+	assert_true.call(
+		_first_ray_collider(world, Vector3(0, 1.1, 1.5), Vector3(0, 1.1, -2.2)) == door
+		and _door_overlaps_passage_probe(world, door),
+		"Visual model replacement does not replace the closed-door collision or vision obstruction"
 	)
 
 	Input.action_press("interact")

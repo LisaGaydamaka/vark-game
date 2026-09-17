@@ -1,19 +1,17 @@
 [gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://gameplay/doors/ordinary_door.gd" id="1_door"]
-
-[sub_resource type="BoxMesh" id="DoorMesh"]
-size = Vector3(1.3, 2.1, 0.12)
+[ext_resource type="ArrayMesh" path="res://assets/models/doors/ordinary_door_leaf.obj" id="2_visual"]
 
 [sub_resource type="BoxShape3D" id="DoorShape"]
 size = Vector3(1.3, 2.1, 0.12)
 
 [node name="OrdinaryDoor" type="AnimatableBody3D"]
 script = ExtResource("1_door")
+visual_model = ExtResource("2_visual")
 
 [node name="DoorMesh" type="MeshInstance3D" parent="."]
 position = Vector3(0.65, 1.05, 0)
-mesh = SubResource("DoorMesh")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 position = Vector3(0.65, 1.05, 0)
