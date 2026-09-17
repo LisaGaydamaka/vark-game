@@ -1,0 +1,62 @@
+name: Close Phase 3.4 acceptance
+
+on:
+  push:
+    branches: [test]
+    paths:
+      - .github/workflows/close_phase_3_4.yml
+
+permissions:
+  contents: write
+
+jobs:
+  closeout:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Record accepted Phase 3.4 status
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("docs/DEVELOPMENT_PLAN.md")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = {
+              "## 3.4 Ordinary door micro-proof `[~]`": "## 3.4 Ordinary door micro-proof `[x]`",
+              "**Automated:** the focused Application regression covers the ordinary-door behavior seams through `Door Lab` and now additionally proves that the configured external OBJ instantiates through the same ordinary-door archetype, then swaps to a compatible alternate model without replacing the door owner, interaction target, collider/vision obstruction, semantic state, highlight surface, events, consumer seams, or restore behavior. The regression remains wired into the authoritative all-tests barrier; the resulting implementation head must pass that barrier before 3.4 can be accepted.": "**Automated:** passed — the focused Application regression covers the ordinary-door behavior seams through `Door Lab`, including external OBJ instantiation/model replacement without changing semantic ownership, interaction, collision/vision obstruction, state, highlighting, events, consumer seams, or restore behavior. It also proves the accepted frame fit and Thief-style obstacle behavior: a moving leaf stops before entering the real player body, remains latched while blocked, preserves that stopped semantic state through capture/apply, reverses on the next interaction, and can subsequently complete normal motion. Exact implementation head `75500104ac79c0f3ceef0d52f154d82ce35e0b96` passed Godot 4.7.2 GitHub Actions `Test` run #83 and the authoritative all-tests barrier.",
+              "**Manual:** required after the external-model follow-up — validator: **Windows x64 user/playtester**. F5 → Development Launch → Door Lab; confirm the model-backed closed door selects with the accepted fullbright/no-received-shadow surface while retaining its ordinary cast shadow; one **F** press makes the physical leaf visibly swing open rather than snap, revealing the green marker and allowing the player through the doorway; aim at the open leaf and press **F** to visibly close it, after which the doorway is physically blocked and the green marker is occluded again; confirm there is no obvious ghost collision, presentation detachment, or locomotion/mouse-look regression. No audible door clip is expected in 3.4—the required sound proof here is the semantic gameplay-sound fact, not presentation audio.": "**Manual:** passed — validator: **Windows x64 user/playtester**. The user accepted the corrected near-frame door fit, normal visible opening/closing and passage/vision behavior, and Thief-style obstacle handling: a closing door stops instead of moving through the player, stays stopped, reverses to opening on the next **F** interaction, and closes normally again once clear. No ghost collision, presentation detachment, or locomotion/mouse-look regression was reported. No audible door clip is expected in 3.4—the accepted sound proof here remains the semantic gameplay-sound fact, not presentation audio.",
+          }
+
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one roadmap match, found {count}: {old[:80]}")
+              text = text.replace(old, new)
+
+          path.write_text(text, encoding="utf-8")
+
+      - name: Commit bounded closeout
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/close_phase_3_4.yml
+          test "$(git status --short --untracked-files=all)" = " M docs/DEVELOPMENT_PLAN.md
+           D .github/workflows/close_phase_3_4.yml" || {
+            git status --short --untracked-files=all
+            exit 1
+          }
+          git diff --check
+          git diff --stat
+          remote_sha="$(git ls-remote origin refs/heads/test | cut -f1)"
+          test "$remote_sha" = "$GITHUB_SHA"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/DEVELOPMENT_PLAN.md .github/workflows/close_phase_3_4.yml
+          git diff --cached --check
+          git commit -m "Close Phase 3.4 door acceptance"
+          git push origin HEAD:test
