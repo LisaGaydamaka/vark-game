@@ -1,4 +1,4 @@
-name: Diagnose Phase 3.5 props
+name: Finalize Phase 3.5 prop correction
 
 on:
   push:
@@ -6,13 +6,13 @@ on:
       - test
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose-phase-3-5:
+  finalize-phase-3-5:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Checkout authoritative test head
         uses: actions/checkout@v5
@@ -34,36 +34,98 @@ jobs:
           exec(compile(code, 'phase_3_5_pending_patch.py', 'exec'), {})
           PY
 
-      - name: Add transient settling diagnostics
+      - name: Apply diagnosed settling fix
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          path = Path('tests/props/prop_regressions.gd')
-          text = path.read_text(encoding='utf-8')
-          throw_anchor = "\tawait _settle_physics(tree, 15)\n\tassert_true.call(\n\t\tpickup_prop.call(\"get_semantic_phase\") == OrdinaryProp.PHASE_SETTLED"
-          throw_debug = "\tawait _settle_physics(tree, 15)\n\tprint(\"DEBUG_THROW phase=%s motion=%s pos=%s vel=%s supported=%s settled_pos=%s\" % [pickup_prop.call(\"get_semantic_phase\"), pickup_prop.call(\"get_motion_kind\"), pickup_prop.global_position, pickup_prop.velocity, pickup_prop.call(\"is_supported\"), settled_after_throw.origin])\n\tassert_true.call(\n\t\tpickup_prop.call(\"get_semantic_phase\") == OrdinaryProp.PHASE_SETTLED"
-          if text.count(throw_anchor) != 1:
-              raise SystemExit('throw diagnostic anchor mismatch')
-          text = text.replace(throw_anchor, throw_debug, 1)
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              return text.replace(old, new, 1)
 
-          stack_anchor = "\tvar upper_xz_after_fall := Vector2(\n\t\tstack_upper.global_position.x,\n\t\tstack_upper.global_position.z\n\t)\n\tassert_true.call("
-          stack_debug = "\tvar upper_xz_after_fall := Vector2(\n\t\tstack_upper.global_position.x,\n\t\tstack_upper.global_position.z\n\t)\n\tprint(\"DEBUG_STACK phase=%s motion=%s pos=%s vel=%s supported=%s xz_before=%s xz_after=%s\" % [stack_upper.call(\"get_semantic_phase\"), stack_upper.call(\"get_motion_kind\"), stack_upper.global_position, stack_upper.velocity, stack_upper.call(\"is_supported\"), upper_xz_before_fall, upper_xz_after_fall])\n\tassert_true.call("
-          if text.count(stack_anchor) != 1:
-              raise SystemExit('stack diagnostic anchor mismatch')
-          text = text.replace(stack_anchor, stack_debug, 1)
+          path = Path('gameplay/props/ordinary_prop.gd')
+          text = path.read_text(encoding='utf-8')
+          text = replace_once(
+              text,
+              '@export var support_probe_inset: float = 0.9\n',
+              '@export var support_probe_inset: float = 1.0\n',
+              'full-footprint support probe',
+          )
+          text = replace_once(
+              text,
+              '\n\tif velocity.y <= 0.0 and _has_support():\n\t\t_enter_settling()\n',
+              '',
+              'premature proximity settling',
+          )
           path.write_text(text, encoding='utf-8')
+
+          scene = Path('scenes/PropLab.tscn')
+          scene_text = scene.read_text(encoding='utf-8')
+          scene_text = replace_once(
+              scene_text,
+              'text = "3.5 PROP LAB\\nF = pick up / drop · G = throw held prop\\nHeld props suppress ordinary world interaction\\nGreen stand: edge support · right stack: remove lower box"',
+              'text = "3.5 PROP LAB\\nF = pick up / throw held prop\\nHeld props suppress ordinary world interaction\\nGreen stand: edge support · right stack: remove lower box"',
+              'Prop Lab instructions',
+          )
+          scene.write_text(scene_text, encoding='utf-8')
           PY
+
+      - name: Remove temporary workflows
+        run: |
+          rm .github/workflows/fix_phase_3_5.yml
+          rm .github/workflows/diagnose_phase_3_5.yml
+
+      - name: Check intended diff
+        shell: bash
+        run: |
+          git diff --check
+          git status --short
+          test "$(git status --short | sed 's/^...//' | sort)" = "$(printf '%s\n' \
+            .github/workflows/diagnose_phase_3_5.yml \
+            .github/workflows/fix_phase_3_5.yml \
+            application/application_input_boundary.gd \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/GAME_VISION.md \
+            docs/TESTING.md \
+            gameplay/props/ordinary_prop.gd \
+            player/player.gd \
+            project.godot \
+            scenes/PropLab.tscn \
+            tests/props/prop_regressions.gd | sort)"
 
       - name: Setup Godot 4.7.2
         uses: chickensoft-games/setup-godot@v2
         with:
           version: 4.7.2
           use-dotnet: false
+          include-templates: false
 
       - name: Import project
         run: godot --headless --path . --import
 
-      - name: Run focused prop diagnostics
-        run: godot --headless --path . --script res://tests/props/run_prop_tests.gd
+      - name: Run authoritative regression barrier
+        run: godot --headless --path . --script res://tests/run_all_tests.gd
+
+      - name: Commit corrected Phase 3.5
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            application/application_input_boundary.gd \
+            player/player.gd \
+            project.godot \
+            gameplay/props/ordinary_prop.gd \
+            scenes/PropLab.tscn \
+            tests/props/prop_regressions.gd \
+            docs/GAME_VISION.md \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/TESTING.md \
+            .github/workflows/fix_phase_3_5.yml \
+            .github/workflows/diagnose_phase_3_5.yml
+          git diff --cached --check
+          git commit -m "Fix Phase 3.5 F prop throw and settling"
+          git push origin HEAD:test
