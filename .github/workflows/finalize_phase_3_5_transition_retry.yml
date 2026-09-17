@@ -1,5 +1,5 @@
 name: Diagnose Phase 3.5 first physics tick
-# Diagnostic iteration: geometric player-overlap escape.
+# Diagnostic iteration: kinematic overlap escape then rigid handoff.
 
 on:
   push:
