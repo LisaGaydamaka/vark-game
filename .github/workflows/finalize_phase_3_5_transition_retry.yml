@@ -1,5 +1,5 @@
-name: Diagnose Phase 3.5 first physics tick
-# Diagnostic iteration: kinematic overlap escape then rigid handoff.
+name: Diagnose Phase 3.5 overlap handoff
+# Read-only validation of the staged overlap-only escape and rigid handoff.
 
 on:
   push:
@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-phase-3-5-first-tick:
-    if: github.event.head_commit.message == 'Run Phase 3.5 first-tick diagnostic'
+  diagnose-phase-3-5-overlap-handoff:
+    if: github.event.head_commit.message == 'Run Phase 3.5 overlap handoff diagnostic'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -21,7 +21,7 @@ jobs:
           ref: test
           fetch-depth: 0
 
-      - name: Apply candidate and first-tick diagnostic
+      - name: Apply staged candidate
         shell: bash
         run: |
           python - <<'PY'
@@ -37,10 +37,8 @@ jobs:
           PY
           python -m py_compile tools/phase35_transition_fix_tmp.py
           python -m py_compile tools/phase35_final_adjust_tmp.py
-          python -m py_compile tools/phase35_first_tick_diag_tmp.py
           python tools/phase35_transition_fix_tmp.py
           python tools/phase35_final_adjust_tmp.py
-          python tools/phase35_first_tick_diag_tmp.py
           git diff --check
 
       - name: Setup Godot 4.7.2
@@ -53,11 +51,5 @@ jobs:
       - name: Import project
         run: timeout 120s godot --headless --path . --import
 
-      - name: Run focused Props diagnostic
-        shell: bash
-        run: |
-          set +e
-          timeout 150s godot --headless --path . --script res://tests/props/run_prop_tests.gd
-          status=$?
-          echo "Focused diagnostic exit status: $status"
-          exit 1
+      - name: Run focused Props suite
+        run: timeout 150s godot --headless --path . --script res://tests/props/run_prop_tests.gd
