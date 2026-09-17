@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   finalize-phase-3-5-production:
-    if: github.event.head_commit.message == 'Finalize Phase 3.5 correction after blocker sync'
+    if: github.event.head_commit.message == 'Run Phase 3.5 first-tick ordering correction'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
