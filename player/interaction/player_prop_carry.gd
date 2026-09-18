@@ -109,7 +109,7 @@ func _release(motion_kind: StringName, initial_velocity: Vector3) -> bool:
 func _compute_release_transform() -> Dictionary:
 	var view_basis: Basis = camera.global_transform.basis.orthonormalized()
 	var forward: Vector3 = -view_basis.z.normalized()
-	var release_basis: Basis = (view_basis * Basis(Vector3.BACK, PI * 0.5)).orthonormalized()
+	var release_basis: Basis = _upright_release_basis(view_basis)
 	var origin: Vector3 = camera.global_position
 	var maximum_distance: float = maxf(release_distance, 0.0)
 	var candidate := Transform3D(release_basis, origin + forward * maximum_distance)
@@ -140,6 +140,19 @@ func _compute_release_transform() -> Dictionary:
 	if not _is_release_pose_world_clear(candidate):
 		candidate.origin = origin + forward * safe_distance
 	return {"transform": candidate}
+
+
+func _upright_release_basis(view_basis: Basis) -> Basis:
+	var horizontal_forward: Vector3 = -view_basis.z
+	horizontal_forward.y = 0.0
+	if horizontal_forward.length_squared() <= 0.000001 and player != null:
+		horizontal_forward = -player.global_transform.basis.z
+		horizontal_forward.y = 0.0
+	if horizontal_forward.length_squared() <= 0.000001:
+		return Basis.IDENTITY
+	horizontal_forward = horizontal_forward.normalized()
+	var yaw: float = atan2(-horizontal_forward.x, -horizontal_forward.z)
+	return Basis(Vector3.UP, yaw).orthonormalized()
 
 
 func _is_release_pose_world_clear(candidate: Transform3D) -> bool:

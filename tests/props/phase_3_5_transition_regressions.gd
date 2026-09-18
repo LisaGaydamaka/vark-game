@@ -226,7 +226,8 @@ func _prove_traversal_invalidation(
 	var hang: RefCounted = player.get("ledge_hang") as RefCounted
 	var corner: RefCounted = player.get("ledge_corner") as RefCounted
 	var mantle: RefCounted = player.get("ledge_mantle") as RefCounted
-	if controller == null or hang == null or corner == null or mantle == null:
+	var detector: RefCounted = player.get("ledge_detector") as RefCounted
+	if controller == null or hang == null or corner == null or mantle == null or detector == null:
 		assert_true.call(false, "Traversal components exist for collider invalidation")
 		return
 	var candidate := PlayerLedgeDetector.LedgeCandidate.new()
@@ -256,6 +257,38 @@ func _prove_traversal_invalidation(
 	mantle.set("phase", PlayerMantle.Phase.LIFT)
 	controller.set("state", PlayerLedgeController.State.MANTLING)
 	assert_true.call(bool(controller.call("invalidate_collider", prop.get_rid())) and int(controller.get("state")) == PlayerLedgeController.State.NONE, "Mantle state invalidates with its prop collider")
+
+	var settled_snapshot: Dictionary = prop.call("capture_semantic_state")
+	assert_true.call(bool(detector.call("is_candidate_attachment_stable", candidate)), "A settled prop is valid traversal attachment geometry")
+	var moving_snapshot := {
+		"phase": OrdinaryProp.PHASE_MOVING,
+		"motion_kind": OrdinaryProp.MOTION_DISTURBED,
+		"transform": prop.global_transform,
+		"linear_velocity": Vector3.ZERO,
+		"settle_yaw": 0.0,
+	}
+	assert_true.call(
+		bool(prop.call("apply_semantic_state", moving_snapshot))
+		and not bool(detector.call("is_candidate_attachment_stable", candidate)),
+		"A moving ordinary prop is rejected as stale world-space traversal geometry"
+	)
+	mantle_candidate = PlayerMantle.MantleCandidate.new()
+	mantle_candidate.source_candidate = candidate
+	mantle_candidate.valid = true
+	mantle.set("active_candidate", mantle_candidate)
+	mantle.set("phase", PlayerMantle.Phase.LIFT)
+	controller.set("state", PlayerLedgeController.State.MANTLING)
+	controller.call("update", false, false, 1.0 / 60.0)
+	assert_true.call(
+		int(controller.get("state")) == PlayerLedgeController.State.NONE
+		and int(mantle.get("phase")) == PlayerMantle.Phase.NONE,
+		"Active mantle cancels to air when its ordinary-prop attachment becomes dynamic"
+	)
+	assert_true.call(
+		bool(prop.call("apply_semantic_state", settled_snapshot))
+		and bool(detector.call("is_candidate_attachment_stable", candidate)),
+		"Traversal attachment eligibility returns only after the prop is semantically settled again"
+	)
 
 
 func _prove_contact_manifold_settle(tree: SceneTree, world: Node3D, assert_true: Callable) -> void:

@@ -215,6 +215,29 @@ func clear_candidate() -> void:
 	current_candidates.clear()
 
 
+func is_candidate_attachment_stable(candidate: LedgeCandidate) -> bool:
+	if candidate == null:
+		return false
+	return (
+		_collider_allows_traversal_attachment(candidate.wall_collider_rid)
+		and _collider_allows_traversal_attachment(candidate.top_collider_rid)
+	)
+
+
+func _collider_allows_traversal_attachment(collider_rid: RID) -> bool:
+	if not collider_rid.is_valid():
+		return true
+	var instance_id: int = PhysicsServer3D.body_get_object_instance_id(collider_rid)
+	if instance_id == 0:
+		return true
+	var collider: Object = instance_from_id(instance_id)
+	if collider == null or not is_instance_valid(collider):
+		return false
+	if collider.has_method("is_traversal_attachment_stable"):
+		return bool(collider.call("is_traversal_attachment_stable"))
+	return true
+
+
 func invalidate_collider(collider_rid: RID) -> bool:
 	if not collider_rid.is_valid():
 		return false

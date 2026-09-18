@@ -142,7 +142,43 @@ func _candidate_uses_collider(
 	)
 
 
+func _active_attachment_is_stable() -> bool:
+	match state:
+		State.CATCHING:
+			return ledge_detector.is_candidate_attachment_stable(active_catch_candidate)
+		State.HANGING:
+			return ledge_detector.is_candidate_attachment_stable(ledge_hang.get_candidate())
+		State.CORNERING:
+			var candidates: Array[PlayerLedgeDetector.LedgeCandidate] = ledge_corner.get_release_candidates()
+			if candidates.is_empty():
+				return false
+			for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
+				if not ledge_detector.is_candidate_attachment_stable(candidate):
+					return false
+			return true
+		State.MANTLING:
+			return ledge_detector.is_candidate_attachment_stable(ledge_mantle.get_release_candidate())
+	return true
+
+
+func _release_unstable_attachment(delta: float) -> void:
+	match state:
+		State.CATCHING:
+			ledge_catch.cancel()
+			active_catch_candidate = null
+		State.HANGING:
+			ledge_hang.cancel()
+		State.CORNERING:
+			ledge_corner.cancel()
+		State.MANTLING:
+			ledge_mantle.cancel()
+	_finish_release_to_air(delta, true)
+
+
 func update(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
+	if state != State.NONE and not _active_attachment_is_stable():
+		_release_unstable_attachment(delta)
+		return
 	match state:
 		State.CATCHING:
 			_update_ledge_catch(crouch_pressed, delta)
@@ -165,6 +201,8 @@ func try_enter_hang_from_normal(delta: float) -> bool:
 
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate == null or not candidate.hangable:
+			continue
+		if not ledge_detector.is_candidate_attachment_stable(candidate):
 			continue
 		if traversal_guard.is_hang_blocked(candidate):
 			continue
@@ -194,6 +232,8 @@ func try_enter_mantle_from_contacts(
 	)
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate == null:
+			continue
+		if not ledge_detector.is_candidate_attachment_stable(candidate):
 			continue
 		if traversal_guard.is_mantle_blocked(candidate):
 			continue
@@ -290,6 +330,8 @@ func _candidate_matches_contact(
 func _try_start_free_mantle(
 	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
+	if not ledge_detector.is_candidate_attachment_stable(candidate):
+		return false
 	var mantle_candidate: PlayerMantle.MantleCandidate = (
 		ledge_mantle.find_air_candidate(
 			body,
@@ -479,7 +521,10 @@ func _update_ledge_corner(jump_pressed: bool, crouch_pressed: bool, delta: float
 			target_wall_normal,
 			body.global_position
 		)
-		if completed_candidate == null:
+		if (
+			completed_candidate == null
+			or not ledge_detector.is_candidate_attachment_stable(completed_candidate)
+		):
 			_release_corner_to_air(delta)
 			return
 		ledge_corner.cancel()

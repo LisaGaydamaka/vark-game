@@ -69,6 +69,14 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Unselected prop presentation uses normal lit shading and ordinary cast/receive shadows"
 	)
 	assert_true.call(pickup_prop.freeze and pickup_prop.lock_rotation and pickup_prop.continuous_cd, "Settled props remain exactly stable until an explicit physical cause promotes them")
+	var prop_physics_material: PhysicsMaterial = pickup_prop.physics_material_override
+	assert_true.call(
+		pickup_prop.mass <= 0.9
+		and prop_physics_material != null
+		and prop_physics_material.friction <= 0.6
+		and float(pickup_prop.get("player_push_speed_scale")) >= 0.3,
+		"Ordinary crates use the lighter, more responsive Phase 3.5 physical tuning"
+	)
 	assert_true.call(pickup_prop.call("get_visual_model") == DefaultPropVisual and bool(pickup_prop.call("set_visual_model", AlternatePropVisual)) and pickup_prop.get_instance_id() == original_instance_id and prop_collision.shape != null, "Compatible external prop model replacement preserves the gameplay instance and collider")
 
 	var edge_start: Transform3D = edge_prop.global_transform
@@ -128,13 +136,15 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var released_state: Dictionary = pickup_prop.call("capture_semantic_state")
 	var released_velocity: Vector3 = released_state.get("linear_velocity", Vector3.ZERO)
 	var release_direction: Vector3 = (pickup_prop.global_position - release_origin).normalized()
-	var released_facing: Vector3 = _horizontal_forward_from_basis(pickup_prop.global_transform.basis)
+	var released_basis: Basis = pickup_prop.global_transform.basis.orthonormalized()
+	var released_facing: Vector3 = _horizontal_forward_from_basis(released_basis)
 	assert_true.call(not pickup_prop.freeze and released_state.get("motion_kind", &"") == OrdinaryProp.MOTION_RELEASED and released_velocity.length() < 2.0 and release_direction.dot(release_forward) > 0.72, "R gently restores the prop as a live rigid body at a view-derived release point")
-	assert_true.call(absf(pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP)) < 0.25, "Released moving box starts side-on rather than canonical top-up")
+	assert_true.call(released_basis.y.dot(Vector3.UP) > 0.999999, "R release enters world physics with the box top already up")
 	await _settle_until_phase(tree, pickup_prop, OrdinaryProp.PHASE_SETTLED, 160)
 	var released_strength: float = _max_impact_strength(sound_events, released_sound_start)
-	var released_settled_facing: Vector3 = _horizontal_forward_from_basis(pickup_prop.global_transform.basis)
-	assert_true.call(pickup_prop.freeze and pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999 and released_settled_facing.dot(released_facing) > 0.995, "Gentle release smoothly settles top-up by removing pitch/roll while preserving its yaw, then becomes exactly stable")
+	var released_settled_basis: Basis = pickup_prop.global_transform.basis.orthonormalized()
+	var released_settled_facing: Vector3 = _horizontal_forward_from_basis(released_settled_basis)
+	assert_true.call(pickup_prop.freeze and released_settled_basis.y.dot(Vector3.UP) > 0.999999 and released_settled_facing.dot(released_facing) > 0.995 and released_settled_basis.is_equal_approx(released_basis), "Gentle release keeps its upright orientation through settle instead of rolling onto another face")
 	assert_true.call(absf(pickup_prop.global_position.y - 0.3) <= 0.015 and bool(pickup_prop.call("is_supported")), "A released crate is re-seated onto its real support plane after top-up normalization instead of freezing with a visible air gap")
 
 	assert_true.call(bool(pickup_prop.call("apply_semantic_state", carried_state)) and bool(pickup_prop.call("reconcile_after_restore", player)), "Restore reconciliation rebuilds the carried_junk relationship without serializing a live player reference")
@@ -152,17 +162,36 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var thrown_basis: Basis = pickup_prop.global_transform.basis.orthonormalized()
 	var thrown_facing: Vector3 = _horizontal_forward_from_basis(thrown_basis)
 	var thrown_velocity: Vector3 = thrown_state.get("linear_velocity", Vector3.ZERO)
-	assert_true.call(not pickup_prop.freeze and thrown_state.get("motion_kind", &"") == OrdinaryProp.MOTION_THROWN and thrown_velocity.length() > released_velocity.length() + 2.0 and pickup_prop.get_instance_id() == original_instance_id, "F throws the same prop identity as an active rigid body with substantially stronger motion than R release")
+	assert_true.call(not pickup_prop.freeze and thrown_state.get("motion_kind", &"") == OrdinaryProp.MOTION_THROWN and thrown_velocity.length() > released_velocity.length() + 2.0 and pickup_prop.get_instance_id() == original_instance_id and thrown_basis.y.dot(Vector3.UP) > 0.999999, "F throws the same prop identity upright as an active rigid body with substantially stronger motion than R release")
 	var observed_collision: bool = await _wait_for_contact(tree, pickup_prop, 120)
 	assert_true.call(observed_collision, "Thrown rigid prop reaches a real physics contact")
 	if observed_collision and pickup_prop.call("get_semantic_phase") != OrdinaryProp.PHASE_SETTLED:
 		assert_true.call(pickup_prop.global_transform.basis.orthonormalized().is_equal_approx(thrown_basis), "Rigid-body collision changes translation without rotating the thrown box")
 	await _settle_until_phase(tree, pickup_prop, OrdinaryProp.PHASE_SETTLED, 220)
 	var thrown_strength: float = _max_impact_strength(sound_events, thrown_sound_start)
-	var thrown_settled_facing: Vector3 = _horizontal_forward_from_basis(pickup_prop.global_transform.basis)
-	assert_true.call(pickup_prop.freeze and pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999 and thrown_settled_facing.dot(thrown_facing) > 0.995 and pickup_prop.linear_velocity.is_zero_approx(), "Thrown box smoothly settles top-up and stable without a global compass-facing snap")
+	var thrown_settled_basis: Basis = pickup_prop.global_transform.basis.orthonormalized()
+	var thrown_settled_facing: Vector3 = _horizontal_forward_from_basis(thrown_settled_basis)
+	assert_true.call(pickup_prop.freeze and thrown_settled_basis.y.dot(Vector3.UP) > 0.999999 and thrown_settled_facing.dot(thrown_facing) > 0.995 and thrown_settled_basis.is_equal_approx(thrown_basis) and pickup_prop.linear_velocity.is_zero_approx(), "Thrown box remains upright through collision and settle without a second face-changing rotation")
 	assert_true.call(thrown_strength > released_strength and released_strength > 0.0, "Gentle release emits lower semantic impact strength than a throw")
 
+	var reset_lower_state := {
+		"phase": OrdinaryProp.PHASE_SETTLED,
+		"motion_kind": OrdinaryProp.MOTION_NONE,
+		"transform": lower_start,
+		"linear_velocity": Vector3.ZERO,
+	}
+	var reset_upper_state := {
+		"phase": OrdinaryProp.PHASE_SETTLED,
+		"motion_kind": OrdinaryProp.MOTION_NONE,
+		"transform": upper_start,
+		"linear_velocity": Vector3.ZERO,
+	}
+	assert_true.call(
+		bool(stack_lower.call("apply_semantic_state", reset_lower_state))
+		and bool(stack_upper.call("apply_semantic_state", reset_upper_state)),
+		"Support-loss stack fixture is restored after unrelated earlier prop impacts"
+	)
+	await _settle_physics(tree, 2)
 	var upper_facing: Vector3 = _horizontal_forward_from_basis(stack_upper.global_transform.basis)
 	var upper_xz := Vector2(stack_upper.global_position.x, stack_upper.global_position.z)
 	assert_true.call(bool(player.call("try_carry_prop", stack_lower)), "The lower stack support can be removed into the same carried Junk slot")

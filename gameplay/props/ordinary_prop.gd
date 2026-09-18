@@ -15,9 +15,9 @@ const MOTION_DISTURBED: StringName = &"disturbed"
 
 const SETTLE_ALIGNMENT_INTERRUPT_SPEED: float = 0.75
 const PLAYER_PUSH_MIN_SPEED: float = 0.15
-const PROP_IMPACT_MIN_IMPULSE: float = 0.05
-const PROP_IMPACT_TRANSFER_SCALE: float = 0.35
-const PROP_IMPACT_MAX_IMPULSE: float = 2.50
+const PROP_IMPACT_MIN_IMPULSE: float = 0.035
+const PROP_IMPACT_TRANSFER_SCALE: float = 0.60
+const PROP_IMPACT_MAX_IMPULSE: float = 3.25
 
 const IMPACT_SOUND_KIND: StringName = &"prop.impact"
 
@@ -38,9 +38,9 @@ const COLLISION_LAYER_PROP_IGNORING_PLAYER: int = 1 << 3
 @export var settle_linear_speed: float = 0.12
 @export var settle_contact_frames_required: int = 5
 @export var settle_alignment_duration: float = 0.20
-@export var player_push_speed_scale: float = 0.22
-@export var player_push_min_motion_speed: float = 0.30
-@export var player_push_max_motion_speed: float = 0.70
+@export var player_push_speed_scale: float = 0.32
+@export var player_push_min_motion_speed: float = 0.40
+@export var player_push_max_motion_speed: float = 1.00
 @export var support_probe_distance: float = 0.08
 @export var support_probe_inset: float = 1.0
 @export var minimum_support_normal_y: float = 0.55
@@ -303,6 +303,12 @@ func is_supported() -> bool:
 	return _has_support()
 
 
+func is_traversal_attachment_stable() -> bool:
+	# Ledge/mantle geometry is sampled in world space. Ordinary props are valid
+	# traversal anchors only while their semantic transform is exact/stable.
+	return _phase == PHASE_SETTLED
+
+
 func is_world_presentation_enabled() -> bool:
 	return prop_mesh != null and prop_mesh.visible and collision_layer != 0 and collision_mask != 0
 
@@ -384,14 +390,22 @@ func release_from_carry(
 		return false
 	if not _is_finite_transform(release_transform) or not _is_finite_vector(initial_velocity):
 		return false
+	var upright_release_transform: Transform3D = release_transform
+	upright_release_transform.basis = _top_up_basis_for_yaw(
+		_yaw_from_basis(release_transform.basis)
+	)
+	# Carry->world orientation is semantic physics state, not later settle
+	# presentation. Both F and R enter the world with the box top already up.
+	# Shape-aware player placement is owned by PlayerPropCarry before this
+	# lower-level transition is accepted.
 	_cancel_settle_alignment()
 	_clear_temporary_player_collision_ignore()
 	_holder = null
-	global_transform = release_transform
+	global_transform = upright_release_transform
 	var overlaps_releasing_player: bool = (
 		releasing_player != null
 		and is_instance_valid(releasing_player)
-		and _shape_overlaps_body_at_transform(release_transform, releasing_player)
+		and _shape_overlaps_body_at_transform(upright_release_transform, releasing_player)
 	)
 	if prop_mesh != null:
 		prop_mesh.visible = true
@@ -403,7 +417,7 @@ func release_from_carry(
 	# F and R differ only by motion kind/velocity. The body becomes live now,
 	# while the exact transform + velocity commit is synchronized with Jolt in
 	# _integrate_forces() on the first active rigid-body step.
-	_stage_rigid_launch(motion_kind, release_transform, initial_velocity)
+	_stage_rigid_launch(motion_kind, upright_release_transform, initial_velocity)
 	return true
 
 func capture_semantic_state() -> Dictionary:
@@ -575,7 +589,13 @@ func _update_dynamic_settling() -> void:
 func _begin_settle_alignment(support_point: Vector3, support_normal: Vector3) -> void:
 	_clear_pending_rigid_launch()
 	var normal: Vector3 = support_normal.normalized() if support_normal.length_squared() > 0.000001 else Vector3.UP
-	var target_basis: Basis = _top_up_basis_for_yaw(_settle_yaw)
+	var current_basis: Basis = global_transform.basis.orthonormalized()
+	var target_basis: Basis = current_basis
+	# Carry release/throw is already exactly top-up and angular motion is locked.
+	# Preserve that exact orientation through settle instead of recomputing a
+	# second yaw basis that can make a symmetric box appear to roll to a new face.
+	if current_basis.y.dot(Vector3.UP) < 0.999999:
+		target_basis = _top_up_basis_for_yaw(_settle_yaw)
 	var target_origin: Vector3 = _origin_reseated_on_support(
 		target_basis,
 		global_position,
