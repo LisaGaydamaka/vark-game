@@ -1,7 +1,0 @@
-PASS: Ground-mantle fixture reaches the moving-crate state through real grounded player contact
-PASS: Grounded mantle while pushing a moving prop enters the ordinary PlayerMantle path instead of ballistic jump
-PASS: Ground mantle completes through the ordinary PlayerMantle lift/forward path on the moving prop
-PASS: Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling
-ERROR: FAIL: Moving-prop mantle keeps the player attachment-relative during lateral crate translation
-PASS: Completed moving-prop mantle accepts already-held forward locomotion instead of leaving the player stuck on top
- - Moving-prop mantle keeps the player attachment-relative during lateral crate translation

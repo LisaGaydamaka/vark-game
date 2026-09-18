@@ -1,2 +1,0 @@
-TRACE_V7 lateral=false max_error=0.0017511844635 prop_dx=0.00957417488098 player=(-2.810395, 0.60087, -1.759186) prop=(-2.984141, 0.3, -2.059186) state=0
-ERROR: FAIL: Moving-prop mantle keeps the player attachment-relative during lateral crate translation

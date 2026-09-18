@@ -201,7 +201,9 @@ func _prove_ground_mantle_tracks_moving_prop(
 	await tree.process_frame
 	prop.global_position = Vector3(-3.0, 0.3, -2.0)
 	player.global_position = Vector3(-3.0, 0.0, -0.95)
-	player.rotation.y = 0.0
+	# Approach off-axis so ordinary forward contact gives the crate lateral
+	# velocity through the production contact solver.
+	player.rotation.y = deg_to_rad(-15.0)
 	player.velocity = Vector3.ZERO
 	var head: Node3D = player.get_node("Head") as Node3D
 	head.rotation.x = 0.0
@@ -243,15 +245,23 @@ func _prove_ground_mantle_tracks_moving_prop(
 		entered_mantle and absf(player.velocity.y) <= 0.05,
 		"Grounded mantle while pushing a moving prop enters the ordinary PlayerMantle path instead of ballistic jump"
 	)
-	Input.action_release("move_forward")
-
+	# Keep forward held through traversal completion; locomotion must resume
+	# from the already-held command when traversal ownership ends.
 	var moving_start: Vector3 = prop.global_position
+	var attachment_local_start: Vector3 = prop.global_transform.affine_inverse() * player.global_position
 	var saw_prop_motion_during_mantle: bool = false
+	var saw_lateral_prop_motion_during_mantle: bool = false
+	var max_attachment_lateral_error: float = 0.0
 	var completed_mantle: bool = false
 	for _frame_index: int in range(120):
 		await _settle_physics(tree)
 		if prop.global_position.distance_to(moving_start) > 0.01:
 			saw_prop_motion_during_mantle = true
+		if absf(prop.global_position.x - moving_start.x) > 0.005:
+			saw_lateral_prop_motion_during_mantle = true
+		if controller.state == PlayerLedgeController.State.MANTLING:
+			var attachment_local_now: Vector3 = prop.global_transform.affine_inverse() * player.global_position
+			max_attachment_lateral_error = maxf(max_attachment_lateral_error, absf(attachment_local_now.x - attachment_local_start.x))
 		if (
 			entered_mantle
 			and controller.state == PlayerLedgeController.State.NONE
@@ -268,15 +278,19 @@ func _prove_ground_mantle_tracks_moving_prop(
 		or prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED,
 		"Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling"
 	)
+	assert_true.call(
+		saw_lateral_prop_motion_during_mantle and max_attachment_lateral_error <= 0.003,
+		"Moving-prop mantle keeps the player attachment-relative during lateral crate translation"
+	)
 
 	var locomotion_start: Vector3 = player.global_position
-	Input.action_press("move_right")
 	await _settle_physics(tree, 8)
-	Input.action_release("move_right")
+	Input.action_release("move_forward")
 	assert_true.call(
 		completed_mantle
+		and controller.state == PlayerLedgeController.State.NONE
 		and player.global_position.distance_to(locomotion_start) > 0.025,
-		"Completed moving-prop mantle returns ordinary locomotion instead of leaving the player stuck on top"
+		"Completed moving-prop mantle accepts already-held forward locomotion instead of leaving the player stuck on top"
 	)
 	prop.queue_free()
 	await tree.process_frame

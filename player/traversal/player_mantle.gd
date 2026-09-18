@@ -300,7 +300,7 @@ func _enter_forward_phase(player: CharacterBody3D) -> bool:
 	return true
 
 
-func _refresh_active_attachment_route() -> bool:
+func _refresh_active_attachment_route(player: CharacterBody3D) -> bool:
 	if active_candidate == null or active_candidate.source_candidate == null:
 		return false
 	var source: PlayerLedgeDetector.LedgeCandidate = active_candidate.source_candidate
@@ -312,6 +312,22 @@ func _refresh_active_attachment_route() -> bool:
 	var current_transform: Transform3D = source.attachment_collider_transform
 	if current_transform.is_equal_approx(previous_transform):
 		return true
+
+	# Lift and forward phases already chase their refreshed route axes. The
+	# unrepresented source motion is along the ledge tangent, so inherit only
+	# that component before refreshing geometry. This keeps an angled moving
+	# prop under the player without double-applying forward/lift translation.
+	var source_motion: Vector3 = current_transform.origin - previous_transform.origin
+	var tangent_axis: Vector3 = active_candidate.traversal_axis.normalized()
+	var tangent_motion: Vector3 = tangent_axis * source_motion.dot(tangent_axis)
+	if tangent_motion.length_squared() > MOTION_EPSILON_SQUARED:
+		var tangent_collision: KinematicCollision3D = player.move_and_collide(
+			tangent_motion, false, PROBE_SAFE_MARGIN, false, PROBE_MAX_COLLISIONS
+		)
+		if tangent_collision != null:
+			var tangent_travel: Vector3 = tangent_collision.get_travel()
+			if tangent_travel.distance_to(tangent_motion) > get_route_progress_tolerance():
+				return false
 
 	var previous_inverse: Transform3D = previous_transform.affine_inverse()
 	route_edge_point = current_transform * (previous_inverse * route_edge_point)
@@ -371,7 +387,7 @@ func update(
 ) -> bool:
 	if active_candidate == null or phase == Phase.NONE:
 		return false
-	if not _refresh_active_attachment_route():
+	if not _refresh_active_attachment_route(player):
 		return false
 
 	player.velocity = Vector3.ZERO

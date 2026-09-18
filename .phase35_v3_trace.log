@@ -1,7 +1,0 @@
-PASS: Ground-mantle fixture reaches the moving-crate state through real grounded player contact
-TRACE setup push=true vx=0.0 phase=moving player=(-3.0, 0.0, -1.47023) prop=(-3.0, 0.3, -2.023965)
-PASS: Grounded mantle while pushing a moving prop enters the ordinary PlayerMantle path instead of ballistic jump
-PASS: Ground mantle completes through the ordinary PlayerMantle lift/forward path on the moving prop
-PASS: Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling
-TRACE result lateral=false error=0.0 completed=true state=0 dx=0.0
-PASS: Completed moving-prop mantle returns ordinary locomotion instead of leaving the player stuck on top
