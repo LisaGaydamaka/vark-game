@@ -43,6 +43,25 @@ replace_once(
 \t\tif traversal_guard.is_mantle_blocked(candidate):'''
 )
 
+# The last gameplay commit also added a second moving-prop rejection inside the
+# shared free-mantle starter. Removing only the outer candidate filter is not
+# enough: this inner guard still turns a valid grounded mantle request into the
+# caller's ballistic-jump fallback. Restore the pre-regression shared starter so
+# ground and air contact mantles both use find_air_candidate() -> try_start().
+replace_once(
+    "player/traversal/player_ledge_controller.gd",
+    '''func _try_start_free_mantle(
+\tcandidate: PlayerLedgeDetector.LedgeCandidate
+) -> bool:
+\tif not ledge_detector.is_candidate_attachment_stable(candidate):
+\t\treturn false
+\tvar mantle_candidate: PlayerMantle.MantleCandidate = (''',
+    '''func _try_start_free_mantle(
+\tcandidate: PlayerLedgeDetector.LedgeCandidate
+) -> bool:
+\tvar mantle_candidate: PlayerMantle.MantleCandidate = ('''
+)
+
 path = Path("tests/props/phase_3_5_transition_regressions.gd")
 text = path.read_text()
 start_marker = "func _prove_ground_mantle_tracks_moving_prop(\n"
