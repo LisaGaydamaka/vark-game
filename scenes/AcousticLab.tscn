@@ -1,0 +1,269 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+[ext_resource type="PackedScene" path="res://gameplay/doors/OrdinaryDoor.tscn" id="2_door"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_propagation.gd" id="3_propagation"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_space.gd" id="4_space"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_portal.gd" id="5_portal"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_listener.gd" id="6_listener"]
+[ext_resource type="Script" path="res://scenes/acoustic_probe_emitter.gd" id="7_emitter"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(24, 0.2, 18)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(24, 0.2, 18)
+
+[sub_resource type="BoxShape3D" id="WallShape"]
+size = Vector3(3.3, 2.8, 0.3)
+
+[sub_resource type="BoxMesh" id="WallMesh"]
+size = Vector3(3.3, 2.8, 0.3)
+
+[sub_resource type="BoxShape3D" id="CorridorWallShape"]
+size = Vector3(6, 2.8, 0.3)
+
+[sub_resource type="BoxMesh" id="CorridorWallMesh"]
+size = Vector3(6, 2.8, 0.3)
+
+[sub_resource type="BoxShape3D" id="ProbeShape"]
+size = Vector3(0.55, 0.55, 0.55)
+
+[sub_resource type="BoxMesh" id="ProbeMesh"]
+size = Vector3(0.55, 0.55, 0.55)
+
+[node name="AcousticLab" type="Node3D"]
+
+[node name="AcousticPropagation" type="Node" parent="."]
+script = ExtResource("3_propagation")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -30, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 0, 5)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(4, -0.1, -2)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="DoorWallLeft" type="StaticBody3D" parent="."]
+position = Vector3(-2.35, 1.4, -2)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DoorWallLeft"]
+shape = SubResource("WallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="DoorWallLeft"]
+mesh = SubResource("WallMesh")
+
+[node name="DoorWallRight" type="StaticBody3D" parent="."]
+position = Vector3(2.35, 1.4, -2)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DoorWallRight"]
+shape = SubResource("WallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="DoorWallRight"]
+mesh = SubResource("WallMesh")
+
+[node name="OrdinaryDoor" parent="." instance=ExtResource("2_door")]
+position = Vector3(-0.65, 0, -2)
+door_id = &"door.acoustic"
+
+[node name="CornerWall" type="StaticBody3D" parent="."]
+position = Vector3(7, 1.4, 0.35)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CornerWall"]
+shape = SubResource("CorridorWallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CornerWall"]
+mesh = SubResource("CorridorWallMesh")
+
+[node name="OpenRoomSpace" type="Node3D" parent="."]
+position = Vector3(0, 1.5, 2)
+script = ExtResource("4_space")
+space_id = &"room.open"
+half_extent_x = 4.0
+half_extent_y = 2.0
+half_extent_z = 4.0
+
+[node name="DoorRoomSpace" type="Node3D" parent="."]
+position = Vector3(0, 1.5, -6)
+script = ExtResource("4_space")
+space_id = &"room.door"
+half_extent_x = 4.0
+half_extent_y = 2.0
+half_extent_z = 4.0
+
+[node name="IsolatedRoomSpace" type="Node3D" parent="."]
+position = Vector3(-7, 1.5, -6)
+script = ExtResource("4_space")
+space_id = &"room.isolated"
+half_extent_x = 2.5
+half_extent_y = 2.0
+half_extent_z = 2.5
+
+[node name="EastCorridorSpace" type="Node3D" parent="."]
+position = Vector3(7, 1.5, 2)
+script = ExtResource("4_space")
+space_id = &"corridor.east"
+half_extent_x = 3.0
+half_extent_y = 2.0
+half_extent_z = 1.5
+
+[node name="SouthCorridorSpace" type="Node3D" parent="."]
+position = Vector3(10, 1.5, -2)
+script = ExtResource("4_space")
+space_id = &"corridor.south"
+half_extent_x = 1.5
+half_extent_y = 2.0
+half_extent_z = 2.5
+
+[node name="DoorPortal" type="Node3D" parent="."]
+position = Vector3(0, 1, -2)
+script = ExtResource("5_portal")
+portal_id = &"portal.door"
+space_a_id = &"room.open"
+space_b_id = &"room.door"
+door_id = &"door.acoustic"
+closed_transmission = 0.08
+open_transmission = 1.0
+
+[node name="EastPortal" type="Node3D" parent="."]
+position = Vector3(4, 1, 2)
+script = ExtResource("5_portal")
+portal_id = &"portal.east"
+space_a_id = &"room.open"
+space_b_id = &"corridor.east"
+
+[node name="CornerPortal" type="Node3D" parent="."]
+position = Vector3(9.5, 1, 0.5)
+script = ExtResource("5_portal")
+portal_id = &"portal.corner"
+space_a_id = &"corridor.east"
+space_b_id = &"corridor.south"
+
+[node name="SameRoomListener" type="Node3D" parent="."]
+position = Vector3(2, 1, 1)
+script = ExtResource("6_listener")
+listener_id = &"listener.same_room"
+hearing_threshold = 0.08
+print_debug_events = true
+
+[node name="Marker" type="MeshInstance3D" parent="SameRoomListener"]
+mesh = SubResource("ProbeMesh")
+
+[node name="StatusLabel" type="Label3D" parent="SameRoomListener"]
+position = Vector3(0, 0.8, 0)
+billboard = 1
+font_size = 22
+
+[node name="DoorRoomListener" type="Node3D" parent="."]
+position = Vector3(0, 1, -7)
+script = ExtResource("6_listener")
+listener_id = &"listener.behind_door"
+hearing_threshold = 0.08
+print_debug_events = true
+
+[node name="Marker" type="MeshInstance3D" parent="DoorRoomListener"]
+mesh = SubResource("ProbeMesh")
+
+[node name="StatusLabel" type="Label3D" parent="DoorRoomListener"]
+position = Vector3(0, 0.8, 0)
+billboard = 1
+font_size = 22
+
+[node name="IsolatedRoomListener" type="Node3D" parent="."]
+position = Vector3(-7, 1, -6)
+script = ExtResource("6_listener")
+listener_id = &"listener.isolated"
+hearing_threshold = 0.08
+print_debug_events = true
+
+[node name="Marker" type="MeshInstance3D" parent="IsolatedRoomListener"]
+mesh = SubResource("ProbeMesh")
+
+[node name="StatusLabel" type="Label3D" parent="IsolatedRoomListener"]
+position = Vector3(0, 0.8, 0)
+billboard = 1
+font_size = 22
+
+[node name="AroundCornerListener" type="Node3D" parent="."]
+position = Vector3(10, 1, -4)
+script = ExtResource("6_listener")
+listener_id = &"listener.around_corner"
+hearing_threshold = 0.08
+print_debug_events = true
+
+[node name="Marker" type="MeshInstance3D" parent="AroundCornerListener"]
+mesh = SubResource("ProbeMesh")
+
+[node name="StatusLabel" type="Label3D" parent="AroundCornerListener"]
+position = Vector3(0, 0.8, 0)
+billboard = 1
+font_size = 22
+
+[node name="FootstepEmitter" type="StaticBody3D" parent="."]
+position = Vector3(-1.2, 0.3, 3.2)
+script = ExtResource("7_emitter")
+sound_kind = &"footstep.test"
+sound_strength = 0.35
+base_color = Color(0.25, 0.55, 0.8, 1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FootstepEmitter"]
+shape = SubResource("ProbeShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="FootstepEmitter"]
+mesh = SubResource("ProbeMesh")
+
+[node name="StatusLabel" type="Label3D" parent="FootstepEmitter"]
+position = Vector3(0, 0.7, 0)
+billboard = 1
+font_size = 20
+
+[node name="SpeechEmitter" type="StaticBody3D" parent="."]
+position = Vector3(0, 0.3, 3.2)
+script = ExtResource("7_emitter")
+sound_kind = &"speech.test"
+sound_strength = 0.55
+base_color = Color(0.3, 0.75, 0.3, 1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="SpeechEmitter"]
+shape = SubResource("ProbeShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="SpeechEmitter"]
+mesh = SubResource("ProbeMesh")
+
+[node name="StatusLabel" type="Label3D" parent="SpeechEmitter"]
+position = Vector3(0, 0.7, 0)
+billboard = 1
+font_size = 20
+
+[node name="ImpactEmitter" type="StaticBody3D" parent="."]
+position = Vector3(1.2, 0.3, 3.2)
+script = ExtResource("7_emitter")
+sound_kind = &"impact.test"
+sound_strength = 1.0
+base_color = Color(0.8, 0.3, 0.25, 1)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ImpactEmitter"]
+shape = SubResource("ProbeShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="ImpactEmitter"]
+mesh = SubResource("ProbeMesh")
+
+[node name="StatusLabel" type="Label3D" parent="ImpactEmitter"]
+position = Vector3(0, 0.7, 0)
+billboard = 1
+font_size = 20
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(0, 3.1, 4)
+text = "3.6 ACOUSTIC LAB\nF on blue/green/red probes = footstep / speech / impact semantic sound\nListener markers show HEARD/MUTED · F on door changes transmission\nOpen room, isolated room, open passage, closed/open door, and L-corridor use one authored space/portal graph"
+billboard = 1
+font_size = 24

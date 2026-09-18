@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_space.gd" id="2_space"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_acoustic_space"
+description = "Authored acoustic region. Keep regions simple and overlap only where a smaller region should deliberately win."
+class_properties = Dictionary[String, Variant]({
+"space_id": "",
+"half_extent_x": 2.0,
+"half_extent_y": 2.0,
+"half_extent_z": 2.0,
+"angle": 180.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"space_id": "Required acoustic-space ID used by vark_acoustic_portal links.",
+"half_extent_x": "Half-width of this acoustic region in Godot world meters.",
+"half_extent_y": "Half-height of this acoustic region in Godot world meters.",
+"half_extent_z": "Half-depth of this acoustic region in Godot world meters.",
+"angle": "Optional authored facing; acoustics uses the full Node3D transform so rotated boxes remain valid."
+})
+auto_apply_to_matching_node_properties = true
+node_class = "Node3D"
+script_class = ExtResource("2_space")
+node_groups = Array[String](["vark_acoustic_space"])

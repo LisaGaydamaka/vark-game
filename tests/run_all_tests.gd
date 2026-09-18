@@ -15,6 +15,10 @@ const SUITES = [
 		"script": "res://tests/props/run_prop_tests.gd",
 	},
 	{
+		"name": "Acoustics",
+		"script": "res://tests/acoustics/run_acoustic_tests.gd",
+	},
+	{
 		"name": "Movement",
 		"script": "res://tests/movement/run_movement_tests.gd",
 	},

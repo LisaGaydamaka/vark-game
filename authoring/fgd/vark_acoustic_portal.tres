@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_portal.gd" id="2_portal"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_acoustic_portal"
+description = "Authored acoustic connection between two spaces. Optional door_id consumes the ordinary-door acoustic openness seam."
+class_properties = Dictionary[String, Variant]({
+"portal_id": "",
+"space_a_id": "",
+"space_b_id": "",
+"door_id": "",
+"closed_transmission": 0.08,
+"open_transmission": 1.0,
+"angle": 180.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"portal_id": "Required unique portal ID used by acoustic debug routes.",
+"space_a_id": "Required first connected vark_acoustic_space ID.",
+"space_b_id": "Required second connected vark_acoustic_space ID.",
+"door_id": "Optional ordinary-door door_id controlling transmission. Leave blank for an always-open passage.",
+"closed_transmission": "Relative transmission multiplier when the linked door is fully closed.",
+"open_transmission": "Relative transmission multiplier when the linked door is fully open or when no door is linked.",
+"angle": "Optional mapper-facing marker direction; propagation uses the marker origin."
+})
+auto_apply_to_matching_node_properties = true
+node_class = "Node3D"
+script_class = ExtResource("2_portal")
+node_groups = Array[String](["vark_acoustic_portal"])
