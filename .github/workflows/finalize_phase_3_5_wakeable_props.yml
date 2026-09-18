@@ -37,9 +37,11 @@ jobs:
           python tools/phase35_explicit_prop_physics_write_fix_tmp.py
           python -m py_compile \
             tools/phase35_wakeable_props_tmp.py \
-            tools/phase35_explicit_prop_physics_tmp.py
+            tools/phase35_explicit_prop_physics_tmp.py \
+            tools/phase35_solver_owned_external_motion_tmp.py
           python tools/phase35_wakeable_props_tmp.py
           python tools/phase35_explicit_prop_physics_tmp.py
+          python tools/phase35_solver_owned_external_motion_tmp.py
           rm -f \
             .github/workflows/finalize_phase_3_5_wakeable_props.yml \
             .github/workflows/diagnose_phase_3_5_explicit_props.yml \
@@ -47,7 +49,8 @@ jobs:
             tools/phase35_wakeable_props_fix_tmp.py \
             tools/phase35_explicit_prop_physics_tmp.py \
             tools/phase35_explicit_prop_physics_fix_tmp.py \
-            tools/phase35_explicit_prop_physics_write_fix_tmp.py
+            tools/phase35_explicit_prop_physics_write_fix_tmp.py \
+            tools/phase35_solver_owned_external_motion_tmp.py
           find tools -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
 
@@ -65,6 +68,7 @@ jobs:
               "tools/phase35_explicit_prop_physics_tmp.py",
               "tools/phase35_explicit_prop_physics_fix_tmp.py",
               "tools/phase35_explicit_prop_physics_write_fix_tmp.py",
+              "tools/phase35_solver_owned_external_motion_tmp.py",
               "gameplay/props/ordinary_prop.gd",
               "player/locomotion/player_contact_motion_solver.gd",
               "scenes/PropLab.tscn",
@@ -123,6 +127,7 @@ jobs:
             tools/phase35_explicit_prop_physics_tmp.py \
             tools/phase35_explicit_prop_physics_fix_tmp.py \
             tools/phase35_explicit_prop_physics_write_fix_tmp.py \
+            tools/phase35_solver_owned_external_motion_tmp.py \
             gameplay/props/ordinary_prop.gd \
             player/locomotion/player_contact_motion_solver.gd \
             scenes/PropLab.tscn \
