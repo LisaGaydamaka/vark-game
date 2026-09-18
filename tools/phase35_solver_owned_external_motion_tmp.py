@@ -11,6 +11,15 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 prop_path = Path("gameplay/props/ordinary_prop.gd")
 prop = prop_path.read_text(encoding="utf-8")
 
+# Continuous player pressure and one-shot prop impacts are different physical
+# causes. Player contact owns a bounded horizontal motion floor; prop impacts
+# use the solver's contact impulse instead of post-solver body velocity.
+prop = replace_once(
+    prop,
+    'const PROP_IMPACT_MIN_SPEED: float = 0.40\nconst PROP_IMPACT_TRANSFER_SCALE: float = 0.35\n',
+    'const PROP_IMPACT_MIN_IMPULSE: float = 0.05\nconst PROP_IMPACT_TRANSFER_SCALE: float = 0.35\n',
+    "contact impulse tuning",
+)
 prop = replace_once(
     prop,
     '@export var player_push_impulse_scale: float = 0.16\n@export var player_push_max_impulse: float = 0.55\n',
@@ -23,6 +32,22 @@ prop = replace_once(
     'var _pending_prop_impacts: Array[Dictionary] = []\n',
     'var _pending_prop_impacts: Array[Dictionary] = []\nvar _pending_external_impulse: Vector3 = Vector3.ZERO\nvar _pending_player_push_velocity: Vector3 = Vector3.ZERO\n',
     "solver-owned external motion state",
+)
+
+# The moving source body records the equal-and-opposite impulse that belongs on
+# the contacted prop. This stays meaningful even after Jolt has already changed
+# the source body's velocity during contact resolution.
+prop = replace_once(
+    prop,
+    '\t\t\t\t\t"source_velocity": state.linear_velocity,\n',
+    '\t\t\t\t\t"target_impulse": -state.get_contact_impulse(contact_index),\n',
+    "capture contact impulse",
+)
+prop = replace_once(
+    prop,
+    '\t\tbody.call("receive_prop_impact", impact.get("source_velocity", Vector3.ZERO))\n',
+    '\t\tbody.call("receive_prop_impact", impact.get("target_impulse", Vector3.ZERO))\n',
+    "dispatch contact impulse",
 )
 
 integrate_anchor = '''\t\t_pending_rigid_launch = false
@@ -75,25 +100,23 @@ old_impact = '''func receive_prop_impact(source_velocity: Vector3) -> bool:
 \tapply_central_impulse(horizontal_velocity.normalized() * impulse_strength)
 \treturn true
 '''
-new_impact = '''func receive_prop_impact(source_velocity: Vector3) -> bool:
+new_impact = '''func receive_prop_impact(contact_impulse: Vector3) -> bool:
 \tif _phase != PHASE_SETTLED and _phase != PHASE_SETTLING:
 \t\treturn false
-\tvar horizontal_velocity := Vector3(source_velocity.x, 0.0, source_velocity.z)
-\tvar speed: float = horizontal_velocity.length()
-\tif speed < PROP_IMPACT_MIN_SPEED:
+\tvar impulse_magnitude: float = contact_impulse.length()
+\tif impulse_magnitude < PROP_IMPACT_MIN_IMPULSE:
 \t\treturn false
-\tvar impulse_strength: float = minf(
-\t\tspeed * mass * PROP_IMPACT_TRANSFER_SCALE,
-\t\tPROP_IMPACT_MAX_IMPULSE
-\t)
-\tif impulse_strength <= 0.0:
+\tvar transferred_impulse: Vector3 = contact_impulse * PROP_IMPACT_TRANSFER_SCALE
+\tif transferred_impulse.length() > PROP_IMPACT_MAX_IMPULSE:
+\t\ttransferred_impulse = transferred_impulse.normalized() * PROP_IMPACT_MAX_IMPULSE
+\tif transferred_impulse.is_zero_approx():
 \t\treturn false
 \t_begin_motion(MOTION_DISTURBED, Vector3.ZERO)
-\t_pending_external_impulse += horizontal_velocity.normalized() * impulse_strength
+\t_pending_external_impulse += transferred_impulse
 \tsleeping = false
 \treturn true
 '''
-prop = replace_once(prop, old_impact, new_impact, "solver-owned prop impact")
+prop = replace_once(prop, old_impact, new_impact, "solver-owned prop contact impulse")
 
 old_push = '''func receive_player_push(player_velocity: Vector3) -> bool:
 \tif _phase == PHASE_CARRIED_JUNK:
@@ -172,6 +195,12 @@ new_striker = '''\tassert_true.call(
 \t)
 '''
 trans = replace_once(trans, old_striker, new_striker, "production-path striker launch regression")
+trans = replace_once(
+    trans,
+    '"A moving prop transfers physical motion into a sleeping settled prop without free tumbling"',
+    '"A moving prop transfers solver contact impulse into a settled prop without free tumbling"',
+    "prop impact regression wording",
+)
 trans_path.write_text(trans, encoding="utf-8")
 
 print("STAGED_SOLVER_OWNED_EXTERNAL_PROP_MOTION")
