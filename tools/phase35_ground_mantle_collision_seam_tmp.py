@@ -16,14 +16,15 @@ replace_once(
 \tcandidate: PlayerLedgeDetector.LedgeCandidate,
 \tcollisions: Array[KinematicCollision3D]
 ) -> bool:''',
-    '''func try_enter_ground_mantle_from_moved_candidate(
+    '''func try_enter_ground_mantle_from_dynamic_candidate(
 \tinput_direction: Vector3
 ) -> bool:
-\t# Ledge discovery happens before the locomotion transaction. A lightweight
-\t# exact-collider ledge can translate away during that same physics frame,
-\t# leaving no post-move KinematicCollision even though it is the same mantle
-\t# opportunity. Bridge only that proven same-frame transform change: no timer,
-\t# no coyote window, and no static/no-contact mantle path is introduced.
+\t# The ledge detector performs a real test_move against current world geometry
+\t# before locomotion. A dynamic exact-collider ledge can advance before the
+\t# player's movement callback, so the post-move collision list may be empty
+\t# even though this same-frame detector result still proves the mantle surface.
+\t# This fallback is intentionally limited to exact unstable/moving geometry;
+\t# static ground-mantle admission remains contact-driven exactly as before.
 \tvar candidates: Array[PlayerLedgeDetector.LedgeCandidate] = (
 \t\tledge_detector.get_candidates()
 \t)
@@ -34,18 +35,9 @@ replace_once(
 \t\t\tor not candidate.attachment_collider_rid.is_valid()
 \t\t):
 \t\t\tcontinue
-
-\t\tvar attachment_rid: RID = candidate.attachment_collider_rid
-\t\tvar discovery_transform: Transform3D = candidate.attachment_collider_transform
 \t\tif not ledge_detector.refresh_candidate_attachment(candidate):
 \t\t\tcontinue
-\t\tif (
-\t\t\tnot candidate.attachment_collider_transform_valid
-\t\t\tor candidate.attachment_collider_rid != attachment_rid
-\t\t\tor candidate.attachment_collider_transform.is_equal_approx(
-\t\t\t\tdiscovery_transform
-\t\t\t)
-\t\t):
+\t\tif ledge_detector.is_candidate_attachment_stable(candidate):
 \t\t\tcontinue
 \t\tif traversal_guard.is_mantle_blocked(candidate):
 \t\t\tcontinue
@@ -69,10 +61,11 @@ replace_once(
 \t\tsupport.release_walkable_support(body)
 \t\t_apply_controlled_jump()''',
     '''\tif ground_mantle_requested and collisions.is_empty():
-\t\t# A pushable ledge can move out of the contact solver during the same
-\t\t# grounded mantle frame. The traversal controller accepts this only when
-\t\t# the exact candidate collider proves a transform change since discovery.
-\t\tif ledge_controller.try_enter_ground_mantle_from_moved_candidate(
+\t\t# Dynamic ledge geometry may have advanced before this callback and erased
+\t\t# the movement collision. The same-frame detector result is accepted only
+\t\t# for an exact currently-unstable collider; static no-contact behavior does
+\t\t# not change.
+\t\tif ledge_controller.try_enter_ground_mantle_from_dynamic_candidate(
 \t\t\tinput_direction
 \t\t):
 \t\t\tstep.cancel()
@@ -84,4 +77,4 @@ replace_once(
 \t\t_apply_controlled_jump()'''
 )
 
-print("STAGED_GROUND_MANTLE_MOVED_COLLIDER_CONTACT_SEAM")
+print("STAGED_GROUND_MANTLE_DYNAMIC_COLLIDER_CONTACT_SEAM")
