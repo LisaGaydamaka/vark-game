@@ -3,6 +3,7 @@ extends SceneTree
 
 const PropRegressions = preload("res://tests/props/prop_regressions.gd")
 const TransitionRegressions = preload("res://tests/props/phase_3_5_transition_regressions.gd")
+const FreezeTraceRegressions = preload("res://tests/props/post_mantle_freeze_trace_regressions.gd")
 
 
 var failures: Array[String] = []
@@ -21,6 +22,9 @@ func _run_tests() -> void:
 
 	var transition_regressions: RefCounted = TransitionRegressions.new()
 	await transition_regressions.run(self, Callable(self, "_assert_true"))
+
+	var freeze_trace_regressions: RefCounted = FreezeTraceRegressions.new()
+	freeze_trace_regressions.run(Callable(self, "_assert_true"))
 
 	_print_summary()
 	quit(1 if not failures.is_empty() else 0)

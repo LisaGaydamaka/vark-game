@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://4a2boqd3kgh1"]
 
 [ext_resource type="Script" uid="uid://bh0cjgtr0ub3k" path="res://player/player.gd" id="1_ulp21"]
+[ext_resource type="Script" path="res://player/debug/player_post_mantle_freeze_monitor.gd" id="2_freeze"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_ulp21"]
 radius = 0.24
@@ -14,6 +15,9 @@ height = 1.49
 collision_layer = 2
 collision_mask = 5
 script = ExtResource("1_ulp21")
+
+[node name="PostMantleFreezeMonitor" type="Node" parent="."]
+script = ExtResource("2_freeze")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1757610795]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.745, 0)

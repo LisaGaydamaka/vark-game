@@ -8,6 +8,7 @@ const MINIMUM_SUPPORT_NORMAL_Y: float = 0.0001
 
 var max_collision_iterations: int
 var contact_projector: PlayerContactProjector
+var last_debug_snapshot: Dictionary = {}
 
 
 func _init(p_max_collision_iterations: int) -> void:
@@ -24,6 +25,7 @@ func move(
 	if delta <= 0.0:
 		return collisions
 
+	var start_position: Vector3 = player.global_position
 	var requested_velocity: Vector3 = player.velocity
 	var requested_horizontal_velocity := Vector3(
 		requested_velocity.x,
@@ -115,7 +117,21 @@ func move(
 		walkable_support_normal,
 		contact_planes
 	)
+	if OS.is_debug_build():
+		_capture_debug_snapshot(
+			player,
+			start_position,
+			requested_velocity,
+			walkable_support_active,
+			walkable_support_normal,
+			contact_planes,
+			collisions
+		)
 	return collisions
+
+
+func get_last_debug_snapshot() -> Dictionary:
+	return last_debug_snapshot.duplicate(true)
 
 
 func _push_contacted_props(
@@ -204,3 +220,66 @@ func _commit_resolved_velocity(
 		requested_velocity,
 		contact_planes
 	)
+
+
+func _capture_debug_snapshot(
+	player: CharacterBody3D,
+	start_position: Vector3,
+	requested_velocity: Vector3,
+	walkable_support_active: bool,
+	walkable_support_normal: Vector3,
+	contact_planes: Array[Vector3],
+	collisions: Array[KinematicCollision3D]
+) -> void:
+	var plane_values: Array = []
+	for plane: Vector3 in contact_planes:
+		plane_values.append(_vector3_to_array(plane))
+
+	var collision_values: Array = []
+	for collision: KinematicCollision3D in collisions:
+		if collision == null:
+			continue
+		var contacts: Array = []
+		for contact_index: int in range(collision.get_collision_count()):
+			var collider: Object = collision.get_collider(contact_index)
+			var collider_name: String = ""
+			if collider is Node:
+				collider_name = str((collider as Node).name)
+			elif collider != null:
+				collider_name = collider.get_class()
+			contacts.append({
+				"collider": collider_name,
+				"collider_rid": str(collision.get_collider_rid(contact_index)),
+				"position": _vector3_to_array(collision.get_position(contact_index)),
+				"normal": _vector3_to_array(collision.get_normal(contact_index)),
+			})
+		collision_values.append({
+			"travel": _vector3_to_array(collision.get_travel()),
+			"remainder": _vector3_to_array(collision.get_remainder()),
+			"contacts": contacts,
+		})
+
+	var resolved_velocity: Vector3 = player.velocity
+	last_debug_snapshot = {
+		"physics_frame": Engine.get_physics_frames(),
+		"start_position": _vector3_to_array(start_position),
+		"end_position": _vector3_to_array(player.global_position),
+		"requested_velocity": _vector3_to_array(requested_velocity),
+		"resolved_velocity": _vector3_to_array(resolved_velocity),
+		"requested_horizontal_speed": Vector2(
+			requested_velocity.x,
+			requested_velocity.z
+		).length(),
+		"resolved_horizontal_speed": Vector2(
+			resolved_velocity.x,
+			resolved_velocity.z
+		).length(),
+		"walkable_support_active": walkable_support_active,
+		"walkable_support_normal": _vector3_to_array(walkable_support_normal),
+		"contact_planes": plane_values,
+		"collisions": collision_values,
+	}
+
+
+func _vector3_to_array(value: Vector3) -> Array:
+	return [value.x, value.y, value.z]
