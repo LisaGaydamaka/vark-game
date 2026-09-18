@@ -1,12 +1,18 @@
-[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
 [ext_resource type="Script" path="res://gameplay/acoustics/acoustic_space.gd" id="2_space"]
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class_display_descriptor.gd" id="3_display"]
+
+[sub_resource type="Resource" id="AcousticBoundsDisplay"]
+script = ExtResource("3_display")
+display_asset_path = "\"authoring/models/acoustic_space_bounds.md3\""
+scale = "[mapper_half_extent_x / 64, mapper_half_extent_z / 64, mapper_half_extent_y / 64]"
 
 [resource]
 script = ExtResource("1_point")
 classname = "vark_acoustic_space"
-description = "Authored acoustic region. Keep regions simple and overlap only where a smaller region should deliberately win."
+description = "Authored acoustic region. TrenchBroom shows an editor-only bounds cage driven by the mapper half-extents; keep regions simple and overlap only where a smaller region should deliberately win."
 class_properties = Dictionary[String, Variant]({
 "space_id": "",
 "mapper_half_extent_x": 64.0,
@@ -14,6 +20,7 @@ class_properties = Dictionary[String, Variant]({
 "mapper_half_extent_z": 64.0,
 "angle": 180.0
 })
+display_descriptors = Array[ExtResource("3_display")]([SubResource("AcousticBoundsDisplay")])
 class_property_descriptions = Dictionary[String, Variant]({
 "space_id": "Required acoustic-space ID used by vark_acoustic_portal links.",
 "mapper_half_extent_x": "Half-width in normal TrenchBroom mapper units (32 units = 1 Vark world meter).",

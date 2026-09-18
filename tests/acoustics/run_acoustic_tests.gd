@@ -6,6 +6,7 @@ const WorldSession = preload("res://application/world_session.gd")
 const PLAYGROUND_SOURCE_PATH: String = "res://missions/playground/mission.map"
 const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
+const ACOUSTIC_BOUNDS_MODEL_PATH: String = "res://authoring/models/acoustic_space_bounds.md3"
 const TEMP_ACOUSTIC_MAP_PATH: String = "user://vark_acoustic_authoring_probe.map"
 
 var failures: Array[String] = []
@@ -35,6 +36,17 @@ func _assert_trenchbroom_authoring_seam() -> void:
 		)
 	var space_class := definitions.get("vark_acoustic_space") as FuncGodotFGDPointClass
 	var portal_class := definitions.get("vark_acoustic_portal") as FuncGodotFGDPointClass
+	var space_display: FuncGodotFGDPointClassDisplayDescriptor = null
+	if space_class != null and not space_class.display_descriptors.is_empty():
+		space_display = space_class.display_descriptors[0]
+	var bounds_model_file := FileAccess.open(ACOUSTIC_BOUNDS_MODEL_PATH, FileAccess.READ)
+	var valid_bounds_model: bool = false
+	if bounds_model_file != null:
+		valid_bounds_model = (
+			bounds_model_file.get_buffer(4).get_string_from_ascii() == "IDP3"
+			and bounds_model_file.get_32() == 15
+		)
+		bounds_model_file.close()
 	_assert_true(
 		space_class != null
 		and portal_class != null
@@ -42,9 +54,17 @@ func _assert_trenchbroom_authoring_seam() -> void:
 		and portal_class.script_class == VarkAcousticPortal
 		and space_class.auto_apply_to_matching_node_properties
 		and portal_class.auto_apply_to_matching_node_properties
+		and space_display != null
+		and space_display.display_asset_path == "\"authoring/models/acoustic_space_bounds.md3\""
+		and space_display.scale == "[mapper_half_extent_x / 64, mapper_half_extent_z / 64, mapper_half_extent_y / 64]"
+		and valid_bounds_model
 		and exported_fgd.contains("vark_acoustic_space")
-		and exported_fgd.contains("vark_acoustic_portal"),
-		"Vark TrenchBroom exports mapper-facing acoustic-space and portal point entities"
+		and exported_fgd.contains("vark_acoustic_portal")
+		and exported_fgd.contains("authoring/models/acoustic_space_bounds.md3")
+		and exported_fgd.contains("mapper_half_extent_x / 64")
+		and exported_fgd.contains("mapper_half_extent_z / 64")
+		and exported_fgd.contains("mapper_half_extent_y / 64"),
+		"Vark TrenchBroom exports acoustic topology entities plus a property-scaled acoustic-space bounds cage"
 	)
 
 	var source_file := FileAccess.open(PLAYGROUND_SOURCE_PATH, FileAccess.READ)
