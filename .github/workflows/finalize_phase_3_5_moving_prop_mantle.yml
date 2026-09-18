@@ -140,3 +140,5 @@ jobs:
           git diff --cached --check
           git commit -m "Track moving props through mantle"
           git push origin HEAD:test
+
+# Gate revision: restore shared free-mantle starter before active-route tracking.
