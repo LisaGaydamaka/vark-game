@@ -462,7 +462,7 @@ func update(
 				var outward_distance: float = get_outward_distance(
 					player.global_position
 				)
-				if outward_distance <= 0.0:
+				if outward_distance <= get_route_progress_tolerance():
 					completed = true
 					break
 
@@ -788,7 +788,11 @@ func has_reached_lift_height(position: Vector3) -> bool:
 
 
 func has_reached_forward_limit(position: Vector3) -> bool:
-	return get_outward_distance(position) <= 0.0
+	# Completion and collision/progress classification share one tolerance. A
+	# capsule that is only a few millimeters outside the mathematical crossing
+	# plane must not retain mantle ownership forever merely because contact keeps
+	# it from reaching exact zero distance.
+	return get_outward_distance(position) <= get_route_progress_tolerance()
 
 
 func get_outward_distance(position: Vector3) -> float:
