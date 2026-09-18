@@ -152,3 +152,5 @@ jobs:
           git diff --cached --check
           git commit -m "Restore shared ground mantle behavior"
           git push origin HEAD:test
+
+# Gate revision: current same-frame detector evidence owns dynamic no-contact seam.
