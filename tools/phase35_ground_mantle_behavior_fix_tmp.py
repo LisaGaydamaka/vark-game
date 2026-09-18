@@ -10,8 +10,10 @@ def replace_once(path: str, old: str, new: str) -> None:
     p.write_text(text.replace(old, new, 1))
 
 
-# Preserve the accepted pre-regression entry path exactly. Tracking begins only
-# after PlayerMantle owns the traversal, so start feel/policy stays unchanged.
+# Preserve the accepted pre-regression mantle start path. The only pre-start
+# correction retained is the exact-collider candidate refresh immediately after
+# contact movement, so matching uses the collider's current plane. PlayerMantle
+# motion itself remains the ordinary shared lift/forward path.
 replace_once(
     "player/traversal/player_mantle.gd",
     '''\tif source_candidate == null:
@@ -26,28 +28,10 @@ replace_once(
 \tvar refreshed_source: PlayerLedgeDetector.LedgeCandidate = source_candidate'''
 )
 
-replace_once(
-    "player/traversal/player_ledge_controller.gd",
-    '''\tfor candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-\t\tif candidate == null:
-\t\t\tcontinue
-\t\t# Discovery occurs before locomotion resolves the contact. A lightweight
-\t\t# prop can move during that same transaction, so refresh its exact sampled
-\t\t# geometry before comparing the candidate with the post-move collision.
-\t\tif not ledge_detector.refresh_candidate_attachment(candidate):
-\t\t\tcontinue
-\t\tif traversal_guard.is_mantle_blocked(candidate):''',
-    '''\tfor candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
-\t\tif candidate == null:
-\t\t\tcontinue
-\t\tif traversal_guard.is_mantle_blocked(candidate):'''
-)
-
-# The last gameplay commit also added a second moving-prop rejection inside the
-# shared free-mantle starter. Removing only the outer candidate filter is not
-# enough: this inner guard still turns a valid grounded mantle request into the
-# caller's ballistic-jump fallback. Restore the pre-regression shared starter so
-# ground and air contact mantles both use find_air_candidate() -> try_start().
+# The last gameplay commit added a second moving-prop rejection inside the
+# shared free-mantle starter. That guard turns a valid grounded mantle request
+# into the locomotion controller's ballistic-jump fallback. Restore the old
+# shared starter so ground and air contact mantles both use the same path.
 replace_once(
     "player/traversal/player_ledge_controller.gd",
     '''func _try_start_free_mantle(
@@ -91,9 +75,6 @@ replacement = '''func _prove_ground_mantle_tracks_moving_prop(
 \tvelocity_state.capture_body_as_controlled(player)
 \tawait _settle_physics(tree, 2)
 
-\t# This is the accepted ground-mantle entry: forward + jump at the ledge.
-\t# The correction must not replace it with a ballistic jump or a new special
-\t# ground traversal. It must enter the same PlayerMantle state as before.
 \tInput.action_press("move_forward")
 \tInput.action_press("jump")
 \tawait _settle_physics(tree)
@@ -109,9 +90,6 @@ replacement = '''func _prove_ground_mantle_tracks_moving_prop(
 \t\t"Grounded prop mantle retains the accepted PlayerMantle entry instead of becoming a ballistic jump"
 \t)
 
-\t# Reproduce the original failure only after the accepted mantle owns motion:
-\t# the source crate becomes dynamic beneath the player. The mantle path should
-\t# follow that collider rather than completing against its stale sampled pose.
 \tvar moving_start: Vector3 = prop.global_position
 \tvar disturbed_during_mantle: bool = false
 \tif entered_mantle:
@@ -161,4 +139,4 @@ replacement = '''func _prove_ground_mantle_tracks_moving_prop(
 '''
 path.write_text(text[:start] + replacement + text[end:])
 
-print("RESTORED_ACCEPTED_GROUND_MANTLE_ENTRY_AND_TARGETED_ACTIVE_TRACKING")
+print("RESTORED_SHARED_MANTLE_START_WITH_POST_CONTACT_CANDIDATE_SYNC")
