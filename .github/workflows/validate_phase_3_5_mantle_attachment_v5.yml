@@ -1,0 +1,104 @@
+name: Validate Phase 3.5 angled mantle attachment correction
+on:
+  push:
+    branches: [test]
+    paths: [.github/workflows/validate_phase_3_5_mantle_attachment_v5.yml]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with: {ref: test, fetch-depth: 0}
+      - name: Apply angled production-contact regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('tests/props/phase_3_5_transition_regressions.gd'); t=p.read_text()
+          def r(a,b):
+              global t
+              if t.count(a)!=1: raise SystemExit(f'match count {t.count(a)}')
+              t=t.replace(a,b,1)
+          r('\tprop.global_position = Vector3(-3.0, 0.3, -2.0)\n\tplayer.global_position = Vector3(-3.0, 0.0, -0.95)\n\tplayer.rotation.y = 0.0\n\tplayer.velocity = Vector3.ZERO\n',
+            '\tprop.global_position = Vector3(-3.0, 0.3, -2.0)\n\tplayer.global_position = Vector3(-3.0, 0.0, -0.95)\n'
+            '\t# Approach off-axis so ordinary forward contact gives the crate lateral\n'
+            '\t# velocity through the production contact solver.\n'
+            '\tplayer.rotation.y = deg_to_rad(-15.0)\n\tplayer.velocity = Vector3.ZERO\n')
+          r('\tInput.action_release("move_forward")\n\n\tvar moving_start: Vector3 = prop.global_position\n\tvar saw_prop_motion_during_mantle: bool = false\n',
+            '\t# Keep forward held through traversal completion; locomotion must resume\n'
+            '\t# from the already-held command when traversal ownership ends.\n'
+            '\tvar moving_start: Vector3 = prop.global_position\n'
+            '\tvar attachment_local_start: Vector3 = prop.global_transform.affine_inverse() * player.global_position\n'
+            '\tvar saw_prop_motion_during_mantle: bool = false\n'
+            '\tvar saw_lateral_prop_motion_during_mantle: bool = false\n'
+            '\tvar max_attachment_lateral_error: float = 0.0\n')
+          r('\t\tif prop.global_position.distance_to(moving_start) > 0.01:\n\t\t\tsaw_prop_motion_during_mantle = true\n\t\tif (\n',
+            '\t\tif prop.global_position.distance_to(moving_start) > 0.01:\n\t\t\tsaw_prop_motion_during_mantle = true\n'
+            '\t\tif absf(prop.global_position.x - moving_start.x) > 0.01:\n\t\t\tsaw_lateral_prop_motion_during_mantle = true\n'
+            '\t\tif controller.state == PlayerLedgeController.State.MANTLING:\n'
+            '\t\t\tvar attachment_local_now: Vector3 = prop.global_transform.affine_inverse() * player.global_position\n'
+            '\t\t\tmax_attachment_lateral_error = maxf(max_attachment_lateral_error, absf(attachment_local_now.x - attachment_local_start.x))\n'
+            '\t\tif (\n')
+          r('\tassert_true.call(\n\t\tsaw_prop_motion_during_mantle\n\t\tor prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED,\n\t\t"Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling"\n\t)\n\n\tvar locomotion_start: Vector3 = player.global_position\n\tInput.action_press("move_right")\n\tawait _settle_physics(tree, 8)\n\tInput.action_release("move_right")\n\tassert_true.call(\n\t\tcompleted_mantle\n\t\tand player.global_position.distance_to(locomotion_start) > 0.025,\n\t\t"Completed moving-prop mantle returns ordinary locomotion instead of leaving the player stuck on top"\n\t)\n',
+            '\tassert_true.call(\n\t\tsaw_prop_motion_during_mantle\n\t\tor prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED,\n\t\t"Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling"\n\t)\n'
+            '\tassert_true.call(\n\t\tsaw_lateral_prop_motion_during_mantle and max_attachment_lateral_error <= 0.01,\n\t\t"Moving-prop mantle keeps the player attachment-relative during lateral crate translation"\n\t)\n\n'
+            '\tvar locomotion_start: Vector3 = player.global_position\n'
+            '\tawait _settle_physics(tree, 8)\n\tInput.action_release("move_forward")\n'
+            '\tassert_true.call(\n\t\tcompleted_mantle\n\t\tand controller.state == PlayerLedgeController.State.NONE\n\t\tand player.global_position.distance_to(locomotion_start) > 0.025,\n\t\t"Completed moving-prop mantle accepts already-held forward locomotion instead of leaving the player stuck on top"\n\t)\n')
+          p.write_text(t)
+          PY
+      - uses: chickensoft-games/setup-godot@v2
+        with: {version: 4.7.2, use-dotnet: false, include-templates: false}
+      - run: godot --headless --path . --import
+      - name: Prove angled regression is red before fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          godot --headless --path . --script res://tests/props/run_prop_tests.gd 2>&1 | tee /tmp/pre.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -F 'PASS: Ground-mantle fixture reaches the moving-crate state through real grounded player contact' /tmp/pre.log
+          grep -F 'PASS: Grounded mantle while pushing a moving prop enters the ordinary PlayerMantle path instead of ballistic jump' /tmp/pre.log
+          grep -F 'FAIL: Moving-prop mantle keeps the player attachment-relative during lateral crate translation' /tmp/pre.log
+      - name: Apply moving-source translation inheritance
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('player/traversal/player_mantle.gd'); t=p.read_text()
+          def r(a,b):
+              global t
+              if t.count(a)!=1: raise SystemExit(f'mantle match count {t.count(a)}')
+              t=t.replace(a,b,1)
+          r('func _refresh_active_attachment_route() -> bool:\n','func _refresh_active_attachment_route(player: CharacterBody3D) -> bool:\n')
+          r('\tvar current_transform: Transform3D = source.attachment_collider_transform\n\tif current_transform.is_equal_approx(previous_transform):\n\t\treturn true\n\n\tvar previous_inverse: Transform3D = previous_transform.affine_inverse()\n',
+            '\tvar current_transform: Transform3D = source.attachment_collider_transform\n'
+            '\tif current_transform.is_equal_approx(previous_transform):\n\t\treturn true\n\n'
+            '\t# Keep the player attachment-relative to the same moving source that owns\n'
+            '\t# the refreshed mantle route. Apply source translation first through real\n'
+            '\t# collision resolution; blockage releases the mantle safely.\n'
+            '\tvar attachment_motion: Vector3 = current_transform.origin - previous_transform.origin\n'
+            '\tif attachment_motion.length_squared() > MOTION_EPSILON_SQUARED:\n'
+            '\t\tvar attachment_collision: KinematicCollision3D = player.move_and_collide(\n'
+            '\t\t\tattachment_motion, false, PROBE_SAFE_MARGIN, false, PROBE_MAX_COLLISIONS\n'
+            '\t\t)\n'
+            '\t\tif attachment_collision != null:\n'
+            '\t\t\tvar attachment_travel: Vector3 = attachment_collision.get_travel()\n'
+            '\t\t\tif attachment_travel.distance_to(attachment_motion) > get_route_progress_tolerance():\n'
+            '\t\t\t\treturn false\n\n'
+            '\tvar previous_inverse: Transform3D = previous_transform.affine_inverse()\n')
+          r('\tif not _refresh_active_attachment_route():\n','\tif not _refresh_active_attachment_route(player):\n')
+          p.write_text(t)
+          PY
+      - name: Verify focused Props
+        run: godot --headless --path . --script res://tests/props/run_prop_tests.gd
+      - name: Verify focused Movement
+        run: godot --headless --path . --script res://tests/movement/run_movement_tests.gd
+      - name: Verify authoritative full barrier
+        run: godot --headless --path . --script res://tests/run_all_tests.gd
