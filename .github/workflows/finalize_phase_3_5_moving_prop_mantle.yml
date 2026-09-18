@@ -38,19 +38,22 @@ jobs:
             tools/phase35_moving_prop_mantle_fixture_fix_tmp.py \
             tools/phase35_moving_prop_mantle_entry_fix_tmp.py \
             tools/phase35_ground_mantle_behavior_fix_tmp.py \
-            tools/phase35_ground_mantle_real_sequence_tmp.py
+            tools/phase35_ground_mantle_real_sequence_tmp.py \
+            tools/phase35_mantle_admission_diag_tmp.py
           python tools/phase35_moving_prop_mantle_tmp.py
           python tools/phase35_moving_prop_mantle_fixture_fix_tmp.py
           python tools/phase35_moving_prop_mantle_entry_fix_tmp.py
           python tools/phase35_ground_mantle_behavior_fix_tmp.py
           python tools/phase35_ground_mantle_real_sequence_tmp.py
+          python tools/phase35_mantle_admission_diag_tmp.py
           rm -f \
             .github/workflows/finalize_phase_3_5_moving_prop_mantle.yml \
             tools/phase35_moving_prop_mantle_tmp.py \
             tools/phase35_moving_prop_mantle_fixture_fix_tmp.py \
             tools/phase35_moving_prop_mantle_entry_fix_tmp.py \
             tools/phase35_ground_mantle_behavior_fix_tmp.py \
-            tools/phase35_ground_mantle_real_sequence_tmp.py
+            tools/phase35_ground_mantle_real_sequence_tmp.py \
+            tools/phase35_mantle_admission_diag_tmp.py
           find tools -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
 
@@ -67,6 +70,7 @@ jobs:
               "tools/phase35_moving_prop_mantle_entry_fix_tmp.py",
               "tools/phase35_ground_mantle_behavior_fix_tmp.py",
               "tools/phase35_ground_mantle_real_sequence_tmp.py",
+              "tools/phase35_mantle_admission_diag_tmp.py",
               "gameplay/props/ordinary_prop.gd",
               "player/traversal/player_ledge_detector.gd",
               "player/traversal/player_mantle.gd",
@@ -114,6 +118,15 @@ jobs:
       - name: Run authoritative full barrier
         run: timeout 300s godot --headless --path . --script res://tests/run_all_tests.gd
 
+      - name: Refuse diagnostic publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q "MANTLE_ADMISSION_DEBUG" player/traversal/player_ledge_controller.gd; then
+            echo "Diagnostic instrumentation intentionally blocks publication."
+            exit 1
+          fi
+
       - name: Commit and push verified production tree
         shell: bash
         run: |
@@ -129,6 +142,7 @@ jobs:
             tools/phase35_moving_prop_mantle_entry_fix_tmp.py \
             tools/phase35_ground_mantle_behavior_fix_tmp.py \
             tools/phase35_ground_mantle_real_sequence_tmp.py \
+            tools/phase35_mantle_admission_diag_tmp.py \
             gameplay/props/ordinary_prop.gd \
             player/traversal/player_ledge_detector.gd \
             player/traversal/player_mantle.gd \
@@ -141,4 +155,4 @@ jobs:
           git commit -m "Track moving props through mantle"
           git push origin HEAD:test
 
-# Gate revision: retain exact-collider post-contact candidate synchronization.
+# Diagnostic gate revision: identify exact mantle admission rejection without publishing instrumentation.
