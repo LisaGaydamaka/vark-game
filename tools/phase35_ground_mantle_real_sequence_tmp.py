@@ -32,8 +32,6 @@ replacement = '''func _prove_ground_mantle_tracks_moving_prop(
 
 \t# Reproduce the player's report literally: run into the light crate until the
 \t# production contact solver shoves it, keep holding forward, then press jump.
-\t# The pre-regression controller accepted this as ground mantle; the correction
-\t# must preserve that exact entry and only remove stale moving-prop geometry.
 \tvar prop_start: Vector3 = prop.global_position
 \tvar production_shove_observed: bool = false
 \tInput.action_press("move_forward")
@@ -50,10 +48,48 @@ replacement = '''func _prove_ground_mantle_tracks_moving_prop(
 \t\t"Ground-mantle fixture reaches the moving-crate state through real player contact"
 \t)
 
+\t# Diagnostic-only visibility for the gated candidate. This test helper is
+\t# removed by the publishing commit; production code does not depend on it.
+\tvar support: PlayerSupport = player.get("support") as PlayerSupport
+\tvar detector: PlayerLedgeDetector = player.get("ledge_detector") as PlayerLedgeDetector
+\tvar debug_forward: Vector3 = -head.global_transform.basis.z
+\tvar debug_candidates: Array[PlayerLedgeDetector.LedgeCandidate] = detector.find_candidates(
+\t\tplayer,
+\t\tsupport,
+\t\tVector3(0.0, 0.0, -1.0),
+\t\tdebug_forward
+\t)
+\tprint(
+\t\t"MANTLE_DEBUG pre_jump grounded=", bool(player.call("is_grounded")),
+\t\t" support=", support.has_support,
+\t\t" candidates=", debug_candidates.size(),
+\t\t" player_pos=", player.global_position,
+\t\t" prop_pos=", prop.global_position,
+\t\t" prop_phase=", prop.call("get_semantic_phase"),
+\t\t" velocity=", player.velocity
+\t)
+\tif not debug_candidates.is_empty():
+\t\tvar debug_candidate: PlayerLedgeDetector.LedgeCandidate = debug_candidates[0]
+\t\tprint(
+\t\t\t"MANTLE_DEBUG candidate wall_rid=", debug_candidate.wall_collider_rid,
+\t\t\t" top_rid=", debug_candidate.top_collider_rid,
+\t\t\t" stable=", detector.is_candidate_attachment_stable(debug_candidate),
+\t\t\t" edge=", debug_candidate.edge_point,
+\t\t\t" wall_normal=", debug_candidate.wall_normal
+\t\t)
+
 \tInput.action_press("jump")
 \tawait _settle_physics(tree)
 \tInput.action_release("jump")
 \tvar controller: PlayerLedgeController = player.get("ledge_controller") as PlayerLedgeController
+\tprint(
+\t\t"MANTLE_DEBUG post_jump state=", controller.state,
+\t\t" grounded=", bool(player.call("is_grounded")),
+\t\t" detector_candidates=", detector.get_candidates().size(),
+\t\t" velocity=", player.velocity,
+\t\t" player_pos=", player.global_position,
+\t\t" prop_pos=", prop.global_position
+\t)
 \tvar entered_mantle: bool = (
 \t\tproduction_shove_observed
 \t\tand controller != null
