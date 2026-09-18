@@ -1,0 +1,125 @@
+name: Finalize Phase 3.5 angled moving-prop mantle correction
+on:
+  push:
+    branches: [test]
+    paths: [.github/workflows/finalize_phase_3_5_mantle_attachment_v9.yml]
+permissions:
+  contents: write
+concurrency:
+  group: finalize-phase-3-5-mantle-v9
+  cancel-in-progress: false
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    env:
+      BASE_SHA: e6bf630fb16c04ff5b032bc072b0dad00368d508
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+      - name: Verify authoritative ancestry
+        run: git merge-base --is-ancestor "$BASE_SHA" HEAD
+      - name: Apply exact validated regression and implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+          def exec_step(path, marker, next_marker):
+              s=Path(path).read_text(); start=s.index(marker); end=s.index(next_marker,start); block=s[start:end]
+              ps=block.index("          python3 - <<'PY'\n")+len("          python3 - <<'PY'\n"); pe=block.rindex('\n          PY')
+              exec(textwrap.dedent(block[ps:pe]), {})
+          exec_step('.github/workflows/validate_phase_3_5_mantle_attachment_v8.yml','      - name: Apply proven angled regression with discriminating thresholds\n','      - uses: chickensoft-games/setup-godot@v2\n')
+          exec_step('.github/workflows/validate_phase_3_5_mantle_attachment_v7.yml','      - name: Apply tangent-only source motion inheritance\n','      - name: Verify focused Props\n')
+          PY
+      - name: Update Phase 3.5 contract and validation docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          def r(path,a,b):
+              p=Path(path); t=p.read_text()
+              if t.count(a)!=1: raise SystemExit(f'{path}: expected one doc match, found {t.count(a)}')
+              p.write_text(t.replace(a,b,1))
+          r('docs/GAME_VISION.md',
+            'Catch, hang, and corner attachment to an ordinary prop require that prop to be semantically settled. Mantle keeps the same accepted motion whether entered from grounded contact or airborne contact, including when a light prop has just been shoved into motion. Because ledge candidates begin as world-space samples, a prop-backed mantle binds the sampled edge/route to the exact collider transform that produced it and updates that geometry as the rigid body translates, instead of converting the request into a jump or completing against a stale prop position. If the tracked collider disappears or ceases to be the same physical attachment, the mantle releases to ordinary airborne control.',
+            "Catch, hang, and corner attachment to an ordinary prop require that prop to be semantically settled. Mantle keeps the same accepted motion whether entered from grounded contact or airborne contact, including when a light prop has just been shoved into motion. Because ledge candidates begin as world-space samples, a prop-backed mantle binds the sampled edge/route and the player's short-lived crossing alignment to the exact collider transform that produced them. Lift and forward motion already chase the refreshed route; source translation along the ledge tangent is inherited separately through collision-resolved player motion so an angled shove cannot slide the moving top sideways out from under the player or double-apply forward/lift motion. If the tracked collider disappears, ceases to be the same physical attachment, or that tangent inheritance is physically blocked, the mantle releases to ordinary airborne control.")
+          r('docs/DEVELOPMENT_PLAN.md',
+            '5. **Dynamic-prop traversal ownership.** Catch/hang/corner keep requiring an exact settled prop, but mantle preserves the already-accepted traversal motion for both grounded and airborne contact. A prop-backed mantle records the collider transform that produced its world-space ledge sample and keeps the mantle edge/route bound to that same collider while it translates. A light crate that was just shoved therefore still mantles through the normal `PlayerMantle` path instead of falling through to jump or finishing against stale geometry; loss of the tracked collider releases cleanly to air.',
+            "5. **Dynamic-prop traversal ownership.** Catch/hang/corner keep requiring an exact settled prop, but mantle preserves the already-accepted traversal motion for both grounded and airborne contact. A prop-backed mantle records the collider transform that produced its world-space ledge sample and keeps the mantle edge/route bound to that same collider while it translates. Lift and forward phases keep chasing the refreshed route, while source translation along the ledge tangent is inherited through collision-resolved player motion so an angled shove cannot slide the moving top sideways out from under the player or double-apply route motion. A light crate that was just shoved therefore still mantles through the normal `PlayerMantle` path instead of falling through to jump or finishing against stale geometry; loss or blockage of the tracked attachment releases cleanly to air.")
+          r('docs/DEVELOPMENT_PLAN.md',
+            'grounded contact with a recently shoved prop enters the same mantle motion as airborne contact, tracks that collider through completion, and returns ordinary locomotion instead of becoming a jump or stuck state;',
+            "grounded contact with a recently shoved prop enters the same mantle motion as airborne contact, stays attachment-relative when an angled shove gives that collider lateral motion, and returns ordinary locomotion from already-held input instead of becoming a jump or stuck state;")
+          r('docs/DEVELOPMENT_PLAN.md',
+            'production-path grounded mantle entry on an already-moving prop, tracked moving-collider mantle completion plus post-mantle locomotion, stationary-only catch/hang/corner eligibility,',
+            'production-path grounded mantle entry from an angled shove on an already-moving prop, lateral attachment-relative mantle completion plus already-held post-mantle locomotion, stationary-only catch/hang/corner eligibility,')
+          r('docs/DEVELOPMENT_PLAN.md',
+            'For mantle, first mantle a normal static ledge from air, then run into a crate so it starts moving and press mantle from the ground: the grounded case must use the same smooth lift/forward mantle motion, not a jump, must follow the crate rather than completing against its old position, and must return normal movement immediately on top.',
+            'For mantle, first mantle a normal static ledge from air, then run into a crate so it starts moving and press mantle from the ground: the grounded case must use the same smooth lift/forward mantle motion, not a jump, must follow the crate rather than completing against its old position, and must return normal movement immediately on top. Repeat several times with a slightly off-center or angled approach so the crate also drifts sideways, and keep forward held through landing; the player must stay aligned with the moving top and continue ordinary movement without requiring an input release/re-press.')
+          r('docs/TESTING.md',
+            'while a production grounded mantle against an already-moving crate enters the same `PlayerMantle` path as air contact, tracks the source collider transform through completion, and proves ordinary locomotion resumes instead of leaving the player stuck on top;',
+            'while a production grounded mantle from an angled approach gives the already-moving crate lateral drift through the real contact solver, proves the player stays attachment-relative along the ledge tangent through completion, and proves already-held forward input resumes ordinary locomotion instead of leaving the player stuck on top;')
+          PY
+      - name: Remove temporary validation infrastructure
+        shell: bash
+        run: |
+          rm -f \
+            .phase35_mantle_diag.log \
+            .phase35_v3_trace.log \
+            .phase35_v7_post.log \
+            .phase35_v7_numbers.log \
+            .phase35_prefix_numbers.log \
+            .phase35_props_failure.log \
+            .phase35_postfix_diag.log \
+            .github/workflows/finalize_phase_3_5_mantle_attachment_follow.yml \
+            .github/workflows/retry_phase_3_5_mantle_attachment_follow.yml \
+            .github/workflows/diagnose_phase_3_5_mantle_regression.yml \
+            .github/workflows/finalize_phase_3_5_mantle_attachment_follow_v3.yml \
+            .github/workflows/diagnose_phase_3_5_mantle_v3.yml \
+            .github/workflows/finalize_phase_3_5_mantle_attachment_v4.yml \
+            .github/workflows/validate_phase_3_5_mantle_attachment_v5.yml \
+            .github/workflows/validate_phase_3_5_mantle_attachment_v7.yml \
+            .github/workflows/diagnose_phase_3_5_v7_postfix.yml \
+            .github/workflows/diagnose_phase_3_5_v7_numbers.yml \
+            .github/workflows/diagnose_phase_3_5_prefix_numbers.yml \
+            .github/workflows/validate_phase_3_5_mantle_attachment_v8.yml \
+            .github/workflows/finalize_phase_3_5_mantle_attachment_v9.yml
+      - name: Verify exact bounded production diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check "$BASE_SHA"
+          printf '%s\n' \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/GAME_VISION.md \
+            docs/TESTING.md \
+            player/traversal/player_mantle.gd \
+            tests/props/phase_3_5_transition_regressions.gd | sort > /tmp/expected
+          git diff --name-only "$BASE_SHA" | sort > /tmp/actual
+          diff -u /tmp/expected /tmp/actual
+          git diff --stat "$BASE_SHA"
+      - uses: chickensoft-games/setup-godot@v2
+        with: {version: 4.7.2, use-dotnet: false, include-templates: false}
+      - name: Import exact production tree
+        run: godot --headless --path . --import
+      - name: Run focused Props
+        run: godot --headless --path . --script res://tests/props/run_prop_tests.gd
+      - name: Run focused Movement
+        run: godot --headless --path . --script res://tests/movement/run_movement_tests.gd
+      - name: Run authoritative full barrier
+        run: godot --headless --path . --script res://tests/run_all_tests.gd
+      - name: Commit and push exact verified production tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git diff --cached --check
+          git commit -m 'Keep angled mantles aligned with moving props'
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/test)"
+          git push origin HEAD:test
