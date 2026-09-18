@@ -41,10 +41,26 @@ func _assert_trenchbroom_authoring_seam() -> void:
 		space_display = space_class.display_descriptors[0]
 	var bounds_model_file := FileAccess.open(ACOUSTIC_BOUNDS_MODEL_PATH, FileAccess.READ)
 	var valid_bounds_model: bool = false
+	var unit_bounds_model: bool = false
 	if bounds_model_file != null:
 		valid_bounds_model = (
 			bounds_model_file.get_buffer(4).get_string_from_ascii() == "IDP3"
 			and bounds_model_file.get_32() == 15
+		)
+		bounds_model_file.seek(108)
+		var frame_mins := Vector3(
+			bounds_model_file.get_float(),
+			bounds_model_file.get_float(),
+			bounds_model_file.get_float()
+		)
+		var frame_maxs := Vector3(
+			bounds_model_file.get_float(),
+			bounds_model_file.get_float(),
+			bounds_model_file.get_float()
+		)
+		unit_bounds_model = (
+			frame_mins.is_equal_approx(Vector3(-1.0, -1.0, -1.0))
+			and frame_maxs.is_equal_approx(Vector3(1.0, 1.0, 1.0))
 		)
 		bounds_model_file.close()
 	_assert_true(
@@ -56,15 +72,15 @@ func _assert_trenchbroom_authoring_seam() -> void:
 		and portal_class.auto_apply_to_matching_node_properties
 		and space_display != null
 		and space_display.display_asset_path == "\"authoring/models/acoustic_space_bounds.md3\""
-		and space_display.scale == "[mapper_half_extent_x / 64, mapper_half_extent_z / 64, mapper_half_extent_y / 64]"
+		and space_display.scale == "mapper_half_extent_x + ' ' + mapper_half_extent_z + ' ' + mapper_half_extent_y"
 		and valid_bounds_model
+		and unit_bounds_model
 		and exported_fgd.contains("vark_acoustic_space")
 		and exported_fgd.contains("vark_acoustic_portal")
 		and exported_fgd.contains("authoring/models/acoustic_space_bounds.md3")
-		and exported_fgd.contains("mapper_half_extent_x / 64")
-		and exported_fgd.contains("mapper_half_extent_z / 64")
-		and exported_fgd.contains("mapper_half_extent_y / 64"),
-		"Vark TrenchBroom exports acoustic topology entities plus a property-scaled acoustic-space bounds cage"
+		and exported_fgd.contains("mapper_half_extent_x + ' ' + mapper_half_extent_z + ' ' + mapper_half_extent_y")
+		and not exported_fgd.contains("[mapper_half_extent_x"),
+		"Vark TrenchBroom exports a non-uniform vector scale string for the acoustic-space bounds cage instead of a fallback scale array"
 	)
 
 	var source_file := FileAccess.open(PLAYGROUND_SOURCE_PATH, FileAccess.READ)

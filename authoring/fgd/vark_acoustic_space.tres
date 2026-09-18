@@ -7,7 +7,7 @@
 [sub_resource type="Resource" id="AcousticBoundsDisplay"]
 script = ExtResource("3_display")
 display_asset_path = "\"authoring/models/acoustic_space_bounds.md3\""
-scale = "[mapper_half_extent_x / 64, mapper_half_extent_z / 64, mapper_half_extent_y / 64]"
+scale = "mapper_half_extent_x + ' ' + mapper_half_extent_z + ' ' + mapper_half_extent_y"
 
 [resource]
 script = ExtResource("1_point")
