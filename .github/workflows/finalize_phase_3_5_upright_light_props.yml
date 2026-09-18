@@ -32,11 +32,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile tools/phase35_upright_light_props_tmp.py
+          python -m py_compile \
+            tools/phase35_upright_light_props_tmp.py \
+            tools/phase35_upright_light_props_fix_tmp.py
           python tools/phase35_upright_light_props_tmp.py
+          python tools/phase35_upright_light_props_fix_tmp.py
           rm -f \
             .github/workflows/finalize_phase_3_5_upright_light_props.yml \
-            tools/phase35_upright_light_props_tmp.py
+            tools/phase35_upright_light_props_tmp.py \
+            tools/phase35_upright_light_props_fix_tmp.py
           find tools -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
 
@@ -49,6 +53,7 @@ jobs:
           expected = {
               ".github/workflows/finalize_phase_3_5_upright_light_props.yml",
               "tools/phase35_upright_light_props_tmp.py",
+              "tools/phase35_upright_light_props_fix_tmp.py",
               "gameplay/props/ordinary_prop.gd",
               "gameplay/props/OrdinaryProp.tscn",
               "player/interaction/player_prop_carry.gd",
@@ -107,6 +112,7 @@ jobs:
           git add \
             .github/workflows/finalize_phase_3_5_upright_light_props.yml \
             tools/phase35_upright_light_props_tmp.py \
+            tools/phase35_upright_light_props_fix_tmp.py \
             gameplay/props/ordinary_prop.gd \
             gameplay/props/OrdinaryProp.tscn \
             player/interaction/player_prop_carry.gd \
