@@ -1,4 +1,5 @@
 name: Finalize Phase 3.5 wakeable props
+# Retriggered for solver contact-impulse prop transfer.
 
 on:
   push:
