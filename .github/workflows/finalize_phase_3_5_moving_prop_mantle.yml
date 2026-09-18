@@ -33,11 +33,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile tools/phase35_moving_prop_mantle_tmp.py
+          python -m py_compile \
+            tools/phase35_moving_prop_mantle_tmp.py \
+            tools/phase35_moving_prop_mantle_fixture_fix_tmp.py
           python tools/phase35_moving_prop_mantle_tmp.py
+          python tools/phase35_moving_prop_mantle_fixture_fix_tmp.py
           rm -f \
             .github/workflows/finalize_phase_3_5_moving_prop_mantle.yml \
-            tools/phase35_moving_prop_mantle_tmp.py
+            tools/phase35_moving_prop_mantle_tmp.py \
+            tools/phase35_moving_prop_mantle_fixture_fix_tmp.py
           find tools -type d -name __pycache__ -prune -exec rm -rf {} +
           git diff --check
 
@@ -50,6 +54,7 @@ jobs:
           expected = {
               ".github/workflows/finalize_phase_3_5_moving_prop_mantle.yml",
               "tools/phase35_moving_prop_mantle_tmp.py",
+              "tools/phase35_moving_prop_mantle_fixture_fix_tmp.py",
               "gameplay/props/ordinary_prop.gd",
               "player/traversal/player_ledge_detector.gd",
               "player/traversal/player_mantle.gd",
@@ -108,6 +113,7 @@ jobs:
           git add \
             .github/workflows/finalize_phase_3_5_moving_prop_mantle.yml \
             tools/phase35_moving_prop_mantle_tmp.py \
+            tools/phase35_moving_prop_mantle_fixture_fix_tmp.py \
             gameplay/props/ordinary_prop.gd \
             player/traversal/player_ledge_detector.gd \
             player/traversal/player_mantle.gd \
