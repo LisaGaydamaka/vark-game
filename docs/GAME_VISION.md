@@ -454,7 +454,7 @@ The core game supports Thief-style loot collection and mission statistics.
 
 # Physical objects — LOCKED Thief-style contract
 
-Settled movable props follow **Thief 1 & 2-style object behavior** while still responding physically to explicit contact. A genuinely resting prop uses an exact dormant/stable state so authored edge placements and stacks do not drift from background solver stabilization. A meaningful moving-prop impact, deliberate lateral player shove, or support removal explicitly promotes that same `RigidBody3D` back into dynamic motion; from that point gravity, friction, bounce/slide, transferred momentum, and solid collision response are resolved by the physics engine until it settles again.
+Settled movable props follow **Thief 1 & 2-style object behavior** while still responding physically to explicit contact. A genuinely resting prop uses an exact dormant/stable state so authored edge placements and stacks do not drift from background solver stabilization. A meaningful moving-prop impact, deliberate lateral player shove, or support removal explicitly promotes that same `RigidBody3D` back into dynamic motion; from that point gravity, friction, bounce/slide, transferred momentum, and solid collision response are resolved by the physics engine until it comes to rest again.
 
 The intended rule is deliberately stylized:
 
@@ -516,7 +516,6 @@ settled/world
 → carried_junk
 → thrown or released
 → moving/unsupported
-→ settling
 → settled/world
 ```
 
@@ -544,11 +543,9 @@ Catch, hang, and corner attachment to an ordinary prop require that prop to be s
 
 The release point is derived from the player's current view rather than from a fixed world-space hand position. Looking downward and pressing **R** should place the object's center predictably beneath/in front of the player, approximately along the center-view release line, so deliberate crate stacking is practical.
 
-Throw and gentle release enter world physics with the ordinary box already **top-up**, using the current view only to choose horizontal yaw and placement direction. Thrown/released/unsupported/disturbed objects then use real rigid-body translation while moving: gravity and collisions may change their position, linear velocity, slide, and bounce. Ordinary box-like Junk keeps angular motion locked, so hitting a floor, wall, prop, or actor does **not** rotate the box in flight and the object does not continuously track later camera turns. Because normal F/R carry release is already upright, ordinary settling preserves that exact orientation and only re-seats the body onto detected support; it must not perform a second face-changing roll after translation stops. A genuinely pre-tilted unsupported/restored prop may still use the short smooth pitch/roll correction to return top-up while preserving yaw. Completion returns the same rigid body to exact dormant/stable state. A later explicit impact, player shove, or support loss promotes it back into dynamic motion. Settling must never rotate a particular side toward world north or any other global compass direction.
+Ordinary box-like Junk is **always top-up**. F throw and R gentle release use the current view only to choose horizontal yaw and placement direction, then enter world physics with the box top already aligned to world up. Settled, carried, thrown/released, unsupported/disturbed, and restored semantic states all preserve this rule. While a prop is moving, Jolt still owns real rigid-body translation: gravity and collisions may change position, linear velocity, slide, bounce, and transferred momentum, but angular solver response is locked and any incoming/restored tilted basis is normalized top-up immediately while preserving horizontal yaw. There is no separate settling, pitch/roll-correction, gravity-suspension, or orientation-reseating phase.
 
-Genuine dynamic rest is recognized from the rigid body's actual support/contact state rather than guessed proximity samples. This keeps edge/corner box-on-box contacts eligible to finish settling when the physics solver is already holding the object at rest.
-
-Once motion resolves and the smooth top-up alignment completes, the object becomes exactly settled/stable again. Supported props then resume the ordinary stylized support rules above, but a later meaningful impact or lateral player shove can explicitly promote them back into disturbed rigid motion.
+Genuine dynamic rest is recognized from the rigid body's actual support/contact state rather than guessed proximity samples. Once an always-upright moving prop is supported and sufficiently slow for the required contact frames, the same body transitions directly from moving to exact dormant/stable settled state. This keeps edge/corner box-on-box contacts eligible to stop cleanly without introducing an intermediate semantic phase or visible orientation animation. A later meaningful impact, lateral player shove, or support loss promotes it back into dynamic translation.
 
 Physical props can be used as:
 
@@ -996,9 +993,3 @@ Vark is ready to hand to mission creators when a developer who understands Godot
 - active-gameplay saving/loading
 - persistent campaign facts
 - a later mission changed by a previous player choice
-
-and do so without modifying core player behavior, movement, stealth, ordinary NPC, inventory, mission-state, campaign-state, or game-flow systems.
-
-The same creator must be able to add mission-specific scripted objects, NPC behavior, hazards, puzzles, security systems, or tools through stable extension APIs.
-
-At that point Vark is a reusable immersive-sim game platform ready for full mission, plot, art, and campaign production.

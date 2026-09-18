@@ -144,8 +144,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var released_strength: float = _max_impact_strength(sound_events, released_sound_start)
 	var released_settled_basis: Basis = pickup_prop.global_transform.basis.orthonormalized()
 	var released_settled_facing: Vector3 = _horizontal_forward_from_basis(released_settled_basis)
-	assert_true.call(pickup_prop.freeze and released_settled_basis.y.dot(Vector3.UP) > 0.999999 and released_settled_facing.dot(released_facing) > 0.995 and released_settled_basis.is_equal_approx(released_basis), "Gentle release keeps its upright orientation through settle instead of rolling onto another face")
-	assert_true.call(absf(pickup_prop.global_position.y - 0.3) <= 0.015 and bool(pickup_prop.call("is_supported")), "A released crate is re-seated onto its real support plane after top-up normalization instead of freezing with a visible air gap")
+	assert_true.call(pickup_prop.freeze and released_settled_basis.y.dot(Vector3.UP) > 0.999999 and released_settled_facing.dot(released_facing) > 0.995 and released_settled_basis.is_equal_approx(released_basis), "Gentle release remains upright through dynamic motion and direct transition to stable rest")
+	assert_true.call(absf(pickup_prop.global_position.y - 0.3) <= 0.015 and bool(pickup_prop.call("is_supported")), "A released crate comes to rest on its real support plane without a separate orientation-correction phase")
 
 	assert_true.call(bool(pickup_prop.call("apply_semantic_state", carried_state)) and bool(pickup_prop.call("reconcile_after_restore", player)), "Restore reconciliation rebuilds the carried_junk relationship without serializing a live player reference")
 	assert_true.call(hud.visible and not prop_mesh.visible and bool(player.call("is_carrying_prop")), "Restored carried Junk rebuilds HUD presentation and keeps world presentation inactive")
@@ -171,7 +171,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var thrown_strength: float = _max_impact_strength(sound_events, thrown_sound_start)
 	var thrown_settled_basis: Basis = pickup_prop.global_transform.basis.orthonormalized()
 	var thrown_settled_facing: Vector3 = _horizontal_forward_from_basis(thrown_settled_basis)
-	assert_true.call(pickup_prop.freeze and thrown_settled_basis.y.dot(Vector3.UP) > 0.999999 and thrown_settled_facing.dot(thrown_facing) > 0.995 and thrown_settled_basis.is_equal_approx(thrown_basis) and pickup_prop.linear_velocity.is_zero_approx(), "Thrown box remains upright through collision and settle without a second face-changing rotation")
+	assert_true.call(pickup_prop.freeze and thrown_settled_basis.y.dot(Vector3.UP) > 0.999999 and thrown_settled_facing.dot(thrown_facing) > 0.995 and thrown_settled_basis.is_equal_approx(thrown_basis) and pickup_prop.linear_velocity.is_zero_approx(), "Thrown box remains upright through collision and direct transition to stable rest")
 	assert_true.call(thrown_strength > released_strength and released_strength > 0.0, "Gentle release emits lower semantic impact strength than a throw")
 
 	var reset_lower_state := {
@@ -200,7 +200,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	await _settle_until_phase(tree, stack_upper, OrdinaryProp.PHASE_SETTLED, 160)
 	var upper_after := Vector2(stack_upper.global_position.x, stack_upper.global_position.z)
 	var upper_settled_facing: Vector3 = _horizontal_forward_from_basis(stack_upper.global_transform.basis)
-	assert_true.call(upper_settled_facing.dot(upper_facing) > 0.995 and upper_after.distance_to(upper_xz) <= 0.01 and absf(stack_upper.global_position.y - 0.3) <= 0.015, "Unsupported upper stack member falls through rigid-body physics, settles on the floor with no hover gap, and preserves yaw")
+	assert_true.call(upper_settled_facing.dot(upper_facing) > 0.995 and upper_after.distance_to(upper_xz) <= 0.01 and absf(stack_upper.global_position.y - 0.3) <= 0.015, "Unsupported upper stack member falls through rigid-body physics, reaches stable floor support with no hover gap, and preserves yaw")
 
 	_release_actions()
 	application.call("exit_current_world")

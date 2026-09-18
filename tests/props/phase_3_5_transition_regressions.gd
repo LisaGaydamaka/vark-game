@@ -43,7 +43,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	await _prove_ground_mantle_tracks_moving_prop(tree, world, player, assert_true)
 	await _prove_support_invalidation(tree, player, edge_prop, assert_true)
 	_prove_traversal_invalidation(player, stack_upper, assert_true)
-	await _prove_contact_manifold_settle(tree, world, assert_true)
+	await _prove_upright_dynamic_rest(tree, world, assert_true)
 	application.call("exit_current_world")
 	application.queue_free()
 	await tree.process_frame
@@ -276,7 +276,7 @@ func _prove_ground_mantle_tracks_moving_prop(
 	assert_true.call(
 		saw_prop_motion_during_mantle
 		or prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED,
-		"Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling"
+		"Prop-backed mantle remains coherent while the shoved source prop moves or comes to rest"
 	)
 	assert_true.call(
 		saw_lateral_prop_motion_during_mantle and max_attachment_lateral_error <= 0.003,
@@ -373,7 +373,6 @@ func _prove_traversal_invalidation(
 		"motion_kind": OrdinaryProp.MOTION_DISTURBED,
 		"transform": prop.global_transform,
 		"linear_velocity": Vector3.ZERO,
-		"settle_yaw": 0.0,
 	}
 	assert_true.call(
 		bool(prop.call("apply_semantic_state", moving_snapshot))
@@ -387,7 +386,7 @@ func _prove_traversal_invalidation(
 	)
 
 
-func _prove_contact_manifold_settle(tree: SceneTree, world: Node3D, assert_true: Callable) -> void:
+func _prove_upright_dynamic_rest(tree: SceneTree, world: Node3D, assert_true: Callable) -> void:
 	var support_body := StaticBody3D.new()
 	var support_shape := CollisionShape3D.new()
 	var support_box := BoxShape3D.new()
@@ -405,27 +404,33 @@ func _prove_contact_manifold_settle(tree: SceneTree, world: Node3D, assert_true:
 		"motion_kind": OrdinaryProp.MOTION_UNSUPPORTED,
 		"transform": Transform3D(tilted_basis, Vector3(3.0, 1.25, 2.5)),
 		"linear_velocity": Vector3.ZERO,
-		"settle_yaw": 0.0,
 	}
-	assert_true.call(bool(prop.call("apply_semantic_state", moving_state)), "Narrow-support fixture enters moving rigid-body state")
-	await _settle_until_phase(tree, prop, OrdinaryProp.PHASE_SETTLING, 200)
-	var alignment_start_up: float = prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP)
-	await _settle_physics(tree, 2)
-	var alignment_mid_up: float = prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP)
 	assert_true.call(
-		prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLING
-		and alignment_mid_up > alignment_start_up + 0.001
-		and alignment_mid_up < 0.999,
-		"Final top-up settle is visibly interpolated across physics frames instead of snapping in one frame"
+		bool(prop.call("apply_semantic_state", moving_state))
+		and prop.call("get_semantic_phase") == OrdinaryProp.PHASE_MOVING
+		and prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999999,
+		"Moving semantic state is normalized top-up immediately instead of entering a correction phase"
 	)
-	await _settle_until_phase(tree, prop, OrdinaryProp.PHASE_SETTLED, 80)
+
+	var saw_unexpected_phase: bool = false
+	for _frame_index: int in range(280):
+		var phase: StringName = prop.call("get_semantic_phase")
+		if phase != OrdinaryProp.PHASE_MOVING and phase != OrdinaryProp.PHASE_SETTLED:
+			saw_unexpected_phase = true
+			break
+		if phase == OrdinaryProp.PHASE_SETTLED:
+			break
+		await tree.physics_frame
+		await tree.process_frame
+
 	assert_true.call(
-		prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED
+		not saw_unexpected_phase
+		and prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED
 		and prop.freeze
-		and prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999
+		and prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999999
 		and absf(prop.global_position.y - 1.1) <= 0.025
 		and bool(prop.call("is_supported")),
-		"Tilted box smoothly settles from real contact state, re-seats on support, then sleeps wakeable"
+		"Upright dynamic prop goes directly from moving to exact stable rest with no settling phase"
 	)
 	prop.queue_free()
 	support_body.queue_free()

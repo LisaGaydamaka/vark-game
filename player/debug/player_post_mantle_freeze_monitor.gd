@@ -10,19 +10,24 @@ var trace: RefCounted = null
 var previous_position: Vector3 = Vector3.ZERO
 var previous_traversal: String = "normal"
 var initialized: bool = false
+var _reported_watch_active: bool = false
 
 
 func _ready() -> void:
-	# This node is diagnostic-only. A release export keeps no per-frame tracing
-	# overhead, while editor/debug builds automatically watch the real Player path.
-	if not OS.is_debug_build():
-		set_physics_process(false)
-		return
+	# Keep this diagnostic active while Phase 3.5 remains unresolved. It is
+	# intentionally lightweight and only writes a file after a detected stall.
+	# Once the root cause is fixed and accepted, this node can be removed rather
+	# than relying on a build-mode check that can hide the exact field failure.
 	process_physics_priority = 1000
 	player = get_parent() as CharacterBody3D
 	trace = FreezeTrace.new()
 	if player == null:
 		set_physics_process(false)
+		return
+	print(
+		"[POST_MANTLE_FREEZE] monitor active: ",
+		ProjectSettings.globalize_path(TRACE_PATH)
+	)
 
 
 func _physics_process(_delta: float) -> void:
@@ -117,6 +122,7 @@ func _physics_process(_delta: float) -> void:
 		"position": _vector3_to_array(player.global_position),
 		"frame_displacement": _vector3_to_array(frame_displacement),
 		"horizontal_displacement": horizontal_displacement,
+		"vertical_displacement": frame_displacement.y,
 		"body_velocity": _vector3_to_array(player.velocity),
 		"controlled_velocity": _vector3_to_array(
 			velocity_state.controlled_velocity if velocity_state != null else Vector3.ZERO
@@ -132,7 +138,21 @@ func _physics_process(_delta: float) -> void:
 		),
 		"contact_solver": contact_solver_snapshot,
 	}
+
+	var was_watching: bool = bool(
+		(trace.call("get_debug_state") as Dictionary).get("watching", false)
+	)
 	var capture: Dictionary = trace.call("record_frame", snapshot)
+	var debug_state: Dictionary = trace.call("get_debug_state") as Dictionary
+	var is_watching: bool = bool(debug_state.get("watching", false))
+	if is_watching and not was_watching and not _reported_watch_active:
+		_reported_watch_active = true
+		print(
+			"[POST_MANTLE_FREEZE] mantle observed; watching for stall from physics frame ",
+			physics_frame
+		)
+	if not is_watching and int(debug_state.get("trigger_sequence", -1)) < 0:
+		_reported_watch_active = false
 	if not capture.is_empty():
 		_write_capture(capture)
 
@@ -176,9 +196,19 @@ func _write_capture(capture: Dictionary) -> void:
 	file.close()
 	var absolute_path: String = ProjectSettings.globalize_path(TRACE_PATH)
 	if bool(capture.get("complete", false)):
-		print("[POST_MANTLE_FREEZE] finalized trace: ", absolute_path)
+		print(
+			"[POST_MANTLE_FREEZE] finalized trace: ",
+			absolute_path,
+			" | ",
+			str(capture.get("reason", "unknown stall"))
+		)
 	else:
-		print("[POST_MANTLE_FREEZE] detected; preliminary trace: ", absolute_path)
+		print(
+			"[POST_MANTLE_FREEZE] detected; preliminary trace: ",
+			absolute_path,
+			" | ",
+			str(capture.get("reason", "unknown stall"))
+		)
 
 
 func _vector2_to_array(value: Vector2) -> Array:

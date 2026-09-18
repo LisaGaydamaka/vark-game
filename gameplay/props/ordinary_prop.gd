@@ -5,7 +5,6 @@ extends RigidBody3D
 const PHASE_SETTLED: StringName = &"settled"
 const PHASE_CARRIED_JUNK: StringName = &"carried_junk"
 const PHASE_MOVING: StringName = &"moving"
-const PHASE_SETTLING: StringName = &"settling"
 
 const MOTION_NONE: StringName = &"none"
 const MOTION_RELEASED: StringName = &"released"
@@ -13,7 +12,6 @@ const MOTION_THROWN: StringName = &"thrown"
 const MOTION_UNSUPPORTED: StringName = &"unsupported"
 const MOTION_DISTURBED: StringName = &"disturbed"
 
-const SETTLE_ALIGNMENT_INTERRUPT_SPEED: float = 0.75
 const PLAYER_PUSH_MIN_SPEED: float = 0.15
 const PROP_IMPACT_MIN_IMPULSE: float = 0.035
 const PROP_IMPACT_TRANSFER_SCALE: float = 0.60
@@ -35,9 +33,8 @@ const COLLISION_LAYER_PROP_IGNORING_PLAYER: int = 1 << 3
 @export var throw_speed: float = 6.0
 @export var impact_sound_strength: float = 0.55
 @export var gentle_release_sound_scale: float = 0.35
-@export var settle_linear_speed: float = 0.12
-@export var settle_contact_frames_required: int = 5
-@export var settle_alignment_duration: float = 0.20
+@export var rest_linear_speed: float = 0.12
+@export var rest_contact_frames_required: int = 5
 @export var player_push_speed_scale: float = 0.32
 @export var player_push_min_motion_speed: float = 0.40
 @export var player_push_max_motion_speed: float = 1.00
@@ -54,28 +51,17 @@ var _highlighted: bool = false
 var _material: StandardMaterial3D = null
 var _world_session: Node = null
 var _holder: Node = null
-var _settle_yaw: float = 0.0
-var _settle_contact_frames: int = 0
+var _rest_contact_frames: int = 0
 var _unsupported_frames: int = 0
 var _last_contact_count: int = 0
 var _ordinary_collision_layer: int = 1
 var _ordinary_collision_mask: int = 1
-var _ordinary_gravity_scale: float = 1.0
 var _dynamic_contact_count: int = 0
 var _dynamic_support_valid: bool = false
-var _dynamic_support_point: Vector3 = Vector3.ZERO
-var _dynamic_support_normal: Vector3 = Vector3.UP
 var _temporarily_ignored_player: PhysicsBody3D = null
 var _pending_rigid_launch: bool = false
 var _pending_launch_transform: Transform3D = Transform3D.IDENTITY
 var _pending_launch_velocity: Vector3 = Vector3.ZERO
-var _settle_alignment_active: bool = false
-var _settle_alignment_start: Transform3D = Transform3D.IDENTITY
-var _settle_alignment_target: Transform3D = Transform3D.IDENTITY
-var _settle_alignment_support_point: Vector3 = Vector3.ZERO
-var _settle_alignment_support_normal: Vector3 = Vector3.UP
-var _settle_alignment_elapsed: float = 0.0
-var _settle_alignment_unsupported_frames: int = 0
 var _pending_prop_impacts: Array[Dictionary] = []
 var _pending_external_impulse: Vector3 = Vector3.ZERO
 var _pending_player_push_velocity: Vector3 = Vector3.ZERO
@@ -85,12 +71,13 @@ func _ready() -> void:
 	add_to_group(&"vark_interactable")
 	_ordinary_collision_layer = collision_layer
 	_ordinary_collision_mask = collision_mask
-	_ordinary_gravity_scale = gravity_scale
-	_settle_yaw = _yaw_from_basis(global_transform.basis)
 	_world_session = _find_world_session()
+	global_transform = _top_up_transform(global_transform)
 
 	# Ordinary props are frozen while settled, but released/unsupported props
 	# use the real rigid-body solver for gravity and translational collision.
+	# Rotation is deliberately locked for the whole ordinary-prop lifecycle: the
+	# top face is always world-up and only horizontal yaw is preserved.
 	contact_monitor = true
 	if max_contacts_reported < 8:
 		max_contacts_reported = 8
@@ -121,17 +108,14 @@ func _physics_process(_delta: float) -> void:
 			linear_velocity = Vector3.ZERO
 			angular_velocity = Vector3.ZERO
 			_unsupported_frames = 0
-			_settle_contact_frames = 0
+			_rest_contact_frames = 0
 			_last_contact_count = 0
 			_clear_dynamic_contact_state()
 		PHASE_MOVING:
 			_unsupported_frames = 0
 			angular_velocity = Vector3.ZERO
 			_dispatch_pending_prop_impacts()
-			_update_dynamic_settling()
-		PHASE_SETTLING:
-			angular_velocity = Vector3.ZERO
-			_update_settle_alignment_support()
+			_update_dynamic_rest()
 	_update_temporary_player_collision_ignore()
 
 
@@ -169,11 +153,14 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		state.sleeping = false
 		_pending_player_push_velocity = Vector3.ZERO
 
-	if _phase == PHASE_SETTLING and _settle_alignment_active:
-		_integrate_settle_alignment(state)
-		return
 	if _phase != PHASE_MOVING:
 		return
+
+	# lock_rotation prevents solver angular response, and this direct-state
+	# normalization also closes any external/restore path that could introduce a
+	# tilted basis while the body is live. Translation remains fully physical.
+	state.transform = _top_up_transform(state.transform)
+	state.angular_velocity = Vector3.ZERO
 	_capture_dynamic_contact_state(state)
 
 
@@ -181,8 +168,6 @@ func _capture_dynamic_contact_state(state: PhysicsDirectBodyState3D) -> void:
 	_pending_prop_impacts.clear()
 	_dynamic_contact_count = state.get_contact_count()
 	_dynamic_support_valid = false
-	_dynamic_support_point = Vector3.ZERO
-	_dynamic_support_normal = Vector3.UP
 	var body_origin: Vector3 = state.transform.origin
 	var impact_target_ids: Dictionary = {}
 	for contact_index: int in range(_dynamic_contact_count):
@@ -204,58 +189,8 @@ func _capture_dynamic_contact_state(state: PhysicsDirectBodyState3D) -> void:
 		normal = normal.normalized()
 		if normal.y < 0.0:
 			normal = -normal
-		if normal.y < minimum_support_normal_y:
-			continue
-		var support_point: Vector3 = state.get_contact_collider_position(contact_index)
-		if not _dynamic_support_valid or support_point.y > _dynamic_support_point.y:
+		if normal.y >= minimum_support_normal_y:
 			_dynamic_support_valid = true
-			_dynamic_support_point = support_point
-			_dynamic_support_normal = normal
-
-
-func _integrate_settle_alignment(state: PhysicsDirectBodyState3D) -> void:
-	# The alignment is deliberate settle presentation, not free angular physics.
-	# Gravity is suspended for this short phase, but a meaningful external hit
-	# can still interrupt it and return the same body to ordinary rigid motion.
-	if state.linear_velocity.length() >= SETTLE_ALIGNMENT_INTERRUPT_SPEED:
-		var interrupted_velocity: Vector3 = state.linear_velocity
-		_cancel_settle_alignment()
-		_phase = PHASE_MOVING
-		_motion_kind = MOTION_DISTURBED
-		_settle_yaw = _yaw_from_basis(state.transform.basis)
-		_settle_contact_frames = 0
-		_last_contact_count = 0
-		state.linear_velocity = interrupted_velocity
-		state.angular_velocity = Vector3.ZERO
-		state.sleeping = false
-		return
-
-	var duration: float = maxf(settle_alignment_duration, maxf(state.step, 0.001))
-	_settle_alignment_elapsed = minf(_settle_alignment_elapsed + state.step, duration)
-	var linear_weight: float = clampf(_settle_alignment_elapsed / duration, 0.0, 1.0)
-	var eased_weight: float = linear_weight * linear_weight * (3.0 - 2.0 * linear_weight)
-	var next_basis: Basis = _settle_alignment_start.basis.slerp(
-		_settle_alignment_target.basis,
-		eased_weight
-	).orthonormalized()
-	var next_origin: Vector3 = _origin_reseated_on_support(
-		next_basis,
-		_settle_alignment_start.origin,
-		_settle_alignment_support_point,
-		_settle_alignment_support_normal
-	)
-	state.transform = Transform3D(next_basis, next_origin)
-	state.linear_velocity = Vector3.ZERO
-	state.angular_velocity = Vector3.ZERO
-	state.sleeping = false
-
-	if linear_weight < 1.0:
-		return
-	state.transform = _settle_alignment_target
-	state.linear_velocity = Vector3.ZERO
-	state.angular_velocity = Vector3.ZERO
-	state.sleeping = true
-	_finish_settle_alignment()
 
 
 func can_interact(interactor: Node) -> bool:
@@ -360,13 +295,12 @@ func begin_carried_junk(holder: Node) -> bool:
 	if holder == null or _phase == PHASE_CARRIED_JUNK:
 		return false
 	_clear_pending_rigid_launch()
-	_cancel_settle_alignment()
 	_clear_temporary_player_collision_ignore()
 	_clear_dynamic_contact_state()
 	_holder = holder
 	_phase = PHASE_CARRIED_JUNK
 	_motion_kind = MOTION_NONE
-	_settle_contact_frames = 0
+	_rest_contact_frames = 0
 	_unsupported_frames = 0
 	_last_contact_count = 0
 	linear_velocity = Vector3.ZERO
@@ -390,15 +324,9 @@ func release_from_carry(
 		return false
 	if not _is_finite_transform(release_transform) or not _is_finite_vector(initial_velocity):
 		return false
-	var upright_release_transform: Transform3D = release_transform
-	upright_release_transform.basis = _top_up_basis_for_yaw(
-		_yaw_from_basis(release_transform.basis)
-	)
-	# Carry->world orientation is semantic physics state, not later settle
-	# presentation. Both F and R enter the world with the box top already up.
-	# Shape-aware player placement is owned by PlayerPropCarry before this
-	# lower-level transition is accepted.
-	_cancel_settle_alignment()
+	var upright_release_transform: Transform3D = _top_up_transform(release_transform)
+	# Carry->world orientation is semantic physics state. Both F and R enter the
+	# world top-up and remain top-up for their entire dynamic lifetime.
 	_clear_temporary_player_collision_ignore()
 	_holder = null
 	global_transform = upright_release_transform
@@ -420,38 +348,24 @@ func release_from_carry(
 	_stage_rigid_launch(motion_kind, upright_release_transform, initial_velocity)
 	return true
 
+
 func capture_semantic_state() -> Dictionary:
-	var snapshot := {
+	return {
 		"phase": _phase,
 		"motion_kind": _motion_kind,
 		"transform": _pending_launch_transform if _pending_rigid_launch else global_transform,
 		"linear_velocity": _pending_launch_velocity if _pending_rigid_launch else linear_velocity,
-		"settle_yaw": _settle_yaw,
 	}
-	if _phase == PHASE_SETTLING and _settle_alignment_active:
-		var duration: float = maxf(settle_alignment_duration, 0.001)
-		snapshot["settle_alignment"] = {
-			"start": _settle_alignment_start,
-			"target": _settle_alignment_target,
-			"support_point": _settle_alignment_support_point,
-			"support_normal": _settle_alignment_support_normal,
-			"progress": clampf(_settle_alignment_elapsed / duration, 0.0, 1.0),
-		}
-	return snapshot
 
 
 func apply_semantic_state(snapshot: Dictionary) -> bool:
-	if snapshot.size() < 4 or snapshot.size() > 6:
+	if snapshot.size() != 4:
 		return false
 	if not snapshot.has("phase") or not snapshot.has("motion_kind") or not snapshot.has("transform") or not snapshot.has("linear_velocity"):
 		return false
 	if typeof(snapshot["phase"]) != TYPE_STRING_NAME or typeof(snapshot["motion_kind"]) != TYPE_STRING_NAME:
 		return false
 	if typeof(snapshot["transform"]) != TYPE_TRANSFORM3D or typeof(snapshot["linear_velocity"]) != TYPE_VECTOR3:
-		return false
-	if snapshot.has("settle_yaw") and typeof(snapshot["settle_yaw"]) != TYPE_FLOAT and typeof(snapshot["settle_yaw"]) != TYPE_INT:
-		return false
-	if snapshot.has("settle_alignment") and typeof(snapshot["settle_alignment"]) != TYPE_DICTIONARY:
 		return false
 	var phase: StringName = snapshot["phase"]
 	var motion_kind: StringName = snapshot["motion_kind"]
@@ -463,46 +377,26 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		return false
 	if (phase == PHASE_SETTLED or phase == PHASE_CARRIED_JUNK) and (motion_kind != MOTION_NONE or not restored_velocity.is_zero_approx()):
 		return false
-	if (phase == PHASE_MOVING or phase == PHASE_SETTLING) and motion_kind == MOTION_NONE:
-		return false
-	if snapshot.has("settle_alignment") and phase != PHASE_SETTLING:
+	if phase == PHASE_MOVING and motion_kind == MOTION_NONE:
 		return false
 
 	_clear_pending_rigid_launch()
-	_cancel_settle_alignment()
 	_clear_temporary_player_collision_ignore()
 	_clear_dynamic_contact_state()
 	_phase = phase
 	_motion_kind = motion_kind
-	global_transform = restored_transform
+	global_transform = _top_up_transform(restored_transform)
 	linear_velocity = restored_velocity
 	angular_velocity = Vector3.ZERO
-	_settle_yaw = float(snapshot.get("settle_yaw", _yaw_from_basis(restored_transform.basis)))
 	_holder = null
-	_settle_contact_frames = 0
+	_rest_contact_frames = 0
 	_unsupported_frames = 0
 	_last_contact_count = 0
 	_set_world_presentation_enabled(phase != PHASE_CARRIED_JUNK)
 	set_interaction_highlighted(false)
-	if phase == PHASE_CARRIED_JUNK:
+	if phase == PHASE_CARRIED_JUNK or phase == PHASE_SETTLED:
 		freeze = true
 		sleeping = true
-		return true
-	if phase == PHASE_SETTLED:
-		freeze = true
-		sleeping = true
-		return true
-	if phase == PHASE_SETTLING:
-		var alignment: Dictionary = snapshot.get("settle_alignment", {})
-		if alignment.is_empty():
-			# Legacy settling snapshots did not carry interpolation state. Resume as
-			# ordinary motion and let contact truth rediscover a fresh settle.
-			_phase = PHASE_MOVING
-			freeze = false
-			sleeping = false
-			return true
-		if not _restore_settle_alignment_snapshot(alignment):
-			return false
 		return true
 	freeze = false
 	sleeping = false
@@ -517,12 +411,10 @@ func reconcile_after_restore(holder: Node = null) -> bool:
 	_holder = null
 	_clear_temporary_player_collision_ignore()
 	_set_world_presentation_enabled(true)
+	global_transform = _top_up_transform(global_transform)
 	if _phase == PHASE_SETTLED:
 		freeze = true
 		sleeping = true
-	elif _phase == PHASE_SETTLING and _settle_alignment_active:
-		freeze = false
-		sleeping = false
 	else:
 		freeze = false
 		sleeping = false
@@ -536,12 +428,11 @@ func _stage_rigid_launch(
 ) -> void:
 	_phase = PHASE_MOVING
 	_motion_kind = motion_kind
-	_settle_yaw = _yaw_from_basis(release_transform.basis)
-	_settle_contact_frames = 0
+	_rest_contact_frames = 0
 	_unsupported_frames = 0
 	_last_contact_count = 0
 	_clear_dynamic_contact_state()
-	_pending_launch_transform = release_transform
+	_pending_launch_transform = _top_up_transform(release_transform)
 	_pending_launch_velocity = initial_velocity
 	_pending_rigid_launch = true
 	# Keep the newly activated body awake until the direct-state callback has
@@ -559,11 +450,10 @@ func _clear_pending_rigid_launch() -> void:
 
 
 func _begin_motion(motion_kind: StringName, initial_velocity: Vector3) -> void:
-	_cancel_settle_alignment()
 	_phase = PHASE_MOVING
 	_motion_kind = motion_kind
-	_settle_yaw = _yaw_from_basis(global_transform.basis)
-	_settle_contact_frames = 0
+	global_transform = _top_up_transform(global_transform)
+	_rest_contact_frames = 0
 	_unsupported_frames = 0
 	_last_contact_count = 0
 	_clear_dynamic_contact_state()
@@ -573,96 +463,39 @@ func _begin_motion(motion_kind: StringName, initial_velocity: Vector3) -> void:
 	sleeping = false
 
 
-func _update_dynamic_settling() -> void:
+func _update_dynamic_rest() -> void:
 	var contact_count: int = _dynamic_contact_count
 	if contact_count > 0 and _last_contact_count == 0:
 		_queue_impact_sound(linear_velocity.length())
 	_last_contact_count = contact_count
-	if _dynamic_support_valid and linear_velocity.length() <= maxf(settle_linear_speed, 0.01):
-		_settle_contact_frames += 1
-		if _settle_contact_frames >= maxi(settle_contact_frames_required, 1):
-			_begin_settle_alignment(_dynamic_support_point, _dynamic_support_normal)
+	if _dynamic_support_valid and linear_velocity.length() <= maxf(rest_linear_speed, 0.01):
+		_rest_contact_frames += 1
+		if _rest_contact_frames >= maxi(rest_contact_frames_required, 1):
+			_finish_dynamic_rest()
 		return
-	_settle_contact_frames = 0
+	_rest_contact_frames = 0
 
 
-func _begin_settle_alignment(support_point: Vector3, support_normal: Vector3) -> void:
+func _finish_dynamic_rest() -> void:
 	_clear_pending_rigid_launch()
-	var normal: Vector3 = support_normal.normalized() if support_normal.length_squared() > 0.000001 else Vector3.UP
-	var current_basis: Basis = global_transform.basis.orthonormalized()
-	var target_basis: Basis = current_basis
-	# Carry release/throw is already exactly top-up and angular motion is locked.
-	# Preserve that exact orientation through settle instead of recomputing a
-	# second yaw basis that can make a symmetric box appear to roll to a new face.
-	if current_basis.y.dot(Vector3.UP) < 0.999999:
-		target_basis = _top_up_basis_for_yaw(_settle_yaw)
-	var target_origin: Vector3 = _origin_reseated_on_support(
-		target_basis,
-		global_position,
-		support_point,
-		normal
-	)
-	_settle_alignment_active = true
-	_settle_alignment_start = global_transform
-	_settle_alignment_target = Transform3D(target_basis, target_origin)
-	_settle_alignment_support_point = support_point
-	_settle_alignment_support_normal = normal
-	_settle_alignment_elapsed = 0.0
-	_settle_alignment_unsupported_frames = 0
-	_phase = PHASE_SETTLING
+	global_transform = _top_up_transform(global_transform)
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
-	gravity_scale = 0.0
-	can_sleep = false
-	freeze = false
-	sleeping = false
-	_clear_dynamic_contact_state()
-
-
-func _finish_settle_alignment() -> void:
-	_settle_alignment_active = false
-	_settle_alignment_elapsed = 0.0
-	_settle_alignment_unsupported_frames = 0
-	gravity_scale = _ordinary_gravity_scale
 	can_sleep = true
 	freeze = true
 	sleeping = true
 	_phase = PHASE_SETTLED
 	_motion_kind = MOTION_NONE
-	_settle_contact_frames = 0
+	_rest_contact_frames = 0
 	_unsupported_frames = 0
 	_last_contact_count = 0
 	_clear_dynamic_contact_state()
 
 
-func _cancel_settle_alignment() -> void:
-	if not _settle_alignment_active and gravity_scale == _ordinary_gravity_scale:
-		return
-	_settle_alignment_active = false
-	_settle_alignment_elapsed = 0.0
-	_settle_alignment_unsupported_frames = 0
-	gravity_scale = _ordinary_gravity_scale
-	can_sleep = true
-
-
-func _update_settle_alignment_support() -> void:
-	if not _settle_alignment_active:
-		_phase = PHASE_MOVING
-		return
-	if _has_support():
-		_settle_alignment_unsupported_frames = 0
-		return
-	_settle_alignment_unsupported_frames += 1
-	if _settle_alignment_unsupported_frames < 2:
-		return
-	var velocity_before_fall: Vector3 = linear_velocity
-	_cancel_settle_alignment()
-	_begin_motion(MOTION_UNSUPPORTED, velocity_before_fall)
-
-
 func _update_settled_state() -> void:
 	# Settled is intentionally exact/stable. Explicit causes promote the same
 	# RigidBody3D back to dynamic motion; background solver stabilization does not.
+	global_transform = _top_up_transform(global_transform)
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	_last_contact_count = 0
@@ -675,92 +508,12 @@ func _update_settled_state() -> void:
 		_begin_motion(MOTION_UNSUPPORTED, Vector3.ZERO)
 
 
-func _origin_reseated_on_support(
-	settled_basis: Basis,
-	reference_origin: Vector3,
-	support_point: Vector3,
-	support_normal: Vector3
-) -> Vector3:
-	var origin: Vector3 = reference_origin
-	var box: BoxShape3D = prop_collision.shape as BoxShape3D if prop_collision != null else null
-	var normal: Vector3 = support_normal
-	if normal.length_squared() <= 0.000001:
-		normal = Vector3.UP
-	else:
-		normal = normal.normalized()
-	if box == null or normal.y < minimum_support_normal_y:
-		return origin
-	var support_extent: float = _support_extent_along_normal(
-		settled_basis,
-		box.size * 0.5,
-		normal
-	)
-	var horizontal_delta := Vector3(
-		origin.x - support_point.x,
-		0.0,
-		origin.z - support_point.z
-	)
-	origin.y = support_point.y + (
-		support_extent
-		- normal.x * horizontal_delta.x
-		- normal.z * horizontal_delta.z
-	) / normal.y
-	return origin
-
-
-func _restore_settle_alignment_snapshot(alignment: Dictionary) -> bool:
-	for required_key: String in ["start", "target", "support_point", "support_normal", "progress"]:
-		if not alignment.has(required_key):
-			return false
-	if typeof(alignment["start"]) != TYPE_TRANSFORM3D or typeof(alignment["target"]) != TYPE_TRANSFORM3D:
-		return false
-	if typeof(alignment["support_point"]) != TYPE_VECTOR3 or typeof(alignment["support_normal"]) != TYPE_VECTOR3:
-		return false
-	if typeof(alignment["progress"]) != TYPE_FLOAT and typeof(alignment["progress"]) != TYPE_INT:
-		return false
-	var start_transform: Transform3D = alignment["start"]
-	var target_transform: Transform3D = alignment["target"]
-	var support_point: Vector3 = alignment["support_point"]
-	var support_normal: Vector3 = alignment["support_normal"]
-	var progress: float = float(alignment["progress"])
-	if not _is_finite_transform(start_transform) or not _is_finite_transform(target_transform):
-		return false
-	if not _is_finite_vector(support_point) or not _is_finite_vector(support_normal):
-		return false
-	if progress < 0.0 or progress > 1.0:
-		return false
-	_settle_alignment_active = true
-	_settle_alignment_start = start_transform
-	_settle_alignment_target = target_transform
-	_settle_alignment_support_point = support_point
-	_settle_alignment_support_normal = support_normal.normalized() if support_normal.length_squared() > 0.000001 else Vector3.UP
-	_settle_alignment_elapsed = progress * maxf(settle_alignment_duration, 0.001)
-	_settle_alignment_unsupported_frames = 0
-	gravity_scale = 0.0
-	can_sleep = false
-	freeze = false
-	sleeping = false
-	linear_velocity = Vector3.ZERO
-	angular_velocity = Vector3.ZERO
-	return true
-
-
-func _support_extent_along_normal(source_basis: Basis, half: Vector3, normal: Vector3) -> float:
-	var basis: Basis = source_basis.orthonormalized()
-	return (
-		absf(basis.x.dot(normal)) * half.x
-		+ absf(basis.y.dot(normal)) * half.y
-		+ absf(basis.z.dot(normal)) * half.z
-	)
-
-
 func _clear_dynamic_contact_state() -> void:
+	_pending_prop_impacts.clear()
 	_pending_external_impulse = Vector3.ZERO
 	_pending_player_push_velocity = Vector3.ZERO
 	_dynamic_contact_count = 0
 	_dynamic_support_valid = false
-	_dynamic_support_point = Vector3.ZERO
-	_dynamic_support_normal = Vector3.UP
 
 
 func _dispatch_pending_prop_impacts() -> void:
@@ -779,7 +532,7 @@ func _dispatch_pending_prop_impacts() -> void:
 
 
 func receive_prop_impact(contact_impulse: Vector3) -> bool:
-	if _phase != PHASE_SETTLED and _phase != PHASE_SETTLING:
+	if _phase != PHASE_SETTLED:
 		return false
 	var impulse_magnitude: float = contact_impulse.length()
 	if impulse_magnitude < PROP_IMPACT_MIN_IMPULSE:
@@ -802,7 +555,7 @@ func receive_player_push(player_velocity: Vector3) -> bool:
 	var speed: float = horizontal_velocity.length()
 	if speed < PLAYER_PUSH_MIN_SPEED:
 		return false
-	if _phase == PHASE_SETTLED or _phase == PHASE_SETTLING:
+	if _phase == PHASE_SETTLED:
 		_begin_motion(MOTION_DISTURBED, linear_velocity)
 	var target_speed: float = clampf(
 		speed * maxf(player_push_speed_scale, 0.0),
@@ -985,8 +738,15 @@ func _top_up_basis_for_yaw(yaw: float) -> Basis:
 	return Basis(Vector3.UP, yaw).orthonormalized()
 
 
+func _top_up_transform(source: Transform3D) -> Transform3D:
+	return Transform3D(
+		_top_up_basis_for_yaw(_yaw_from_basis(source.basis)),
+		source.origin
+	)
+
+
 func _is_valid_phase(phase: StringName) -> bool:
-	return phase == PHASE_SETTLED or phase == PHASE_CARRIED_JUNK or phase == PHASE_MOVING or phase == PHASE_SETTLING
+	return phase == PHASE_SETTLED or phase == PHASE_CARRIED_JUNK or phase == PHASE_MOVING
 
 
 func _is_valid_motion_kind(motion_kind: StringName) -> bool:
