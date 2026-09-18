@@ -39,6 +39,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		assert_true.call(false, "Phase 3.5 transition fixture exposes required props")
 		return
 	await _prove_release_transaction(tree, world, player, pickup_prop, assert_true)
+	await _prove_wakeable_world_physics(tree, world, player, assert_true)
 	await _prove_support_invalidation(tree, player, edge_prop, assert_true)
 	_prove_traversal_invalidation(player, stack_upper, assert_true)
 	await _prove_contact_manifold_settle(tree, world, assert_true)
@@ -121,6 +122,71 @@ func _prove_release_transaction(
 	)
 	carry.set("release_distance", full_release_distance)
 	await _settle_until_phase(tree, prop, OrdinaryProp.PHASE_SETTLED, 240)
+
+
+func _prove_wakeable_world_physics(
+	tree: SceneTree,
+	world: Node3D,
+	player: CharacterBody3D,
+	assert_true: Callable
+) -> void:
+	var target: RigidBody3D = OrdinaryPropScene.instantiate() as RigidBody3D
+	var striker: RigidBody3D = OrdinaryPropScene.instantiate() as RigidBody3D
+	world.add_child(target)
+	world.add_child(striker)
+	await tree.process_frame
+	target.global_position = Vector3(3.0, 0.3, 3.0)
+	striker.global_position = Vector3(3.0, 0.3, 4.2)
+	await _settle_physics(tree, 3)
+	var target_start: Vector3 = target.global_position
+	assert_true.call(
+		target.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED
+		and target.freeze,
+		"Settled ordinary props remain exactly stable until an explicit physical cause promotes them"
+	)
+	assert_true.call(
+		bool(striker.call("begin_carried_junk", world))
+		and bool(striker.call(
+			"release_from_carry",
+			OrdinaryProp.MOTION_THROWN,
+			striker.global_transform,
+			Vector3(0.0, 0.0, -5.0),
+			null
+		)),
+		"Prop-impact fixture launches through the production carry-to-rigid handoff"
+	)
+	var target_moved: bool = await _wait_for_displacement(tree, target, target_start, 0.08, 90)
+	assert_true.call(
+		target_moved
+		and target.call("get_motion_kind") == OrdinaryProp.MOTION_DISTURBED
+		and target.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999,
+		"A moving prop transfers solver contact impulse into a settled prop without free tumbling"
+	)
+	target.queue_free()
+	striker.queue_free()
+	await tree.process_frame
+	await _settle_physics(tree, 2)
+
+	var push_prop: RigidBody3D = OrdinaryPropScene.instantiate() as RigidBody3D
+	world.add_child(push_prop)
+	await tree.process_frame
+	push_prop.global_position = Vector3(-3.0, 0.3, 3.0)
+	player.global_position = Vector3(-3.0, 0.0, 3.9)
+	player.rotation.y = 0.0
+	player.velocity = Vector3.ZERO
+	await _settle_physics(tree, 3)
+	var push_start: Vector3 = push_prop.global_position
+	Input.action_press("move_forward")
+	await _settle_physics(tree, 24)
+	Input.action_release("move_forward")
+	await _settle_physics(tree, 2)
+	assert_true.call(
+		push_prop.global_position.distance_to(push_start) > 0.025
+		and push_prop.call("get_motion_kind") == OrdinaryProp.MOTION_DISTURBED,
+		"Production player locomotion gives a contacted ordinary prop a bounded physical shove"
+	)
+	push_prop.queue_free()
+	await tree.process_frame
 
 
 func _prove_support_invalidation(
@@ -213,14 +279,24 @@ func _prove_contact_manifold_settle(tree: SceneTree, world: Node3D, assert_true:
 		"settle_yaw": 0.0,
 	}
 	assert_true.call(bool(prop.call("apply_semantic_state", moving_state)), "Narrow-support fixture enters moving rigid-body state")
-	await _settle_until_phase(tree, prop, OrdinaryProp.PHASE_SETTLED, 220)
+	await _settle_until_phase(tree, prop, OrdinaryProp.PHASE_SETTLING, 200)
+	var alignment_start_up: float = prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP)
+	await _settle_physics(tree, 2)
+	var alignment_mid_up: float = prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP)
+	assert_true.call(
+		prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLING
+		and alignment_mid_up > alignment_start_up + 0.001
+		and alignment_mid_up < 0.999,
+		"Final top-up settle is visibly interpolated across physics frames instead of snapping in one frame"
+	)
+	await _settle_until_phase(tree, prop, OrdinaryProp.PHASE_SETTLED, 80)
 	assert_true.call(
 		prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED
 		and prop.freeze
 		and prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999
 		and absf(prop.global_position.y - 1.1) <= 0.025
 		and bool(prop.call("is_supported")),
-		"Tilted box settles from real contact state on a narrow support the retired corner-ray authority misses"
+		"Tilted box smoothly settles from real contact state, re-seats on support, then sleeps wakeable"
 	)
 	prop.queue_free()
 	support_body.queue_free()
@@ -256,6 +332,21 @@ func _wait_for_player_ignore_clear(tree: SceneTree, prop: RigidBody3D, player: C
 			return true
 		await tree.physics_frame
 		await tree.process_frame
+	return false
+
+
+func _wait_for_displacement(
+	tree: SceneTree,
+	prop: RigidBody3D,
+	start_position: Vector3,
+	required_distance: float,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		await tree.physics_frame
+		await tree.process_frame
+		if prop.global_position.distance_to(start_position) >= required_distance:
+			return true
 	return false
 
 

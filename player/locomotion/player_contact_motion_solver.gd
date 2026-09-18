@@ -38,6 +38,7 @@ func move(
 	)
 
 	var contact_planes: Array[Vector3] = []
+	var pushed_prop_ids: Dictionary = {}
 	var walkable_support_active: bool = false
 	var walkable_support_normal: Vector3 = Vector3.UP
 
@@ -74,6 +75,7 @@ func move(
 			break
 
 		collisions.append(collision)
+		_push_contacted_props(collision, requested_horizontal_velocity, pushed_prop_ids)
 		for normal: Vector3 in contact_projector.get_collision_normals(collision):
 			# Collision geometry is always physical truth. Support classification
 			# may decide which contact carries the player, but it never removes a
@@ -114,6 +116,31 @@ func move(
 		contact_planes
 	)
 	return collisions
+
+
+func _push_contacted_props(
+	collision: KinematicCollision3D,
+	requested_horizontal_velocity: Vector3,
+	pushed_prop_ids: Dictionary
+) -> void:
+	if collision == null or requested_horizontal_velocity.length_squared() <= MOTION_EPSILON_SQUARED:
+		return
+	for contact_index: int in range(collision.get_collision_count()):
+		var collider: Object = collision.get_collider(contact_index)
+		if collider == null or not collider.has_method("receive_player_push"):
+			continue
+		var normal: Vector3 = collision.get_normal(contact_index)
+		var lateral_normal := Vector3(normal.x, 0.0, normal.z)
+		if lateral_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+			continue
+		lateral_normal = lateral_normal.normalized()
+		if requested_horizontal_velocity.dot(lateral_normal) >= -0.01:
+			continue
+		var collider_id: int = collider.get_instance_id()
+		if pushed_prop_ids.has(collider_id):
+			continue
+		pushed_prop_ids[collider_id] = true
+		collider.call("receive_player_push", requested_horizontal_velocity)
 
 
 func _resolve_remaining_motion(

@@ -68,7 +68,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON,
 		"Unselected prop presentation uses normal lit shading and ordinary cast/receive shadows"
 	)
-	assert_true.call(pickup_prop.freeze and pickup_prop.lock_rotation and pickup_prop.continuous_cd, "Settled props are frozen while retaining rigid-body collision configuration for later release")
+	assert_true.call(pickup_prop.freeze and pickup_prop.lock_rotation and pickup_prop.continuous_cd, "Settled props remain exactly stable until an explicit physical cause promotes them")
 	assert_true.call(pickup_prop.call("get_visual_model") == DefaultPropVisual and bool(pickup_prop.call("set_visual_model", AlternatePropVisual)) and pickup_prop.get_instance_id() == original_instance_id and prop_collision.shape != null, "Compatible external prop model replacement preserves the gameplay instance and collider")
 
 	var edge_start: Transform3D = edge_prop.global_transform
@@ -134,7 +134,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	await _settle_until_phase(tree, pickup_prop, OrdinaryProp.PHASE_SETTLED, 160)
 	var released_strength: float = _max_impact_strength(sound_events, released_sound_start)
 	var released_settled_facing: Vector3 = _horizontal_forward_from_basis(pickup_prop.global_transform.basis)
-	assert_true.call(pickup_prop.freeze and pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999 and released_settled_facing.dot(released_facing) > 0.995, "Gentle release settles top-up by removing pitch/roll while preserving its yaw")
+	assert_true.call(pickup_prop.freeze and pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999 and released_settled_facing.dot(released_facing) > 0.995, "Gentle release smoothly settles top-up by removing pitch/roll while preserving its yaw, then becomes exactly stable")
 	assert_true.call(absf(pickup_prop.global_position.y - 0.3) <= 0.015 and bool(pickup_prop.call("is_supported")), "A released crate is re-seated onto its real support plane after top-up normalization instead of freezing with a visible air gap")
 
 	assert_true.call(bool(pickup_prop.call("apply_semantic_state", carried_state)) and bool(pickup_prop.call("reconcile_after_restore", player)), "Restore reconciliation rebuilds the carried_junk relationship without serializing a live player reference")
@@ -160,7 +160,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	await _settle_until_phase(tree, pickup_prop, OrdinaryProp.PHASE_SETTLED, 220)
 	var thrown_strength: float = _max_impact_strength(sound_events, thrown_sound_start)
 	var thrown_settled_facing: Vector3 = _horizontal_forward_from_basis(pickup_prop.global_transform.basis)
-	assert_true.call(pickup_prop.freeze and pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999 and thrown_settled_facing.dot(thrown_facing) > 0.995 and pickup_prop.linear_velocity.is_zero_approx(), "Thrown box settles top-up and stationary without a global compass-facing snap")
+	assert_true.call(pickup_prop.freeze and pickup_prop.global_transform.basis.orthonormalized().y.dot(Vector3.UP) > 0.999 and thrown_settled_facing.dot(thrown_facing) > 0.995 and pickup_prop.linear_velocity.is_zero_approx(), "Thrown box smoothly settles top-up and stable without a global compass-facing snap")
 	assert_true.call(thrown_strength > released_strength and released_strength > 0.0, "Gentle release emits lower semantic impact strength than a throw")
 
 	var upper_facing: Vector3 = _horizontal_forward_from_basis(stack_upper.global_transform.basis)

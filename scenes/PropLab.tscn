@@ -83,6 +83,6 @@ prop_id = &"prop.lab.stack.upper"
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(0, 2.65, 0.4)
-text = "3.5 PROP LAB\nF = pick up / throw · R = gentle release\nReleased props use real rigid-body collision; rotation stays fixed until settle\nOn settle: top-up only, yaw preserved · no floor hover gap"
+text = "3.5 PROP LAB\nF = pick up / throw · R = gentle release\nProps push other props; walking into a crate can shove it\nSettle eases top-up, preserves yaw, then sleeps wakeable · no hover gap"
 billboard = 1
 font_size = 24

@@ -454,7 +454,7 @@ The core game supports Thief-style loot collection and mission statistics.
 
 # Physical objects — LOCKED Thief-style contract
 
-Settled movable props follow **Thief 1 & 2-style object behavior** rather than remaining continuously simulated. While a prop is actively thrown, gently released, or unsupported, it temporarily participates as a real dynamic rigid body so gravity, friction, bounce/slide, and solid collision response are resolved by the physics engine; once it genuinely comes to rest it becomes settled/frozen again.
+Settled movable props follow **Thief 1 & 2-style object behavior** while still responding physically to explicit contact. A genuinely resting prop uses an exact dormant/stable state so authored edge placements and stacks do not drift from background solver stabilization. A meaningful moving-prop impact, deliberate lateral player shove, or support removal explicitly promotes that same `RigidBody3D` back into dynamic motion; from that point gravity, friction, bounce/slide, transferred momentum, and solid collision response are resolved by the physics engine until it settles again.
 
 The intended rule is deliberately stylized:
 
@@ -470,6 +470,8 @@ A settled object does not:
 - drift;
 - react to background physics merely because a realistic rigid body would.
 
+A meaningful **explicit** physical contact is different from background drift. A thrown/moving prop can transfer momentum into a resting ordinary prop, and walking laterally into a suitable prop can give it a small physical shove. Those contacts promote the same rigid body into active motion and may translate it, but ordinary box-like Junk still keeps angular motion locked instead of tumbling freely.
+
 A box may visibly overhang an edge and remain there if it still has valid support. Realistic torque is not a gameplay rule.
 
 Supported physical objects:
@@ -483,7 +485,7 @@ Supported physical objects:
 - can be stacked
 - can be climbed on where suitable
 
-An object remains where the mission creator placed it until something explicitly acts on it or its support disappears.
+An object remains where the mission creator placed it until something explicitly acts on it or its support disappears. Explicit action includes pickup/throw/release, another physical object striking it, or the player deliberately pushing into it.
 
 Ordinary furniture/prop archetypes may use different reusable external 3D model assets without changing these physical rules. Visual model choice is presentation/configuration, not a separate physics behavior or persistent identity. Ordinary hard-edged prop models must provide outward-facing geometry and hard/explicit face normals where appropriate so unselected props receive normal lighting and scene shadows; the temporary interaction highlight must not become their permanent render mode.
 
@@ -540,11 +542,11 @@ A prop that leaves world participation also invalidates player state derived fro
 
 The release point is derived from the player's current view rather than from a fixed world-space hand position. Looking downward and pressing **R** should place the object's center predictably beneath/in front of the player, approximately along the center-view release line, so deliberate crate stacking is practical.
 
-Thrown/released/unsupported objects use real rigid-body translation while moving: gravity and collisions may change their position, linear velocity, slide, and bounce. Ordinary box-like Junk keeps angular motion locked during this moving phase, so hitting a floor, wall, prop, or actor does **not** rotate the box in flight. It does not continuously track later camera turns. When the prop genuinely settles, only pitch/roll are normalized so the top points upward; its current yaw is preserved. Settling must never rotate a particular side toward world north or any other global compass direction. Top-up normalization must re-seat the rotated collision shape onto the real detected support plane before freezing, so the settled collider rests directly on its support instead of inheriting the larger vertical extent of its tilted moving pose and leaving a visible air gap.
+Thrown/released/unsupported/disturbed objects use real rigid-body translation while moving: gravity and collisions may change their position, linear velocity, slide, and bounce. Ordinary box-like Junk keeps angular motion locked during this moving phase, so hitting a floor, wall, prop, or actor does **not** rotate the box in flight. It does not continuously track later camera turns. When the prop genuinely settles, only pitch/roll are normalized so the top points upward; its current yaw is preserved. This final normalization is a short smooth settle alignment rather than a one-frame visual pop. The interpolated pose remains re-seated against the detected support plane throughout the alignment, and completion returns the same rigid body to exact dormant/stable state. A later explicit impact, player shove, or support loss promotes it back into dynamic motion. Settling must never rotate a particular side toward world north or any other global compass direction.
 
 Genuine dynamic rest is recognized from the rigid body's actual support/contact state rather than guessed proximity samples. This keeps edge/corner box-on-box contacts eligible to finish settling when the physics solver is already holding the object at rest.
 
-Once motion resolves, the object becomes settled again. Supported/settled props then resume the ordinary stylized support rules above.
+Once motion resolves and the smooth top-up alignment completes, the object becomes exactly settled/stable again. Supported props then resume the ordinary stylized support rules above, but a later meaningful impact or lateral player shove can explicitly promote them back into disturbed rigid motion.
 
 Physical props can be used as:
 
