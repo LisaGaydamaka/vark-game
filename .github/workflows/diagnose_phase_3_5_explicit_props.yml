@@ -28,8 +28,9 @@ jobs:
           python tools/phase35_explicit_prop_physics_write_fix_tmp.py
           python tools/phase35_wakeable_props_tmp.py
           python tools/phase35_explicit_prop_physics_tmp.py
+          python tools/phase35_solver_owned_external_motion_tmp.py
 
-      - name: Add force-transfer trace
+      - name: Add prop-impact trace
         shell: bash
         run: |
           python - <<'PY'
@@ -37,30 +38,19 @@ jobs:
 
           p = Path("gameplay/props/ordinary_prop.gd")
           t = p.read_text(encoding="utf-8")
-          anchor = '\t\tvar collider: Object = state.get_contact_collider_object(contact_index)\n'
-          t = t.replace(anchor, anchor + '\t\tif collider != null:\n\t\t\tprint("TRACE_CONTACT self=", name, " collider=", collider, " phase=", _phase, " vel=", state.linear_velocity)\n', 1)
           anchor = 'func receive_prop_impact(source_velocity: Vector3) -> bool:\n'
           t = t.replace(anchor, anchor + '\tprint("TRACE_RECEIVE_PROP name=", name, " phase=", _phase, " freeze=", freeze, " source=", source_velocity)\n', 1)
-          anchor = '\t_begin_motion(MOTION_DISTURBED, Vector3.ZERO)\n\tapply_central_impulse(horizontal_velocity.normalized() * impulse_strength)\n\treturn true\n\n\nfunc receive_player_push'
-          t = t.replace(anchor, '\t_begin_motion(MOTION_DISTURBED, Vector3.ZERO)\n\tapply_central_impulse(horizontal_velocity.normalized() * impulse_strength)\n\tprint("TRACE_PROP_APPLIED name=", name, " impulse=", impulse_strength, " phase=", _phase, " freeze=", freeze, " vel=", linear_velocity)\n\treturn true\n\n\nfunc receive_player_push', 1)
-          anchor = 'func receive_player_push(player_velocity: Vector3) -> bool:\n'
-          t = t.replace(anchor, anchor + '\tprint("TRACE_RECEIVE_PLAYER name=", name, " phase=", _phase, " freeze=", freeze, " source=", player_velocity)\n', 1)
-          anchor = '\tapply_central_impulse(horizontal_velocity.normalized() * impulse_strength)\n\treturn true\n\n\nfunc _begin_temporary_player_collision_ignore'
-          t = t.replace(anchor, '\tapply_central_impulse(horizontal_velocity.normalized() * impulse_strength)\n\tprint("TRACE_PLAYER_APPLIED name=", name, " impulse=", impulse_strength, " phase=", _phase, " freeze=", freeze, " vel=", linear_velocity)\n\treturn true\n\n\nfunc _begin_temporary_player_collision_ignore', 1)
-          p.write_text(t, encoding="utf-8")
-
-          p = Path("player/locomotion/player_contact_motion_solver.gd")
-          t = p.read_text(encoding="utf-8")
-          anchor = '\t\tcollider.call("receive_player_push", requested_horizontal_velocity)\n'
-          t = t.replace(anchor, '\t\tprint("TRACE_PLAYER_CONTACT collider=", collider, " requested=", requested_horizontal_velocity, " normal=", normal)\n' + anchor, 1)
+          anchor = '\t_pending_external_impulse += horizontal_velocity.normalized() * impulse_strength\n\tsleeping = false\n'
+          t = t.replace(anchor, '\t_pending_external_impulse += horizontal_velocity.normalized() * impulse_strength\n\tprint("TRACE_STAGE_PROP name=", name, " impulse=", _pending_external_impulse, " phase=", _phase, " freeze=", freeze)\n\tsleeping = false\n', 1)
+          anchor = '\tif not _pending_external_impulse.is_zero_approx():\n\t\tstate.apply_central_impulse(_pending_external_impulse)\n'
+          t = t.replace(anchor, '\tif not _pending_external_impulse.is_zero_approx():\n\t\tprint("TRACE_INTEGRATE_PROP name=", name, " before=", state.linear_velocity, " impulse=", _pending_external_impulse, " freeze=", freeze, " phase=", _phase)\n\t\tstate.apply_central_impulse(_pending_external_impulse)\n', 1)
           p.write_text(t, encoding="utf-8")
 
           p = Path("tests/props/phase_3_5_transition_regressions.gd")
           t = p.read_text(encoding="utf-8")
           anchor = '\tassert_true.call(\n\t\ttarget_moved\n'
-          t = t.replace(anchor, '\tprint("TRACE_IMPACT_RESULT moved=", target_moved, " target_pos=", target.global_position, " target_phase=", target.call("get_semantic_phase"), " target_motion=", target.call("get_motion_kind"), " target_freeze=", target.freeze, " target_vel=", target.linear_velocity, " striker_pos=", striker.global_position, " striker_vel=", striker.linear_velocity, " striker_contacts=", striker.get_colliding_bodies())\n' + anchor, 1)
-          anchor = '\tassert_true.call(\n\t\tpush_prop.global_position.distance_to(push_start) > 0.025\n'
-          t = t.replace(anchor, '\tprint("TRACE_PUSH_RESULT start=", push_start, " end=", push_prop.global_position, " delta=", push_prop.global_position.distance_to(push_start), " phase=", push_prop.call("get_semantic_phase"), " motion=", push_prop.call("get_motion_kind"), " freeze=", push_prop.freeze, " vel=", push_prop.linear_velocity, " player=", player.global_position)\n' + anchor, 1)
+          trace = '\tprint("TRACE_IMPACT_RESULT moved=", target_moved, " target_pos=", target.global_position, " start=", target_start, " delta=", target.global_position.distance_to(target_start), " phase=", target.call("get_semantic_phase"), " motion=", target.call("get_motion_kind"), " freeze=", target.freeze, " vel=", target.linear_velocity, " striker_pos=", striker.global_position, " striker_vel=", striker.linear_velocity, " striker_contacts=", striker.get_colliding_bodies())\n'
+          t = t.replace(anchor, trace + anchor, 1)
           p.write_text(t, encoding="utf-8")
           PY
 
