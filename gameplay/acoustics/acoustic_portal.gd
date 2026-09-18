@@ -2,10 +2,10 @@ class_name VarkAcousticPortal
 extends Node3D
 
 
-@export var portal_id: StringName = &""
-@export var space_a_id: StringName = &""
-@export var space_b_id: StringName = &""
-@export var door_id: StringName = &""
+@export var portal_id: String = ""
+@export var space_a_id: String = ""
+@export var space_b_id: String = ""
+@export var door_id: String = ""
 @export_range(0.0, 1.0, 0.01) var closed_transmission: float = 0.08
 @export_range(0.0, 1.0, 0.01) var open_transmission: float = 1.0
 
@@ -14,16 +14,16 @@ func _ready() -> void:
 	add_to_group(&"vark_acoustic_portal")
 
 
-func connects_space(candidate_space_id: StringName) -> bool:
+func connects_space(candidate_space_id: String) -> bool:
 	return candidate_space_id == space_a_id or candidate_space_id == space_b_id
 
 
-func get_other_space(candidate_space_id: StringName) -> StringName:
+func get_other_space(candidate_space_id: String) -> String:
 	if candidate_space_id == space_a_id:
 		return space_b_id
 	if candidate_space_id == space_b_id:
 		return space_a_id
-	return &""
+	return ""
 
 
 func get_transmission(door: Node = null) -> float:

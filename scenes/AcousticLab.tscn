@@ -87,7 +87,7 @@ mesh = SubResource("CorridorWallMesh")
 [node name="OpenRoomSpace" type="Node3D" parent="."]
 position = Vector3(0, 1.5, 2)
 script = ExtResource("4_space")
-space_id = &"room.open"
+space_id = "room.open"
 half_extent_x = 4.0
 half_extent_y = 2.0
 half_extent_z = 4.0
@@ -95,7 +95,7 @@ half_extent_z = 4.0
 [node name="DoorRoomSpace" type="Node3D" parent="."]
 position = Vector3(0, 1.5, -6)
 script = ExtResource("4_space")
-space_id = &"room.door"
+space_id = "room.door"
 half_extent_x = 4.0
 half_extent_y = 2.0
 half_extent_z = 4.0
@@ -103,7 +103,7 @@ half_extent_z = 4.0
 [node name="IsolatedRoomSpace" type="Node3D" parent="."]
 position = Vector3(-7, 1.5, -6)
 script = ExtResource("4_space")
-space_id = &"room.isolated"
+space_id = "room.isolated"
 half_extent_x = 2.5
 half_extent_y = 2.0
 half_extent_z = 2.5
@@ -111,7 +111,7 @@ half_extent_z = 2.5
 [node name="EastCorridorSpace" type="Node3D" parent="."]
 position = Vector3(7, 1.5, 2)
 script = ExtResource("4_space")
-space_id = &"corridor.east"
+space_id = "corridor.east"
 half_extent_x = 3.0
 half_extent_y = 2.0
 half_extent_z = 1.5
@@ -119,7 +119,7 @@ half_extent_z = 1.5
 [node name="SouthCorridorSpace" type="Node3D" parent="."]
 position = Vector3(10, 1.5, -2)
 script = ExtResource("4_space")
-space_id = &"corridor.south"
+space_id = "corridor.south"
 half_extent_x = 1.5
 half_extent_y = 2.0
 half_extent_z = 2.5
@@ -127,26 +127,26 @@ half_extent_z = 2.5
 [node name="DoorPortal" type="Node3D" parent="."]
 position = Vector3(0, 1, -2)
 script = ExtResource("5_portal")
-portal_id = &"portal.door"
-space_a_id = &"room.open"
-space_b_id = &"room.door"
-door_id = &"door.acoustic"
+portal_id = "portal.door"
+space_a_id = "room.open"
+space_b_id = "room.door"
+door_id = "door.acoustic"
 closed_transmission = 0.08
 open_transmission = 1.0
 
 [node name="EastPortal" type="Node3D" parent="."]
 position = Vector3(4, 1, 2)
 script = ExtResource("5_portal")
-portal_id = &"portal.east"
-space_a_id = &"room.open"
-space_b_id = &"corridor.east"
+portal_id = "portal.east"
+space_a_id = "room.open"
+space_b_id = "corridor.east"
 
 [node name="CornerPortal" type="Node3D" parent="."]
 position = Vector3(9.5, 1, 0.5)
 script = ExtResource("5_portal")
-portal_id = &"portal.corner"
-space_a_id = &"corridor.east"
-space_b_id = &"corridor.south"
+portal_id = "portal.corner"
+space_a_id = "corridor.east"
+space_b_id = "corridor.south"
 
 [node name="SameRoomListener" type="Node3D" parent="."]
 position = Vector3(2, 1, 1)

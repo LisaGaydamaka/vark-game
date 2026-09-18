@@ -4,6 +4,7 @@ extends Node3D
 
 const MAP_UNITS_PER_WORLD_METER: float = 32.0
 
+@export var space_id: String = ""
 @export var half_extent_x: float = 2.0
 @export var half_extent_y: float = 2.0
 @export var half_extent_z: float = 2.0

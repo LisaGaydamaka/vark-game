@@ -75,7 +75,7 @@ func configure(world_root: Node) -> Dictionary:
 		elif node is VarkAcousticListener:
 			_listeners.append(node)
 		if node.has_method("get_acoustic_openness") and _has_property(node, &"door_id"):
-			var door_id: StringName = StringName(str(node.get("door_id")))
+			var door_id: String = str(node.get("door_id"))
 			if not door_id.is_empty():
 				if _doors_by_id.has(door_id):
 					_errors.append("Duplicate acoustic door_id '%s'." % door_id)
@@ -219,8 +219,8 @@ func evaluate(
 	var empty_result := {
 		"route_found": false,
 		"propagated_strength": 0.0,
-		"source_space_id": &"",
-		"listener_space_id": &"",
+		"source_space_id": "",
+		"listener_space_id": "",
 		"portal_route": [],
 		"path_distance": INF,
 		"path_cost": INF,
@@ -260,8 +260,8 @@ func evaluate(
 
 
 func _find_best_route(
-	source_space_id: StringName,
-	listener_space_id: StringName,
+	source_space_id: String,
+	listener_space_id: String,
 	origin: Vector3,
 	listener_position: Vector3
 ) -> Dictionary:
@@ -291,7 +291,7 @@ func _find_best_route(
 		if state_cost >= best_final_cost:
 			continue
 
-		var state_space_id: StringName = state["space_id"]
+		var state_space_id: String = str(state["space_id"])
 		var entry_portal_index: int = int(state["entry_portal_index"])
 		var current_position: Vector3 = origin
 		if entry_portal_index >= 0:
@@ -312,7 +312,7 @@ func _find_best_route(
 			var portal: VarkAcousticPortal = _portals[portal_index] as VarkAcousticPortal
 			if portal == null:
 				continue
-			var next_space_id: StringName = portal.get_other_space(state_space_id)
+			var next_space_id: String = portal.get_other_space(state_space_id)
 			if next_space_id.is_empty():
 				continue
 			var transmission: float = _get_portal_transmission(portal)
@@ -362,7 +362,7 @@ func _find_best_route(
 		var portal: VarkAcousticPortal = _portals[portal_index] as VarkAcousticPortal
 		path_distance += route_position.distance_to(portal.global_position)
 		route_position = portal.global_position
-		portal_route.append(portal.portal_id)
+		portal_route.append(StringName(portal.portal_id))
 	path_distance += route_position.distance_to(listener_position)
 	return {
 		"route_found": true,
@@ -395,7 +395,7 @@ func _get_portal_transmission(portal: VarkAcousticPortal) -> float:
 	return portal.get_transmission(door)
 
 
-func _state_key(space_id: StringName, entry_portal_index: int) -> String:
+func _state_key(space_id: String, entry_portal_index: int) -> String:
 	return "%s|%d" % [space_id, entry_portal_index]
 
 

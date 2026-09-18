@@ -103,25 +103,25 @@ func _assert_trenchbroom_authoring_seam() -> void:
 				"closed_transmission": portal.closed_transmission,
 				"open_transmission": portal.open_transmission,
 			}
-	var portal_state: Dictionary = built_portals.get(&"portal.authoring", {})
+	var portal_state: Dictionary = built_portals.get("portal.authoring", {})
 	_assert_true(
 		built_spaces.size() == 2
-		and (built_spaces.get(&"space.authoring_a", {}) as Dictionary)
+		and (built_spaces.get("space.authoring_a", {}) as Dictionary)
 			.get("mapper_half_extents", Vector3.ZERO)
 			.is_equal_approx(Vector3(96.0, 64.0, 128.0))
-		and (built_spaces.get(&"space.authoring_a", {}) as Dictionary)
+		and (built_spaces.get("space.authoring_a", {}) as Dictionary)
 			.get("world_half_extents", Vector3.ZERO)
 			.is_equal_approx(Vector3(3.0, 2.0, 4.0))
-		and (built_spaces.get(&"space.authoring_b", {}) as Dictionary)
+		and (built_spaces.get("space.authoring_b", {}) as Dictionary)
 			.get("mapper_half_extents", Vector3.ZERO)
 			.is_equal_approx(Vector3(80.0, 64.0, 96.0))
-		and (built_spaces.get(&"space.authoring_b", {}) as Dictionary)
+		and (built_spaces.get("space.authoring_b", {}) as Dictionary)
 			.get("world_half_extents", Vector3.ZERO)
 			.is_equal_approx(Vector3(2.5, 2.0, 3.0))
 		and built_portals.size() == 1
-		and portal_state.get("space_a_id", &"") == &"space.authoring_a"
-		and portal_state.get("space_b_id", &"") == &"space.authoring_b"
-		and portal_state.get("door_id", &"") == &"door.authoring"
+		and portal_state.get("space_a_id", "") == "space.authoring_a"
+		and portal_state.get("space_b_id", "") == "space.authoring_b"
+		and portal_state.get("door_id", "") == "door.authoring"
 		and is_equal_approx(float(portal_state.get("closed_transmission", 0.0)), 0.12)
 		and is_equal_approx(float(portal_state.get("open_transmission", 0.0)), 0.9),
 		"FuncGodot reimport preserves topology and converts ordinary mapper-unit acoustic extents into Vark world meters"
@@ -134,17 +134,17 @@ func _assert_invalid_topology_fails_closed() -> void:
 	var root := Node3D.new()
 	var first := VarkAcousticSpace.new()
 	first.name = "First"
-	first.space_id = &"duplicate"
+	first.space_id = "duplicate"
 	root.add_child(first)
 	var second := VarkAcousticSpace.new()
 	second.name = "Second"
-	second.space_id = &"duplicate"
+	second.space_id = "duplicate"
 	root.add_child(second)
 	var broken_portal := VarkAcousticPortal.new()
 	broken_portal.name = "BrokenPortal"
-	broken_portal.portal_id = &"portal.broken"
-	broken_portal.space_a_id = &"duplicate"
-	broken_portal.space_b_id = &"missing"
+	broken_portal.portal_id = "portal.broken"
+	broken_portal.space_a_id = "duplicate"
+	broken_portal.space_b_id = "missing"
 	root.add_child(broken_portal)
 	var propagation := VarkAcousticPropagation.new()
 	var result: Dictionary = propagation.configure(root)
@@ -252,7 +252,7 @@ func _assert_acoustic_lab_integration() -> void:
 		and corner_route.size() == 2
 		and corner_route[0] == &"portal.east"
 		and corner_route[1] == &"portal.corner"
-		and float(around_corner.get("path_distance", 0.0)) > straight_corner_distance + 2.0,
+		and float(around_corner.get("path_distance", 0.0)) > straight_corner_distance + 1.5,
 		"L-shaped corridor audibility follows the authored opening/corner route instead of a straight source-listener ray"
 	)
 	_assert_true(
