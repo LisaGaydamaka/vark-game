@@ -221,6 +221,8 @@ The exact propagation architecture is **OPEN** until proven in a test map contai
 
 The final solution may use acoustic spaces/portals, zones, an acoustic graph, or another model, but it must produce intuitive Thief-like results.
 
+Phase 3.6 is currently testing authored acoustic spaces connected by portals. The prototype routes semantic gameplay sound through connected spaces, lets the existing ordinary-door openness continuously change a linked portal's transmission, and treats disconnected topology as inaudible regardless of simple radius. This architecture and its attenuation/transmission tuning remain **OPEN** until the focused acoustic playtest and mapper workflow are accepted; presentation-audio volume is not stealth truth.
+
 Objects can be intentionally thrown to create distractions.
 
 NPC movement, interactions, nonverbal vocal reactions, machinery, and other mission-defined sounds should provide useful positional information so that stopping and listening remains a meaningful stealth technique.

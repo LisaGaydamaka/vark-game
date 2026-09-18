@@ -2,10 +2,29 @@ class_name VarkAcousticSpace
 extends Node3D
 
 
-@export var space_id: StringName = &""
+const MAP_UNITS_PER_WORLD_METER: float = 32.0
+
 @export var half_extent_x: float = 2.0
 @export var half_extent_y: float = 2.0
 @export var half_extent_z: float = 2.0
+
+# FuncGodot scales entity origins but deliberately leaves arbitrary entity
+# properties untouched. TrenchBroom therefore authors these extents in normal
+# mapper units; the Vark entity boundary converts them into world meters.
+@export var mapper_half_extent_x: float = 64.0:
+	set(value):
+		mapper_half_extent_x = value
+		half_extent_x = value / MAP_UNITS_PER_WORLD_METER
+
+@export var mapper_half_extent_y: float = 64.0:
+	set(value):
+		mapper_half_extent_y = value
+		half_extent_y = value / MAP_UNITS_PER_WORLD_METER
+
+@export var mapper_half_extent_z: float = 64.0:
+	set(value):
+		mapper_half_extent_z = value
+		half_extent_z = value / MAP_UNITS_PER_WORLD_METER
 
 
 func _ready() -> void:

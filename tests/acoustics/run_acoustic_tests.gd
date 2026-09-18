@@ -65,6 +65,14 @@ func _assert_trenchbroom_authoring_seam() -> void:
 
 	var func_map := FuncGodotMap.new()
 	func_map.map_settings = load(MAP_SETTINGS_PATH) as FuncGodotMapSettings
+	_assert_true(
+		func_map.map_settings != null
+		and is_equal_approx(
+			func_map.map_settings.inverse_scale_factor,
+			VarkAcousticSpace.MAP_UNITS_PER_WORLD_METER
+		),
+		"Acoustic mapper-unit conversion stays aligned with the authoritative FuncGodot map scale"
+	)
 	func_map.local_map_file = TEMP_ACOUSTIC_MAP_PATH
 	func_map.build()
 	var built_spaces: Dictionary = {}
@@ -74,11 +82,18 @@ func _assert_trenchbroom_authoring_seam() -> void:
 	for node: Node in nodes:
 		if node is VarkAcousticSpace:
 			var space: VarkAcousticSpace = node as VarkAcousticSpace
-			built_spaces[space.space_id] = Vector3(
-				space.half_extent_x,
-				space.half_extent_y,
-				space.half_extent_z
-			)
+			built_spaces[space.space_id] = {
+				"mapper_half_extents": Vector3(
+					space.mapper_half_extent_x,
+					space.mapper_half_extent_y,
+					space.mapper_half_extent_z
+				),
+				"world_half_extents": Vector3(
+					space.half_extent_x,
+					space.half_extent_y,
+					space.half_extent_z
+				),
+			}
 		elif node is VarkAcousticPortal:
 			var portal: VarkAcousticPortal = node as VarkAcousticPortal
 			built_portals[portal.portal_id] = {
@@ -91,15 +106,25 @@ func _assert_trenchbroom_authoring_seam() -> void:
 	var portal_state: Dictionary = built_portals.get(&"portal.authoring", {})
 	_assert_true(
 		built_spaces.size() == 2
-		and built_spaces.get(&"space.authoring_a", Vector3.ZERO).is_equal_approx(Vector3(3.0, 2.0, 4.0))
-		and built_spaces.get(&"space.authoring_b", Vector3.ZERO).is_equal_approx(Vector3(2.5, 2.0, 3.0))
+		and (built_spaces.get(&"space.authoring_a", {}) as Dictionary)
+			.get("mapper_half_extents", Vector3.ZERO)
+			.is_equal_approx(Vector3(96.0, 64.0, 128.0))
+		and (built_spaces.get(&"space.authoring_a", {}) as Dictionary)
+			.get("world_half_extents", Vector3.ZERO)
+			.is_equal_approx(Vector3(3.0, 2.0, 4.0))
+		and (built_spaces.get(&"space.authoring_b", {}) as Dictionary)
+			.get("mapper_half_extents", Vector3.ZERO)
+			.is_equal_approx(Vector3(80.0, 64.0, 96.0))
+		and (built_spaces.get(&"space.authoring_b", {}) as Dictionary)
+			.get("world_half_extents", Vector3.ZERO)
+			.is_equal_approx(Vector3(2.5, 2.0, 3.0))
 		and built_portals.size() == 1
 		and portal_state.get("space_a_id", &"") == &"space.authoring_a"
 		and portal_state.get("space_b_id", &"") == &"space.authoring_b"
 		and portal_state.get("door_id", &"") == &"door.authoring"
 		and is_equal_approx(float(portal_state.get("closed_transmission", 0.0)), 0.12)
 		and is_equal_approx(float(portal_state.get("open_transmission", 0.0)), 0.9),
-		"FuncGodot reimport preserves authored acoustic topology IDs, extents, door link, and transmission tuning"
+		"FuncGodot reimport preserves topology and converts ordinary mapper-unit acoustic extents into Vark world meters"
 	)
 	func_map.free()
 	_remove_temp_acoustic_map()
@@ -385,18 +410,18 @@ func _authored_acoustic_probe_source() -> String:
 		"\"classname\" \"vark_acoustic_space\"",
 		"\"origin\" \"64 0 64\"",
 		"\"space_id\" \"space.authoring_a\"",
-		"\"half_extent_x\" \"3\"",
-		"\"half_extent_y\" \"2\"",
-		"\"half_extent_z\" \"4\"",
+		"\"mapper_half_extent_x\" \"96\"",
+		"\"mapper_half_extent_y\" \"64\"",
+		"\"mapper_half_extent_z\" \"128\"",
 		"}",
 		"// acoustic authoring probe space B",
 		"{",
 		"\"classname\" \"vark_acoustic_space\"",
 		"\"origin\" \"192 0 64\"",
 		"\"space_id\" \"space.authoring_b\"",
-		"\"half_extent_x\" \"2.5\"",
-		"\"half_extent_y\" \"2\"",
-		"\"half_extent_z\" \"3\"",
+		"\"mapper_half_extent_x\" \"80\"",
+		"\"mapper_half_extent_y\" \"64\"",
+		"\"mapper_half_extent_z\" \"96\"",
 		"}",
 		"// acoustic authoring probe portal",
 		"{",
