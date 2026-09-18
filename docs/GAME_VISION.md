@@ -540,7 +540,7 @@ Release placement uses the prop's real collision volume. World geometry and othe
 
 A prop that leaves world participation also invalidates player state derived from that exact collider. Standing support and active catch/hang/corner/mantle attachment cannot outlive a prop that has been picked up as carried Junk.
 
-Ordinary props are valid ledge/mantle attachment geometry only while semantically settled. Their traversal candidates are world-space snapshots, so a moving or settling prop cannot start a new catch/hang/corner/mantle attachment, and an active traversal tied to that prop cancels to ordinary airborne motion if the prop becomes dynamic. Traversal may use that collider again only after it returns to the exact settled state.
+Catch, hang, and corner attachment to an ordinary prop require that prop to be semantically settled. Mantle keeps the same accepted motion whether entered from grounded contact or airborne contact, including when a light prop has just been shoved into motion. Because ledge candidates begin as world-space samples, a prop-backed mantle binds the sampled edge/route to the exact collider transform that produced it and updates that geometry as the rigid body translates, instead of converting the request into a jump or completing against a stale prop position. If the tracked collider disappears or ceases to be the same physical attachment, the mantle releases to ordinary airborne control.
 
 The release point is derived from the player's current view rather than from a fixed world-space hand position. Looking downward and pressing **R** should place the object's center predictably beneath/in front of the player, approximately along the center-view release line, so deliberate crate stacking is practical.
 

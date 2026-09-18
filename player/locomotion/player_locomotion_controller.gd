@@ -289,6 +289,17 @@ func update(
 			step.cancel()
 			return
 
+	if ground_mantle_requested and collisions.is_empty():
+		# Dynamic ledge geometry may have advanced before this callback and erased
+		# the movement collision. The same-frame detector result is accepted only
+		# for an exact currently-unstable collider; static no-contact behavior does
+		# not change.
+		if ledge_controller.try_enter_ground_mantle_from_dynamic_candidate(
+			input_direction
+		):
+			step.cancel()
+			return
+
 	if ground_mantle_requested:
 		step.cancel()
 		support.release_walkable_support(body)

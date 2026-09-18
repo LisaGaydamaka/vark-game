@@ -304,8 +304,8 @@ func is_supported() -> bool:
 
 
 func is_traversal_attachment_stable() -> bool:
-	# Ledge/mantle geometry is sampled in world space. Ordinary props are valid
-	# traversal anchors only while their semantic transform is exact/stable.
+	# Long-lived catch/hang/corner attachments require an exact stationary prop.
+	# Mantle is short-lived and tracks its source collider transform separately.
 	return _phase == PHASE_SETTLED
 
 

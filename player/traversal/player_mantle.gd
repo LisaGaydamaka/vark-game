@@ -300,11 +300,78 @@ func _enter_forward_phase(player: CharacterBody3D) -> bool:
 	return true
 
 
+func _refresh_active_attachment_route() -> bool:
+	if active_candidate == null or active_candidate.source_candidate == null:
+		return false
+	var source: PlayerLedgeDetector.LedgeCandidate = active_candidate.source_candidate
+	if not source.attachment_collider_transform_valid:
+		return true
+	var previous_transform: Transform3D = source.attachment_collider_transform
+	if not detector.refresh_candidate_attachment(source):
+		return false
+	var current_transform: Transform3D = source.attachment_collider_transform
+	if current_transform.is_equal_approx(previous_transform):
+		return true
+
+	var previous_inverse: Transform3D = previous_transform.affine_inverse()
+	route_edge_point = current_transform * (previous_inverse * route_edge_point)
+	mantle_origin_edge_point = (
+		current_transform * (previous_inverse * mantle_origin_edge_point)
+	)
+
+	var basis_delta: Basis = (
+		current_transform.basis * previous_transform.basis.inverse()
+	)
+	mantle_origin_wall_normal = basis_delta * mantle_origin_wall_normal
+	mantle_origin_wall_normal.y = 0.0
+	if mantle_origin_wall_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	mantle_origin_wall_normal = mantle_origin_wall_normal.normalized()
+
+	active_candidate.edge_point = source.edge_point
+	active_candidate.wall_normal = Vector3(
+		source.wall_normal.x,
+		0.0,
+		source.wall_normal.z
+	)
+	if active_candidate.wall_normal.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	active_candidate.wall_normal = active_candidate.wall_normal.normalized()
+	active_candidate.ledge_axis = source.ledge_direction
+	if active_candidate.ledge_axis.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	active_candidate.ledge_axis = active_candidate.ledge_axis.normalized()
+	var horizontal_ledge := Vector3(
+		active_candidate.ledge_axis.x,
+		0.0,
+		active_candidate.ledge_axis.z
+	)
+	if horizontal_ledge.length_squared() <= MOTION_EPSILON_SQUARED:
+		return false
+	active_candidate.traversal_axis = horizontal_ledge.normalized()
+
+	lift_target_height = (
+		route_edge_point.y
+		+ get_vertical_edge_clearance()
+		- get_bottom_cap_center_offset()
+	)
+	if not is_finite(lift_target_height):
+		return false
+	active_candidate.target_position = Vector3(
+		route_edge_point.x,
+		lift_target_height,
+		route_edge_point.z
+	)
+	return true
+
+
 func update(
 	player: CharacterBody3D,
 	delta: float
 ) -> bool:
 	if active_candidate == null or phase == Phase.NONE:
+		return false
+	if not _refresh_active_attachment_route():
 		return false
 
 	player.velocity = Vector3.ZERO

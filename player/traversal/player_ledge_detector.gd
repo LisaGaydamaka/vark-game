@@ -37,6 +37,9 @@ class LedgeCandidate:
 	var wall_shape_index: int = -1
 	var top_collider_rid: RID = RID()
 	var top_shape_index: int = -1
+	var attachment_collider_rid: RID = RID()
+	var attachment_collider_transform: Transform3D = Transform3D.IDENTITY
+	var attachment_collider_transform_valid: bool = false
 
 	var edge_point: Vector3 = Vector3.ZERO
 	var wall_normal: Vector3 = Vector3.ZERO
@@ -222,6 +225,67 @@ func is_candidate_attachment_stable(candidate: LedgeCandidate) -> bool:
 		_collider_allows_traversal_attachment(candidate.wall_collider_rid)
 		and _collider_allows_traversal_attachment(candidate.top_collider_rid)
 	)
+
+
+func refresh_candidate_attachment(candidate: LedgeCandidate) -> bool:
+	if candidate == null:
+		return false
+	if not candidate.attachment_collider_transform_valid:
+		return true
+	var collider: Node3D = _get_candidate_attachment_collider(
+		candidate.attachment_collider_rid
+	)
+	if collider == null:
+		return false
+	var current_transform: Transform3D = collider.global_transform
+	var previous_transform: Transform3D = candidate.attachment_collider_transform
+	if current_transform.is_equal_approx(previous_transform):
+		return true
+	var previous_inverse: Transform3D = previous_transform.affine_inverse()
+	var basis_delta: Basis = (
+		current_transform.basis * previous_transform.basis.inverse()
+	)
+	candidate.edge_point = current_transform * (previous_inverse * candidate.edge_point)
+	candidate.top_point = current_transform * (previous_inverse * candidate.top_point)
+	candidate.hang_position = current_transform * (previous_inverse * candidate.hang_position)
+	candidate.wall_normal = (basis_delta * candidate.wall_normal).normalized()
+	candidate.top_normal = (basis_delta * candidate.top_normal).normalized()
+	candidate.ledge_direction = (basis_delta * candidate.ledge_direction).normalized()
+	candidate.attachment_collider_transform = current_transform
+	return true
+
+
+func _capture_candidate_attachment_transform(candidate: LedgeCandidate) -> void:
+	if (
+		candidate == null
+		or not candidate.wall_collider_rid.is_valid()
+		or candidate.wall_collider_rid != candidate.top_collider_rid
+	):
+		return
+	var collider: Node3D = _get_candidate_attachment_collider(
+		candidate.wall_collider_rid
+	)
+	if collider == null:
+		return
+	candidate.attachment_collider_rid = candidate.wall_collider_rid
+	candidate.attachment_collider_transform = collider.global_transform
+	candidate.attachment_collider_transform_valid = true
+
+
+func _get_candidate_attachment_collider(collider_rid: RID) -> Node3D:
+	if not collider_rid.is_valid():
+		return null
+	var instance_id: int = PhysicsServer3D.body_get_object_instance_id(collider_rid)
+	if instance_id == 0:
+		return null
+	var collider: Object = instance_from_id(instance_id)
+	if (
+		collider == null
+		or not is_instance_valid(collider)
+		or not (collider is Node3D)
+	):
+		return null
+	return collider as Node3D
 
 
 func _collider_allows_traversal_attachment(collider_rid: RID) -> bool:
@@ -1122,6 +1186,7 @@ func build_ledge_candidate(
 		geometry.edge_point,
 		geometry.wall_normal
 	)
+	_capture_candidate_attachment_transform(candidate)
 	return candidate
 
 

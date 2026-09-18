@@ -157,7 +157,7 @@ func _active_attachment_is_stable() -> bool:
 					return false
 			return true
 		State.MANTLING:
-			return ledge_detector.is_candidate_attachment_stable(ledge_mantle.get_release_candidate())
+			return true
 	return true
 
 
@@ -176,7 +176,11 @@ func _release_unstable_attachment(delta: float) -> void:
 
 
 func update(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
-	if state != State.NONE and not _active_attachment_is_stable():
+	if (
+		state != State.NONE
+		and state != State.MANTLING
+		and not _active_attachment_is_stable()
+	):
 		_release_unstable_attachment(delta)
 		return
 	match state:
@@ -233,7 +237,10 @@ func try_enter_mantle_from_contacts(
 	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
 		if candidate == null:
 			continue
-		if not ledge_detector.is_candidate_attachment_stable(candidate):
+		# Discovery occurs before locomotion resolves the contact. A lightweight
+		# prop can move during that same transaction, so refresh its exact sampled
+		# geometry before comparing the candidate with the post-move collision.
+		if not ledge_detector.refresh_candidate_attachment(candidate):
 			continue
 		if traversal_guard.is_mantle_blocked(candidate):
 			continue
@@ -253,6 +260,38 @@ func try_enter_mantle_from_contacts(
 			and _should_attempt_air_mantle_contact(candidate)
 			and _try_start_free_mantle(candidate)
 		):
+			return true
+	return false
+
+
+func try_enter_ground_mantle_from_dynamic_candidate(
+	input_direction: Vector3
+) -> bool:
+	# The ledge detector performs a real test_move against current world geometry
+	# before locomotion. A dynamic exact-collider ledge can advance before the
+	# player's movement callback, so the post-move collision list may be empty
+	# even though this same-frame detector result still proves the mantle surface.
+	# This fallback is intentionally limited to exact unstable/moving geometry;
+	# static ground-mantle admission remains contact-driven exactly as before.
+	var candidates: Array[PlayerLedgeDetector.LedgeCandidate] = (
+		ledge_detector.get_candidates()
+	)
+	for candidate: PlayerLedgeDetector.LedgeCandidate in candidates:
+		if (
+			candidate == null
+			or not candidate.attachment_collider_transform_valid
+			or not candidate.attachment_collider_rid.is_valid()
+		):
+			continue
+		if not ledge_detector.refresh_candidate_attachment(candidate):
+			continue
+		if ledge_detector.is_candidate_attachment_stable(candidate):
+			continue
+		if traversal_guard.is_mantle_blocked(candidate):
+			continue
+		if not _should_attempt_ground_mantle_contact(candidate, input_direction):
+			continue
+		if _try_start_free_mantle(candidate):
 			return true
 	return false
 
@@ -330,8 +369,6 @@ func _candidate_matches_contact(
 func _try_start_free_mantle(
 	candidate: PlayerLedgeDetector.LedgeCandidate
 ) -> bool:
-	if not ledge_detector.is_candidate_attachment_stable(candidate):
-		return false
 	var mantle_candidate: PlayerMantle.MantleCandidate = (
 		ledge_mantle.find_air_candidate(
 			body,

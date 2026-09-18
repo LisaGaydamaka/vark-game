@@ -40,6 +40,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		return
 	await _prove_release_transaction(tree, world, player, pickup_prop, assert_true)
 	await _prove_wakeable_world_physics(tree, world, player, assert_true)
+	await _prove_ground_mantle_tracks_moving_prop(tree, world, player, assert_true)
 	await _prove_support_invalidation(tree, player, edge_prop, assert_true)
 	_prove_traversal_invalidation(player, stack_upper, assert_true)
 	await _prove_contact_manifold_settle(tree, world, assert_true)
@@ -189,6 +190,99 @@ func _prove_wakeable_world_physics(
 	await tree.process_frame
 
 
+func _prove_ground_mantle_tracks_moving_prop(
+	tree: SceneTree,
+	world: Node3D,
+	player: CharacterBody3D,
+	assert_true: Callable
+) -> void:
+	var prop: RigidBody3D = OrdinaryPropScene.instantiate() as RigidBody3D
+	world.add_child(prop)
+	await tree.process_frame
+	prop.global_position = Vector3(-3.0, 0.3, -2.0)
+	player.global_position = Vector3(-3.0, 0.0, -0.95)
+	player.rotation.y = 0.0
+	player.velocity = Vector3.ZERO
+	var head: Node3D = player.get_node("Head") as Node3D
+	head.rotation.x = 0.0
+	var velocity_state: PlayerVelocityState = player.get("velocity_state") as PlayerVelocityState
+	velocity_state.capture_body_as_controlled(player)
+	await _settle_physics(tree, 2)
+
+	# Reproduce the player-facing sequence through production ownership: push the
+	# lightweight crate with ordinary locomotion, keep holding forward, then
+	# request mantle. The prop can translate out of direct contact in that same
+	# physics transaction, but the exact collider-backed candidate must remain the
+	# same mantle opportunity instead of degrading to a ballistic jump.
+	var prop_start: Vector3 = prop.global_position
+	var production_shove_observed: bool = false
+	Input.action_press("move_forward")
+	for _frame_index: int in range(45):
+		await _settle_physics(tree)
+		if (
+			prop.call("get_motion_kind") == OrdinaryProp.MOTION_DISTURBED
+			and prop.global_position.distance_to(prop_start) > 0.005
+		):
+			production_shove_observed = true
+			break
+	assert_true.call(
+		production_shove_observed and bool(player.call("is_grounded")),
+		"Ground-mantle fixture reaches the moving-crate state through real grounded player contact"
+	)
+
+	Input.action_press("jump")
+	await _settle_physics(tree)
+	Input.action_release("jump")
+	var controller: PlayerLedgeController = player.get("ledge_controller") as PlayerLedgeController
+	var entered_mantle: bool = (
+		production_shove_observed
+		and controller != null
+		and controller.state == PlayerLedgeController.State.MANTLING
+	)
+	assert_true.call(
+		entered_mantle and absf(player.velocity.y) <= 0.05,
+		"Grounded mantle while pushing a moving prop enters the ordinary PlayerMantle path instead of ballistic jump"
+	)
+	Input.action_release("move_forward")
+
+	var moving_start: Vector3 = prop.global_position
+	var saw_prop_motion_during_mantle: bool = false
+	var completed_mantle: bool = false
+	for _frame_index: int in range(120):
+		await _settle_physics(tree)
+		if prop.global_position.distance_to(moving_start) > 0.01:
+			saw_prop_motion_during_mantle = true
+		if (
+			entered_mantle
+			and controller.state == PlayerLedgeController.State.NONE
+			and bool(player.call("is_grounded"))
+		):
+			completed_mantle = true
+			break
+	assert_true.call(
+		completed_mantle,
+		"Ground mantle completes through the ordinary PlayerMantle lift/forward path on the moving prop"
+	)
+	assert_true.call(
+		saw_prop_motion_during_mantle
+		or prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED,
+		"Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling"
+	)
+
+	var locomotion_start: Vector3 = player.global_position
+	Input.action_press("move_right")
+	await _settle_physics(tree, 8)
+	Input.action_release("move_right")
+	assert_true.call(
+		completed_mantle
+		and player.global_position.distance_to(locomotion_start) > 0.025,
+		"Completed moving-prop mantle returns ordinary locomotion instead of leaving the player stuck on top"
+	)
+	prop.queue_free()
+	await tree.process_frame
+	await _settle_physics(tree, 2)
+
+
 func _prove_support_invalidation(
 	tree: SceneTree,
 	player: CharacterBody3D,
@@ -270,24 +364,12 @@ func _prove_traversal_invalidation(
 	assert_true.call(
 		bool(prop.call("apply_semantic_state", moving_snapshot))
 		and not bool(detector.call("is_candidate_attachment_stable", candidate)),
-		"A moving ordinary prop is rejected as stale world-space traversal geometry"
-	)
-	mantle_candidate = PlayerMantle.MantleCandidate.new()
-	mantle_candidate.source_candidate = candidate
-	mantle_candidate.valid = true
-	mantle.set("active_candidate", mantle_candidate)
-	mantle.set("phase", PlayerMantle.Phase.LIFT)
-	controller.set("state", PlayerLedgeController.State.MANTLING)
-	controller.call("update", false, false, 1.0 / 60.0)
-	assert_true.call(
-		int(controller.get("state")) == PlayerLedgeController.State.NONE
-		and int(mantle.get("phase")) == PlayerMantle.Phase.NONE,
-		"Active mantle cancels to air when its ordinary-prop attachment becomes dynamic"
+		"Moving ordinary props remain ineligible for stationary catch/hang/corner attachment"
 	)
 	assert_true.call(
 		bool(prop.call("apply_semantic_state", settled_snapshot))
 		and bool(detector.call("is_candidate_attachment_stable", candidate)),
-		"Traversal attachment eligibility returns only after the prop is semantically settled again"
+		"Stationary traversal attachment eligibility returns after the prop is semantically settled again"
 	)
 
 
