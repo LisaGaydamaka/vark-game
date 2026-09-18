@@ -84,7 +84,7 @@ shape = SubResource("CorridorWallShape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="CornerWall"]
 mesh = SubResource("CorridorWallMesh")
 
-[node name="OpenRoomSpace" type="Node3D" parent="."]
+[node name="OpenRoomSpace" type="Area3D" parent="."]
 position = Vector3(0, 1.5, 2)
 script = ExtResource("4_space")
 space_id = "room.open"
@@ -92,7 +92,7 @@ half_extent_x = 4.0
 half_extent_y = 2.0
 half_extent_z = 4.0
 
-[node name="DoorRoomSpace" type="Node3D" parent="."]
+[node name="DoorRoomSpace" type="Area3D" parent="."]
 position = Vector3(0, 1.5, -6)
 script = ExtResource("4_space")
 space_id = "room.door"
@@ -100,7 +100,7 @@ half_extent_x = 4.0
 half_extent_y = 2.0
 half_extent_z = 4.0
 
-[node name="IsolatedRoomSpace" type="Node3D" parent="."]
+[node name="IsolatedRoomSpace" type="Area3D" parent="."]
 position = Vector3(-7, 1.5, -6)
 script = ExtResource("4_space")
 space_id = "room.isolated"
@@ -108,7 +108,7 @@ half_extent_x = 2.5
 half_extent_y = 2.0
 half_extent_z = 2.5
 
-[node name="EastCorridorSpace" type="Node3D" parent="."]
+[node name="EastCorridorSpace" type="Area3D" parent="."]
 position = Vector3(7, 1.5, 2)
 script = ExtResource("4_space")
 space_id = "corridor.east"
@@ -116,7 +116,7 @@ half_extent_x = 3.0
 half_extent_y = 2.0
 half_extent_z = 1.5
 
-[node name="SouthCorridorSpace" type="Node3D" parent="."]
+[node name="SouthCorridorSpace" type="Area3D" parent="."]
 position = Vector3(10, 1.5, -2)
 script = ExtResource("4_space")
 space_id = "corridor.south"

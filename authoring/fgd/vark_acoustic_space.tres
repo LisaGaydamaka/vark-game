@@ -1,34 +1,27 @@
-[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_solid"]
 [ext_resource type="Script" path="res://gameplay/acoustics/acoustic_space.gd" id="2_space"]
-[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class_display_descriptor.gd" id="3_display"]
-
-[sub_resource type="Resource" id="AcousticBoundsDisplay"]
-script = ExtResource("3_display")
-display_asset_path = "\"authoring/models/acoustic_space_bounds.md3\""
-scale = "mapper_half_extent_x + ' ' + mapper_half_extent_z + ' ' + mapper_half_extent_y"
 
 [resource]
-script = ExtResource("1_point")
+script = ExtResource("1_solid")
+origin_type = 4
+build_visuals = false
+collision_shape_type = 1
+collision_layer = 0
+collision_mask = 0
 classname = "vark_acoustic_space"
-description = "Authored acoustic region. TrenchBroom shows an editor-only bounds cage driven by the mapper half-extents; keep regions simple and overlap only where a smaller region should deliberately win."
+description = "Authored acoustic volume. Create one axis-aligned rectangular brush and convert it to this brush entity; the TrenchBroom brush itself is the visible/editable boundary."
 class_properties = Dictionary[String, Variant]({
-"space_id": "",
-"mapper_half_extent_x": 64.0,
-"mapper_half_extent_y": 64.0,
-"mapper_half_extent_z": 64.0,
-"angle": 180.0
+"space_id": ""
 })
-display_descriptors = Array[ExtResource("3_display")]([SubResource("AcousticBoundsDisplay")])
 class_property_descriptions = Dictionary[String, Variant]({
-"space_id": "Required acoustic-space ID used by vark_acoustic_portal links.",
-"mapper_half_extent_x": "Half-width in normal TrenchBroom mapper units (32 units = 1 Vark world meter).",
-"mapper_half_extent_y": "Half-height in normal TrenchBroom mapper units (32 units = 1 Vark world meter).",
-"mapper_half_extent_z": "Half-depth in normal TrenchBroom mapper units (32 units = 1 Vark world meter).",
-"angle": "Optional authored facing; acoustics uses the full Node3D transform so rotated boxes remain valid."
+"space_id": "Required acoustic-space ID used by vark_acoustic_portal links."
 })
 auto_apply_to_matching_node_properties = true
-node_class = "Node3D"
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.25, 0.65, 0.9, 1)
+})
+node_class = "Area3D"
 script_class = ExtResource("2_space")
 node_groups = Array[String](["vark_acoustic_space"])

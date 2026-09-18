@@ -6,7 +6,6 @@ const WorldSession = preload("res://application/world_session.gd")
 const PLAYGROUND_SOURCE_PATH: String = "res://missions/playground/mission.map"
 const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
-const ACOUSTIC_BOUNDS_MODEL_PATH: String = "res://authoring/models/acoustic_space_bounds.md3"
 const TEMP_ACOUSTIC_MAP_PATH: String = "user://vark_acoustic_authoring_probe.map"
 
 var failures: Array[String] = []
@@ -34,35 +33,8 @@ func _assert_trenchbroom_authoring_seam() -> void:
 		exported_fgd = fgd_file.build_class_text(
 			FuncGodotFGDFile.FuncGodotTargetMapEditors.TRENCHBROOM
 		)
-	var space_class := definitions.get("vark_acoustic_space") as FuncGodotFGDPointClass
+	var space_class := definitions.get("vark_acoustic_space") as FuncGodotFGDSolidClass
 	var portal_class := definitions.get("vark_acoustic_portal") as FuncGodotFGDPointClass
-	var space_display: FuncGodotFGDPointClassDisplayDescriptor = null
-	if space_class != null and not space_class.display_descriptors.is_empty():
-		space_display = space_class.display_descriptors[0]
-	var bounds_model_file := FileAccess.open(ACOUSTIC_BOUNDS_MODEL_PATH, FileAccess.READ)
-	var valid_bounds_model: bool = false
-	var unit_bounds_model: bool = false
-	if bounds_model_file != null:
-		valid_bounds_model = (
-			bounds_model_file.get_buffer(4).get_string_from_ascii() == "IDP3"
-			and bounds_model_file.get_32() == 15
-		)
-		bounds_model_file.seek(108)
-		var frame_mins := Vector3(
-			bounds_model_file.get_float(),
-			bounds_model_file.get_float(),
-			bounds_model_file.get_float()
-		)
-		var frame_maxs := Vector3(
-			bounds_model_file.get_float(),
-			bounds_model_file.get_float(),
-			bounds_model_file.get_float()
-		)
-		unit_bounds_model = (
-			frame_mins.is_equal_approx(Vector3(-1.0, -1.0, -1.0))
-			and frame_maxs.is_equal_approx(Vector3(1.0, 1.0, 1.0))
-		)
-		bounds_model_file.close()
 	_assert_true(
 		space_class != null
 		and portal_class != null
@@ -70,17 +42,19 @@ func _assert_trenchbroom_authoring_seam() -> void:
 		and portal_class.script_class == VarkAcousticPortal
 		and space_class.auto_apply_to_matching_node_properties
 		and portal_class.auto_apply_to_matching_node_properties
-		and space_display != null
-		and space_display.display_asset_path == "\"authoring/models/acoustic_space_bounds.md3\""
-		and space_display.scale == "mapper_half_extent_x + ' ' + mapper_half_extent_z + ' ' + mapper_half_extent_y"
-		and valid_bounds_model
-		and unit_bounds_model
+		and space_class.origin_type == FuncGodotFGDSolidClass.OriginType.BOUNDS_CENTER
+		and not space_class.build_visuals
+		and space_class.collision_shape_type == FuncGodotFGDSolidClass.CollisionShapeType.CONVEX
+		and space_class.collision_layer == 0
+		and space_class.collision_mask == 0
+		and space_class.node_class == "Area3D"
+		and space_class.class_properties.size() == 1
+		and space_class.class_properties.has("space_id")
 		and exported_fgd.contains("vark_acoustic_space")
 		and exported_fgd.contains("vark_acoustic_portal")
-		and exported_fgd.contains("authoring/models/acoustic_space_bounds.md3")
-		and exported_fgd.contains("mapper_half_extent_x + ' ' + mapper_half_extent_z + ' ' + mapper_half_extent_y")
-		and not exported_fgd.contains("[mapper_half_extent_x"),
-		"Vark TrenchBroom exports a non-uniform vector scale string for the acoustic-space bounds cage instead of a fallback scale array"
+		and not exported_fgd.contains("mapper_half_extent_")
+		and not exported_fgd.contains("acoustic_space_bounds.md3"),
+		"Vark TrenchBroom exports acoustic spaces as native non-visual brush entities and portals as point entities"
 	)
 
 	var source_file := FileAccess.open(PLAYGROUND_SOURCE_PATH, FileAccess.READ)
@@ -88,8 +62,8 @@ func _assert_trenchbroom_authoring_seam() -> void:
 	if source_file == null:
 		return
 	var source: String = source_file.get_as_text().trim_suffix("\n")
-	source_file.close()
 	source += "\n" + _authored_acoustic_probe_source() + "\n"
+	source_file.close()
 	_remove_temp_acoustic_map()
 	var temp_file := FileAccess.open(TEMP_ACOUSTIC_MAP_PATH, FileAccess.WRITE)
 	_assert_true(temp_file != null, "Acoustic authoring proof creates a disposable mapper source copy")
@@ -107,7 +81,7 @@ func _assert_trenchbroom_authoring_seam() -> void:
 			func_map.map_settings.inverse_scale_factor,
 			VarkAcousticSpace.MAP_UNITS_PER_WORLD_METER
 		),
-		"Acoustic mapper-unit conversion stays aligned with the authoritative FuncGodot map scale"
+		"Acoustic brush import stays aligned with the authoritative 32 mapper-units-per-world-meter map scale"
 	)
 	func_map.local_map_file = TEMP_ACOUSTIC_MAP_PATH
 	func_map.build()
@@ -118,17 +92,23 @@ func _assert_trenchbroom_authoring_seam() -> void:
 	for node: Node in nodes:
 		if node is VarkAcousticSpace:
 			var space: VarkAcousticSpace = node as VarkAcousticSpace
+			var collision_shape_count: int = 0
+			var mesh_count: int = 0
+			for child: Node in space.get_children():
+				if child is CollisionShape3D:
+					collision_shape_count += 1
+				elif child is MeshInstance3D:
+					mesh_count += 1
 			built_spaces[space.space_id] = {
-				"mapper_half_extents": Vector3(
-					space.mapper_half_extent_x,
-					space.mapper_half_extent_y,
-					space.mapper_half_extent_z
-				),
 				"world_half_extents": Vector3(
 					space.half_extent_x,
 					space.half_extent_y,
 					space.half_extent_z
 				),
+				"collision_shape_count": collision_shape_count,
+				"mesh_count": mesh_count,
+				"collision_layer": space.collision_layer,
+				"collision_mask": space.collision_mask,
 			}
 		elif node is VarkAcousticPortal:
 			var portal: VarkAcousticPortal = node as VarkAcousticPortal
@@ -139,28 +119,28 @@ func _assert_trenchbroom_authoring_seam() -> void:
 				"closed_transmission": portal.closed_transmission,
 				"open_transmission": portal.open_transmission,
 			}
+	var space_a: Dictionary = built_spaces.get("space.authoring_a", {})
+	var space_b: Dictionary = built_spaces.get("space.authoring_b", {})
 	var portal_state: Dictionary = built_portals.get("portal.authoring", {})
 	_assert_true(
 		built_spaces.size() == 2
-		and (built_spaces.get("space.authoring_a", {}) as Dictionary)
-			.get("mapper_half_extents", Vector3.ZERO)
-			.is_equal_approx(Vector3(96.0, 64.0, 128.0))
-		and (built_spaces.get("space.authoring_a", {}) as Dictionary)
-			.get("world_half_extents", Vector3.ZERO)
-			.is_equal_approx(Vector3(3.0, 2.0, 4.0))
-		and (built_spaces.get("space.authoring_b", {}) as Dictionary)
-			.get("mapper_half_extents", Vector3.ZERO)
-			.is_equal_approx(Vector3(80.0, 64.0, 96.0))
-		and (built_spaces.get("space.authoring_b", {}) as Dictionary)
-			.get("world_half_extents", Vector3.ZERO)
-			.is_equal_approx(Vector3(2.5, 2.0, 3.0))
+		and space_a.get("world_half_extents", Vector3.ZERO).is_equal_approx(Vector3(3.0, 2.0, 4.0))
+		and space_b.get("world_half_extents", Vector3.ZERO).is_equal_approx(Vector3(2.5, 2.0, 3.0))
+		and int(space_a.get("collision_shape_count", 0)) == 1
+		and int(space_b.get("collision_shape_count", 0)) == 1
+		and int(space_a.get("mesh_count", -1)) == 0
+		and int(space_b.get("mesh_count", -1)) == 0
+		and int(space_a.get("collision_layer", -1)) == 0
+		and int(space_a.get("collision_mask", -1)) == 0
+		and int(space_b.get("collision_layer", -1)) == 0
+		and int(space_b.get("collision_mask", -1)) == 0
 		and built_portals.size() == 1
 		and portal_state.get("space_a_id", "") == "space.authoring_a"
 		and portal_state.get("space_b_id", "") == "space.authoring_b"
 		and portal_state.get("door_id", "") == "door.authoring"
 		and is_equal_approx(float(portal_state.get("closed_transmission", 0.0)), 0.12)
 		and is_equal_approx(float(portal_state.get("open_transmission", 0.0)), 0.9),
-		"FuncGodot reimport preserves topology and converts ordinary mapper-unit acoustic extents into Vark world meters"
+		"FuncGodot imports real rectangular acoustic-space brushes into non-visual box bounds while preserving portal topology"
 	)
 	func_map.free()
 	_remove_temp_acoustic_map()
@@ -441,28 +421,36 @@ func _assert_acoustic_lab_integration() -> void:
 
 func _authored_acoustic_probe_source() -> String:
 	return "\n".join([
-		"// acoustic authoring probe space A",
+		"// acoustic authoring probe space A: mapper X=256, Y=192, Z=128 -> Vark half extents 3/2/4 m",
 		"{",
 		"\"classname\" \"vark_acoustic_space\"",
-		"\"origin\" \"64 0 64\"",
 		"\"space_id\" \"space.authoring_a\"",
-		"\"mapper_half_extent_x\" \"96\"",
-		"\"mapper_half_extent_y\" \"64\"",
-		"\"mapper_half_extent_z\" \"128\"",
+		"{",
+		"( -128 -96 0 ) ( -128 -95 0 ) ( -128 -96 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1",
+		"( -128 -96 0 ) ( -128 -96 1 ) ( -127 -96 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1",
+		"( -128 -96 0 ) ( -127 -96 0 ) ( -128 -95 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1",
+		"( 128 96 128 ) ( 128 97 128 ) ( 129 96 128 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1",
+		"( 128 96 128 ) ( 129 96 128 ) ( 128 96 129 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1",
+		"( 128 96 128 ) ( 128 96 129 ) ( 128 97 128 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1",
 		"}",
-		"// acoustic authoring probe space B",
+		"}",
+		"// acoustic authoring probe space B: mapper X=192, Y=160, Z=128 -> Vark half extents 2.5/2/3 m",
 		"{",
 		"\"classname\" \"vark_acoustic_space\"",
-		"\"origin\" \"192 0 64\"",
 		"\"space_id\" \"space.authoring_b\"",
-		"\"mapper_half_extent_x\" \"80\"",
-		"\"mapper_half_extent_y\" \"64\"",
-		"\"mapper_half_extent_z\" \"96\"",
+		"{",
+		"( 160 -80 0 ) ( 160 -79 0 ) ( 160 -80 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1",
+		"( 160 -80 0 ) ( 160 -80 1 ) ( 161 -80 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1",
+		"( 160 -80 0 ) ( 161 -80 0 ) ( 160 -79 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1",
+		"( 352 80 128 ) ( 352 81 128 ) ( 353 80 128 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1",
+		"( 352 80 128 ) ( 353 80 128 ) ( 352 80 129 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1",
+		"( 352 80 128 ) ( 352 80 129 ) ( 352 81 128 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1",
+		"}",
 		"}",
 		"// acoustic authoring probe portal",
 		"{",
 		"\"classname\" \"vark_acoustic_portal\"",
-		"\"origin\" \"128 0 64\"",
+		"\"origin\" \"144 0 64\"",
 		"\"portal_id\" \"portal.authoring\"",
 		"\"space_a_id\" \"space.authoring_a\"",
 		"\"space_b_id\" \"space.authoring_b\"",
