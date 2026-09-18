@@ -1,0 +1,287 @@
+name: Finalize Phase 3.5 moving prop mantle attachment follow
+
+on:
+  push:
+    branches:
+      - test
+    paths:
+      - .github/workflows/finalize_phase_3_5_mantle_attachment_follow.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-phase-3-5-mantle-attachment-follow
+  cancel-in-progress: false
+
+jobs:
+  finalize-phase-3-5-mantle-attachment-follow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+
+    env:
+      BASE_SHA: e6bf630fb16c04ff5b032bc072b0dad00368d508
+      FINALIZER_PATH: .github/workflows/finalize_phase_3_5_mantle_attachment_follow.yml
+
+    steps:
+      - name: Checkout authoritative test head
+        uses: actions/checkout@v5
+        with:
+          ref: test
+          fetch-depth: 0
+
+      - name: Verify authoritative trigger head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = "$BASE_SHA"
+          test "$(git diff --name-only "$BASE_SHA" HEAD)" = "$FINALIZER_PATH"
+
+      - name: Apply off-axis regression only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/props/phase_3_5_transition_regressions.gd")
+          text = path.read_text()
+
+          def replace_once(old: str, new: str) -> None:
+              global text
+              if text.count(old) != 1:
+                  raise SystemExit(f"expected exactly one regression match, found {text.count(old)}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '\tInput.action_press("jump")\n\tawait _settle_physics(tree)\n\tInput.action_release("jump")\n',
+              '\t# Add a small off-axis component on the actual mantle-entry frame. The\n'
+              '\t# production contact solver therefore gives the already-moving crate\n'
+              '\t# lateral velocity without replacing the real grounded shove sequence.\n'
+              '\tInput.action_press("move_right")\n\tInput.action_press("jump")\n'
+              '\tawait _settle_physics(tree)\n\tInput.action_release("jump")\n'
+              '\tInput.action_release("move_right")\n'
+          )
+          replace_once(
+              '\tInput.action_release("move_forward")\n\n\tvar moving_start: Vector3 = prop.global_position\n'
+              '\tvar saw_prop_motion_during_mantle: bool = false\n',
+              '\t# Keep forward held through completion: the accepted player-facing case\n'
+              '\t# must not require an input release/re-press to recover locomotion.\n'
+              '\tvar moving_start: Vector3 = prop.global_position\n'
+              '\tvar attachment_local_start: Vector3 = (\n'
+              '\t\tprop.global_transform.affine_inverse() * player.global_position\n'
+              '\t)\n'
+              '\tvar saw_prop_motion_during_mantle: bool = false\n'
+              '\tvar saw_lateral_prop_motion_during_mantle: bool = false\n'
+              '\tvar max_attachment_lateral_error: float = 0.0\n'
+          )
+          replace_once(
+              '\t\tif prop.global_position.distance_to(moving_start) > 0.01:\n'
+              '\t\t\tsaw_prop_motion_during_mantle = true\n'
+              '\t\tif (\n',
+              '\t\tif prop.global_position.distance_to(moving_start) > 0.01:\n'
+              '\t\t\tsaw_prop_motion_during_mantle = true\n'
+              '\t\tif absf(prop.global_position.x - moving_start.x) > 0.02:\n'
+              '\t\t\tsaw_lateral_prop_motion_during_mantle = true\n'
+              '\t\tif controller.state == PlayerLedgeController.State.MANTLING:\n'
+              '\t\t\tvar attachment_local_now: Vector3 = (\n'
+              '\t\t\t\tprop.global_transform.affine_inverse() * player.global_position\n'
+              '\t\t\t)\n'
+              '\t\t\tmax_attachment_lateral_error = maxf(\n'
+              '\t\t\t\tmax_attachment_lateral_error,\n'
+              '\t\t\t\tabsf(attachment_local_now.x - attachment_local_start.x)\n'
+              '\t\t\t)\n'
+              '\t\tif (\n'
+          )
+          replace_once(
+              '\tassert_true.call(\n'
+              '\t\tsaw_prop_motion_during_mantle\n'
+              '\t\tor prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED,\n'
+              '\t\t"Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling"\n'
+              '\t)\n\n'
+              '\tvar locomotion_start: Vector3 = player.global_position\n'
+              '\tInput.action_press("move_right")\n'
+              '\tawait _settle_physics(tree, 8)\n'
+              '\tInput.action_release("move_right")\n'
+              '\tassert_true.call(\n'
+              '\t\tcompleted_mantle\n'
+              '\t\tand player.global_position.distance_to(locomotion_start) > 0.025,\n'
+              '\t\t"Completed moving-prop mantle returns ordinary locomotion instead of leaving the player stuck on top"\n'
+              '\t)\n',
+              '\tassert_true.call(\n'
+              '\t\tsaw_prop_motion_during_mantle\n'
+              '\t\tor prop.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED,\n'
+              '\t\t"Prop-backed mantle remains coherent while the shoved source prop moves or finishes settling"\n'
+              '\t)\n'
+              '\tassert_true.call(\n'
+              '\t\tsaw_lateral_prop_motion_during_mantle\n'
+              '\t\tand max_attachment_lateral_error <= 0.035,\n'
+              '\t\t"Moving-prop mantle keeps the player attachment-relative during lateral crate translation"\n'
+              '\t)\n\n'
+              '\tvar locomotion_start: Vector3 = player.global_position\n'
+              '\tawait _settle_physics(tree, 8)\n'
+              '\tInput.action_release("move_forward")\n'
+              '\tassert_true.call(\n'
+              '\t\tcompleted_mantle\n'
+              '\t\tand controller.state == PlayerLedgeController.State.NONE\n'
+              '\t\tand player.global_position.distance_to(locomotion_start) > 0.025,\n'
+              '\t\t"Completed moving-prop mantle accepts already-held forward locomotion instead of leaving the player stuck on top"\n'
+              '\t)\n'
+          )
+
+          path.write_text(text)
+          PY
+
+      - name: Setup Godot 4.7.2
+        uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7.2
+          use-dotnet: false
+          include-templates: false
+
+      - name: Import project with regression
+        run: godot --headless --path . --import
+
+      - name: Prove regression fails before implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          godot --headless --path . --script res://tests/props/run_prop_tests.gd 2>&1 | tee /tmp/pre_fix_props.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "Expected the off-axis moving-prop regression to fail before the fix." >&2
+            exit 1
+          fi
+          grep -F "Moving-prop mantle keeps the player attachment-relative during lateral crate translation" /tmp/pre_fix_props.log
+
+      - name: Apply moving-attachment correction and documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path_string: str, old: str, new: str) -> None:
+              path = Path(path_string)
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path_string}: expected one match, found {count}")
+              path.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "player/traversal/player_mantle.gd",
+              "func _refresh_active_attachment_route() -> bool:\n",
+              "func _refresh_active_attachment_route(player: CharacterBody3D) -> bool:\n",
+          )
+          replace_once(
+              "player/traversal/player_mantle.gd",
+              "\tvar current_transform: Transform3D = source.attachment_collider_transform\n"
+              "\tif current_transform.is_equal_approx(previous_transform):\n"
+              "\t\treturn true\n\n"
+              "\tvar previous_inverse: Transform3D = previous_transform.affine_inverse()\n",
+              "\tvar current_transform: Transform3D = source.attachment_collider_transform\n"
+              "\tif current_transform.is_equal_approx(previous_transform):\n"
+              "\t\treturn true\n\n"
+              "\t# The sampled route is attachment-relative, so the player must inherit\n"
+              "\t# the same source translation before applying mantle-relative lift/forward\n"
+              "\t# motion. Updating only the edge lets lateral crate drift leave the player\n"
+              "\t# beside the moving top even though the route itself still tracks it.\n"
+              "\tvar attachment_motion: Vector3 = (\n"
+              "\t\tcurrent_transform.origin - previous_transform.origin\n"
+              "\t)\n"
+              "\tif attachment_motion.length_squared() > MOTION_EPSILON_SQUARED:\n"
+              "\t\tvar attachment_collision: KinematicCollision3D = player.move_and_collide(\n"
+              "\t\t\tattachment_motion,\n"
+              "\t\t\tfalse,\n"
+              "\t\t\tPROBE_SAFE_MARGIN,\n"
+              "\t\t\tfalse,\n"
+              "\t\t\tPROBE_MAX_COLLISIONS\n"
+              "\t\t)\n"
+              "\t\tif attachment_collision != null:\n"
+              "\t\t\tvar attachment_travel: Vector3 = attachment_collision.get_travel()\n"
+              "\t\t\tif (\n"
+              "\t\t\t\tattachment_travel.distance_to(attachment_motion)\n"
+              "\t\t\t\t> get_route_progress_tolerance()\n"
+              "\t\t\t):\n"
+              "\t\t\t\treturn false\n\n"
+              "\tvar previous_inverse: Transform3D = previous_transform.affine_inverse()\n",
+          )
+          replace_once(
+              "player/traversal/player_mantle.gd",
+              "\tif not _refresh_active_attachment_route():\n",
+              "\tif not _refresh_active_attachment_route(player):\n",
+          )
+
+          replace_once(
+              "docs/GAME_VISION.md",
+              "Catch, hang, and corner attachment to an ordinary prop require that prop to be semantically settled. Mantle keeps the same accepted motion whether entered from grounded contact or airborne contact, including when a light prop has just been shoved into motion. Because ledge candidates begin as world-space samples, a prop-backed mantle binds the sampled edge/route to the exact collider transform that produced it and updates that geometry as the rigid body translates, instead of converting the request into a jump or completing against a stale prop position. If the tracked collider disappears or ceases to be the same physical attachment, the mantle releases to ordinary airborne control.",
+              "Catch, hang, and corner attachment to an ordinary prop require that prop to be semantically settled. Mantle keeps the same accepted motion whether entered from grounded contact or airborne contact, including when a light prop has just been shoved into motion. Because ledge candidates begin as world-space samples, a prop-backed mantle binds both the player's short-lived attachment-relative crossing position and the sampled edge/route to the exact collider transform that produced them. As the rigid body translates, mantle inherits that collider translation through collision-resolved player motion before applying the ordinary lift/forward crossing, instead of converting the request into a jump, drifting sideways off the moving top, or completing against a stale prop position. If the tracked collider disappears, ceases to be the same physical attachment, or its inherited translation is physically blocked, the mantle releases to ordinary airborne control.",
+          )
+
+          replace_once(
+              "docs/DEVELOPMENT_PLAN.md",
+              "5. **Dynamic-prop traversal ownership.** Catch/hang/corner keep requiring an exact settled prop, but mantle preserves the already-accepted traversal motion for both grounded and airborne contact. A prop-backed mantle records the collider transform that produced its world-space ledge sample and keeps the mantle edge/route bound to that same collider while it translates. A light crate that was just shoved therefore still mantles through the normal `PlayerMantle` path instead of falling through to jump or finishing against stale geometry; loss of the tracked collider releases cleanly to air.",
+              "5. **Dynamic-prop traversal ownership.** Catch/hang/corner keep requiring an exact settled prop, but mantle preserves the already-accepted traversal motion for both grounded and airborne contact. A prop-backed mantle records the collider transform that produced its world-space ledge sample and keeps both the player's short-lived attachment-relative crossing position and the mantle edge/route bound to that same collider while it translates. Collider translation is inherited through collision-resolved player motion before the ordinary lift/forward mantle motion is applied. A light crate that was just shoved therefore still mantles through the normal `PlayerMantle` path instead of falling through to jump, drifting sideways off an off-axis moving top, or finishing against stale geometry; loss/blockage of the tracked attachment releases cleanly to air.",
+          )
+          replace_once(
+              "docs/DEVELOPMENT_PLAN.md",
+              "grounded contact with a recently shoved prop enters the same mantle motion as airborne contact, tracks that collider through completion, and returns ordinary locomotion instead of becoming a jump or stuck state;",
+              "grounded contact with a recently shoved prop enters the same mantle motion as airborne contact, inherits that collider's translation through completion even when motion has a lateral component, and returns ordinary locomotion with already-held input instead of becoming a jump or stuck state;",
+          )
+          replace_once(
+              "docs/DEVELOPMENT_PLAN.md",
+              "production-path grounded mantle entry on an already-moving prop, tracked moving-collider mantle completion plus post-mantle locomotion, stationary-only catch/hang/corner eligibility,",
+              "production-path grounded mantle entry on an already-moving prop, off-axis/lateral tracked-collider mantle completion plus already-held post-mantle locomotion, stationary-only catch/hang/corner eligibility,",
+          )
+          replace_once(
+              "docs/DEVELOPMENT_PLAN.md",
+              "For mantle, first mantle a normal static ledge from air, then run into a crate so it starts moving and press mantle from the ground: the grounded case must use the same smooth lift/forward mantle motion, not a jump, must follow the crate rather than completing against its old position, and must return normal movement immediately on top.",
+              "For mantle, first mantle a normal static ledge from air, then run into a crate so it starts moving and press mantle from the ground: the grounded case must use the same smooth lift/forward mantle motion, not a jump, must follow the crate rather than completing against its old position, and must return normal movement immediately on top. Repeat several times with a slightly off-center/diagonal shove so the crate has some lateral drift, and keep forward held through landing; the player must stay with the moving top and continue moving normally without an input release/re-press.",
+          )
+
+          replace_once(
+              "docs/TESTING.md",
+              "while a production grounded mantle against an already-moving crate enters the same `PlayerMantle` path as air contact, tracks the source collider transform through completion, and proves ordinary locomotion resumes instead of leaving the player stuck on top;",
+              "while a production grounded mantle against an already-moving crate enters the same `PlayerMantle` path as air contact, proves an off-axis shove produces lateral crate motion while the player remains attachment-relative to that translating collider through completion, and proves already-held forward input resumes ordinary locomotion instead of leaving the player stuck on top;",
+          )
+          PY
+
+      - name: Verify bounded production diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm "$FINALIZER_PATH"
+          git diff --check "$BASE_SHA"
+          printf '%s\n' \
+            docs/DEVELOPMENT_PLAN.md \
+            docs/GAME_VISION.md \
+            docs/TESTING.md \
+            player/traversal/player_mantle.gd \
+            tests/props/phase_3_5_transition_regressions.gd | sort > /tmp/expected-files
+          git diff --name-only "$BASE_SHA" | sort > /tmp/actual-files
+          diff -u /tmp/expected-files /tmp/actual-files
+          git diff --stat "$BASE_SHA"
+
+      - name: Run focused Props suite
+        run: godot --headless --path . --script res://tests/props/run_prop_tests.gd
+
+      - name: Run focused Movement suite
+        run: godot --headless --path . --script res://tests/movement/run_movement_tests.gd
+
+      - name: Run authoritative full barrier
+        run: godot --headless --path . --script res://tests/run_all_tests.gd
+
+      - name: Commit and push verified production tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Keep mantle attached to moving prop translation"
+          test "$(git rev-parse HEAD^)" = "$(git rev-parse origin/test)"
+          git push origin HEAD:test
