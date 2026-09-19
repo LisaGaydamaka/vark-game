@@ -533,6 +533,21 @@ The Application door regression also protects the consumer seam itself: `request
 
 This is a micro-proof, not the final production nav-bake policy. Runtime synchronous baking is acceptable for the tiny fixture; Phase 5/production scaling may replace it with cached/prebaked/background work without changing authored patrol/door semantics.
 
+## Exposure/light-gem fixture
+
+Phase 3.8 owns the first concrete gameplay-exposure proof:
+
+- **Exposure Lab** launches through the real Application → WorldSession → Player path and exposes one world-owned gameplay-exposure owner plus a development-only top-left light-gem/debug readout;
+- gameplay-light sources are actual shadow-casting `OmniLight3D` nodes. Their rendered transform/range is shared with the gameplay query, while an explicit provisional `gameplay_strength` remains separate from presentation energy so decorative brightness does not silently become stealth truth;
+- the owner derives three vertical samples from the real player's `CapsuleShape3D` (lower body, torso, upper body), rather than using a fake point target;
+- each source ray-tests those samples against world collision for occlusion, uses a simple provisional distance falloff from the light's real `omni_range`, averages visible body-sample contribution for that light, adds contributions from multiple lights, then clamps the final exposure to 0–1;
+- the fixture has labeled **DARK**, **LIGHT EDGE**, **PARTIAL**, **FULL**, **TWO LIGHTS**, and **OCCLUDED** positions. The occluded position is behind real StaticBody3D geometry rather than a test-only boolean;
+- headless acceptance is relational rather than a frozen tuning table: dark is near zero; edge is positive but lower than partial; partial is meaningfully below full; opaque occlusion removes the representative key-light samples; both sources contribute at the overlap point; the live HUD is driven by the same owner summary;
+- manual acceptance is required because the governing product rule is intuitive agreement between rendered illumination and player-facing exposure. Exact falloff, sampling positions/weights, strength tuning, and final light-gem art remain OPEN until that playtest passes;
+- this phase does **not** add observer FOV, distance-to-observer, alertness, motion visibility, guard perception, light switching/extinguishing logic, or final production HUD architecture.
+
+The Visibility suite is the automated owner of this fixture. Keep diagnostics useful enough to identify per-light contribution, body-sample visibility, total/raw exposure, and whether the failure is falloff, occlusion, overlap, or HUD propagation rather than only reporting one final scalar.
+
 ## Save snapshot/restore transaction fixture
 
 Save/restore is tested as semantic transaction, not dictionary serialization.

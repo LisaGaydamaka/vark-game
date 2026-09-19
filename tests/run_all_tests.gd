@@ -19,6 +19,10 @@ const SUITES = [
 		"script": "res://tests/acoustics/run_acoustic_tests.gd",
 	},
 	{
+		"name": "Visibility",
+		"script": "res://tests/visibility/run_visibility_tests.gd",
+	},
+	{
 		"name": "Navigation",
 		"script": "res://tests/navigation/run_navigation_tests.gd",
 	},
