@@ -25,6 +25,7 @@ func _run_tests() -> void:
 	_assert_guard_nav_doorway_fit()
 	await _assert_application_patrol_and_door()
 	await _assert_guard_obstructs_player_close()
+	await _assert_guard_reopens_player_closed_route()
 	await _assert_blocked_door_recovery()
 	await _assert_reimport_rebuild()
 	_remove_temp_map()
@@ -203,9 +204,11 @@ func _assert_guard_obstructs_player_close() -> void:
 		return
 
 	var guard_in_doorway: bool = await _wait_for_guard_in_open_doorway(guard, door, 480)
+	var crossing_summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
-		guard_in_doorway,
-		"Real guard reaches the open ordinary-door frame before the player-close obstruction check"
+		guard_in_doorway
+		and str(crossing_summary.get("door_traversal_state", "")) == "crossing",
+		"Real guard enters explicit CROSSING state in the open ordinary-door frame before the player-close obstruction check"
 	)
 	if not guard_in_doorway:
 		_print_guard_timeout_diagnostics("guard-close doorway arrival", guard, door)
@@ -230,8 +233,9 @@ func _assert_guard_obstructs_player_close() -> void:
 		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_CLOSING
 		and blocked_fraction > 0.0
 		and blocked_fraction < pre_close_fraction
+		and str(blocked_guard_summary.get("door_traversal_state", "")) == "crossing"
 		and not bool(blocked_guard_summary.get("door_request_pending", true)),
-		"Player close advances until the real guard body physically blocks the ordinary door without an AI OPEN counter-request"
+		"Player close advances until the CROSSING guard body physically blocks the ordinary door without an AI OPEN counter-request"
 	)
 
 	for _frame_index: int in 12:
@@ -242,8 +246,82 @@ func _assert_guard_obstructs_player_close() -> void:
 		door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_CLOSING
 		and door.is_motion_blocked()
 		and is_equal_approx(door.get_open_fraction(), blocked_fraction)
+		and str(stable_guard_summary.get("door_traversal_state", "")) == "crossing"
 		and not bool(stable_guard_summary.get("door_request_pending", true)),
 		"Guard obstruction leaves the player-commanded door stably partially closed without twitching or reopening"
+	)
+
+	application.call("exit_current_world")
+	application.queue_free()
+	await process_frame
+
+
+func _assert_guard_reopens_player_closed_route() -> void:
+	var application: Node = ApplicationScene.instantiate()
+	application.set("development_launch_labels", PackedStringArray(["Guard/Nav Lab"]))
+	application.set("development_launch_resource_paths", PackedStringArray([GUARD_NAV_DEFINITION_PATH]))
+	get_root().add_child(application)
+	await process_frame
+
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	var world := application.get("current_world") as Node3D
+	var player := application.get("current_player") as Node3D
+	var ready: bool = await _wait_for_navigation_ready(world, 240)
+	var guard: VarkGuard = _find_guard(world)
+	var door: VarkOrdinaryDoor = (
+		world.get_node_or_null("OrdinaryDoor") as VarkOrdinaryDoor
+		if world != null
+		else null
+	)
+	_assert_true(
+		launched and ready and world != null and player != null and guard != null and door != null,
+		"Guard route-reopen fixture launches the real Guard/Nav Lab player, guard, door, and baked navigation"
+	)
+	if not launched or not ready or world == null or player == null or guard == null or door == null:
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	var requested: bool = await _wait_for_guard_door_request(guard, 240)
+	guard.movement_speed = 0.0
+	var opened: bool = await _wait_for_door_phase(door, VarkOrdinaryDoor.PHASE_OPEN, 180)
+	for _frame_index: int in 2:
+		await physics_frame
+		await process_frame
+	var before_close_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		requested
+		and opened
+		and not door.is_body_in_navigation_passage(guard)
+		and str(before_close_summary.get("door_traversal_state", "")) == "approaching"
+		and int(before_close_summary.get("door_use_count", 0)) == 1,
+		"Guard remains in APPROACHING state outside the open doorway before the player closes its required route"
+	)
+
+	door.interact(player)
+	var rerequested: bool = await _wait_for_guard_door_request(guard, 60)
+	var rerequest_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		rerequested
+		and not door.is_body_in_navigation_passage(guard)
+		and str(rerequest_summary.get("door_traversal_state", "")) == "waiting_open"
+		and int(rerequest_summary.get("door_use_count", 0)) == 1
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING,
+		"Player closing the door in front of an APPROACHING guard makes the guard resume the same logical OPEN request instead of stopping"
+	)
+
+	var reopened: bool = await _wait_for_door_phase(door, VarkOrdinaryDoor.PHASE_OPEN, 180)
+	for _frame_index: int in 2:
+		await physics_frame
+		await process_frame
+	var reopened_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		reopened
+		and str(reopened_summary.get("door_traversal_state", "")) == "approaching"
+		and not bool(reopened_summary.get("door_request_pending", true))
+		and int(reopened_summary.get("door_use_count", 0)) == 1,
+		"Reopened route clears the guard wait without inventing a second logical door use"
 	)
 
 	application.call("exit_current_world")
@@ -438,7 +516,7 @@ func _wait_for_guard_in_open_doorway(
 		var summary: Dictionary = guard.get_debug_summary()
 		if (
 			door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
-			and _guard_overlaps_closed_door_leaf(guard, door)
+			and door.is_body_in_navigation_passage(guard)
 		):
 			return true
 		if not str(summary.get("last_error", "")).is_empty():
@@ -448,31 +526,17 @@ func _wait_for_guard_in_open_doorway(
 	return false
 
 
-func _guard_overlaps_closed_door_leaf(
-	guard: VarkGuard,
-	door: VarkOrdinaryDoor
+func _wait_for_door_phase(
+	door: VarkOrdinaryDoor,
+	phase: StringName,
+	max_frames: int
 ) -> bool:
-	var collision := door.get_node_or_null("CollisionShape3D") as CollisionShape3D
-	if collision == null or collision.shape == null or not door.is_inside_tree():
-		return false
-
-	# Detect the actual physical doorway occupancy instead of measuring from the
-	# hinge. Reconstruct the door root at fraction 0 and ask whether the real
-	# guard body overlaps the leaf position the close command is trying to reach.
-	var closed_root: Transform3D = door.global_transform.rotated_local(
-		Vector3.UP,
-		-deg_to_rad(door.open_angle_degrees) * door.get_open_fraction()
-	)
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = collision.shape
-	query.transform = closed_root * collision.transform
-	query.collision_mask = 2
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	for result: Dictionary in door.get_world_3d().direct_space_state.intersect_shape(query, 8):
-		if result.get("collider", null) == guard:
+	for _frame_index: int in max_frames:
+		if door.get_semantic_phase() == phase:
 			return true
-	return false
+		await physics_frame
+		await process_frame
+	return door.get_semantic_phase() == phase
 
 
 func _wait_for_door_blocked(

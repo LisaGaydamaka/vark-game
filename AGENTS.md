@@ -310,6 +310,8 @@ A corrective GitHub patch requires a new user message containing the exact autho
 
 After automated validation is green, tell the user exactly what still requires human validation.
 
+After **every repository upload**, explicitly tell the user what to manually test **now**. If CI is failing/pending, the change has no manual acceptance, or no manual work remains, still include an explicit `Manual test now: none` statement with the reason instead of omitting the manual-test handoff. This requirement applies to roadmap implementations, corrections, documentation-only uploads, and other authorized repository patches.
+
 The handoff should state:
 
 - who must perform the validation when a specialized validator is required;

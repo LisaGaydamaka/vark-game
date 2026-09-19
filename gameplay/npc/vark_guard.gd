@@ -4,9 +4,15 @@ extends CharacterBody3D
 
 const DOOR_OPEN_METHOD: StringName = &"is_navigation_passage_open"
 const DOOR_REQUEST_OPEN_METHOD: StringName = &"request_open"
-const DOOR_PHASE_METHOD: StringName = &"get_semantic_phase"
-const DOOR_CLOSING_PHASE: StringName = &"closing"
+const DOOR_BODY_IN_PASSAGE_METHOD: StringName = &"is_body_in_navigation_passage"
 const DOOR_REQUEST_RETRY_SECONDS: float = 0.35
+
+enum DoorTraversalState {
+	APPROACHING,
+	WAITING_OPEN,
+	CROSSING,
+	CLEAR,
+}
 
 @export var guard_id: String = ""
 @export var patrol_a_id: String = ""
@@ -20,6 +26,8 @@ var _patrol_positions: Array[Vector3] = []
 var _target_index: int = 1
 var _door: Node = null
 var _configured: bool = false
+var _door_traversal_state: DoorTraversalState = DoorTraversalState.APPROACHING
+var _door_use_active: bool = false
 var _door_request_pending: bool = false
 var _door_retry_remaining: float = 0.0
 var _door_use_count: int = 0
@@ -43,6 +51,8 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_configured = false
 	_patrol_positions.clear()
 	_door = null
+	_door_traversal_state = DoorTraversalState.APPROACHING
+	_door_use_active = false
 	_door_request_pending = false
 	_door_retry_remaining = 0.0
 	_patrol_leg_count = 0
@@ -67,7 +77,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	if (
 		not door.has_method(DOOR_OPEN_METHOD)
 		or not door.has_method(DOOR_REQUEST_OPEN_METHOD)
-		or not door.has_method(DOOR_PHASE_METHOD)
+		or not door.has_method(DOOR_BODY_IN_PASSAGE_METHOD)
 	):
 		_last_error = "Guard '%s' received a door without the ordinary navigation seam." % guard_id
 		push_error(_last_error)
@@ -96,6 +106,8 @@ func get_debug_summary() -> Dictionary:
 		"patrol_b_id": patrol_b_id,
 		"door_id": door_id,
 		"door_use_distance": door_use_distance,
+		"door_traversal_state": _door_traversal_state_name(),
+		"door_use_active": _door_use_active,
 		"door_request_pending": _door_request_pending,
 		"door_distance": _horizontal_distance_to_door(),
 		"target_index": _target_index,
@@ -158,28 +170,48 @@ func _physics_process(delta: float) -> void:
 func _wait_for_door_if_needed(delta: float) -> bool:
 	if _door == null:
 		return false
-	if bool(_door.call(DOOR_OPEN_METHOD)):
+
+	var body_in_passage: bool = bool(_door.call(DOOR_BODY_IN_PASSAGE_METHOD, self))
+	if body_in_passage:
+		_door_traversal_state = DoorTraversalState.CROSSING
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
 		return false
 
-	# A player-commanded close keeps ownership of the physical door motion.
-	# The guard continues its route and remains a real blocker if the leaf
-	# reaches it instead of immediately countermanding the close with OPEN.
-	var door_phase: StringName = _door.call(DOOR_PHASE_METHOD)
-	if door_phase == DOOR_CLOSING_PHASE:
+	if _door_traversal_state == DoorTraversalState.CROSSING:
+		# Leaving the doorway completes this traversal. A door closing behind
+		# the guard must not cause an unnecessary reopen.
+		_door_traversal_state = DoorTraversalState.CLEAR
+		_door_use_active = false
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
 		return false
 
 	if _horizontal_distance_to_door() > door_use_distance:
+		_door_traversal_state = DoorTraversalState.APPROACHING
+		_door_use_active = false
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
 		return false
 
+	if _door_traversal_state == DoorTraversalState.CLEAR:
+		return false
+
+	if bool(_door.call(DOOR_OPEN_METHOD)):
+		_door_traversal_state = DoorTraversalState.APPROACHING
+		_door_request_pending = false
+		_door_retry_remaining = 0.0
+		return false
+
+	# The required passage is blocked while the guard is still approaching.
+	# This includes a player-commanded partial close: resume the same logical
+	# OPEN intent. Once CROSSING, physical collision owns any door contact.
+	_door_traversal_state = DoorTraversalState.WAITING_OPEN
+	if not _door_use_active:
+		_door_use_active = true
+		_door_use_count += 1
 	if not _door_request_pending:
 		_door_request_pending = true
-		_door_use_count += 1
 		_door_retry_remaining = 0.0
 
 	_door_retry_remaining = maxf(0.0, _door_retry_remaining - delta)
@@ -197,9 +229,25 @@ func _horizontal_distance_to_door() -> float:
 	return to_door.length()
 
 
+func _door_traversal_state_name() -> StringName:
+	match _door_traversal_state:
+		DoorTraversalState.WAITING_OPEN:
+			return &"waiting_open"
+		DoorTraversalState.CROSSING:
+			return &"crossing"
+		DoorTraversalState.CLEAR:
+			return &"clear"
+		_:
+			return &"approaching"
+
+
 func _complete_patrol_leg() -> void:
 	velocity = Vector3.ZERO
 	_patrol_leg_count += 1
+	_door_traversal_state = DoorTraversalState.APPROACHING
+	_door_use_active = false
+	_door_request_pending = false
+	_door_retry_remaining = 0.0
 	if _target_index == 1:
 		_target_index = 0
 	else:

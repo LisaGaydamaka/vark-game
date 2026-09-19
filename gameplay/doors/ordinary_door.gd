@@ -156,6 +156,31 @@ func is_navigation_passage_open() -> bool:
 	return _phase == PHASE_OPEN
 
 
+func is_body_in_navigation_passage(body: CollisionObject3D) -> bool:
+	if (
+		body == null
+		or not body.is_inside_tree()
+		or door_collision == null
+		or door_collision.shape == null
+		or not is_inside_tree()
+	):
+		return false
+
+	# Passage occupancy is physical door truth. Test the requested body against
+	# the leaf's closed position, independent of the leaf's current angle.
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = door_collision.shape
+	query.transform = _collision_transform_at_fraction(0.0)
+	query.collision_mask = body.collision_layer
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.exclude = [get_rid()]
+	for result: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
+		if result.get("collider", null) == body:
+			return true
+	return false
+
+
 func capture_semantic_state() -> Dictionary:
 	return {
 		"phase": _phase,
@@ -247,18 +272,22 @@ func _get_sweep_limited_fraction(next_fraction: float) -> float:
 
 
 func _overlaps_obstacle_at_fraction(sample_fraction: float) -> bool:
-	var delta_angle: float = (
-		deg_to_rad(open_angle_degrees) * (sample_fraction - _open_fraction)
-	)
-	var candidate_root: Transform3D = global_transform.rotated_local(Vector3.UP, delta_angle)
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = door_collision.shape
-	query.transform = candidate_root * door_collision.transform
+	query.transform = _collision_transform_at_fraction(sample_fraction)
 	query.collision_mask = collision_mask
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
 	return not get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+
+
+func _collision_transform_at_fraction(sample_fraction: float) -> Transform3D:
+	var delta_angle: float = (
+		deg_to_rad(open_angle_degrees) * (sample_fraction - _open_fraction)
+	)
+	var candidate_root: Transform3D = global_transform.rotated_local(Vector3.UP, delta_angle)
+	return candidate_root * door_collision.transform
 
 
 func _refresh_visual() -> void:
