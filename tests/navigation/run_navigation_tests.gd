@@ -141,15 +141,16 @@ func _assert_application_patrol_and_door() -> void:
 		"Grounded guard advances off its authored start instead of stalling on the first vertically quantized nav waypoint"
 	)
 
-	var requested_from_standoff: bool = await _wait_for_guard_door_request(guard, 240)
+	var requested_on_block: bool = await _wait_for_guard_door_request(guard, 300)
 	var request_summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
-		requested_from_standoff
+		requested_on_block
 		and bool(request_summary.get("door_request_pending", false))
+		and bool(request_summary.get("door_blocks_planned_motion", false))
+		and str(request_summary.get("door_traversal_state", "")) == "waiting_open"
 		and is_equal_approx(float(request_summary.get("door_use_distance", 0.0)), 2.0)
-		and float(request_summary.get("door_distance", 0.0)) >= 1.80
 		and int(request_summary.get("door_use_count", 0)) == 1,
-		"Guard requests and waits for the ordinary door from outside its physical swing envelope"
+		"Guard requests and waits for the ordinary door only after its next intended movement is physically blocked by that door"
 	)
 
 	var completed_cycle: bool = await _wait_for_guard_cycle(guard, 720)
@@ -266,49 +267,94 @@ func _assert_guard_reopens_player_closed_route() -> void:
 	var launched: bool = bool(application.call("launch_development_target", 0))
 	var world := application.get("current_world") as Node3D
 	var player := application.get("current_player") as Node3D
-	var ready: bool = await _wait_for_navigation_ready(world, 240)
-	var guard: VarkGuard = _find_guard(world)
 	var door: VarkOrdinaryDoor = (
 		world.get_node_or_null("OrdinaryDoor") as VarkOrdinaryDoor
 		if world != null
 		else null
 	)
+	var fixture_opened: bool = false
+	if door != null:
+		fixture_opened = door.apply_semantic_state({
+			"phase": VarkOrdinaryDoor.PHASE_OPEN,
+			"open_fraction": 1.0,
+			"motion_blocked": false,
+		})
+	var ready: bool = await _wait_for_navigation_ready(world, 240)
+	var guard: VarkGuard = _find_guard(world)
 	_assert_true(
-		launched and ready and world != null and player != null and guard != null and door != null,
-		"Guard route-reopen fixture launches the real Guard/Nav Lab player, guard, door, and baked navigation"
+		launched
+		and fixture_opened
+		and ready
+		and world != null
+		and player != null
+		and guard != null
+		and door != null,
+		"Guard route-reopen fixture launches the real Guard/Nav Lab with an initially open ordinary door"
 	)
-	if not launched or not ready or world == null or player == null or guard == null or door == null:
+	if (
+		not launched
+		or not fixture_opened
+		or not ready
+		or world == null
+		or player == null
+		or guard == null
+		or door == null
+	):
 		application.call("exit_current_world")
 		application.queue_free()
 		await process_frame
 		return
 
-	var requested: bool = await _wait_for_guard_door_request(guard, 240)
+	var approach_window: bool = await _wait_for_guard_approach_window(
+		guard,
+		door,
+		1.70,
+		1.95,
+		360
+	)
+	var original_speed: float = guard.movement_speed
 	guard.movement_speed = 0.0
-	var opened: bool = await _wait_for_door_phase(door, VarkOrdinaryDoor.PHASE_OPEN, 180)
 	for _frame_index: int in 2:
 		await physics_frame
 		await process_frame
 	var before_close_summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
-		requested
-		and opened
+		approach_window
 		and not door.is_body_in_navigation_passage(guard)
 		and str(before_close_summary.get("door_traversal_state", "")) == "approaching"
-		and int(before_close_summary.get("door_use_count", 0)) == 1,
-		"Guard remains in APPROACHING state outside the open doorway before the player closes its required route"
+		and int(before_close_summary.get("door_use_count", 0)) == 0
+		and not bool(before_close_summary.get("door_request_pending", true)),
+		"An approaching guard can be near the open doorway without owning an OPEN request"
 	)
 
 	door.interact(player)
-	var rerequested: bool = await _wait_for_guard_door_request(guard, 60)
-	var rerequest_summary: Dictionary = guard.get_debug_summary()
+	var closed_before_contact: bool = await _wait_for_door_phase(
+		door,
+		VarkOrdinaryDoor.PHASE_CLOSED,
+		180
+	)
+	for _frame_index: int in 2:
+		await physics_frame
+		await process_frame
+	var closed_summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
-		rerequested
-		and not door.is_body_in_navigation_passage(guard)
-		and str(rerequest_summary.get("door_traversal_state", "")) == "waiting_open"
-		and int(rerequest_summary.get("door_use_count", 0)) == 1
+		closed_before_contact
+		and int(closed_summary.get("door_use_count", 0)) == 0
+		and str(closed_summary.get("door_traversal_state", "")) == "approaching"
+		and not bool(closed_summary.get("door_request_pending", true)),
+		"Player can close the ordinary door in front of an approaching guard without an immediate AI reopen"
+	)
+
+	guard.movement_speed = original_speed
+	var requested_on_contact: bool = await _wait_for_guard_door_request(guard, 180)
+	var request_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		requested_on_contact
+		and bool(request_summary.get("door_blocks_planned_motion", false))
+		and str(request_summary.get("door_traversal_state", "")) == "waiting_open"
+		and int(request_summary.get("door_use_count", 0)) == 1
 		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING,
-		"Player closing the door in front of an APPROACHING guard makes the guard resume the same logical OPEN request instead of stopping"
+		"Guard requests OPEN only once the closed door physically blocks its next intended movement"
 	)
 
 	var reopened: bool = await _wait_for_door_phase(door, VarkOrdinaryDoor.PHASE_OPEN, 180)
@@ -321,13 +367,12 @@ func _assert_guard_reopens_player_closed_route() -> void:
 		and str(reopened_summary.get("door_traversal_state", "")) == "approaching"
 		and not bool(reopened_summary.get("door_request_pending", true))
 		and int(reopened_summary.get("door_use_count", 0)) == 1,
-		"Reopened route clears the guard wait without inventing a second logical door use"
+		"Reopened route clears the physical-block wait without inventing a second logical door use"
 	)
 
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
-
 
 func _assert_blocked_door_recovery() -> void:
 	var application: Node = ApplicationScene.instantiate()
@@ -498,6 +543,31 @@ func _wait_for_guard_door_request(guard: VarkGuard, max_frames: int) -> bool:
 		if (
 			int(summary.get("door_use_count", 0)) >= 1
 			and bool(summary.get("door_request_pending", false))
+		):
+			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return false
+
+
+func _wait_for_guard_approach_window(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor,
+	min_distance: float,
+	max_distance: float,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		var door_distance: float = float(summary.get("door_distance", INF))
+		if (
+			door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
+			and not door.is_body_in_navigation_passage(guard)
+			and str(summary.get("door_traversal_state", "")) == "approaching"
+			and door_distance >= min_distance
+			and door_distance <= max_distance
 		):
 			return true
 		if not str(summary.get("last_error", "")).is_empty():

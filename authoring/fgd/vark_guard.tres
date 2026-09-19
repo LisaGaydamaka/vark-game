@@ -22,7 +22,7 @@ class_property_descriptions = Dictionary[String, Variant]({
 "patrol_b_id": "Second authored vark_patrol_point ID.",
 "door_id": "Ordinary door ID this guard is allowed to use while following the current proof route.",
 "movement_speed": "Patrol movement speed in Vark world meters per second.",
-"door_use_distance": "Horizontal standoff distance at which the guard stops and requests the configured ordinary door to open.",
+"door_use_distance": "Maximum horizontal relevance range for the configured ordinary door; the guard requests OPEN only when that door physically blocks its next intended movement.",
 "angle": "Initial TrenchBroom facing direction."
 })
 auto_apply_to_matching_node_properties = true
