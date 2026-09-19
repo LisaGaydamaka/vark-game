@@ -181,6 +181,32 @@ func is_body_in_navigation_passage(body: CollisionObject3D) -> bool:
 	return false
 
 
+func get_navigation_swing_radius() -> float:
+	if door_collision == null or door_collision.shape == null:
+		return 0.0
+	var box := door_collision.shape as BoxShape3D
+	if box == null:
+		return 0.0
+
+	# The navigation consumer needs a safe approach boundary, not a guessed
+	# standoff. Derive the horizontal sweep radius from the real leaf collider,
+	# including its offset from the hinge.
+	var half_size: Vector3 = box.size * 0.5
+	var max_radius: float = 0.0
+	for x_sign: float in [-1.0, 1.0]:
+		for z_sign: float in [-1.0, 1.0]:
+			var local_corner: Vector3 = door_collision.transform * Vector3(
+				half_size.x * x_sign,
+				0.0,
+				half_size.z * z_sign
+			)
+			max_radius = maxf(
+				max_radius,
+				Vector2(local_corner.x, local_corner.z).length()
+			)
+	return max_radius
+
+
 func capture_semantic_state() -> Dictionary:
 	return {
 		"phase": _phase,

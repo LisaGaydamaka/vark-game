@@ -141,16 +141,22 @@ func _assert_application_patrol_and_door() -> void:
 		"Grounded guard advances off its authored start instead of stalling on the first vertically quantized nav waypoint"
 	)
 
-	var requested_on_block: bool = await _wait_for_guard_door_request(guard, 300)
+	var requested_on_imminent_block: bool = await _wait_for_guard_door_request(guard, 300)
 	var request_summary: Dictionary = guard.get_debug_summary()
+	var request_clearance: float = float(request_summary.get("door_approach_clearance", 0.0))
+	var request_distance: float = float(request_summary.get("door_distance", 0.0))
 	_assert_true(
-		requested_on_block
+		requested_on_imminent_block
 		and bool(request_summary.get("door_request_pending", false))
-		and bool(request_summary.get("door_blocks_planned_motion", false))
+		and bool(request_summary.get("door_obstruction_imminent", false))
 		and str(request_summary.get("door_traversal_state", "")) == "waiting_open"
 		and is_equal_approx(float(request_summary.get("door_use_distance", 0.0)), 2.0)
+		and request_clearance > 1.50
+		and request_clearance < 1.60
+		and request_distance >= request_clearance
+		and request_distance <= request_clearance + 0.08
 		and int(request_summary.get("door_use_count", 0)) == 1,
-		"Guard requests and waits for the ordinary door only after its next intended movement is physically blocked by that door"
+		"Guard requests OPEN at the real leaf-swing-plus-body clearance boundary before entering the opening sweep"
 	)
 
 	var completed_cycle: bool = await _wait_for_guard_cycle(guard, 720)
@@ -346,15 +352,20 @@ func _assert_guard_reopens_player_closed_route() -> void:
 	)
 
 	guard.movement_speed = original_speed
-	var requested_on_contact: bool = await _wait_for_guard_door_request(guard, 180)
+	var requested_on_imminent_block: bool = await _wait_for_guard_door_request(guard, 180)
 	var request_summary: Dictionary = guard.get_debug_summary()
+	var request_clearance: float = float(request_summary.get("door_approach_clearance", 0.0))
+	var request_distance: float = float(request_summary.get("door_distance", 0.0))
 	_assert_true(
-		requested_on_contact
-		and bool(request_summary.get("door_blocks_planned_motion", false))
+		requested_on_imminent_block
+		and bool(request_summary.get("door_obstruction_imminent", false))
 		and str(request_summary.get("door_traversal_state", "")) == "waiting_open"
+		and request_distance >= request_clearance
+		and request_distance <= request_clearance + 0.08
 		and int(request_summary.get("door_use_count", 0)) == 1
-		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING,
-		"Guard requests OPEN only once the closed door physically blocks its next intended movement"
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+		and not door.is_motion_blocked(),
+		"Guard requests OPEN only when its next step would enter the physical door-swing clearance, while still leaving room for the leaf to open"
 	)
 
 	var reopened: bool = await _wait_for_door_phase(door, VarkOrdinaryDoor.PHASE_OPEN, 180)
@@ -367,7 +378,7 @@ func _assert_guard_reopens_player_closed_route() -> void:
 		and str(reopened_summary.get("door_traversal_state", "")) == "approaching"
 		and not bool(reopened_summary.get("door_request_pending", true))
 		and int(reopened_summary.get("door_use_count", 0)) == 1,
-		"Reopened route clears the physical-block wait without inventing a second logical door use"
+		"Reopened route clears the imminent-obstruction wait without inventing a second logical door use"
 	)
 
 	application.call("exit_current_world")
