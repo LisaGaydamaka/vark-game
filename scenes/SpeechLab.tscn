@@ -139,6 +139,6 @@ font_size = 22
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(3.8, 2.8, 2.5)
-text = "3.9 SPEECH LAB\nSpeaker repeats one line every 3 seconds\nNEAR = clear text · COVER = text remains readable through wall\nMARGINAL = faded · INAUDIBLE = hidden"
+text = "3.9 SPEECH LAB\nSpeaker repeats one line every 3 seconds\nDuring ONE utterance, walk COVER → MARGINAL → INAUDIBLE → back\nOpacity must react continuously to your current acoustic position"
 billboard = 1
 font_size = 21

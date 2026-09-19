@@ -40,7 +40,11 @@ func _assert_speech_lab() -> void:
 		and bool(ProofLine.call("is_valid_line"))
 		and ProofLine.get("line_id") == &"speech.proof.cover"
 		and ProofLine.get("sound_kind") == &"speech.proof.cover"
-		and not str(ProofLine.get("text")).is_empty(),
+		and not str(ProofLine.get("text")).is_empty()
+		and is_equal_approx(
+			float(ProofLine.get("presentation_duration_seconds")),
+			2.6
+		),
 		"Speech proof keeps authored words behind a tiny line-ID/data resource instead of hardcoding dialogue in actor AI"
 	)
 
@@ -150,50 +154,91 @@ func _assert_speech_lab() -> void:
 	var cover_summary: Dictionary = speaker.get_debug_summary()
 	var cover_perception: Dictionary = listener.get_last_perception()
 	var cover_alpha: float = float(cover_summary.get("label_alpha", 0.0))
+	var live_utterance_queue_count: int = int(
+		cover_summary.get("queued_count", 0)
+	)
+	var semantic_heard_count: int = int(cover_summary.get("heard_count", 0))
 	_assert_true(
 		cover_queued
 		and cover_ray == world.get_node("CoverWall")
 		and bool(cover_perception.get("heard", false))
+		and bool(cover_summary.get("utterance_active", false))
 		and speech_label.visible
 		and speech_label.no_depth_test
 		and speech_label.text == str(ProofLine.get("text")),
 		"Acoustically heard speech remains visible through representative visual cover instead of requiring visual line of sight"
 	)
 
-	await _move_player_to_marker(world, player, "MarginalMarker")
-	listener.clear_perception()
-	var marginal_queued: bool = speaker.speak_line()
-	await _completed_physics_frame()
-	var marginal_summary: Dictionary = speaker.get_debug_summary()
-	var marginal_perception: Dictionary = listener.get_last_perception()
-	var marginal_alpha: float = float(marginal_summary.get("label_alpha", 0.0))
+	var live_alphas: Array[float] = []
+	for z_position: float in [2.75, 3.5, 4.25, 4.5]:
+		await _move_player_to_position(
+			player,
+			Vector3(0.0, 0.0, z_position)
+		)
+		var live_summary: Dictionary = speaker.get_debug_summary()
+		live_alphas.append(float(live_summary.get("label_alpha", 0.0)))
 	_assert_true(
-		marginal_queued
-		and bool(marginal_perception.get("heard", false))
+		live_alphas.size() == 4
+		and cover_alpha > live_alphas[0]
+		and live_alphas[0] > live_alphas[1]
+		and live_alphas[1] > live_alphas[2]
+		and live_alphas[2] > live_alphas[3]
+		and live_alphas[3] > 0.0
 		and speech_label.visible
-		and marginal_alpha >= 0.35
-		and marginal_alpha < cover_alpha
-		and marginal_alpha < near_alpha,
-		"Marginal but audible speech stays readable with lower world-space text opacity"
+		and int(speaker.get_debug_summary().get("queued_count", -1))
+			== live_utterance_queue_count
+		and int(speaker.get_debug_summary().get("heard_count", -1))
+			== semantic_heard_count,
+		"One active utterance fades continuously as the player moves away without emitting another semantic gameplay sound"
 	)
 
 	await _move_player_to_marker(world, player, "InaudibleMarker")
-	listener.clear_perception()
-	var heard_before_inaudible: int = int(
-		speaker.get_debug_summary().get("heard_count", 0)
-	)
-	var inaudible_queued: bool = speaker.speak_line()
-	var hidden_immediately: bool = not speech_label.visible
-	await _completed_physics_frame()
 	var inaudible_summary: Dictionary = speaker.get_debug_summary()
-	var inaudible_perception: Dictionary = listener.get_last_perception()
 	_assert_true(
-		inaudible_queued
-		and hidden_immediately
-		and not bool(inaudible_perception.get("heard", true))
-		and int(inaudible_summary.get("heard_count", -1)) == heard_before_inaudible
+		bool(inaudible_summary.get("utterance_active", false))
+		and int(inaudible_summary.get("queued_count", -1))
+			== live_utterance_queue_count
+		and int(inaudible_summary.get("heard_count", -1))
+			== semantic_heard_count
+		and is_zero_approx(float(inaudible_summary.get("label_alpha", -1.0)))
 		and not speech_label.visible,
-		"Inaudible speech remains hidden even though the same semantic speech sound was emitted"
+		"The same still-active utterance hides immediately when current acoustic strength falls to or below the hearing threshold"
+	)
+
+	await _move_player_to_marker(world, player, "CoverMarker")
+	var recovered_summary: Dictionary = speaker.get_debug_summary()
+	var recovered_alpha: float = float(
+		recovered_summary.get("label_alpha", 0.0)
+	)
+	_assert_true(
+		bool(recovered_summary.get("utterance_active", false))
+		and int(recovered_summary.get("queued_count", -1))
+			== live_utterance_queue_count
+		and int(recovered_summary.get("heard_count", -1))
+			== semantic_heard_count
+		and speech_label.visible
+		and recovered_alpha > live_alphas[0]
+		and absf(recovered_alpha - cover_alpha) < 0.03,
+		"Moving back into audible range during the same utterance reveals the line again at the current continuous acoustic opacity"
+	)
+
+	var short_line := ProofLine.duplicate(true) as VarkSpeechLine
+	short_line.presentation_duration_seconds = 0.08
+	speaker.speech_line = short_line
+	await _move_player_to_marker(world, player, "NearMarker")
+	var expiry_queued: bool = speaker.speak_line()
+	for _frame_index: int in 8:
+		await physics_frame
+		await process_frame
+	var expired_summary: Dictionary = speaker.get_debug_summary()
+	_assert_true(
+		expiry_queued
+		and not bool(expired_summary.get("utterance_active", true))
+		and is_zero_approx(
+			float(expired_summary.get("utterance_remaining_seconds", -1.0))
+		)
+		and not speech_label.visible,
+		"World-space words disappear when the active utterance lifetime ends"
 	)
 
 	application.call("exit_current_world")
@@ -207,11 +252,17 @@ func _move_player_to_marker(
 	marker_name: String
 ) -> void:
 	var marker := world.get_node(marker_name) as Node3D
-	player.global_position = Vector3(
-		marker.global_position.x,
-		0.0,
-		marker.global_position.z
+	await _move_player_to_position(
+		player,
+		Vector3(marker.global_position.x, 0.0, marker.global_position.z)
 	)
+
+
+func _move_player_to_position(
+	player: CharacterBody3D,
+	position: Vector3
+) -> void:
+	player.global_position = position
 	player.velocity = Vector3.ZERO
 	for _frame_index: int in 2:
 		await physics_frame

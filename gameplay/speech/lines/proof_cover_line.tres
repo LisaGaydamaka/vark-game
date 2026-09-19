@@ -8,3 +8,4 @@ line_id = &"speech.proof.cover"
 text = "I can hear you around the wall."
 sound_kind = &"speech.proof.cover"
 gameplay_sound_strength = 0.55
+presentation_duration_seconds = 2.6

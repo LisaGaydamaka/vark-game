@@ -553,15 +553,16 @@ The Visibility suite is the automated owner of this fixture. Keep diagnostics us
 Phase 3.9 reuses the existing semantic acoustic authority rather than adding subtitle-only hearing rules:
 
 - **Speech Lab** launches through the real Application → WorldSession → Player path with one ordinary `VarkAcousticPropagation` owner and a normal `VarkAcousticListener` attached to the player;
-- each utterance is authored through a tiny `VarkSpeechLine` Resource carrying stable `line_id`, text, semantic `sound_kind`, and gameplay sound strength. The placeholder speaker does not hardcode production dialogue or know guard AI state;
-- beginning an utterance hides any previous text and queues the existing `gameplay.sound` source fact through `WorldSession`. The speaker may reveal text only after the player listener emits the existing `gameplay_sound_heard` result for that line's sound kind;
-- the text is a billboarded world-space `Label3D` above the source with `no_depth_test` enabled. Therefore visual cover alone does not erase acoustically heard words; hearing truth remains owned by the acoustic graph rather than by a direct subtitle LOS ray;
-- a simple provisional opacity mapping from propagated-strength / hearing-threshold ratio makes marginal audible speech fainter. Inaudible speech remains hidden even though its semantic sound was emitted;
+- each utterance is authored through a tiny `VarkSpeechLine` Resource carrying stable `line_id`, text, semantic `sound_kind`, gameplay sound strength, and presentation lifetime. The placeholder speaker does not hardcode production dialogue or know guard AI state;
+- beginning an utterance hides any previous text and queues exactly one existing `gameplay.sound` source fact through `WorldSession`. That one semantic event remains the hearing/AI consequence; presentation movement must never enqueue repeated gameplay sounds;
+- text cannot appear until that queued sound has crossed the same stable semantic consequence boundary used by ordinary hearing. During the remainder of the active utterance, the speaker continuously calls the existing acoustic propagation with its current source position and the player's current listener position;
+- the text is a billboarded world-space `Label3D` above the source with `no_depth_test` enabled. Therefore visual cover alone does not erase currently audible words; hearing truth remains owned by the acoustic graph rather than by a direct subtitle LOS ray;
+- opacity is a continuous live function of propagated strength above hearing threshold: exactly zero at/below threshold, increasing smoothly above it. Movement or acoustic-route changes during one utterance must immediately fade/hide/reveal the same text without another semantic event, and utterance expiry always clears stale words;
 - the fixture uses one acoustic room plus a real StaticBody3D cover wall and labeled **NEAR / HEARD THROUGH COVER / MARGINAL / INAUDIBLE** positions. A real physics ray must hit the wall in the cover case while the acoustic listener still hears the line;
-- automated timing proves text remains hidden before the controlled semantic consequence pass and appears only after the listener reports HEARD;
+- automated timing proves text remains hidden before the controlled semantic consequence pass. A single active cover-started utterance then moves through multiple farther positions with strictly decreasing nonzero alphas, reaches hidden at the inaudible marker, and becomes visible again after returning to audible range while semantic queued/heard counts remain unchanged; a short line proves lifetime expiry clears the text;
 - this micro-proof does **not** introduce conversation trees, bark selection AI, writer tooling, localization, voice playback authority, subtitle UI ownership, awareness changes, or the Phase 12 dialogue system.
 
-The Speech suite owns this fixture and should keep diagnostics for queued/heard counts, current label visibility/alpha, pending sound kind, and last acoustic perception so failures distinguish data, semantic-event timing, acoustics, and presentation.
+The Speech suite owns this fixture and should keep diagnostics for semantic queued/heard counts, active/remaining utterance lifetime, presentation update count, current propagated strength/threshold ratio, label visibility/alpha, and last event/live acoustic results so failures distinguish data, event timing, live acoustics, and presentation.
 
 ## Save snapshot/restore transaction fixture
 
