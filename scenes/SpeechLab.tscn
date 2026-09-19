@@ -1,0 +1,144 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_propagation.gd" id="2_prop"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_space.gd" id="3_space"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_listener.gd" id="4_listener"]
+[ext_resource type="Script" path="res://gameplay/speech/world_speech_speaker.gd" id="5_speaker"]
+[ext_resource type="Resource" path="res://gameplay/speech/lines/proof_cover_line.tres" id="6_line"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(10, 0.2, 16)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(10, 0.2, 16)
+
+[sub_resource type="BoxShape3D" id="WallShape"]
+size = Vector3(4, 2.8, 0.3)
+
+[sub_resource type="BoxMesh" id="WallMesh"]
+size = Vector3(4, 2.8, 0.3)
+
+[sub_resource type="CapsuleMesh" id="SpeakerMesh"]
+radius = 0.32
+height = 1.75
+
+[sub_resource type="BoxMesh" id="MarkerMesh"]
+size = Vector3(1.0, 0.04, 1.0)
+
+[node name="SpeechLab" type="Node3D"]
+
+[node name="AcousticPropagation" type="Node" parent="."]
+script = ExtResource("2_prop")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -30, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 0, 2)
+
+[node name="SpeechListener" type="Node3D" parent="Player"]
+position = Vector3(0, 1.0, 0)
+script = ExtResource("4_listener")
+listener_id = &"listener.player_speech"
+hearing_threshold = 0.18
+
+[node name="RoomSpace" type="Area3D" parent="."]
+position = Vector3(0, 1.5, 1.5)
+script = ExtResource("3_space")
+space_id = "room.speech"
+half_extent_x = 5.0
+half_extent_y = 3.0
+half_extent_z = 8.0
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 1.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="CoverWall" type="StaticBody3D" parent="."]
+position = Vector3(0, 1.4, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CoverWall"]
+shape = SubResource("WallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="CoverWall"]
+mesh = SubResource("WallMesh")
+
+[node name="Speaker" type="Node3D" parent="."]
+position = Vector3(0, 0, -4)
+script = ExtResource("5_speaker")
+speech_line = ExtResource("6_line")
+auto_repeat_seconds = 3.0
+
+[node name="Body" type="MeshInstance3D" parent="Speaker"]
+position = Vector3(0, 0.875, 0)
+mesh = SubResource("SpeakerMesh")
+
+[node name="SpeechLabel" type="Label3D" parent="Speaker"]
+position = Vector3(0, 2.15, 0)
+billboard = 1
+no_depth_test = true
+font_size = 30
+outline_size = 8
+text = ""
+visible = false
+
+[node name="NearMarker" type="Node3D" parent="."]
+position = Vector3(3, 0.02, -3)
+
+[node name="Pad" type="MeshInstance3D" parent="NearMarker"]
+mesh = SubResource("MarkerMesh")
+
+[node name="Label" type="Label3D" parent="NearMarker"]
+position = Vector3(0, 0.32, 0)
+text = "NEAR"
+billboard = 1
+font_size = 22
+
+[node name="CoverMarker" type="Node3D" parent="."]
+position = Vector3(0, 0.02, 2)
+
+[node name="Pad" type="MeshInstance3D" parent="CoverMarker"]
+mesh = SubResource("MarkerMesh")
+
+[node name="Label" type="Label3D" parent="CoverMarker"]
+position = Vector3(0, 0.32, 0)
+text = "HEARD THROUGH COVER"
+billboard = 1
+font_size = 22
+
+[node name="MarginalMarker" type="Node3D" parent="."]
+position = Vector3(0, 0.02, 4.5)
+
+[node name="Pad" type="MeshInstance3D" parent="MarginalMarker"]
+mesh = SubResource("MarkerMesh")
+
+[node name="Label" type="Label3D" parent="MarginalMarker"]
+position = Vector3(0, 0.32, 0)
+text = "MARGINAL / FADED"
+billboard = 1
+font_size = 22
+
+[node name="InaudibleMarker" type="Node3D" parent="."]
+position = Vector3(0, 0.02, 7)
+
+[node name="Pad" type="MeshInstance3D" parent="InaudibleMarker"]
+mesh = SubResource("MarkerMesh")
+
+[node name="Label" type="Label3D" parent="InaudibleMarker"]
+position = Vector3(0, 0.32, 0)
+text = "INAUDIBLE / HIDDEN"
+billboard = 1
+font_size = 22
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(3.8, 2.8, 2.5)
+text = "3.9 SPEECH LAB\nSpeaker repeats one line every 3 seconds\nNEAR = clear text · COVER = text remains readable through wall\nMARGINAL = faded · INAUDIBLE = hidden"
+billboard = 1
+font_size = 21

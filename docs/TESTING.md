@@ -543,10 +543,25 @@ Phase 3.8 owns the first concrete gameplay-exposure proof:
 - each source ray-tests those samples against world collision for occlusion, uses a simple provisional distance falloff from the light's real `omni_range`, averages visible body-sample contribution for that light, adds contributions from multiple lights, then clamps the final exposure to 0–1;
 - the fixture has labeled **DARK**, **LIGHT EDGE**, **PARTIAL**, **FULL**, **TWO LIGHTS**, and **OCCLUDED** positions. The occluded position is behind real StaticBody3D geometry rather than a test-only boolean;
 - headless acceptance is relational rather than a frozen tuning table: dark is near zero; edge is positive but lower than partial; partial is meaningfully below full; opaque occlusion removes the representative key-light samples; both sources contribute at the overlap point; the live HUD is driven by the same owner summary;
-- manual acceptance is required because the governing product rule is intuitive agreement between rendered illumination and player-facing exposure. Exact falloff, sampling positions/weights, strength tuning, and final light-gem art remain OPEN until that playtest passes;
+- manual acceptance confirmed that the current DARK / LIGHT EDGE / PARTIAL / FULL / OCCLUDED / TWO LIGHTS relationship is intuitive enough for the Phase 3 proof. Exact falloff, sampling positions/weights, strength tuning, and final light-gem art remain replaceable production tuning rather than being frozen by that acceptance;
 - this phase does **not** add observer FOV, distance-to-observer, alertness, motion visibility, guard perception, light switching/extinguishing logic, or final production HUD architecture.
 
 The Visibility suite is the automated owner of this fixture. Keep diagnostics useful enough to identify per-light contribution, body-sample visibility, total/raw exposure, and whether the failure is falloff, occlusion, overlap, or HUD propagation rather than only reporting one final scalar.
+
+## Audible world-space speech fixture
+
+Phase 3.9 reuses the existing semantic acoustic authority rather than adding subtitle-only hearing rules:
+
+- **Speech Lab** launches through the real Application → WorldSession → Player path with one ordinary `VarkAcousticPropagation` owner and a normal `VarkAcousticListener` attached to the player;
+- each utterance is authored through a tiny `VarkSpeechLine` Resource carrying stable `line_id`, text, semantic `sound_kind`, and gameplay sound strength. The placeholder speaker does not hardcode production dialogue or know guard AI state;
+- beginning an utterance hides any previous text and queues the existing `gameplay.sound` source fact through `WorldSession`. The speaker may reveal text only after the player listener emits the existing `gameplay_sound_heard` result for that line's sound kind;
+- the text is a billboarded world-space `Label3D` above the source with `no_depth_test` enabled. Therefore visual cover alone does not erase acoustically heard words; hearing truth remains owned by the acoustic graph rather than by a direct subtitle LOS ray;
+- a simple provisional opacity mapping from propagated-strength / hearing-threshold ratio makes marginal audible speech fainter. Inaudible speech remains hidden even though its semantic sound was emitted;
+- the fixture uses one acoustic room plus a real StaticBody3D cover wall and labeled **NEAR / HEARD THROUGH COVER / MARGINAL / INAUDIBLE** positions. A real physics ray must hit the wall in the cover case while the acoustic listener still hears the line;
+- automated timing proves text remains hidden before the controlled semantic consequence pass and appears only after the listener reports HEARD;
+- this micro-proof does **not** introduce conversation trees, bark selection AI, writer tooling, localization, voice playback authority, subtitle UI ownership, awareness changes, or the Phase 12 dialogue system.
+
+The Speech suite owns this fixture and should keep diagnostics for queued/heard counts, current label visibility/alpha, pending sound kind, and last acoustic perception so failures distinguish data, semantic-event timing, acoustics, and presentation.
 
 ## Save snapshot/restore transaction fixture
 

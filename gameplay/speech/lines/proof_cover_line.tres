@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="VarkSpeechLine" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://gameplay/speech/speech_line.gd" id="1_line"]
+
+[resource]
+script = ExtResource("1_line")
+line_id = &"speech.proof.cover"
+text = "I can hear you around the wall."
+sound_kind = &"speech.proof.cover"
+gameplay_sound_strength = 0.55
