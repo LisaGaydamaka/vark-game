@@ -4,6 +4,7 @@ extends CharacterBody3D
 
 const DOOR_REQUEST_OPEN_METHOD: StringName = &"request_open"
 const DOOR_BODY_IN_PASSAGE_METHOD: StringName = &"is_body_in_navigation_passage"
+const DOOR_BLOCKED_BY_METHOD: StringName = &"is_motion_blocked_by"
 const DOOR_SWING_RADIUS_METHOD: StringName = &"get_navigation_swing_radius"
 const DOOR_REQUEST_RETRY_SECONDS: float = 0.35
 
@@ -33,6 +34,7 @@ var _door_route_blocked: bool = false
 var _door_obstruction_imminent: bool = false
 var _door_retry_remaining: float = 0.0
 var _door_use_count: int = 0
+var _crossing_block_open_count: int = 0
 var _patrol_leg_count: int = 0
 var _patrol_cycle_count: int = 0
 var _max_observed_path_x: float = -INF
@@ -62,6 +64,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_patrol_leg_count = 0
 	_patrol_cycle_count = 0
 	_door_use_count = 0
+	_crossing_block_open_count = 0
 	_max_observed_path_x = -INF
 	_max_observed_path_point_count = 0
 
@@ -81,6 +84,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	if (
 		not door.has_method(DOOR_REQUEST_OPEN_METHOD)
 		or not door.has_method(DOOR_BODY_IN_PASSAGE_METHOD)
+		or not door.has_method(DOOR_BLOCKED_BY_METHOD)
 		or not door.has_method(DOOR_SWING_RADIUS_METHOD)
 	):
 		_last_error = "Guard '%s' received a door without the ordinary navigation seam." % guard_id
@@ -120,6 +124,7 @@ func get_debug_summary() -> Dictionary:
 		"target_index": _target_index,
 		"target_position": target_position,
 		"door_use_count": _door_use_count,
+		"crossing_block_open_count": _crossing_block_open_count,
 		"patrol_leg_count": _patrol_leg_count,
 		"patrol_cycle_count": _patrol_cycle_count,
 		"global_position": global_position,
@@ -188,8 +193,22 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 		_door_traversal_state = DoorTraversalState.CROSSING
 		_door_route_blocked = false
 		_door_obstruction_imminent = false
-		_door_request_pending = false
-		_door_retry_remaining = 0.0
+
+		# Player CLOSE keeps ownership until real physical contact. Once the
+		# ordinary sweep actually latches on this guard body, crossing intent
+		# changes: request the same door OPEN and keep retrying while the guard
+		# moves through. Locomotion itself remains physical, so movement begins
+		# as soon as the current gap fits rather than waiting for terminal OPEN.
+		var blocked_by_self: bool = bool(_door.call(DOOR_BLOCKED_BY_METHOD, self))
+		if blocked_by_self and not _door_request_pending:
+			if not _door_use_active:
+				_door_use_active = true
+				_door_use_count += 1
+			_door_request_pending = true
+			_door_retry_remaining = 0.0
+			_crossing_block_open_count += 1
+		if _door_request_pending:
+			_retry_door_open_request(delta)
 		return false
 
 	if _door_traversal_state == DoorTraversalState.CROSSING:

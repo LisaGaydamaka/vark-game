@@ -25,6 +25,7 @@ var _phase: StringName = PHASE_CLOSED
 var _open_fraction: float = 0.0
 var _closed_rotation_y: float = 0.0
 var _motion_blocked: bool = false
+var _motion_blocker: CollisionObject3D = null
 var _highlighted: bool = false
 var _material: StandardMaterial3D = null
 var _world_session: Node = null
@@ -68,6 +69,7 @@ func _physics_process(delta: float) -> void:
 		_open_fraction = 1.0
 		_phase = PHASE_OPEN
 		_motion_blocked = false
+		_motion_blocker = null
 		_sync_derived_state()
 		_queue_state_changed()
 		return
@@ -75,6 +77,7 @@ func _physics_process(delta: float) -> void:
 		_open_fraction = 0.0
 		_phase = PHASE_CLOSED
 		_motion_blocked = false
+		_motion_blocker = null
 		_sync_derived_state()
 		_queue_state_changed()
 		return
@@ -92,6 +95,7 @@ func interact(interactor: Node) -> void:
 		return
 	_phase = PHASE_CLOSING
 	_motion_blocked = false
+	_motion_blocker = null
 	_queue_use_sound()
 
 
@@ -104,9 +108,11 @@ func request_open(_requester: Node = null) -> void:
 		return
 	if _phase == PHASE_OPENING:
 		_motion_blocked = false
+		_motion_blocker = null
 		return
 	_phase = PHASE_OPENING
 	_motion_blocked = false
+	_motion_blocker = null
 	_queue_use_sound()
 
 
@@ -142,6 +148,15 @@ func get_open_fraction() -> float:
 
 func is_motion_blocked() -> bool:
 	return _motion_blocked
+
+
+func is_motion_blocked_by(body: CollisionObject3D) -> bool:
+	return (
+		_motion_blocked
+		and body != null
+		and is_instance_valid(_motion_blocker)
+		and _motion_blocker == body
+	)
 
 
 func get_acoustic_openness() -> float:
@@ -255,6 +270,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	_phase = phase
 	_open_fraction = fraction
 	_motion_blocked = motion_blocked
+	# Blocker identity is transient physical context, not semantic save state.
+	_motion_blocker = null
 	_sync_derived_state()
 	return true
 
@@ -282,6 +299,7 @@ func _get_sweep_limited_fraction(next_fraction: float) -> float:
 	):
 		return next_fraction
 
+	_motion_blocker = null
 	var sweep_degrees: float = (
 		absf(open_angle_degrees) * absf(next_fraction - _open_fraction)
 	)
@@ -291,13 +309,15 @@ func _get_sweep_limited_fraction(next_fraction: float) -> float:
 	for sample_index: int in range(1, sample_count + 1):
 		var sample_weight: float = float(sample_index) / float(sample_count)
 		var sample_fraction: float = lerpf(_open_fraction, next_fraction, sample_weight)
-		if _overlaps_obstacle_at_fraction(sample_fraction):
+		var blocker: CollisionObject3D = _get_obstacle_at_fraction(sample_fraction)
+		if blocker != null:
+			_motion_blocker = blocker
 			return last_clear_fraction
 		last_clear_fraction = sample_fraction
 	return next_fraction
 
 
-func _overlaps_obstacle_at_fraction(sample_fraction: float) -> bool:
+func _get_obstacle_at_fraction(sample_fraction: float) -> CollisionObject3D:
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = door_collision.shape
 	query.transform = _collision_transform_at_fraction(sample_fraction)
@@ -305,7 +325,11 @@ func _overlaps_obstacle_at_fraction(sample_fraction: float) -> bool:
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	query.exclude = [get_rid()]
-	return not get_world_3d().direct_space_state.intersect_shape(query, 1).is_empty()
+	for result: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
+		var collider := result.get("collider", null) as CollisionObject3D
+		if collider != null:
+			return collider
+	return null
 
 
 func _collision_transform_at_fraction(sample_fraction: float) -> Transform3D:

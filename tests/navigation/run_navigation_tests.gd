@@ -243,38 +243,57 @@ func _assert_guard_obstructs_player_close() -> void:
 		await process_frame
 		return
 
-	# Hold the production guard body in the doorway so the physical close
-	# collision is deterministic while its normal door-use logic keeps running.
+	# Hold the production guard body in the doorway until the player-commanded
+	# close physically contacts it. The guard must not counter-request before
+	# that contact, but the confirmed blocker relationship then authorizes OPEN.
+	var original_speed: float = guard.movement_speed
 	guard.movement_speed = 0.0
 	await physics_frame
 	await process_frame
 	var pre_close_fraction: float = door.get_open_fraction()
+	var pre_close_summary: Dictionary = guard.get_debug_summary()
+	var pre_contact_open_count: int = int(
+		pre_close_summary.get("crossing_block_open_count", 0)
+	)
+	var pre_contact_door_use_count: int = int(pre_close_summary.get("door_use_count", 0))
 	door.interact(player)
 
-	var blocked: bool = await _wait_for_door_blocked(guard, door, 180)
-	var blocked_fraction: float = door.get_open_fraction()
-	var blocked_guard_summary: Dictionary = guard.get_debug_summary()
+	var contact_reopened: bool = await _wait_for_crossing_contact_reopen(
+		guard,
+		door,
+		pre_contact_open_count,
+		180
+	)
+	var reopen_fraction: float = door.get_open_fraction()
+	var reopen_summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
-		blocked
-		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_CLOSING
-		and blocked_fraction > 0.0
-		and blocked_fraction < pre_close_fraction
-		and str(blocked_guard_summary.get("door_traversal_state", "")) == "crossing"
-		and not bool(blocked_guard_summary.get("door_request_pending", true)),
-		"Player close advances until the CROSSING guard body physically blocks the ordinary door without an AI OPEN counter-request"
+		contact_reopened
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+		and reopen_fraction > 0.0
+		and reopen_fraction < pre_close_fraction
+		and str(reopen_summary.get("door_traversal_state", "")) == "crossing"
+		and bool(reopen_summary.get("door_request_pending", false))
+		and int(reopen_summary.get("crossing_block_open_count", 0)) == pre_contact_open_count + 1
+		and int(reopen_summary.get("door_use_count", 0)) == pre_contact_door_use_count,
+		"Player close reaches real guard contact before the CROSSING guard reverses the same ordinary door with an OPEN request"
 	)
 
-	for _frame_index: int in 12:
-		await physics_frame
-		await process_frame
-	var stable_guard_summary: Dictionary = guard.get_debug_summary()
+	guard.movement_speed = original_speed
+	var cleared_while_opening: bool = await _wait_for_guard_clear_door_while_opening(
+		guard,
+		door,
+		180
+	)
+	var clear_summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
-		door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_CLOSING
-		and door.is_motion_blocked()
-		and is_equal_approx(door.get_open_fraction(), blocked_fraction)
-		and str(stable_guard_summary.get("door_traversal_state", "")) == "crossing"
-		and not bool(stable_guard_summary.get("door_request_pending", true)),
-		"Guard obstruction leaves the player-commanded door stably partially closed without twitching or reopening"
+		cleared_while_opening
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+		and door.get_open_fraction() > reopen_fraction
+		and door.get_open_fraction() < 1.0
+		and not door.is_body_in_navigation_passage(guard)
+		and str(clear_summary.get("door_traversal_state", "")) == "clear"
+		and not bool(clear_summary.get("door_request_pending", true)),
+		"After contact-triggered OPEN, the guard keeps crossing and clears the doorway as soon as the physical gap fits, before terminal OPEN"
 	)
 
 	application.call("exit_current_world")
@@ -688,6 +707,51 @@ func _wait_for_guard_approach_window(
 			and str(summary.get("door_traversal_state", "")) == "approaching"
 			and door_distance >= min_distance
 			and door_distance <= max_distance
+		):
+			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return false
+
+
+func _wait_for_crossing_contact_reopen(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor,
+	initial_open_count: int,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		if (
+			int(summary.get("crossing_block_open_count", 0)) > initial_open_count
+			and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+			and door.get_open_fraction() > 0.0
+			and door.get_open_fraction() < 1.0
+		):
+			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return false
+
+
+func _wait_for_guard_clear_door_while_opening(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		if (
+			door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+			and door.get_open_fraction() > 0.0
+			and door.get_open_fraction() < 1.0
+			and not door.is_body_in_navigation_passage(guard)
+			and str(summary.get("door_traversal_state", "")) == "clear"
+			and not bool(summary.get("door_request_pending", true))
 		):
 			return true
 		if not str(summary.get("last_error", "")).is_empty():
