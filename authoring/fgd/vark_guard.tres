@@ -22,7 +22,7 @@ class_property_descriptions = Dictionary[String, Variant]({
 "patrol_b_id": "Second authored vark_patrol_point ID.",
 "door_id": "Ordinary door ID this guard is allowed to use while following the current proof route.",
 "movement_speed": "Patrol movement speed in Vark world meters per second.",
-"door_use_distance": "Maximum horizontal relevance range for the configured ordinary door; OPEN begins only when the guard's next step would enter the real leaf-swing radius plus its body radius.",
+"door_use_distance": "Maximum horizontal relevance range for the configured ordinary door. The guard requests OPEN only when the door's current collider physically blocks its near-future NavigationAgent route and it has reached the safe swing-clearance stop boundary; a partially open passable leaf is ignored.",
 "angle": "Initial TrenchBroom facing direction."
 })
 auto_apply_to_matching_node_properties = true

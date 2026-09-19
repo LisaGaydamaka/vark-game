@@ -2,7 +2,6 @@ class_name VarkGuard
 extends CharacterBody3D
 
 
-const DOOR_OPEN_METHOD: StringName = &"is_navigation_passage_open"
 const DOOR_REQUEST_OPEN_METHOD: StringName = &"request_open"
 const DOOR_BODY_IN_PASSAGE_METHOD: StringName = &"is_body_in_navigation_passage"
 const DOOR_SWING_RADIUS_METHOD: StringName = &"get_navigation_swing_radius"
@@ -30,6 +29,7 @@ var _configured: bool = false
 var _door_traversal_state: DoorTraversalState = DoorTraversalState.APPROACHING
 var _door_use_active: bool = false
 var _door_request_pending: bool = false
+var _door_route_blocked: bool = false
 var _door_obstruction_imminent: bool = false
 var _door_retry_remaining: float = 0.0
 var _door_use_count: int = 0
@@ -56,6 +56,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_door_traversal_state = DoorTraversalState.APPROACHING
 	_door_use_active = false
 	_door_request_pending = false
+	_door_route_blocked = false
 	_door_obstruction_imminent = false
 	_door_retry_remaining = 0.0
 	_patrol_leg_count = 0
@@ -78,8 +79,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		push_error(_last_error)
 		return false
 	if (
-		not door.has_method(DOOR_OPEN_METHOD)
-		or not door.has_method(DOOR_REQUEST_OPEN_METHOD)
+		not door.has_method(DOOR_REQUEST_OPEN_METHOD)
 		or not door.has_method(DOOR_BODY_IN_PASSAGE_METHOD)
 		or not door.has_method(DOOR_SWING_RADIUS_METHOD)
 	):
@@ -113,6 +113,7 @@ func get_debug_summary() -> Dictionary:
 		"door_traversal_state": _door_traversal_state_name(),
 		"door_use_active": _door_use_active,
 		"door_request_pending": _door_request_pending,
+		"door_route_blocked": _door_route_blocked,
 		"door_obstruction_imminent": _door_obstruction_imminent,
 		"door_approach_clearance": _door_approach_clearance(),
 		"door_distance": _horizontal_distance_to_door(),
@@ -185,6 +186,7 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 	var body_in_passage: bool = bool(_door.call(DOOR_BODY_IN_PASSAGE_METHOD, self))
 	if body_in_passage:
 		_door_traversal_state = DoorTraversalState.CROSSING
+		_door_route_blocked = false
 		_door_obstruction_imminent = false
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
@@ -195,6 +197,7 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 		# the guard must not cause an unnecessary reopen.
 		_door_traversal_state = DoorTraversalState.CLEAR
 		_door_use_active = false
+		_door_route_blocked = false
 		_door_obstruction_imminent = false
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
@@ -203,38 +206,39 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 	if _horizontal_distance_to_door() > maxf(door_use_distance, _door_approach_clearance()):
 		_door_traversal_state = DoorTraversalState.APPROACHING
 		_door_use_active = false
+		_door_route_blocked = false
 		_door_obstruction_imminent = false
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
 		return false
 
 	if _door_traversal_state == DoorTraversalState.CLEAR:
+		_door_route_blocked = false
 		_door_obstruction_imminent = false
 		return false
 
+	# Door phase is not traversability. Probe the guard's real capsule along
+	# its near-future NavigationAgent path against the door's current collider.
+	# A partially open/closing leaf that already leaves enough room is clear.
+	_door_route_blocked = _current_route_hits_door()
 	if _door_traversal_state == DoorTraversalState.WAITING_OPEN:
-		if bool(_door.call(DOOR_OPEN_METHOD)):
+		if not _door_route_blocked:
 			_door_traversal_state = DoorTraversalState.APPROACHING
 			_door_obstruction_imminent = false
 			_door_request_pending = false
 			_door_retry_remaining = 0.0
 			return false
+		_door_obstruction_imminent = true
 		_retry_door_open_request(delta)
 		return true
 
-	if bool(_door.call(DOOR_OPEN_METHOD)):
-		_door_traversal_state = DoorTraversalState.APPROACHING
-		_door_obstruction_imminent = false
-		_door_request_pending = false
-		_door_retry_remaining = 0.0
-		return false
-
-	# A non-open door is actionable only when the guard's next intended step
-	# would enter the leaf's real opening sweep plus the guard's own radius.
-	# That creates a physical "this is about to block me" boundary while still
-	# stopping outside the sweep so the requested opening cannot deadlock on
-	# the requester itself.
-	_door_obstruction_imminent = _planned_motion_enters_door_clearance(planned_motion)
+	# The safe sweep boundary is only where the guard is allowed to stop.
+	# It does not imply blockage: WAITING_OPEN begins only when the current
+	# leaf also physically intersects the guard's near-future route.
+	_door_obstruction_imminent = (
+		_door_route_blocked
+		and _planned_motion_enters_door_clearance(planned_motion)
+	)
 	if not _door_obstruction_imminent:
 		_door_traversal_state = DoorTraversalState.APPROACHING
 		_door_request_pending = false
@@ -258,6 +262,62 @@ func _retry_door_open_request(delta: float) -> void:
 	if is_zero_approx(_door_retry_remaining):
 		_door.call(DOOR_REQUEST_OPEN_METHOD, self)
 		_door_retry_remaining = DOOR_REQUEST_RETRY_SECONDS
+
+
+func _current_route_hits_door() -> bool:
+	if _door == null or _navigation_agent == null or not is_inside_tree():
+		return false
+	var collision_shape := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision_shape == null or collision_shape.shape == null:
+		return false
+
+	var path: PackedVector3Array = _navigation_agent.get_current_navigation_path()
+	var path_index: int = _navigation_agent.get_current_navigation_path_index()
+	var segment_start: Vector3 = global_position
+	var remaining_distance: float = maxf(
+		door_use_distance,
+		_door_approach_clearance() + _navigation_agent.radius
+	)
+	var sample_step: float = maxf(_navigation_agent.radius * 0.5, 0.08)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = collision_shape.shape
+	query.collision_mask = int(_door.get("collision_layer"))
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.exclude = [get_rid()]
+	var base_transform: Transform3D = collision_shape.global_transform
+
+	for point_index: int in range(path_index, path.size()):
+		var segment_end: Vector3 = path[point_index]
+		segment_end.y = global_position.y
+		var segment: Vector3 = segment_end - segment_start
+		var segment_length: float = segment.length()
+		if segment_length <= 0.0001:
+			segment_start = segment_end
+			continue
+		var tested_length: float = minf(segment_length, remaining_distance)
+		var sample_count: int = maxi(1, ceili(tested_length / sample_step))
+		for sample_index: int in range(1, sample_count + 1):
+			var sample_distance: float = minf(
+				tested_length,
+				sample_step * float(sample_index)
+			)
+			var sample_position: Vector3 = (
+				segment_start + segment.normalized() * sample_distance
+			)
+			var offset: Vector3 = sample_position - global_position
+			query.transform = Transform3D(
+				base_transform.basis,
+				base_transform.origin + offset
+			)
+			for result: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
+				if result.get("collider", null) == _door:
+					return true
+		remaining_distance -= tested_length
+		if remaining_distance <= 0.0:
+			break
+		segment_start = segment_end
+	return false
 
 
 func _planned_motion_enters_door_clearance(planned_motion: Vector3) -> bool:
@@ -308,6 +368,7 @@ func _complete_patrol_leg() -> void:
 	_door_traversal_state = DoorTraversalState.APPROACHING
 	_door_use_active = false
 	_door_request_pending = false
+	_door_route_blocked = false
 	_door_obstruction_imminent = false
 	_door_retry_remaining = 0.0
 	if _target_index == 1:

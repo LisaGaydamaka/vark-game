@@ -26,6 +26,7 @@ func _run_tests() -> void:
 	await _assert_application_patrol_and_door()
 	await _assert_guard_obstructs_player_close()
 	await _assert_guard_reopens_player_closed_route()
+	await _assert_guard_uses_passable_partial_door()
 	await _assert_blocked_door_recovery()
 	await _assert_reimport_rebuild()
 	_remove_temp_map()
@@ -148,6 +149,7 @@ func _assert_application_patrol_and_door() -> void:
 	_assert_true(
 		requested_on_imminent_block
 		and bool(request_summary.get("door_request_pending", false))
+		and bool(request_summary.get("door_route_blocked", false))
 		and bool(request_summary.get("door_obstruction_imminent", false))
 		and str(request_summary.get("door_traversal_state", "")) == "waiting_open"
 		and is_equal_approx(float(request_summary.get("door_use_distance", 0.0)), 2.0)
@@ -157,6 +159,23 @@ func _assert_application_patrol_and_door() -> void:
 		and request_distance <= request_clearance + 0.08
 		and int(request_summary.get("door_use_count", 0)) == 1,
 		"Guard requests OPEN at the real leaf-swing-plus-body clearance boundary before entering the opening sweep"
+	)
+
+	var released_before_terminal_open: bool = await _wait_for_guard_release_while_door_opening(
+		guard,
+		door,
+		180
+	)
+	var release_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		released_before_terminal_open
+		and not bool(release_summary.get("door_route_blocked", true))
+		and str(release_summary.get("door_traversal_state", "")) == "approaching"
+		and not bool(release_summary.get("door_request_pending", true))
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+		and door.get_open_fraction() > 0.0
+		and door.get_open_fraction() < 1.0,
+		"Guard resumes movement as soon as the partially open leaf physically clears its route instead of waiting for terminal OPEN"
 	)
 
 	var completed_cycle: bool = await _wait_for_guard_cycle(guard, 720)
@@ -358,6 +377,7 @@ func _assert_guard_reopens_player_closed_route() -> void:
 	var request_distance: float = float(request_summary.get("door_distance", 0.0))
 	_assert_true(
 		requested_on_imminent_block
+		and bool(request_summary.get("door_route_blocked", false))
 		and bool(request_summary.get("door_obstruction_imminent", false))
 		and str(request_summary.get("door_traversal_state", "")) == "waiting_open"
 		and request_distance >= request_clearance
@@ -368,22 +388,111 @@ func _assert_guard_reopens_player_closed_route() -> void:
 		"Guard requests OPEN only when its next step would enter the physical door-swing clearance, while still leaving room for the leaf to open"
 	)
 
-	var reopened: bool = await _wait_for_door_phase(door, VarkOrdinaryDoor.PHASE_OPEN, 180)
-	for _frame_index: int in 2:
-		await physics_frame
-		await process_frame
-	var reopened_summary: Dictionary = guard.get_debug_summary()
+	var released_before_terminal_open: bool = await _wait_for_guard_release_while_door_opening(
+		guard,
+		door,
+		180
+	)
+	var release_summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
-		reopened
-		and str(reopened_summary.get("door_traversal_state", "")) == "approaching"
-		and not bool(reopened_summary.get("door_request_pending", true))
-		and int(reopened_summary.get("door_use_count", 0)) == 1,
-		"Reopened route clears the imminent-obstruction wait without inventing a second logical door use"
+		released_before_terminal_open
+		and not bool(release_summary.get("door_route_blocked", true))
+		and str(release_summary.get("door_traversal_state", "")) == "approaching"
+		and not bool(release_summary.get("door_request_pending", true))
+		and int(release_summary.get("door_use_count", 0)) == 1
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+		and door.get_open_fraction() > 0.0
+		and door.get_open_fraction() < 1.0,
+		"Physical route clearance releases the guard before terminal OPEN without inventing a second logical door use"
 	)
 
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
+
+func _assert_guard_uses_passable_partial_door() -> void:
+	var application: Node = ApplicationScene.instantiate()
+	application.set("development_launch_labels", PackedStringArray(["Guard/Nav Lab"]))
+	application.set("development_launch_resource_paths", PackedStringArray([GUARD_NAV_DEFINITION_PATH]))
+	get_root().add_child(application)
+	await process_frame
+
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	var world := application.get("current_world") as Node3D
+	var door: VarkOrdinaryDoor = (
+		world.get_node_or_null("OrdinaryDoor") as VarkOrdinaryDoor
+		if world != null
+		else null
+	)
+	var fixture_opened: bool = false
+	if door != null:
+		fixture_opened = door.apply_semantic_state({
+			"phase": VarkOrdinaryDoor.PHASE_OPEN,
+			"open_fraction": 1.0,
+			"motion_blocked": false,
+		})
+	var ready: bool = await _wait_for_navigation_ready(world, 240)
+	var guard: VarkGuard = _find_guard(world)
+	_assert_true(
+		launched and fixture_opened and ready and world != null and guard != null and door != null,
+		"Passable-partial-door fixture launches the real Guard/Nav Lab guard and ordinary door"
+	)
+	if not launched or not fixture_opened or not ready or world == null or guard == null or door == null:
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	var approach_window: bool = await _wait_for_guard_approach_window(
+		guard,
+		door,
+		1.70,
+		1.95,
+		360
+	)
+	var original_speed: float = guard.movement_speed
+	guard.movement_speed = 0.0
+	var partial_applied: bool = door.apply_semantic_state({
+		"phase": VarkOrdinaryDoor.PHASE_CLOSING,
+		"open_fraction": 0.85,
+		"motion_blocked": true,
+	})
+	for _frame_index: int in 2:
+		await physics_frame
+		await process_frame
+	var partial_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		approach_window
+		and partial_applied
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_CLOSING
+		and is_equal_approx(door.get_open_fraction(), 0.85)
+		and not bool(partial_summary.get("door_route_blocked", true))
+		and str(partial_summary.get("door_traversal_state", "")) == "approaching"
+		and int(partial_summary.get("door_use_count", 0)) == 0
+		and not bool(partial_summary.get("door_request_pending", true)),
+		"A slightly closed ordinary door that physically clears the current guard route does not become an AI OPEN request"
+	)
+
+	guard.movement_speed = original_speed
+	var crossed_partial: bool = await _wait_for_guard_crossing_without_door_use(
+		guard,
+		door,
+		240
+	)
+	var crossing_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		crossed_partial
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_CLOSING
+		and is_equal_approx(door.get_open_fraction(), 0.85)
+		and int(crossing_summary.get("door_use_count", 0)) == 0
+		and not bool(crossing_summary.get("door_request_pending", true)),
+		"Guard walks through the physically passable partially closed door without waiting for terminal OPEN"
+	)
+
+	application.call("exit_current_world")
+	application.queue_free()
+	await process_frame
+
 
 func _assert_blocked_door_recovery() -> void:
 	var application: Node = ApplicationScene.instantiate()
@@ -581,6 +690,51 @@ func _wait_for_guard_approach_window(
 			and door_distance <= max_distance
 		):
 			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return false
+
+
+func _wait_for_guard_release_while_door_opening(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		if (
+			door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+			and door.get_open_fraction() > 0.0
+			and door.get_open_fraction() < 1.0
+			and not bool(summary.get("door_route_blocked", true))
+			and str(summary.get("door_traversal_state", "")) == "approaching"
+			and not bool(summary.get("door_request_pending", true))
+		):
+			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return false
+
+
+func _wait_for_guard_crossing_without_door_use(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		if (
+			door.is_body_in_navigation_passage(guard)
+			and str(summary.get("door_traversal_state", "")) == "crossing"
+			and int(summary.get("door_use_count", 0)) == 0
+		):
+			return true
+		if bool(summary.get("door_request_pending", false)):
+			return false
 		if not str(summary.get("last_error", "")).is_empty():
 			return false
 		await physics_frame
