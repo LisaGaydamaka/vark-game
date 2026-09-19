@@ -207,7 +207,11 @@ func _ensure_components() -> void:
 	if _navigation_agent == null:
 		_navigation_agent = NavigationAgent3D.new()
 		_navigation_agent.name = "NavigationAgent3D"
-		_navigation_agent.path_desired_distance = 0.15
+		# Phase 3.7 bakes navigation at Godot's 0.25 m default cell height.
+		# The guard origin is at its feet, so align returned/checkable waypoints
+		# to that grounded origin and keep waypoint tolerance above one voxel.
+		_navigation_agent.path_height_offset = 0.25
+		_navigation_agent.path_desired_distance = 0.30
 		_navigation_agent.target_desired_distance = 0.28
 		_navigation_agent.radius = 0.28
 		_navigation_agent.height = 1.7

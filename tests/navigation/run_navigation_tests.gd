@@ -101,6 +101,7 @@ func _assert_application_patrol_and_door() -> void:
 		await process_frame
 		return
 
+	var guard_start_position: Vector3 = guard.global_position
 	for _frame_index: int in 20:
 		await physics_frame
 		await process_frame
@@ -110,6 +111,10 @@ func _assert_application_patrol_and_door() -> void:
 		and int(initial_guard_summary.get("max_observed_path_point_count", 0)) >= 3
 		and float(initial_guard_summary.get("max_observed_path_x", -INF)) > 1.0,
 		"Primitive guard requests a non-straight NavigationAgent3D route through the offset opening in imported geometry"
+	)
+	_assert_true(
+		guard.global_position.distance_to(guard_start_position) > 0.05,
+		"Grounded guard advances off its authored start instead of stalling on the first vertically quantized nav waypoint"
 	)
 
 	var completed_cycle: bool = await _wait_for_guard_cycle(guard, 720)
