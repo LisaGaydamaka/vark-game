@@ -335,6 +335,33 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Closing restores the ordinary door's physical and vision obstruction"
 	)
 
+	player.global_position = Vector3(0, 0, -0.7)
+	player.set("velocity", Vector3.ZERO)
+	await _settle_player_physics(tree, 2)
+	var sound_count_before_request_open: int = sound_events.size()
+	door.call("request_open", player)
+	await _settle_player_physics(tree, 45)
+	var blocked_open_fraction: float = float(door.call("get_open_fraction"))
+	assert_true.call(
+		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPENING
+		and bool(door.call("is_motion_blocked"))
+		and blocked_open_fraction > 0.0
+		and blocked_open_fraction < 1.0
+		and sound_events.size() == sound_count_before_request_open + 1,
+		"Idempotent open request stops safely when the real player blocks the opening sweep"
+	)
+	player.global_transform = original_player_transform
+	player.set("velocity", Vector3.ZERO)
+	door.call("request_open", player)
+	await _settle_player_physics(tree, 45)
+	assert_true.call(
+		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPEN
+		and is_equal_approx(float(door.call("get_open_fraction")), 1.0)
+		and not bool(door.call("is_motion_blocked"))
+		and sound_events.size() == sound_count_before_request_open + 1,
+		"Re-requesting OPEN after the obstruction clears resumes the same opening without toggle reversal or duplicate use sound"
+	)
+
 	_release_interact()
 	application.call("exit_current_world")
 	application.queue_free()

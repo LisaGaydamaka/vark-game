@@ -22,7 +22,9 @@ func _initialize() -> void:
 
 func _run_tests() -> void:
 	_assert_authoring_schema()
+	_assert_guard_nav_doorway_fit()
 	await _assert_application_patrol_and_door()
+	await _assert_blocked_door_recovery()
 	await _assert_reimport_rebuild()
 	_remove_temp_map()
 	_print_summary()
@@ -56,6 +58,19 @@ func _assert_authoring_schema() -> void:
 		and exported_fgd.contains("vark_guard")
 		and exported_fgd.contains("vark_patrol_point"),
 		"TrenchBroom exports the real primitive guard and patrol-point authoring entities"
+	)
+
+
+func _assert_guard_nav_doorway_fit() -> void:
+	var source: String = FileAccess.get_file_as_string(GUARD_NAV_SOURCE_PATH)
+	_assert_true(
+		source.contains("( 6 43.2 84 )")
+		and source.contains("( -6 84.8 0 )")
+		and source.contains("( -6 43.2 68 )")
+		and source.contains("( 6 84.8 84 )")
+		and not source.contains("( 6 40 84 )")
+		and not source.contains("( -6 88 0 )"),
+		"Guard/Nav Lab authored doorway is exactly 1.30 m wide so the closed ordinary leaf meets both jambs without side gaps"
 	)
 
 
@@ -134,6 +149,73 @@ func _assert_application_patrol_and_door() -> void:
 		and door.is_navigation_passage_open()
 		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN,
 		"The authored guard completes an A↔B patrol and opens the same ordinary door through its existing navigation seam"
+	)
+
+	application.call("exit_current_world")
+	application.queue_free()
+	await process_frame
+
+
+func _assert_blocked_door_recovery() -> void:
+	var application: Node = ApplicationScene.instantiate()
+	application.set("development_launch_labels", PackedStringArray(["Guard/Nav Lab"]))
+	application.set("development_launch_resource_paths", PackedStringArray([GUARD_NAV_DEFINITION_PATH]))
+	get_root().add_child(application)
+	await process_frame
+
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	var world := application.get("current_world") as Node3D
+	var player := application.get("current_player") as Node3D
+	var ready: bool = await _wait_for_navigation_ready(world, 240)
+	var guard: VarkGuard = _find_guard(world)
+	var door: VarkOrdinaryDoor = (
+		world.get_node_or_null("OrdinaryDoor") as VarkOrdinaryDoor
+		if world != null
+		else null
+	)
+	_assert_true(
+		launched and ready and world != null and player != null and guard != null and door != null,
+		"Blocked-door recovery fixture launches the real Guard/Nav Lab player, guard, door, and baked navigation"
+	)
+	if not launched or not ready or world == null or player == null or guard == null or door == null:
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	var original_player_transform: Transform3D = player.global_transform
+	player.global_position = Vector3(2.25, 0.0, 0.55)
+	player.set("velocity", Vector3.ZERO)
+	await physics_frame
+	await process_frame
+
+	var blocked: bool = await _wait_for_door_blocked(guard, door, 360)
+	var blocked_fraction: float = door.get_open_fraction()
+	var blocked_guard_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		blocked
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
+		and blocked_fraction > 0.0
+		and blocked_fraction < 1.0
+		and int(blocked_guard_summary.get("door_use_count", 0)) == 1
+		and int(blocked_guard_summary.get("patrol_leg_count", 0)) == 0,
+		"Real player can temporarily block the guard-requested ordinary-door opening without false passage or patrol progress"
+	)
+
+	player.global_transform = original_player_transform
+	player.set("velocity", Vector3.ZERO)
+	var recovered_cycle: bool = await _wait_for_guard_cycle(guard, 720)
+	var recovered_guard_summary: Dictionary = guard.get_debug_summary()
+	if not recovered_cycle:
+		_print_guard_timeout_diagnostics("blocked-door recovery", guard, door)
+	_assert_true(
+		recovered_cycle
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
+		and door.is_navigation_passage_open()
+		and not door.is_motion_blocked()
+		and int(recovered_guard_summary.get("door_use_count", 0)) == 1
+		and str(recovered_guard_summary.get("last_error", "")).is_empty(),
+		"Guard retries idempotent OPEN after the player leaves and resumes the same patrol without a second logical door use"
 	)
 
 	application.call("exit_current_world")
@@ -233,6 +315,22 @@ func _wait_for_navigation_ready(world: Node3D, max_frames: int) -> bool:
 		await physics_frame
 		await process_frame
 	return bool(world.get("navigation_ready"))
+
+
+func _wait_for_door_blocked(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		if door.is_motion_blocked():
+			return true
+		var summary: Dictionary = guard.get_debug_summary()
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return door.is_motion_blocked()
 
 
 func _wait_for_guard_cycle(guard: VarkGuard, max_frames: int) -> bool:

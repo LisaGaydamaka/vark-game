@@ -82,11 +82,26 @@ func can_interact(_interactor: Node) -> bool:
 	return true
 
 
-func interact(_interactor: Node) -> void:
+func interact(interactor: Node) -> void:
 	if _phase == PHASE_CLOSED or _phase == PHASE_CLOSING:
-		_phase = PHASE_OPENING
-	else:
-		_phase = PHASE_CLOSING
+		request_open(interactor)
+		return
+	_phase = PHASE_CLOSING
+	_motion_blocked = false
+	_queue_use_sound()
+
+
+func request_open(_requester: Node = null) -> void:
+	# AI/navigation consumers express an idempotent desired state instead of
+	# using the player's toggle interaction. Re-requesting a blocked opening
+	# clears only the obstruction latch; the next physics sweep still decides
+	# whether motion can safely continue.
+	if _phase == PHASE_OPEN:
+		return
+	if _phase == PHASE_OPENING:
+		_motion_blocked = false
+		return
+	_phase = PHASE_OPENING
 	_motion_blocked = false
 	_queue_use_sound()
 

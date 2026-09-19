@@ -521,9 +521,13 @@ Phase 3.7 owns the first concrete version of this fixture:
 - `vark_guard` and `vark_patrol_point` are exported through the ordinary Vark FGD/FuncGodot authoring path;
 - Guard/Nav Lab bakes a Godot `NavigationMesh` from the **imported FuncGodot static collision geometry**, not from a separately hand-authored nav floor;
 - authored patrol A/B are separated by a structural wall whose only opening is offset, so the recorded NavigationAgent path must visibly/quantitatively detour through imported architecture;
-- the primitive guard stops at the configured ordinary door, consumes `is_navigation_passage_open()`, requests that same door through its ordinary interaction method, waits for authoritative OPEN, then continues;
+- the primitive guard stops at the configured ordinary door, consumes `is_navigation_passage_open()`, expresses an idempotent `request_open()` intent rather than using the player's toggle interaction, waits for authoritative OPEN, then continues;
+- Guard/Nav Lab's authored jambs match the 1.30 m ordinary leaf exactly, avoiding side voids around the closed door;
+- the real player can obstruct the requested opening; the door safely latches motion, the guard keeps waiting/retrying OPEN, and patrol resumes automatically after the player leaves without a second logical door use;
 - a disposable edit moves one authored patrol point, rebuilds the same mission package through `WorldSession`, rebakes navigation, and proves the moved point plus patrol/door traversal still work;
 - failures expose the navmesh polygon/vertex counts, rebuild serial, authored-ID resolution errors, and guard route/door-use counters rather than silently degrading to straight-line movement.
+
+The Application door regression also protects the consumer seam itself: `request_open()` does not toggle an opening/open door toward closed, a blocked opening remains physically safe, and re-requesting OPEN after the blocker leaves clears the obstruction latch without duplicating the original use sound.
 
 This is a micro-proof, not the final production nav-bake policy. Runtime synchronous baking is acceptable for the tiny fixture; Phase 5/production scaling may replace it with cached/prebaked/background work without changing authored patrol/door semantics.
 

@@ -3,7 +3,8 @@ extends CharacterBody3D
 
 
 const DOOR_OPEN_METHOD: StringName = &"is_navigation_passage_open"
-const DOOR_INTERACT_METHOD: StringName = &"interact"
+const DOOR_REQUEST_OPEN_METHOD: StringName = &"request_open"
+const DOOR_REQUEST_RETRY_SECONDS: float = 0.35
 
 @export var guard_id: String = ""
 @export var patrol_a_id: String = ""
@@ -18,6 +19,7 @@ var _target_index: int = 1
 var _door: Node = null
 var _configured: bool = false
 var _door_request_pending: bool = false
+var _door_retry_remaining: float = 0.0
 var _door_use_count: int = 0
 var _patrol_leg_count: int = 0
 var _patrol_cycle_count: int = 0
@@ -40,6 +42,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_patrol_positions.clear()
 	_door = null
 	_door_request_pending = false
+	_door_retry_remaining = 0.0
 	_patrol_leg_count = 0
 	_patrol_cycle_count = 0
 	_door_use_count = 0
@@ -59,7 +62,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		_last_error = "Guard '%s' could not resolve ordinary door '%s'." % [guard_id, door_id]
 		push_error(_last_error)
 		return false
-	if not door.has_method(DOOR_OPEN_METHOD) or not door.has_method(DOOR_INTERACT_METHOD):
+	if not door.has_method(DOOR_OPEN_METHOD) or not door.has_method(DOOR_REQUEST_OPEN_METHOD):
 		_last_error = "Guard '%s' received a door without the ordinary navigation seam." % guard_id
 		push_error(_last_error)
 		return false
@@ -99,12 +102,12 @@ func get_debug_summary() -> Dictionary:
 	}
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if not _configured or _navigation_agent == null:
 		velocity = Vector3.ZERO
 		return
 
-	if _wait_for_door_if_needed():
+	if _wait_for_door_if_needed(delta):
 		velocity = Vector3.ZERO
 		return
 
@@ -143,22 +146,30 @@ func _physics_process(_delta: float) -> void:
 	move_and_slide()
 
 
-func _wait_for_door_if_needed() -> bool:
+func _wait_for_door_if_needed(delta: float) -> bool:
 	if _door == null:
 		return false
 	if bool(_door.call(DOOR_OPEN_METHOD)):
 		_door_request_pending = false
+		_door_retry_remaining = 0.0
 		return false
 
 	var to_door: Vector3 = _door.global_position - global_position
 	to_door.y = 0.0
 	if to_door.length() > door_use_distance:
+		_door_request_pending = false
+		_door_retry_remaining = 0.0
 		return false
 
 	if not _door_request_pending:
 		_door_request_pending = true
 		_door_use_count += 1
-		_door.call(DOOR_INTERACT_METHOD, self)
+		_door_retry_remaining = 0.0
+
+	_door_retry_remaining = maxf(0.0, _door_retry_remaining - delta)
+	if is_zero_approx(_door_retry_remaining):
+		_door.call(DOOR_REQUEST_OPEN_METHOD, self)
+		_door_retry_remaining = DOOR_REQUEST_RETRY_SECONDS
 	return true
 
 
