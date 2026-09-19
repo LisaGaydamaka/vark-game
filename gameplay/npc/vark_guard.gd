@@ -4,6 +4,8 @@ extends CharacterBody3D
 
 const DOOR_OPEN_METHOD: StringName = &"is_navigation_passage_open"
 const DOOR_REQUEST_OPEN_METHOD: StringName = &"request_open"
+const DOOR_PHASE_METHOD: StringName = &"get_semantic_phase"
+const DOOR_CLOSING_PHASE: StringName = &"closing"
 const DOOR_REQUEST_RETRY_SECONDS: float = 0.35
 
 @export var guard_id: String = ""
@@ -62,7 +64,11 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		_last_error = "Guard '%s' could not resolve ordinary door '%s'." % [guard_id, door_id]
 		push_error(_last_error)
 		return false
-	if not door.has_method(DOOR_OPEN_METHOD) or not door.has_method(DOOR_REQUEST_OPEN_METHOD):
+	if (
+		not door.has_method(DOOR_OPEN_METHOD)
+		or not door.has_method(DOOR_REQUEST_OPEN_METHOD)
+		or not door.has_method(DOOR_PHASE_METHOD)
+	):
 		_last_error = "Guard '%s' received a door without the ordinary navigation seam." % guard_id
 		push_error(_last_error)
 		return false
@@ -153,6 +159,15 @@ func _wait_for_door_if_needed(delta: float) -> bool:
 	if _door == null:
 		return false
 	if bool(_door.call(DOOR_OPEN_METHOD)):
+		_door_request_pending = false
+		_door_retry_remaining = 0.0
+		return false
+
+	# A player-commanded close keeps ownership of the physical door motion.
+	# The guard continues its route and remains a real blocker if the leaf
+	# reaches it instead of immediately countermanding the close with OPEN.
+	var door_phase: StringName = _door.call(DOOR_PHASE_METHOD)
+	if door_phase == DOOR_CLOSING_PHASE:
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
 		return false

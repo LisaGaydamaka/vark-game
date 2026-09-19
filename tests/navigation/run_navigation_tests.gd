@@ -24,6 +24,7 @@ func _run_tests() -> void:
 	_assert_authoring_schema()
 	_assert_guard_nav_doorway_fit()
 	await _assert_application_patrol_and_door()
+	await _assert_guard_obstructs_player_close()
 	await _assert_blocked_door_recovery()
 	await _assert_reimport_rebuild()
 	_remove_temp_map()
@@ -167,6 +168,82 @@ func _assert_application_patrol_and_door() -> void:
 		and door.is_navigation_passage_open()
 		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN,
 		"The authored guard completes an A↔B patrol and opens the same ordinary door through its existing navigation seam"
+	)
+
+	application.call("exit_current_world")
+	application.queue_free()
+	await process_frame
+
+
+func _assert_guard_obstructs_player_close() -> void:
+	var application: Node = ApplicationScene.instantiate()
+	application.set("development_launch_labels", PackedStringArray(["Guard/Nav Lab"]))
+	application.set("development_launch_resource_paths", PackedStringArray([GUARD_NAV_DEFINITION_PATH]))
+	get_root().add_child(application)
+	await process_frame
+
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	var world := application.get("current_world") as Node3D
+	var player := application.get("current_player") as Node3D
+	var ready: bool = await _wait_for_navigation_ready(world, 240)
+	var guard: VarkGuard = _find_guard(world)
+	var door: VarkOrdinaryDoor = (
+		world.get_node_or_null("OrdinaryDoor") as VarkOrdinaryDoor
+		if world != null
+		else null
+	)
+	_assert_true(
+		launched and ready and world != null and player != null and guard != null and door != null,
+		"Guard-close obstruction fixture launches the real Guard/Nav Lab player, guard, door, and baked navigation"
+	)
+	if not launched or not ready or world == null or player == null or guard == null or door == null:
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	var guard_in_doorway: bool = await _wait_for_guard_in_open_doorway(guard, door, 480)
+	_assert_true(
+		guard_in_doorway,
+		"Real guard reaches the open ordinary-door frame before the player-close obstruction check"
+	)
+	if not guard_in_doorway:
+		_print_guard_timeout_diagnostics("guard-close doorway arrival", guard, door)
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	# Hold the production guard body in the doorway so the physical close
+	# collision is deterministic while its normal door-use logic keeps running.
+	guard.movement_speed = 0.0
+	await physics_frame
+	await process_frame
+	var pre_close_fraction: float = door.get_open_fraction()
+	door.interact(player)
+
+	var blocked: bool = await _wait_for_door_blocked(guard, door, 180)
+	var blocked_fraction: float = door.get_open_fraction()
+	var blocked_guard_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		blocked
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_CLOSING
+		and blocked_fraction > 0.0
+		and blocked_fraction < pre_close_fraction
+		and not bool(blocked_guard_summary.get("door_request_pending", true)),
+		"Player close advances until the real guard body physically blocks the ordinary door without an AI OPEN counter-request"
+	)
+
+	for _frame_index: int in 12:
+		await physics_frame
+		await process_frame
+	var stable_guard_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_CLOSING
+		and door.is_motion_blocked()
+		and is_equal_approx(door.get_open_fraction(), blocked_fraction)
+		and not bool(stable_guard_summary.get("door_request_pending", true)),
+		"Guard obstruction leaves the player-commanded door stably partially closed without twitching or reopening"
 	)
 
 	application.call("exit_current_world")
@@ -343,6 +420,25 @@ func _wait_for_guard_door_request(guard: VarkGuard, max_frames: int) -> bool:
 		if (
 			int(summary.get("door_use_count", 0)) >= 1
 			and bool(summary.get("door_request_pending", false))
+		):
+			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return false
+
+
+func _wait_for_guard_in_open_doorway(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		if (
+			door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
+			and float(summary.get("door_distance", INF)) <= 0.75
 		):
 			return true
 		if not str(summary.get("last_error", "")).is_empty():

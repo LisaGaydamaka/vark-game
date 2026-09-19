@@ -55,7 +55,11 @@ func _physics_process(delta: float) -> void:
 	else:
 		next_fraction = maxf(0.0, _open_fraction - step)
 
-	if _would_motion_sweep_hit(next_fraction):
+	var sweep_limited_fraction: float = _get_sweep_limited_fraction(next_fraction)
+	if not is_equal_approx(sweep_limited_fraction, next_fraction):
+		if not is_equal_approx(sweep_limited_fraction, _open_fraction):
+			_open_fraction = sweep_limited_fraction
+			_sync_derived_state()
 		_motion_blocked = true
 		return
 
@@ -218,26 +222,28 @@ func _sync_derived_state() -> void:
 	_refresh_visual()
 
 
-func _would_motion_sweep_hit(next_fraction: float) -> bool:
+func _get_sweep_limited_fraction(next_fraction: float) -> float:
 	if (
 		door_collision == null
 		or door_collision.shape == null
 		or not is_inside_tree()
 		or is_equal_approx(next_fraction, _open_fraction)
 	):
-		return false
+		return next_fraction
 
 	var sweep_degrees: float = (
 		absf(open_angle_degrees) * absf(next_fraction - _open_fraction)
 	)
 	var probe_step: float = maxf(absf(obstacle_probe_step_degrees), 0.25)
 	var sample_count: int = maxi(1, ceili(sweep_degrees / probe_step))
+	var last_clear_fraction: float = _open_fraction
 	for sample_index: int in range(1, sample_count + 1):
 		var sample_weight: float = float(sample_index) / float(sample_count)
 		var sample_fraction: float = lerpf(_open_fraction, next_fraction, sample_weight)
 		if _overlaps_obstacle_at_fraction(sample_fraction):
-			return true
-	return false
+			return last_clear_fraction
+		last_clear_fraction = sample_fraction
+	return next_fraction
 
 
 func _overlaps_obstacle_at_fraction(sample_fraction: float) -> bool:
