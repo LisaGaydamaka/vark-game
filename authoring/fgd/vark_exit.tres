@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_point")
 classname = "vark_exit"
-description = "Authored semantic mission-exit endpoint. This Phase-2 point is addressable spatial content only; objective/exit gameplay arrives later."
+description = "Authored semantic mission-exit endpoint. The Phase-3.10 Objective Lab proves objective/exit semantics separately; this authored point remains spatial/content identity until production mission binding is proven."
 class_properties = Dictionary[String, Variant]({
 "persistent_id": "",
 "content_id": "",

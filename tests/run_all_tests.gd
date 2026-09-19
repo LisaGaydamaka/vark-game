@@ -27,6 +27,10 @@ const SUITES = [
 		"script": "res://tests/speech/run_speech_tests.gd",
 	},
 	{
+		"name": "Objectives",
+		"script": "res://tests/objectives/run_objective_tests.gd",
+	},
+	{
 		"name": "Navigation",
 		"script": "res://tests/navigation/run_navigation_tests.gd",
 	},

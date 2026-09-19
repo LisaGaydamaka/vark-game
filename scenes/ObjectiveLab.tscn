@@ -1,0 +1,107 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+[ext_resource type="Script" path="res://gameplay/objectives/simple_objective_state.gd" id="2_state"]
+[ext_resource type="Script" path="res://gameplay/objectives/semantic_route_trigger.gd" id="3_trigger"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(8, 0.2, 14)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(8, 0.2, 14)
+
+[sub_resource type="BoxShape3D" id="TriggerShape"]
+size = Vector3(2.2, 1.2, 2.2)
+
+[sub_resource type="BoxMesh" id="PadMesh"]
+size = Vector3(2.2, 0.05, 2.2)
+
+[node name="ObjectiveLab" type="Node3D"]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -25, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 0, 5.5)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="ObjectiveState" type="Node" parent="."]
+script = ExtResource("2_state")
+objective_id = &"objective.route"
+exit_id = &"exit.route"
+objective_text = "Reach the OBJECTIVE marker."
+status_label_path = NodePath("../StatusLabel")
+
+[node name="ObjectiveTrigger" type="Area3D" parent="."]
+position = Vector3(0, 0.4, 0)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("3_trigger")
+event_name = &"objective.complete_requested"
+payload_key = &"objective_id"
+payload_id = &"objective.route"
+one_shot_on_queue = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ObjectiveTrigger"]
+shape = SubResource("TriggerShape")
+
+[node name="Pad" type="MeshInstance3D" parent="ObjectiveTrigger"]
+position = Vector3(0, -0.375, 0)
+mesh = SubResource("PadMesh")
+
+[node name="Label" type="Label3D" parent="ObjectiveTrigger"]
+position = Vector3(0, 1.15, 0)
+text = "OBJECTIVE"
+billboard = 1
+font_size = 28
+outline_size = 8
+no_depth_test = true
+
+[node name="ExitTrigger" type="Area3D" parent="."]
+position = Vector3(0, 0.4, -5)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("3_trigger")
+event_name = &"mission.exit_requested"
+payload_key = &"exit_id"
+payload_id = &"exit.route"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ExitTrigger"]
+shape = SubResource("TriggerShape")
+
+[node name="Pad" type="MeshInstance3D" parent="ExitTrigger"]
+position = Vector3(0, -0.375, 0)
+mesh = SubResource("PadMesh")
+
+[node name="Label" type="Label3D" parent="ExitTrigger"]
+position = Vector3(0, 1.15, 0)
+text = "EXIT"
+billboard = 1
+font_size = 28
+outline_size = 8
+no_depth_test = true
+
+[node name="StatusLabel" type="Label3D" parent="."]
+position = Vector3(3.25, 2.2, 1.5)
+text = "OBJECTIVE ACTIVE"
+billboard = 1
+font_size = 23
+outline_size = 8
+no_depth_test = true
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(-3.25, 2.4, 1.5)
+text = "3.10 OBJECTIVE LAB\nTry EXIT first: it stays locked.\nWalk through OBJECTIVE, then return to EXIT.\nTriggers emit semantic facts; ObjectiveState owns/queries truth."
+billboard = 1
+font_size = 20
+outline_size = 8
+no_depth_test = true

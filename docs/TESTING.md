@@ -564,6 +564,23 @@ Phase 3.9 reuses the existing semantic acoustic authority rather than adding sub
 
 The Speech suite owns this fixture and should keep diagnostics for semantic queued/heard counts, active/remaining utterance lifetime, presentation update count, current propagated strength/threshold ratio, label visibility/alpha, and last event/live acoustic results so failures distinguish data, event timing, live acoustics, and presentation.
 
+## Simple objective/exit fixture
+
+Phase 3.10 proves only the semantic beginning/end seam needed by the future integrated slice:
+
+- **Objective Lab** launches through the normal Application → WorldSession → Player path;
+- one `VarkSimpleObjectiveState` owns `objective.route`, `exit.route`, objective completion, exit attempt/block counts, and route completion;
+- public `query_objective(id)` and `query_exit(id)` return detached semantic snapshots and fail closed for unknown IDs; consumers do not read the owner's private fields;
+- `VarkSemanticRouteTrigger` areas are intentionally dumb. The objective trigger queues `objective.complete_requested { objective_id }` once; the exit queues `mission.exit_requested { exit_id }` per entry. Trigger configuration contains semantic IDs only and has no objective/door/NPC reference;
+- the owner handles both requests in the ordinary controlled semantic consequence pass. An early exit attempt increments attempt/block state but cannot complete the mission;
+- after the objective event drains, the objective query reports `complete` and the exit query reports `unlocked`;
+- a later exit request changes route truth once and queues exactly one detached `mission.completed { objective_id, exit_id }` event during the same deterministic event cascade;
+- later exit requests remain idempotent: attempt count may increase, but `mission.completed` and mission-completion count must remain one;
+- the lab status `Label3D` is development presentation only. This proof does not establish production objective HUD, mission-rule authoring, save/restore, campaign facts, scoring, or mission transitions;
+- the existing authored `vark_exit` entity remains an addressable spatial/content endpoint only until a production mission proves the binding from authored exit content to this semantic contract.
+
+The Objectives suite owns this fixture. Failures should distinguish trigger emission, stable-boundary event handling, objective query state, exit gating, completion-event duplication, and presentation status.
+
 ## Save snapshot/restore transaction fixture
 
 Save/restore is tested as semantic transaction, not dictionary serialization.
