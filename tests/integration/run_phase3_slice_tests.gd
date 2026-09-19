@@ -394,6 +394,10 @@ func _assert_integrated_slice() -> void:
 		player,
 		PlayerCrouch.Stance.STANDING
 	)
+	# Real patrol/door behavior has already been proven above. Freeze only guard
+	# locomotion while comparing the same controlled LOS geometry across the
+	# player's multi-frame stance transition.
+	guard.set_physics_process(false)
 	reaction.call("reset_reaction")
 	player.global_position = Vector3(0.0, 0.0, -2.4)
 	player.velocity = Vector3.ZERO
@@ -431,7 +435,7 @@ func _assert_integrated_slice() -> void:
 		"last_vision_target",
 		Vector3.ZERO
 	)
-	_assert_true(
+	var vision_contract_passed: bool = (
 		standing_for_vision
 		and crouched_for_vision
 		and float(standing_lit_summary.get("exposure", 0.0)) > 0.45
@@ -446,9 +450,36 @@ func _assert_integrated_slice() -> void:
 		and bool(crouched_vision_summary.get("last_vision_blocked", false))
 		and crouched_vision_summary.get("last_vision_blocker", "")
 			== "CrouchCover"
-		and standing_target.y > crouched_target.y + 0.40,
+		and standing_target.y > crouched_target.y + 0.40
+	)
+	if not vision_contract_passed:
+		print(
+			"3.12 crouch-cover diagnostics: ",
+			{
+				"standing_stance_ready": standing_for_vision,
+				"crouched_stance_ready": crouched_for_vision,
+				"standing_exposure": standing_lit_summary.get("exposure", 0.0),
+				"crouched_exposure": crouched_lit_summary.get("exposure", 0.0),
+				"standing_seen": standing_saw_player,
+				"standing_state": standing_vision_summary.get("state", &""),
+				"standing_blocked": standing_vision_summary.get("last_vision_blocked", true),
+				"standing_blocker": standing_vision_summary.get("last_vision_blocker", ""),
+				"crouched_seen": crouched_saw_player,
+				"crouched_state": crouched_vision_summary.get("state", &""),
+				"crouched_blocked": crouched_vision_summary.get("last_vision_blocked", false),
+				"crouched_blocker": crouched_vision_summary.get("last_vision_blocker", ""),
+				"standing_target": standing_target,
+				"crouched_target": crouched_target,
+				"target_drop": standing_target.y - crouched_target.y,
+				"guard_position": guard.global_position,
+				"player_position": player.global_position,
+			}
+		)
+	_assert_true(
+		vision_contract_passed,
 		"Crouching lowers the real guard LOS target enough for low cover to block sight while the player remains gameplay-lit"
 	)
+	guard.set_physics_process(true)
 
 	var prop_pickup: bool = bool(player.call("try_carry_prop", crate_a))
 	var carry := player.get("prop_carry") as PlayerPropCarry
