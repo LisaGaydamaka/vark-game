@@ -131,6 +131,9 @@ func _assert_speech_lab() -> void:
 	var near_summary: Dictionary = speaker.get_debug_summary()
 	var near_perception: Dictionary = listener.get_last_perception()
 	var near_alpha: float = float(near_summary.get("label_alpha", 0.0))
+	var near_outline_alpha: float = float(
+		near_summary.get("outline_alpha", -1.0)
+	)
 	_assert_true(
 		near_queued
 		and near_hidden_before_drain
@@ -138,7 +141,9 @@ func _assert_speech_lab() -> void:
 		and bool(near_perception.get("heard", false))
 		and speech_label.visible
 		and speech_label.text == str(ProofLine.get("text"))
-		and near_alpha > 0.65,
+		and near_alpha > 0.65
+		and is_equal_approx(near_outline_alpha, near_alpha)
+		and is_equal_approx(speech_label.outline_modulate.a, near_alpha),
 		"Near speech appears above the speaker only after the existing controlled acoustic consequence pass reports it heard"
 	)
 
@@ -154,6 +159,9 @@ func _assert_speech_lab() -> void:
 	var cover_summary: Dictionary = speaker.get_debug_summary()
 	var cover_perception: Dictionary = listener.get_last_perception()
 	var cover_alpha: float = float(cover_summary.get("label_alpha", 0.0))
+	var cover_outline_alpha: float = float(
+		cover_summary.get("outline_alpha", -1.0)
+	)
 	var live_utterance_queue_count: int = int(
 		cover_summary.get("queued_count", 0)
 	)
@@ -165,11 +173,14 @@ func _assert_speech_lab() -> void:
 		and bool(cover_summary.get("utterance_active", false))
 		and speech_label.visible
 		and speech_label.no_depth_test
-		and speech_label.text == str(ProofLine.get("text")),
+		and speech_label.text == str(ProofLine.get("text"))
+		and is_equal_approx(cover_outline_alpha, cover_alpha)
+		and is_equal_approx(speech_label.outline_modulate.a, cover_alpha),
 		"Acoustically heard speech remains visible through representative visual cover instead of requiring visual line of sight"
 	)
 
 	var live_alphas: Array[float] = []
+	var live_outline_alphas: Array[float] = []
 	for z_position: float in [2.75, 3.5, 4.25, 4.5]:
 		await _move_player_to_position(
 			player,
@@ -177,6 +188,18 @@ func _assert_speech_lab() -> void:
 		)
 		var live_summary: Dictionary = speaker.get_debug_summary()
 		live_alphas.append(float(live_summary.get("label_alpha", 0.0)))
+		live_outline_alphas.append(
+			float(live_summary.get("outline_alpha", -1.0))
+		)
+	var whole_glyph_tracks_alpha: bool = true
+	for alpha_index: int in live_alphas.size():
+		whole_glyph_tracks_alpha = (
+			whole_glyph_tracks_alpha
+			and is_equal_approx(
+				live_outline_alphas[alpha_index],
+				live_alphas[alpha_index]
+			)
+		)
 	_assert_true(
 		live_alphas.size() == 4
 		and cover_alpha > live_alphas[0]
@@ -184,12 +207,50 @@ func _assert_speech_lab() -> void:
 		and live_alphas[1] > live_alphas[2]
 		and live_alphas[2] > live_alphas[3]
 		and live_alphas[3] > 0.0
+		and whole_glyph_tracks_alpha
 		and speech_label.visible
 		and int(speaker.get_debug_summary().get("queued_count", -1))
 			== live_utterance_queue_count
 		and int(speaker.get_debug_summary().get("heard_count", -1))
 			== semantic_heard_count,
-		"One active utterance fades continuously as the player moves away without emitting another semantic gameplay sound"
+		"One active utterance fades fill and outline together as the player moves away without emitting another semantic gameplay sound"
+	)
+
+	var threshold_tail_alphas: Array[float] = []
+	for z_position: float in [4.65, 4.8, 4.95, 5.1, 5.2]:
+		await _move_player_to_position(
+			player,
+			Vector3(0.0, 0.0, z_position)
+		)
+		var tail_summary: Dictionary = speaker.get_debug_summary()
+		var tail_alpha: float = float(
+			tail_summary.get("label_alpha", 0.0)
+		)
+		threshold_tail_alphas.append(tail_alpha)
+		whole_glyph_tracks_alpha = (
+			whole_glyph_tracks_alpha
+			and is_equal_approx(
+				float(tail_summary.get("outline_alpha", -1.0)),
+				tail_alpha
+			)
+		)
+	var smooth_tail: bool = threshold_tail_alphas.size() == 5
+	if smooth_tail:
+		for alpha_index: int in range(1, threshold_tail_alphas.size()):
+			var previous_alpha: float = threshold_tail_alphas[alpha_index - 1]
+			var current_alpha: float = threshold_tail_alphas[alpha_index]
+			smooth_tail = (
+				smooth_tail
+				and previous_alpha > current_alpha
+				and current_alpha > 0.0
+				and previous_alpha - current_alpha < 0.04
+			)
+	_assert_true(
+		smooth_tail
+		and whole_glyph_tracks_alpha
+		and threshold_tail_alphas[0] < live_alphas[3]
+		and threshold_tail_alphas[4] < 0.005,
+		"Speech opacity eases through several small fill-and-outline steps all the way toward zero near the hearing boundary instead of jumping"
 	)
 
 	await _move_player_to_marker(world, player, "InaudibleMarker")
@@ -201,6 +262,9 @@ func _assert_speech_lab() -> void:
 		and int(inaudible_summary.get("heard_count", -1))
 			== semantic_heard_count
 		and is_zero_approx(float(inaudible_summary.get("label_alpha", -1.0)))
+		and is_zero_approx(float(inaudible_summary.get("outline_alpha", -1.0)))
+		and is_zero_approx(speech_label.modulate.a)
+		and is_zero_approx(speech_label.outline_modulate.a)
 		and not speech_label.visible,
 		"The same still-active utterance hides immediately when current acoustic strength falls to or below the hearing threshold"
 	)
@@ -217,6 +281,10 @@ func _assert_speech_lab() -> void:
 		and int(recovered_summary.get("heard_count", -1))
 			== semantic_heard_count
 		and speech_label.visible
+		and is_equal_approx(
+			float(recovered_summary.get("outline_alpha", -1.0)),
+			recovered_alpha
+		)
 		and recovered_alpha > live_alphas[0]
 		and absf(recovered_alpha - cover_alpha) < 0.03,
 		"Moving back into audible range during the same utterance reveals the line again at the current continuous acoustic opacity"

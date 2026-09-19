@@ -162,6 +162,7 @@ func get_debug_summary() -> Dictionary:
 		"utterance_remaining_seconds": _utterance_remaining_seconds,
 		"label_visible": _label != null and _label.visible,
 		"label_alpha": _label.modulate.a if _label != null else 0.0,
+		"outline_alpha": _label.outline_modulate.a if _label != null else 0.0,
 		"pending_sound_kind": _pending_sound_kind,
 		"queued_boundary_serial": _queued_boundary_serial,
 		"current_propagated_strength": propagated,
@@ -222,20 +223,39 @@ func _update_live_presentation() -> void:
 		return
 
 	_label.text = speech_line.text
-	_label.modulate = Color(1.0, 1.0, 1.0, alpha)
+	_apply_label_alpha(alpha)
 	_label.visible = true
 
 
 func _continuous_display_alpha(propagated: float, threshold: float) -> float:
 	if propagated <= threshold:
 		return 0.0
-	# Continuous fade: exactly zero at the hearing threshold, then smoothly
-	# increasing with live acoustic margin. sqrt keeps marginal speech readable
-	# without introducing discrete distance/fade states.
-	var above_threshold_ratio: float = (
-		(propagated - threshold) / maxf(threshold, 0.000001)
+
+	# Fade over one threshold-width of acoustic headroom. Smoothstep reaches
+	# alpha 0 with zero slope, so approaching the hearing boundary eases all
+	# the way out instead of visually snapping during the last few frames.
+	var t: float = clampf(
+		(propagated - threshold) / maxf(threshold, 0.000001),
+		0.0,
+		1.0
 	)
-	return sqrt(clampf(above_threshold_ratio, 0.0, 1.0))
+	return t * t * (3.0 - 2.0 * t)
+
+
+func _apply_label_alpha(alpha: float) -> void:
+	if _label == null:
+		return
+	var clamped_alpha: float = clampf(alpha, 0.0, 1.0)
+	var fill_color: Color = _label.modulate
+	fill_color.a = clamped_alpha
+	_label.modulate = fill_color
+
+	# Label3D outline tint is independent from text modulate. Keep its authored
+	# RGB (normally black) but drive the same live alpha so the whole glyph
+	# actually fades instead of leaving a fully opaque silhouette behind.
+	var outline_color: Color = _label.outline_modulate
+	outline_color.a = clamped_alpha
+	_label.outline_modulate = outline_color
 
 
 func _end_utterance() -> void:
@@ -252,7 +272,7 @@ func _hide_line() -> void:
 		return
 	_label.visible = false
 	_label.text = ""
-	_label.modulate = Color(1.0, 1.0, 1.0, 0.0)
+	_apply_label_alpha(0.0)
 
 
 func _refresh_auto_repeat() -> void:
