@@ -46,6 +46,8 @@ func get_navigation_debug_summary() -> Dictionary:
 		"errors": navigation_errors.duplicate(),
 		"vertex_count": _navigation_mesh.get_vertices().size() if _navigation_mesh != null else 0,
 		"polygon_count": _navigation_mesh.get_polygon_count() if _navigation_mesh != null else 0,
+		"cell_size": _navigation_mesh.cell_size if _navigation_mesh != null else 0.0,
+		"agent_radius": _navigation_mesh.agent_radius if _navigation_mesh != null else 0.0,
 		"map_source_path": func_map.local_map_file,
 	}
 
@@ -55,6 +57,10 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 	navigation_errors.clear()
 
 	var navigation_mesh := NavigationMesh.new()
+	# The exact-fit 1.30 m doorway still needs a real 0.30 m-radius route.
+	# A 0.25 m horizontal voxel rounds that radius up to 0.50 m and erases
+	# the corridor, so this tiny proof uses a 0.10 m horizontal bake cell.
+	navigation_mesh.cell_size = 0.10
 	navigation_mesh.agent_radius = 0.30
 	navigation_mesh.agent_height = 1.75
 	navigation_mesh.agent_max_climb = 0.30

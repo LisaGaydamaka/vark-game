@@ -519,7 +519,7 @@ Settled/transient representative prop state restores coherently without extra mo
 Phase 3.7 owns the first concrete version of this fixture:
 
 - `vark_guard` and `vark_patrol_point` are exported through the ordinary Vark FGD/FuncGodot authoring path;
-- Guard/Nav Lab bakes a Godot `NavigationMesh` from the **imported FuncGodot static collision geometry**, not from a separately hand-authored nav floor;
+- Guard/Nav Lab bakes a Godot `NavigationMesh` from the **imported FuncGodot static collision geometry**, not from a separately hand-authored nav floor; its tiny proof bake uses a 0.10 m horizontal cell so the real 0.30 m-radius guard remains routable through the exact-fit 1.30 m doorway instead of being over-eroded by voxel quantization;
 - authored patrol A/B are separated by a structural wall whose only opening is offset, so the recorded NavigationAgent path must visibly/quantitatively detour through imported architecture;
 - the primitive guard stops at the configured ordinary door, consumes `is_navigation_passage_open()`, expresses an idempotent `request_open()` intent rather than using the player's toggle interaction, waits for authoritative OPEN, then continues;
 - Guard/Nav Lab's authored jambs match the 1.30 m ordinary leaf exactly, avoiding side voids around the closed door;

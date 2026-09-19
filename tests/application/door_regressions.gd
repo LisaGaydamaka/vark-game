@@ -352,6 +352,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 	player.global_transform = original_player_transform
 	player.set("velocity", Vector3.ZERO)
+	# Let the physics server observe that the real player has left the sweep
+	# before clearing the door's latched opening obstruction.
+	await _settle_player_physics(tree, 2)
 	door.call("request_open", player)
 	await _settle_player_physics(tree, 45)
 	assert_true.call(

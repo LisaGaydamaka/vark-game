@@ -107,6 +107,8 @@ func _assert_application_patrol_and_door() -> void:
 		and int(navigation_summary.get("rebuild_serial", 0)) == 1
 		and int(navigation_summary.get("vertex_count", 0)) > 0
 		and int(navigation_summary.get("polygon_count", 0)) > 0
+		and is_equal_approx(float(navigation_summary.get("cell_size", 0.0)), 0.10)
+		and is_equal_approx(float(navigation_summary.get("agent_radius", 0.0)), 0.30)
 		and nav_errors.is_empty(),
 		"Guard/Nav Lab launches through the production mission/session path and bakes navigation from imported FuncGodot geometry"
 	)
@@ -204,6 +206,8 @@ func _assert_blocked_door_recovery() -> void:
 
 	player.global_transform = original_player_transform
 	player.set("velocity", Vector3.ZERO)
+	await physics_frame
+	await process_frame
 	var recovered_cycle: bool = await _wait_for_guard_cycle(guard, 720)
 	var recovered_guard_summary: Dictionary = guard.get_debug_summary()
 	if not recovered_cycle:
