@@ -11,7 +11,7 @@ const DOOR_REQUEST_RETRY_SECONDS: float = 0.35
 @export var patrol_b_id: String = ""
 @export var door_id: String = ""
 @export var movement_speed: float = 2.5
-@export var door_use_distance: float = 1.75
+@export var door_use_distance: float = 2.0
 
 var _navigation_agent: NavigationAgent3D = null
 var _patrol_positions: Array[Vector3] = []
@@ -89,6 +89,9 @@ func get_debug_summary() -> Dictionary:
 		"patrol_a_id": patrol_a_id,
 		"patrol_b_id": patrol_b_id,
 		"door_id": door_id,
+		"door_use_distance": door_use_distance,
+		"door_request_pending": _door_request_pending,
+		"door_distance": _horizontal_distance_to_door(),
 		"target_index": _target_index,
 		"target_position": target_position,
 		"door_use_count": _door_use_count,
@@ -154,9 +157,7 @@ func _wait_for_door_if_needed(delta: float) -> bool:
 		_door_retry_remaining = 0.0
 		return false
 
-	var to_door: Vector3 = _door.global_position - global_position
-	to_door.y = 0.0
-	if to_door.length() > door_use_distance:
+	if _horizontal_distance_to_door() > door_use_distance:
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
 		return false
@@ -171,6 +172,14 @@ func _wait_for_door_if_needed(delta: float) -> bool:
 		_door.call(DOOR_REQUEST_OPEN_METHOD, self)
 		_door_retry_remaining = DOOR_REQUEST_RETRY_SECONDS
 	return true
+
+
+func _horizontal_distance_to_door() -> float:
+	if _door == null:
+		return INF
+	var to_door: Vector3 = _door.global_position - global_position
+	to_door.y = 0.0
+	return to_door.length()
 
 
 func _complete_patrol_leg() -> void:

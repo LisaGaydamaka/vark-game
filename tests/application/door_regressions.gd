@@ -62,9 +62,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var door_shape: BoxShape3D = door_collision.shape as BoxShape3D
 	assert_true.call(
 		door_shape != null
-		and is_equal_approx(door_shape.size.x, 1.22)
+		and is_equal_approx(door_shape.size.x, 1.30)
 		and is_equal_approx(door_collision.position.x, 0.65),
-		"Ordinary door keeps a slightly inset physical sweep while its visible leaf remains full width"
+		"Ordinary door keeps its established full-width shared collision leaf"
 	)
 
 	var door_events: Array[StringName] = []

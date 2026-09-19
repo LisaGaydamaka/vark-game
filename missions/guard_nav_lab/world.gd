@@ -7,6 +7,7 @@ signal navigation_rebuilt(serial: int)
 const PLAYER_START_GROUP: StringName = &"vark_player_start"
 const PATROL_POINT_GROUP: StringName = &"vark_patrol_point"
 const GUARD_GROUP: StringName = &"vark_guard"
+const GUARD_NAV_DOOR_SWEEP_EDGE_CLEARANCE: float = 0.04
 
 @onready var player: Node3D = $Player
 @onready var func_map: FuncGodotMap = $FuncGodotMap
@@ -33,6 +34,7 @@ func _ready() -> void:
 		mission_definition != null,
 		"The Guard/Nav Lab must be instantiated through its MissionDefinition."
 	)
+	_configure_guard_nav_door_sweep_clearance()
 	func_map.local_map_file = str(mission_definition.get("map_source_path"))
 	func_map.build()
 	_apply_authored_player_start()
@@ -51,8 +53,45 @@ func get_navigation_debug_summary() -> Dictionary:
 			get_world_3d().navigation_map
 		) if is_inside_tree() else 0.0,
 		"agent_radius": _navigation_mesh.agent_radius if _navigation_mesh != null else 0.0,
+		"door_visual_width": _get_guard_nav_door_visual_width(),
+		"door_sweep_width": _get_guard_nav_door_sweep_width(),
 		"map_source_path": func_map.local_map_file,
 	}
+
+
+func _configure_guard_nav_door_sweep_clearance() -> void:
+	var collision := ordinary_door.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	var shared_shape: BoxShape3D = null
+	if collision != null:
+		shared_shape = collision.shape as BoxShape3D
+	assert(
+		collision != null and shared_shape != null,
+		"Guard/Nav Lab requires the ordinary door's BoxShape3D collision leaf."
+	)
+	if collision == null or shared_shape == null:
+		return
+
+	# Keep the shared ordinary-door collision untouched. This exact-fit mapper
+	# fixture alone duplicates the leaf shape and leaves 4 cm of sweep clearance
+	# at each vertical edge while the visible 1.30 m leaf still meets the jambs.
+	var local_shape := shared_shape.duplicate() as BoxShape3D
+	var local_size: Vector3 = local_shape.size
+	local_size.x = shared_shape.size.x - GUARD_NAV_DOOR_SWEEP_EDGE_CLEARANCE * 2.0
+	local_shape.size = local_size
+	collision.shape = local_shape
+
+
+func _get_guard_nav_door_visual_width() -> float:
+	var model: Mesh = ordinary_door.get_visual_model()
+	return model.get_aabb().size.x if model != null else 0.0
+
+
+func _get_guard_nav_door_sweep_width() -> float:
+	var collision := ordinary_door.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	var shape: BoxShape3D = null
+	if collision != null:
+		shape = collision.shape as BoxShape3D
+	return shape.size.x if shape != null else 0.0
 
 
 func _rebuild_navigation_from_imported_geometry() -> void:

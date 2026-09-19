@@ -518,7 +518,7 @@ Settled/transient representative prop state restores coherently without extra mo
 
 Phase 3.7 owns the first concrete version of this fixture:
 
-- `vark_guard` and `vark_patrol_point` are exported through the ordinary Vark FGD/FuncGodot authoring path;
+- `vark_guard` and `vark_patrol_point` are exported through the ordinary Vark FGD/FuncGodot authoring path; the guard's current door-use default is a 2.0 m standoff so this first consumer requests/waits before entering the ordinary leaf's swing;
 - Guard/Nav Lab bakes a Godot `NavigationMesh` from the **imported FuncGodot static collision geometry**, not from a separately hand-authored nav floor; its tiny proof bake uses a 0.10 m horizontal cell so the real 0.30 m-radius guard remains routable through the exact-fit 1.30 m doorway instead of being over-eroded by voxel quantization;
 - authored patrol A/B are separated by a structural wall whose only opening is offset, so the recorded NavigationAgent path must visibly/quantitatively detour through imported architecture;
 - the primitive guard stops at the configured ordinary door, consumes `is_navigation_passage_open()`, expresses an idempotent `request_open()` intent rather than using the player's toggle interaction, waits for authoritative OPEN, then continues;
@@ -527,7 +527,7 @@ Phase 3.7 owns the first concrete version of this fixture:
 - a disposable edit moves one authored patrol point, rebuilds the same mission package through `WorldSession`, rebakes navigation, and proves the moved point plus patrol/door traversal still work;
 - failures expose the navmesh polygon/vertex counts, rebuild serial, authored-ID resolution errors, and guard route/door-use counters rather than silently degrading to straight-line movement.
 
-The Application door regression also protects the consumer seam itself: `request_open()` does not toggle an opening/open door toward closed, a blocked opening remains physically safe, and re-requesting OPEN after the blocker leaves clears the obstruction latch without duplicating the original use sound. The ordinary door's full-width visual leaf is independent from a slightly inset physical sweep collider so exact-fit authored jambs do not snag the hinge motion.
+The Application door regression also protects the consumer seam itself: `request_open()` does not toggle an opening/open door toward closed, a blocked opening remains physically safe, and re-requesting OPEN after the blocker leaves clears the obstruction latch without duplicating the original use sound. It also protects the established shared full-width ordinary-door collision leaf. Guard/Nav Lab's zero-gap mapper-fit fixture handles its special frame tolerance locally by duplicating only that instance's collision shape and leaving 4 cm of sweep clearance at each vertical edge; the 1.30 m visible leaf still meets the authored jambs exactly, while the Navigation regression confirms the guard requests and waits from outside the swing rather than becoming its own blocker.
 
 This is a micro-proof, not the final production nav-bake policy. Runtime synchronous baking is acceptable for the tiny fixture; Phase 5/production scaling may replace it with cached/prebaked/background work without changing authored patrol/door semantics.
 

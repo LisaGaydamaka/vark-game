@@ -71,7 +71,7 @@
 "patrol_b_id" "patrol.b"
 "door_id" "door.guard_nav"
 "movement_speed" "2.5"
-"door_use_distance" "1.75"
+"door_use_distance" "2.0"
 "angle" "180"
 "origin" "88 -64 0"
 }

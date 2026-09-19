@@ -54,6 +54,7 @@ func _assert_authoring_schema() -> void:
 		and guard_class.class_properties.has("patrol_a_id")
 		and guard_class.class_properties.has("patrol_b_id")
 		and guard_class.class_properties.has("door_id")
+		and is_equal_approx(float(guard_class.class_properties.get("door_use_distance", 0.0)), 2.0)
 		and patrol_class.class_properties.has("patrol_id")
 		and exported_fgd.contains("vark_guard")
 		and exported_fgd.contains("vark_patrol_point"),
@@ -68,6 +69,7 @@ func _assert_guard_nav_doorway_fit() -> void:
 		and source.contains("( -6 84.8 0 )")
 		and source.contains("( -6 43.2 68 )")
 		and source.contains("( 6 84.8 84 )")
+		and source.contains("\"door_use_distance\" \"2.0\"")
 		and not source.contains("( 6 40 84 )")
 		and not source.contains("( -6 88 0 )"),
 		"Guard/Nav Lab authored doorway is exactly 1.30 m wide so the closed ordinary leaf meets both jambs without side gaps"
@@ -110,6 +112,8 @@ func _assert_application_patrol_and_door() -> void:
 		and is_equal_approx(float(navigation_summary.get("cell_size", 0.0)), 0.10)
 		and is_equal_approx(float(navigation_summary.get("map_cell_size", 0.0)), 0.10)
 		and is_equal_approx(float(navigation_summary.get("agent_radius", 0.0)), 0.30)
+		and is_equal_approx(float(navigation_summary.get("door_visual_width", 0.0)), 1.30)
+		and is_equal_approx(float(navigation_summary.get("door_sweep_width", 0.0)), 1.22)
 		and nav_errors.is_empty(),
 		"Guard/Nav Lab launches through the production mission/session path and bakes navigation from imported FuncGodot geometry"
 	)
@@ -133,6 +137,17 @@ func _assert_application_patrol_and_door() -> void:
 	_assert_true(
 		guard.global_position.distance_to(guard_start_position) > 0.05,
 		"Grounded guard advances off its authored start instead of stalling on the first vertically quantized nav waypoint"
+	)
+
+	var requested_from_standoff: bool = await _wait_for_guard_door_request(guard, 240)
+	var request_summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		requested_from_standoff
+		and bool(request_summary.get("door_request_pending", false))
+		and is_equal_approx(float(request_summary.get("door_use_distance", 0.0)), 2.0)
+		and float(request_summary.get("door_distance", 0.0)) >= 1.80
+		and int(request_summary.get("door_use_count", 0)) == 1,
+		"Guard requests and waits for the ordinary door from outside its physical swing envelope"
 	)
 
 	var completed_cycle: bool = await _wait_for_guard_cycle(guard, 720)
@@ -320,6 +335,21 @@ func _wait_for_navigation_ready(world: Node3D, max_frames: int) -> bool:
 		await physics_frame
 		await process_frame
 	return bool(world.get("navigation_ready"))
+
+
+func _wait_for_guard_door_request(guard: VarkGuard, max_frames: int) -> bool:
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		if (
+			int(summary.get("door_use_count", 0)) >= 1
+			and bool(summary.get("door_request_pending", false))
+		):
+			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return false
 
 
 func _wait_for_door_blocked(
