@@ -1,0 +1,85 @@
+// Game: Vark
+// Format: Valve
+// Generator: TrenchBroom 2026.2 compatible authored source
+// entity 0
+{
+"mapversion" "220"
+"wad" ""
+"classname" "worldspawn"
+// floor
+{
+( -176 -144 -8 ) ( -176 -143 -8 ) ( -176 -144 -7 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -176 -144 -8 ) ( -176 -144 -7 ) ( -175 -144 -8 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -176 -144 -8 ) ( -175 -144 -8 ) ( -176 -143 -8 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 176 144 0 ) ( 176 145 0 ) ( 177 144 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 176 144 0 ) ( 177 144 0 ) ( 176 144 1 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 176 144 0 ) ( 176 144 1 ) ( 176 145 0 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+// wall left of the offset doorway
+{
+( -6 -144 0 ) ( -6 -143 0 ) ( -6 -144 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -6 -144 0 ) ( -6 -144 1 ) ( -5 -144 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -6 -144 0 ) ( -5 -144 0 ) ( -6 -143 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 6 40 84 ) ( 6 41 84 ) ( 7 40 84 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 6 40 84 ) ( 7 40 84 ) ( 6 40 85 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 6 40 84 ) ( 6 40 85 ) ( 6 41 84 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+// wall right of the offset doorway
+{
+( -6 88 0 ) ( -6 89 0 ) ( -6 88 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -6 88 0 ) ( -6 88 1 ) ( -5 88 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -6 88 0 ) ( -5 88 0 ) ( -6 89 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 6 144 84 ) ( 6 145 84 ) ( 7 144 84 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 6 144 84 ) ( 7 144 84 ) ( 6 144 85 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 6 144 84 ) ( 6 144 85 ) ( 6 145 84 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+// doorway header
+{
+( -6 40 68 ) ( -6 41 68 ) ( -6 40 69 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -6 40 68 ) ( -6 40 69 ) ( -5 40 68 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -6 40 68 ) ( -5 40 68 ) ( -6 41 68 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 6 88 84 ) ( 6 89 84 ) ( 7 88 84 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 6 88 84 ) ( 7 88 84 ) ( 6 88 85 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 6 88 84 ) ( 6 88 85 ) ( 6 89 84 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+}
+// entity 1
+{
+"classname" "vark_player_start"
+"persistent_id" "vark_guard_nav_player_start"
+"content_id" "default"
+"angle" "180"
+"origin" "144 -112 36.8"
+}
+// entity 2
+{
+"classname" "vark_patrol_point"
+"patrol_id" "patrol.a"
+"origin" "88 -64 0"
+}
+// entity 3
+{
+"classname" "vark_patrol_point"
+"patrol_id" "patrol.b"
+"origin" "-88 -64 0"
+}
+// entity 4
+{
+"classname" "vark_guard"
+"guard_id" "guard.nav_probe"
+"patrol_a_id" "patrol.a"
+"patrol_b_id" "patrol.b"
+"door_id" "door.guard_nav"
+"movement_speed" "2.5"
+"door_use_distance" "1.75"
+"angle" "180"
+"origin" "88 -64 0"
+}
+// entity 5
+{
+"classname" "vark_exit"
+"persistent_id" "vark_guard_nav_exit"
+"content_id" "exit.guard_nav"
+"angle" "180"
+"origin" "-144 112 16"
+}

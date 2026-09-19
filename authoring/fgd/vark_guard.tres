@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="Script" path="res://gameplay/npc/vark_guard.gd" id="2_guard"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_guard"
+description = "Primitive Phase 3.7 guard seed. Patrols between two authored patrol IDs and may use one ordinary door through the shared door navigation seam."
+class_properties = Dictionary[String, Variant]({
+"guard_id": "",
+"patrol_a_id": "",
+"patrol_b_id": "",
+"door_id": "",
+"movement_speed": 2.5,
+"door_use_distance": 1.75,
+"angle": 180.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"guard_id": "Required guard ID for the Phase 3.7 navigation proof.",
+"patrol_a_id": "First authored vark_patrol_point ID.",
+"patrol_b_id": "Second authored vark_patrol_point ID.",
+"door_id": "Ordinary door ID this guard is allowed to use while following the current proof route.",
+"movement_speed": "Patrol movement speed in Vark world meters per second.",
+"door_use_distance": "Horizontal distance at which the guard requests the configured ordinary door to open.",
+"angle": "Initial TrenchBroom facing direction."
+})
+auto_apply_to_matching_node_properties = true
+node_class = "CharacterBody3D"
+script_class = ExtResource("2_guard")
+node_groups = Array[String](["vark_guard"])

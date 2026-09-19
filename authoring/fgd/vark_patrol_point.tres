@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="Script" path="res://gameplay/npc/vark_patrol_point.gd" id="2_patrol"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_patrol_point"
+description = "Primitive 3.7 authored patrol marker. Give it a unique patrol_id and place it on navigable imported geometry."
+class_properties = Dictionary[String, Variant]({
+"patrol_id": ""
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"patrol_id": "Required authored patrol-point ID referenced by vark_guard."
+})
+auto_apply_to_matching_node_properties = true
+node_class = "Node3D"
+script_class = ExtResource("2_patrol")
+node_groups = Array[String](["vark_patrol_point"])

@@ -474,7 +474,7 @@ The focused Acoustics suite protects:
 - real FuncGodot import of two rectangular acoustic-space brushes plus portal IDs/links/transmission tuning, with no generated visual mesh and zero collision layer/mask on the runtime acoustic helper;
 - explicit protection that the current authoritative map scale is 32 mapper units per Vark world meter and that representative mapper brush dimensions import to the expected Vark world-space half-extents.
 
-The development Acoustic Lab supplies the focused player-facing proof with an open room, door-separated room, disconnected room, and two-portal corner route. Manual acceptance still decides whether the current attenuation/transmission relationships feel intuitive and whether the explicit mapper topology cost is acceptable. The first TrenchBroom 2026.2 mapper pass failed because acoustic-space extents were editable but visually invisible, and the following display-model attempts still produced a square/cube rather than a trustworthy independently editable volume. The root correction is architectural: the pinned 2026.2 manual distinguishes point entities from brush entities and documents creating brush entities by selecting brushes and converting them through the context menu. `vark_acoustic_space` therefore uses the native brush-entity workflow now; the actual rectangular mapper brush is the visible volume, while FuncGodot derives the runtime acoustic box from that brush and imports no presentation mesh. The exact manual snapshot supplied during this diagnosis is versioned at `docs/reference/trenchbroom-2026.2-reference-manual.html`. Phase 3.6 remains pending until a Windows TrenchBroom 2026.2 save/reopen/reimport pass confirms this native brush workflow is low-friction. Do not stabilize the Phase 5 production acoustic API or tuning from the deterministic spike alone.
+The development Acoustic Lab supplies the focused player-facing proof with an open room, door-separated room, disconnected room, and two-portal corner route. The Windows user/playtester accepted its acoustic intuition, and the Windows TrenchBroom 2026.2 mapper pass accepted the native acoustic-space brush plus portal edit/save/reopen/reimport workflow. The first TrenchBroom 2026.2 mapper pass failed because acoustic-space extents were editable but visually invisible, and the following display-model attempts still produced a square/cube rather than a trustworthy independently editable volume. The root correction is architectural: the pinned 2026.2 manual distinguishes point entities from brush entities and documents creating brush entities by selecting brushes and converting them through the context menu. `vark_acoustic_space` therefore uses the native brush-entity workflow now; the actual rectangular mapper brush is the visible volume, while FuncGodot derives the runtime acoustic box from that brush and imports no presentation mesh. The exact manual snapshot supplied during this diagnosis is versioned at `docs/reference/trenchbroom-2026.2-reference-manual.html`. Phase 3.6 remains pending until a Windows TrenchBroom 2026.2 save/reopen/reimport pass confirms this native brush workflow is low-friction. Do not stabilize the Phase 5 production acoustic API or tuning from the deterministic spike alone.
 
 ## Gameplay-light fixture
 
@@ -516,7 +516,16 @@ Settled/transient representative prop state restores coherently without extra mo
 
 ## Nav/reimport fixture
 
-Imported map → NPC patrol → ordinary door use → map edit/reimport → nav rebuild remains supported.
+Phase 3.7 owns the first concrete version of this fixture:
+
+- `vark_guard` and `vark_patrol_point` are exported through the ordinary Vark FGD/FuncGodot authoring path;
+- Guard/Nav Lab bakes a Godot `NavigationMesh` from the **imported FuncGodot static collision geometry**, not from a separately hand-authored nav floor;
+- authored patrol A/B are separated by a structural wall whose only opening is offset, so the recorded NavigationAgent path must visibly/quantitatively detour through imported architecture;
+- the primitive guard stops at the configured ordinary door, consumes `is_navigation_passage_open()`, requests that same door through its ordinary interaction method, waits for authoritative OPEN, then continues;
+- a disposable edit moves one authored patrol point, rebuilds the same mission package through `WorldSession`, rebakes navigation, and proves the moved point plus patrol/door traversal still work;
+- failures expose the navmesh polygon/vertex counts, rebuild serial, authored-ID resolution errors, and guard route/door-use counters rather than silently degrading to straight-line movement.
+
+This is a micro-proof, not the final production nav-bake policy. Runtime synchronous baking is acceptable for the tiny fixture; Phase 5/production scaling may replace it with cached/prebaked/background work without changing authored patrol/door semantics.
 
 ## Save snapshot/restore transaction fixture
 
