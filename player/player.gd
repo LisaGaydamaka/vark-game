@@ -215,6 +215,26 @@ func get_input_view_pose() -> Dictionary:
 	}
 
 
+func apply_input_view_pose(pose: Dictionary) -> bool:
+	for key: String in ["body_yaw", "head_pitch", "head_yaw"]:
+		var value: Variant = pose.get(key, null)
+		if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
+			return false
+		if not is_finite(float(value)):
+			return false
+
+	# Phase 4.1 restores input-owned orientation on a fresh player. Traversal
+	# state and traversal-specific look reconstruction remain owned by 4.3.
+	rotation.y = wrapf(float(pose["body_yaw"]), -PI, PI)
+	head.rotation.x = clampf(
+		float(pose["head_pitch"]),
+		deg_to_rad(-89.0),
+		deg_to_rad(89.0)
+	)
+	head.rotation.y = wrapf(float(pose["head_yaw"]), -PI, PI)
+	return true
+
+
 func is_grounded() -> bool:
 	return support != null and support.is_grounded()
 

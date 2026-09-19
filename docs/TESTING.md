@@ -290,6 +290,13 @@ The lifecycle regression attaches representative `Timer` and deferred work benea
 
 The production entity registry is now the first real mutable world-scoped service. No semantic event queue or general scheduler is invented by this fixture; those systems remain future roadmap work and must follow the same current-`WorldSession` ownership boundary when introduced.
 
+## Phase 4.1 save coordinator and transactional shell restore
+
+The application regression suite now exercises the first save/restore ownership seam without pulling Phase 4.2 semantic-system snapshots or Phase 4.6 durable disk format forward. `VarkSaveCoordinator` runs capture after the `WorldSession` stable-boundary consequence pass, binds every request to its source session/target boundary, and copies only detached value data: source/boundary provenance, gameplay simulation time, rebuild resource paths, and the input-owned player view pose. A later application-frame commit stage models post-capture encoding/writer ordering while remaining in-memory for 4.1.
+
+`save_coordinator_regressions.gd`, wired through the authoritative Application suite and therefore `tests/run_all_tests.gd`, proves: a restart cancels a still-pending source request rather than retargeting it; capture occurs at the requested next stable serial and includes current event-cadence look; later live/caller mutation cannot alter the stored snapshot; captured data can commit after its source session is destroyed; a newer request supersedes an older captured generation for the same slot; committed reads are detached; quickload ignores a newer in-progress request and consumes only the last fully committed slot; and the sole-world restore path rebuilds a disabled candidate, restores gameplay time/view orientation, then resumes exactly one authoritative PLAYING session with gameplay/look input enabled. No manual acceptance is required for this infrastructure-only item; durable filesystem behavior and broad semantic/transient restoration remain later Phase 4 coverage.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.

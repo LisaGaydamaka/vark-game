@@ -39,6 +39,7 @@ enum ControlMode {
 @export var development_launch_resource_paths: PackedStringArray = PackedStringArray()
 
 @onready var input_boundary: ApplicationInputBoundary = $InputBoundary
+@onready var save_coordinator: VarkSaveCoordinator = $SaveCoordinator
 @onready var world_host: Node = $WorldHost
 @onready var ui_root: CanvasLayer = $UIRoot
 @onready var main_menu: Control = $UIRoot/MainMenu
@@ -69,6 +70,7 @@ var _last_session_id: int = 0
 
 func _ready() -> void:
 	current_ui = ui_root
+	save_coordinator.bind_application(self)
 	_wire_menu_shell()
 	_refresh_development_launch_targets()
 	_show_main_menu()
@@ -113,6 +115,35 @@ func get_gameplay_time_seconds() -> float:
 
 func get_current_view_pose() -> Dictionary:
 	return input_boundary.get_current_view_pose()
+
+
+func request_quicksave() -> int:
+	if has_active_top_level_operation():
+		return 0
+	return save_coordinator.request_save()
+
+
+func get_latest_quicksave_snapshot() -> Dictionary:
+	return save_coordinator.get_latest_committed_snapshot()
+
+
+func quickload_latest() -> bool:
+	var snapshot: Dictionary = get_latest_quicksave_snapshot()
+	if snapshot.is_empty():
+		return false
+	return restore_snapshot(snapshot)
+
+
+func restore_snapshot(snapshot: Dictionary) -> bool:
+	if not save_coordinator.validate_snapshot(snapshot):
+		return false
+	if not try_begin_top_level_operation(TopLevelOperation.LOAD):
+		return false
+
+	var succeeded: bool = _restore_world_from_snapshot(snapshot)
+	var finished: bool = finish_top_level_operation(TopLevelOperation.LOAD)
+	assert(finished, "VarkApplication lost ownership of the load operation.")
+	return succeeded
 
 
 func get_look_sensitivity() -> float:
@@ -333,6 +364,86 @@ func _replace_world(
 	return _install_world(scene, mission_definition)
 
 
+func _restore_world_from_snapshot(snapshot: Dictionary) -> bool:
+	var session_snapshot: Dictionary = snapshot.get("session", {})
+	var view_pose: Dictionary = snapshot.get("player_view_pose", {})
+	var world_scene_path: String = str(
+		session_snapshot.get("world_scene_path", "")
+	)
+	var definition_path: String = str(
+		session_snapshot.get("mission_definition_path", "")
+	)
+
+	if world_scene_path.is_empty() or not ResourceLoader.exists(world_scene_path):
+		return false
+	var world_resource: Resource = ResourceLoader.load(world_scene_path)
+	if not (world_resource is PackedScene):
+		return false
+	var scene := world_resource as PackedScene
+
+	var definition: Resource = null
+	if not definition_path.is_empty():
+		if not ResourceLoader.exists(definition_path):
+			return false
+		definition = ResourceLoader.load(definition_path)
+		if not _is_mission_definition(definition):
+			return false
+		var definition_errors: PackedStringArray = definition.call(
+			"get_load_errors"
+		)
+		if not definition_errors.is_empty():
+			return false
+		var definition_world: PackedScene = definition.get(
+			"world_scene"
+		) as PackedScene
+		if (
+			definition_world == null
+			or definition_world.resource_path != world_scene_path
+		):
+			return false
+
+	_teardown_current_session()
+	var candidate: Node = _create_ready_session(scene, definition)
+	if candidate == null:
+		_show_main_menu()
+		return false
+	if not bool(candidate.call(
+		"begin_restore_from_envelope",
+		session_snapshot
+	)):
+		_discard_session_candidate(candidate)
+		_show_main_menu()
+		return false
+
+	var restored_player := candidate.get("player") as Node
+	if (
+		restored_player == null
+		or not restored_player.has_method("apply_input_view_pose")
+		or not bool(restored_player.call("apply_input_view_pose", view_pose))
+	):
+		_discard_session_candidate(candidate)
+		_show_main_menu()
+		return false
+	if not bool(candidate.call("complete_restore")):
+		_discard_session_candidate(candidate)
+		_show_main_menu()
+		return false
+
+	current_session = candidate
+	_sync_current_references()
+	_apply_look_sensitivity_to_current_player()
+	input_boundary.bind_player(current_player)
+	if not bool(current_session.call("begin_play")):
+		_teardown_current_session()
+		_show_main_menu()
+		return false
+
+	control_mode = ControlMode.GAMEPLAY
+	_set_world_input_domains(true)
+	_hide_main_menu()
+	return true
+
+
 func _install_world(
 	scene: PackedScene,
 	mission_definition: Resource = null
@@ -340,14 +451,8 @@ func _install_world(
 	if scene == null or current_session != null:
 		return false
 
-	_last_session_id += 1
-	var session: Node = WORLD_SESSION_SCRIPT.new()
-	session.name = "WorldSession"
-	world_host.add_child(session)
-
-	if not bool(session.call("build", _last_session_id, scene, mission_definition)):
-		world_host.remove_child(session)
-		session.free()
+	var session: Node = _create_ready_session(scene, mission_definition)
+	if session == null:
 		return false
 
 	current_session = session
@@ -364,9 +469,46 @@ func _install_world(
 	return true
 
 
+func _create_ready_session(
+	scene: PackedScene,
+	mission_definition: Resource = null
+) -> Node:
+	if scene == null:
+		return null
+
+	_last_session_id += 1
+	var session: Node = WORLD_SESSION_SCRIPT.new()
+	session.name = "WorldSession"
+	world_host.add_child(session)
+	if not bool(session.call(
+		"build",
+		_last_session_id,
+		scene,
+		mission_definition
+	)):
+		world_host.remove_child(session)
+		session.free()
+		return null
+	return session
+
+
+func _discard_session_candidate(session: Node) -> void:
+	if session == null or not is_instance_valid(session):
+		return
+	session.call("teardown")
+	if session.get_parent() == world_host:
+		world_host.remove_child(session)
+	session.free()
+
+
 func _teardown_current_session() -> void:
 	_set_world_input_domains(false)
 	input_boundary.bind_player(null)
+
+	if current_session != null and save_coordinator != null:
+		save_coordinator.cancel_pending_for_session(
+			int(current_session.get("session_id"))
+		)
 
 	if current_session == null:
 		current_world = null

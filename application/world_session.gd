@@ -63,6 +63,80 @@ func get_gameplay_time_seconds() -> float:
 	return gameplay_time_seconds
 
 
+func capture_save_envelope() -> Dictionary:
+	if (
+		state != State.PLAYING
+		or _semantic_event_draining
+		or not _semantic_event_queue.is_empty()
+		or world_scene == null
+		or world_scene.resource_path.is_empty()
+	):
+		return {}
+
+	return {
+		"source_session_id": session_id,
+		"stable_boundary_serial": _stable_gameplay_boundary_serial,
+		"gameplay_time_seconds": gameplay_time_seconds,
+		"world_scene_path": world_scene.resource_path,
+		"mission_definition_path": (
+			mission_definition.resource_path
+			if mission_definition != null
+			else ""
+		),
+	}
+
+
+func begin_restore_from_envelope(envelope: Dictionary) -> bool:
+	if state != State.READY or world == null:
+		return false
+	if not _is_detached_semantic_value(envelope):
+		return false
+	if (
+		int(envelope.get("source_session_id", 0)) <= 0
+		or int(envelope.get("stable_boundary_serial", 0)) <= 0
+		or str(envelope.get("world_scene_path", ""))
+			!= world_scene.resource_path
+	):
+		return false
+
+	var expected_definition_path: String = (
+		mission_definition.resource_path
+		if mission_definition != null
+		else ""
+	)
+	if (
+		str(envelope.get("mission_definition_path", ""))
+		!= expected_definition_path
+	):
+		return false
+
+	var gameplay_time_value: Variant = envelope.get(
+		"gameplay_time_seconds",
+		null
+	)
+	if (
+		typeof(gameplay_time_value) != TYPE_FLOAT
+		and typeof(gameplay_time_value) != TYPE_INT
+	):
+		return false
+	var restored_gameplay_time: float = float(gameplay_time_value)
+	if not is_finite(restored_gameplay_time) or restored_gameplay_time < 0.0:
+		return false
+
+	state = State.RESTORING
+	process_mode = Node.PROCESS_MODE_DISABLED
+	gameplay_time_seconds = restored_gameplay_time
+	return true
+
+
+func complete_restore() -> bool:
+	if state != State.RESTORING or world == null:
+		return false
+	state = State.READY
+	process_mode = Node.PROCESS_MODE_DISABLED
+	return true
+
+
 func get_stable_gameplay_boundary_serial() -> int:
 	return _stable_gameplay_boundary_serial
 

@@ -24,6 +24,9 @@ const DoorRegressions = preload(
 const PauseArbitrationRegressions = preload(
 	"res://tests/application/pause_arbitration_regressions.gd"
 )
+const SaveCoordinatorRegressions = preload(
+	"res://tests/application/save_coordinator_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -188,6 +191,13 @@ func _run_tests() -> void:
 
 	var pause_regressions: RefCounted = PauseArbitrationRegressions.new()
 	await pause_regressions.run(
+		self,
+		application,
+		Callable(self, "_assert_true")
+	)
+
+	var save_regressions: RefCounted = SaveCoordinatorRegressions.new()
+	await save_regressions.run(
 		self,
 		application,
 		Callable(self, "_assert_true")
