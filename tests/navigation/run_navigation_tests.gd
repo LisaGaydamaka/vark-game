@@ -438,13 +438,40 @@ func _wait_for_guard_in_open_doorway(
 		var summary: Dictionary = guard.get_debug_summary()
 		if (
 			door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
-			and float(summary.get("door_distance", INF)) <= 0.75
+			and _guard_overlaps_closed_door_leaf(guard, door)
 		):
 			return true
 		if not str(summary.get("last_error", "")).is_empty():
 			return false
 		await physics_frame
 		await process_frame
+	return false
+
+
+func _guard_overlaps_closed_door_leaf(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor
+) -> bool:
+	var collision := door.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if collision == null or collision.shape == null or not door.is_inside_tree():
+		return false
+
+	# Detect the actual physical doorway occupancy instead of measuring from the
+	# hinge. Reconstruct the door root at fraction 0 and ask whether the real
+	# guard body overlaps the leaf position the close command is trying to reach.
+	var closed_root: Transform3D = door.global_transform.rotated_local(
+		Vector3.UP,
+		-deg_to_rad(door.open_angle_degrees) * door.get_open_fraction()
+	)
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = collision.shape
+	query.transform = closed_root * collision.transform
+	query.collision_mask = 2
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	for result: Dictionary in door.get_world_3d().direct_space_state.intersect_shape(query, 8):
+		if result.get("collider", null) == guard:
+			return true
 	return false
 
 
