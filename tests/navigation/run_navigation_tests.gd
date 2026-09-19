@@ -108,6 +108,7 @@ func _assert_application_patrol_and_door() -> void:
 		and int(navigation_summary.get("vertex_count", 0)) > 0
 		and int(navigation_summary.get("polygon_count", 0)) > 0
 		and is_equal_approx(float(navigation_summary.get("cell_size", 0.0)), 0.10)
+		and is_equal_approx(float(navigation_summary.get("map_cell_size", 0.0)), 0.10)
 		and is_equal_approx(float(navigation_summary.get("agent_radius", 0.0)), 0.30)
 		and nav_errors.is_empty(),
 		"Guard/Nav Lab launches through the production mission/session path and bakes navigation from imported FuncGodot geometry"

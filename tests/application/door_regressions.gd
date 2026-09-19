@@ -59,6 +59,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var left_wall_shape: BoxShape3D = left_wall_collision.shape as BoxShape3D
 	var right_wall_shape: BoxShape3D = right_wall_collision.shape as BoxShape3D
 	var door_material: StandardMaterial3D = door_mesh.material_override as StandardMaterial3D
+	var door_shape: BoxShape3D = door_collision.shape as BoxShape3D
+	assert_true.call(
+		door_shape != null
+		and is_equal_approx(door_shape.size.x, 1.22)
+		and is_equal_approx(door_collision.position.x, 0.65),
+		"Ordinary door keeps a slightly inset physical sweep while its visible leaf remains full width"
+	)
 
 	var door_events: Array[StringName] = []
 	var sound_events: Array[Dictionary] = []

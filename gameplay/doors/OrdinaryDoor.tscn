@@ -4,7 +4,10 @@
 [ext_resource type="ArrayMesh" path="res://assets/models/doors/ordinary_door_leaf.obj" id="2_visual"]
 
 [sub_resource type="BoxShape3D" id="DoorShape"]
-size = Vector3(1.3, 2.08, 0.1)
+# Keep the visual leaf at the full 1.30 m authored width, but inset the
+# physical sweep 4 cm at each vertical edge so an exact-fit frame cannot
+# snag the rotating collider at the hinge/latch jambs.
+size = Vector3(1.22, 2.08, 0.1)
 
 [node name="OrdinaryDoor" type="AnimatableBody3D"]
 collision_layer = 1

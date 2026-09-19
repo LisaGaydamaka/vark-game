@@ -47,6 +47,9 @@ func get_navigation_debug_summary() -> Dictionary:
 		"vertex_count": _navigation_mesh.get_vertices().size() if _navigation_mesh != null else 0,
 		"polygon_count": _navigation_mesh.get_polygon_count() if _navigation_mesh != null else 0,
 		"cell_size": _navigation_mesh.cell_size if _navigation_mesh != null else 0.0,
+		"map_cell_size": NavigationServer3D.map_get_cell_size(
+			get_world_3d().navigation_map
+		) if is_inside_tree() else 0.0,
 		"agent_radius": _navigation_mesh.agent_radius if _navigation_mesh != null else 0.0,
 		"map_source_path": func_map.local_map_file,
 	}
@@ -82,6 +85,8 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 		return
 
 	_navigation_mesh = navigation_mesh
+	var navigation_map: RID = get_world_3d().navigation_map
+	NavigationServer3D.map_set_cell_size(navigation_map, navigation_mesh.cell_size)
 	navigation_region.navigation_mesh = navigation_mesh
 
 	# NavigationServer changes synchronize on physics frames. Bind the first

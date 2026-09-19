@@ -527,7 +527,7 @@ Phase 3.7 owns the first concrete version of this fixture:
 - a disposable edit moves one authored patrol point, rebuilds the same mission package through `WorldSession`, rebakes navigation, and proves the moved point plus patrol/door traversal still work;
 - failures expose the navmesh polygon/vertex counts, rebuild serial, authored-ID resolution errors, and guard route/door-use counters rather than silently degrading to straight-line movement.
 
-The Application door regression also protects the consumer seam itself: `request_open()` does not toggle an opening/open door toward closed, a blocked opening remains physically safe, and re-requesting OPEN after the blocker leaves clears the obstruction latch without duplicating the original use sound.
+The Application door regression also protects the consumer seam itself: `request_open()` does not toggle an opening/open door toward closed, a blocked opening remains physically safe, and re-requesting OPEN after the blocker leaves clears the obstruction latch without duplicating the original use sound. The ordinary door's full-width visual leaf is independent from a slightly inset physical sweep collider so exact-fit authored jambs do not snag the hinge motion.
 
 This is a micro-proof, not the final production nav-bake policy. Runtime synchronous baking is acceptable for the tiny fixture; Phase 5/production scaling may replace it with cached/prebaked/background work without changing authored patrol/door semantics.
 
