@@ -49,6 +49,7 @@ var _patrol_cycle_count: int = 0
 var _max_observed_path_x: float = -INF
 var _max_observed_path_point_count: int = 0
 var _last_error: String = ""
+var _restored_goal_id: String = ""
 
 
 func _ready() -> void:
@@ -133,6 +134,9 @@ func capture_semantic_state() -> Dictionary:
 		"persistent_id": persistent_id,
 		"actor_id": guard_id,
 		"life_state": _life_state,
+		"transform": global_transform,
+		"velocity": velocity,
+		"goal_id": _current_goal_id(),
 	}
 
 
@@ -143,14 +147,47 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		and int(_world_session.get("state")) == WorldSession.State.PLAYING
 	):
 		return false
+	if snapshot.size() != 6:
+		return false
 	if str(snapshot.get("persistent_id", "")).strip_edges() != persistent_id:
 		return false
 	if str(snapshot.get("actor_id", "")).strip_edges() != guard_id:
 		return false
 	var restored_state: StringName = snapshot.get("life_state", &"")
-	if not _is_valid_life_state(restored_state):
+	var restored_goal_id: String = str(snapshot.get("goal_id", "")).strip_edges()
+	if (
+		not _is_valid_life_state(restored_state)
+		or (
+			restored_goal_id != patrol_a_id
+			and restored_goal_id != patrol_b_id
+		)
+		or typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
+		or typeof(snapshot.get("velocity", null)) != TYPE_VECTOR3
+	):
 		return false
+	var restored_transform: Transform3D = snapshot["transform"]
+	var restored_velocity: Vector3 = snapshot["velocity"]
+	if (
+		not _is_finite_transform(restored_transform)
+		or not _is_finite_vector(restored_velocity)
+	):
+		return false
+
+	global_transform = restored_transform
+	velocity = restored_velocity
+	_restored_goal_id = restored_goal_id
+	_target_index = 0 if restored_goal_id == patrol_a_id else 1
 	_apply_life_state(restored_state)
+	if _configured and _navigation_agent != null and _patrol_positions.size() == 2:
+		_navigation_agent.target_position = _patrol_positions[_target_index]
+		_restored_goal_id = ""
+	return true
+
+
+func reconcile_after_restore() -> bool:
+	_refresh_life_state_presentation()
+	if _configured and _navigation_agent != null and _patrol_positions.size() == 2:
+		_navigation_agent.target_position = _patrol_positions[_target_index]
 	return true
 
 
@@ -200,10 +237,16 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		return false
 
 	_patrol_positions = [patrol_a.global_position, patrol_b.global_position]
-	_target_index = 1
+	if _restored_goal_id == patrol_a_id:
+		_target_index = 0
+	elif _restored_goal_id == patrol_b_id:
+		_target_index = 1
+	else:
+		_target_index = 1
 	_door = door
 	_configured = true
 	_navigation_agent.target_position = _patrol_positions[_target_index]
+	_restored_goal_id = ""
 	return true
 
 
@@ -596,6 +639,25 @@ func _is_runtime_transition_allowed(
 	if from_state == LIFE_UNCONSCIOUS:
 		return to_state == LIFE_DEAD
 	return false
+
+
+func _current_goal_id() -> String:
+	if not _restored_goal_id.is_empty():
+		return _restored_goal_id
+	return patrol_a_id if _target_index == 0 else patrol_b_id
+
+
+func _is_finite_vector(value: Vector3) -> bool:
+	return is_finite(value.x) and is_finite(value.y) and is_finite(value.z)
+
+
+func _is_finite_transform(value: Transform3D) -> bool:
+	return (
+		_is_finite_vector(value.origin)
+		and _is_finite_vector(value.basis.x)
+		and _is_finite_vector(value.basis.y)
+		and _is_finite_vector(value.basis.z)
+	)
 
 
 func _find_world_session() -> Node:

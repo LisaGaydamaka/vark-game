@@ -215,6 +215,40 @@ func get_input_view_pose() -> Dictionary:
 	}
 
 
+func capture_semantic_state() -> Dictionary:
+	return {
+		"transform": global_transform,
+		"velocity": velocity,
+	}
+
+
+func apply_semantic_state(snapshot: Dictionary) -> bool:
+	if (
+		snapshot.size() != 2
+		or typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
+		or typeof(snapshot.get("velocity", null)) != TYPE_VECTOR3
+	):
+		return false
+	var restored_transform: Transform3D = snapshot["transform"]
+	var restored_velocity: Vector3 = snapshot["velocity"]
+	if (
+		not _is_finite_transform(restored_transform)
+		or not _is_finite_vector(restored_velocity)
+	):
+		return false
+	global_transform = restored_transform
+	velocity = restored_velocity
+	if velocity_state != null:
+		velocity_state.capture_body_as_controlled(self)
+	return true
+
+
+func reconcile_after_restore() -> bool:
+	if velocity_state != null:
+		velocity_state.capture_body_as_controlled(self)
+	return true
+
+
 func apply_input_view_pose(pose: Dictionary) -> bool:
 	for key: String in ["body_yaw", "head_pitch", "head_yaw"]:
 		var value: Variant = pose.get(key, null)
@@ -470,3 +504,16 @@ func _create_junk_hud() -> void:
 	junk_hud_material = StandardMaterial3D.new()
 	junk_hud_material.cull_mode = BaseMaterial3D.CULL_BACK
 	junk_hud_mesh.material_override = junk_hud_material
+
+
+func _is_finite_vector(value: Vector3) -> bool:
+	return is_finite(value.x) and is_finite(value.y) and is_finite(value.z)
+
+
+func _is_finite_transform(value: Transform3D) -> bool:
+	return (
+		_is_finite_vector(value.origin)
+		and _is_finite_vector(value.basis.x)
+		and _is_finite_vector(value.basis.y)
+		and _is_finite_vector(value.basis.z)
+	)

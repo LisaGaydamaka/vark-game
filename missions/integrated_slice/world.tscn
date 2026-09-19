@@ -211,6 +211,7 @@ no_depth_test = true
 
 [node name="OrdinaryDoor" parent="." instance=ExtResource("3_door")]
 position = Vector3(-0.65, 0, 0)
+persistent_id = "slice.door"
 door_id = &"door.slice"
 transition_seconds = 0.7
 gameplay_sound_strength = 0.65
@@ -309,6 +310,7 @@ omni_range = 5.8
 light_energy = 3.0
 shadow_enabled = true
 script = ExtResource("13_light")
+persistent_id = "slice.light.north"
 gameplay_light_id = &"light.slice_north"
 gameplay_strength = 1.0
 
@@ -373,10 +375,12 @@ crouched_strength_scale = 0.45
 
 [node name="CrateA" parent="." instance=ExtResource("4_prop")]
 position = Vector3(-2.4, 0.3, 4.8)
+persistent_id = "slice.prop.a"
 prop_id = &"prop.slice.a"
 
 [node name="CrateB" parent="." instance=ExtResource("4_prop")]
 position = Vector3(-1.45, 0.3, 4.8)
+persistent_id = "slice.prop.b"
 prop_id = &"prop.slice.b"
 
 [node name="ObjectiveState" type="Node" parent="."]

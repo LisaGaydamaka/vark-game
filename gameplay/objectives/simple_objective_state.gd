@@ -109,6 +109,74 @@ func get_debug_summary() -> Dictionary:
 	}
 
 
+func get_semantic_save_id() -> String:
+	return "objective_state:%s:%s" % [objective_id, exit_id]
+
+
+func capture_semantic_state() -> Dictionary:
+	return {
+		"objective_id": objective_id,
+		"exit_id": exit_id,
+		"objective_complete": _objective_complete,
+		"mission_complete": _mission_complete,
+		"objective_completion_count": _objective_completion_count,
+		"exit_attempt_count": _exit_attempt_count,
+		"blocked_exit_count": _blocked_exit_count,
+		"mission_completion_count": _mission_completion_count,
+	}
+
+
+func apply_semantic_state(snapshot: Dictionary) -> bool:
+	if (
+		_world_session != null
+		and is_instance_valid(_world_session)
+		and int(_world_session.get("state")) == WorldSession.State.PLAYING
+	):
+		return false
+	if snapshot.size() != 8:
+		return false
+	if snapshot.get("objective_id", &"") != objective_id:
+		return false
+	if snapshot.get("exit_id", &"") != exit_id:
+		return false
+	for key: String in [
+		"objective_complete",
+		"mission_complete",
+	]:
+		if typeof(snapshot.get(key, null)) != TYPE_BOOL:
+			return false
+	for key: String in [
+		"objective_completion_count",
+		"exit_attempt_count",
+		"blocked_exit_count",
+		"mission_completion_count",
+	]:
+		if typeof(snapshot.get(key, null)) != TYPE_INT or int(snapshot[key]) < 0:
+			return false
+	var objective_complete: bool = bool(snapshot["objective_complete"])
+	var mission_complete: bool = bool(snapshot["mission_complete"])
+	if mission_complete and not objective_complete:
+		return false
+
+	_objective_complete = objective_complete
+	_mission_complete = mission_complete
+	_objective_completion_count = int(snapshot["objective_completion_count"])
+	_exit_attempt_count = int(snapshot["exit_attempt_count"])
+	_blocked_exit_count = int(snapshot["blocked_exit_count"])
+	_mission_completion_count = int(snapshot["mission_completion_count"])
+	return true
+
+
+func reconcile_after_restore() -> bool:
+	_refresh_status()
+	return true
+
+
+func after_restore() -> bool:
+	_refresh_status()
+	return true
+
+
 func _on_objective_complete_requested(event: Dictionary) -> bool:
 	var payload: Dictionary = event.get("payload", {})
 	if payload.get("objective_id", &"") != objective_id:

@@ -303,7 +303,40 @@ func _is_valid_session_envelope(envelope: Dictionary) -> bool:
 	):
 		return false
 	var gameplay_time: float = float(gameplay_time_value)
-	return is_finite(gameplay_time) and gameplay_time >= 0.0
+	if not is_finite(gameplay_time) or gameplay_time < 0.0:
+		return false
+	var world_state: Variant = envelope.get("world_state", null)
+	return (
+		typeof(world_state) == TYPE_DICTIONARY
+		and _is_valid_world_state_structure(world_state as Dictionary)
+	)
+
+
+func _is_valid_world_state_structure(world_state: Dictionary) -> bool:
+	if not _is_detached_value(world_state):
+		return false
+	if (
+		typeof(world_state.get("object_existence", null)) != TYPE_DICTIONARY
+		or typeof(world_state.get("persistent_entities", null)) != TYPE_DICTIONARY
+		or typeof(world_state.get("player", null)) != TYPE_DICTIONARY
+		or typeof(world_state.get("semantic_owners", null)) != TYPE_DICTIONARY
+		or typeof(world_state.get("mission_script_state", null)) != TYPE_DICTIONARY
+	):
+		return false
+	var existence: Dictionary = world_state.get("object_existence", {})
+	if (
+		typeof(existence.get("authored_tombstones", null)) != TYPE_ARRAY
+		or typeof(existence.get("runtime_entities", null)) != TYPE_ARRAY
+	):
+		return false
+	# The current slice contains neither permanent authored removals nor
+	# runtime-created persistent objects. Reject unsupported non-empty sections
+	# before destructive replacement; later roadmap items extend these sections.
+	return (
+		(existence.get("authored_tombstones", []) as Array).is_empty()
+		and (existence.get("runtime_entities", []) as Array).is_empty()
+		and (world_state.get("mission_script_state", {}) as Dictionary).is_empty()
+	)
 
 
 func _is_valid_view_pose(view_pose: Dictionary) -> bool:

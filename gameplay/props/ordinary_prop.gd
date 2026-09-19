@@ -27,6 +27,7 @@ const COLLISION_LAYER_ORDINARY_PROP: int = 1 << 2
 const COLLISION_LAYER_PROP_IGNORING_PLAYER: int = 1 << 3
 
 
+@export var persistent_id: String = ""
 @export var prop_id: StringName = &"prop"
 @export var visual_model: Mesh
 @export var base_color: Color = Color(0.42, 0.27, 0.12, 1.0)
@@ -191,6 +192,18 @@ func _capture_dynamic_contact_state(state: PhysicsDirectBodyState3D) -> void:
 			normal = -normal
 		if normal.y >= minimum_support_normal_y:
 			_dynamic_support_valid = true
+
+
+func is_vark_persistent_entity() -> bool:
+	return not persistent_id.strip_edges().is_empty()
+
+
+func get_persistent_id() -> String:
+	return persistent_id
+
+
+func get_content_id() -> String:
+	return str(prop_id)
 
 
 func can_interact(interactor: Node) -> bool:
@@ -403,8 +416,11 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	return true
 
 
-func reconcile_after_restore(holder: Node = null) -> bool:
+func reconcile_after_restore() -> bool:
 	if _phase == PHASE_CARRIED_JUNK:
+		var holder: Node = null
+		if _world_session != null and is_instance_valid(_world_session):
+			holder = _world_session.get("player") as Node
 		if holder == null or not holder.has_method("reconcile_carried_junk_prop"):
 			return false
 		return bool(holder.call("reconcile_carried_junk_prop", self))

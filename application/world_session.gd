@@ -12,6 +12,11 @@ const SEMANTIC_EVENT_CASCADE_LIMIT: int = 256
 const SEMANTIC_EVENT_TRACE_LIMIT: int = 24
 const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000
 const GAMEPLAY_SOUND_EVENT_NAME: StringName = &"gameplay.sound"
+const SEMANTIC_SAVE_ID_METHOD: StringName = &"get_semantic_save_id"
+const CAPTURE_SEMANTIC_STATE_METHOD: StringName = &"capture_semantic_state"
+const APPLY_SEMANTIC_STATE_METHOD: StringName = &"apply_semantic_state"
+const RECONCILE_AFTER_RESTORE_METHOD: StringName = &"reconcile_after_restore"
+const AFTER_RESTORE_METHOD: StringName = &"after_restore"
 
 
 enum State {
@@ -41,6 +46,8 @@ var _semantic_event_draining: bool = false
 var _next_semantic_event_sequence: int = 1
 var _stable_gameplay_boundary_serial: int = 0
 var _last_semantic_event_error: String = ""
+var _last_restore_error: String = ""
+var _restore_state_applied: bool = false
 
 
 func _init() -> void:
@@ -73,6 +80,10 @@ func capture_save_envelope() -> Dictionary:
 	):
 		return {}
 
+	var world_state: Dictionary = _capture_world_semantic_state()
+	if world_state.is_empty():
+		return {}
+
 	return {
 		"source_session_id": session_id,
 		"stable_boundary_serial": _stable_gameplay_boundary_serial,
@@ -83,21 +94,24 @@ func capture_save_envelope() -> Dictionary:
 			if mission_definition != null
 			else ""
 		),
+		"world_state": world_state,
 	}
 
 
 func begin_restore_from_envelope(envelope: Dictionary) -> bool:
+	_last_restore_error = ""
+	_restore_state_applied = false
 	if state != State.READY or world == null:
-		return false
+		return _fail_restore("WorldSession restore requires a READY candidate world.")
 	if not _is_detached_semantic_value(envelope):
-		return false
+		return _fail_restore("WorldSession restore envelope is not detached semantic data.")
 	if (
 		int(envelope.get("source_session_id", 0)) <= 0
 		or int(envelope.get("stable_boundary_serial", 0)) <= 0
 		or str(envelope.get("world_scene_path", ""))
 			!= world_scene.resource_path
 	):
-		return false
+		return _fail_restore("WorldSession restore envelope does not match the candidate world.")
 
 	var expected_definition_path: String = (
 		mission_definition.resource_path
@@ -108,7 +122,7 @@ func begin_restore_from_envelope(envelope: Dictionary) -> bool:
 		str(envelope.get("mission_definition_path", ""))
 		!= expected_definition_path
 	):
-		return false
+		return _fail_restore("WorldSession restore MissionDefinition path does not match the candidate.")
 
 	var gameplay_time_value: Variant = envelope.get(
 		"gameplay_time_seconds",
@@ -118,9 +132,16 @@ func begin_restore_from_envelope(envelope: Dictionary) -> bool:
 		typeof(gameplay_time_value) != TYPE_FLOAT
 		and typeof(gameplay_time_value) != TYPE_INT
 	):
-		return false
+		return _fail_restore("WorldSession restore gameplay time is invalid.")
 	var restored_gameplay_time: float = float(gameplay_time_value)
 	if not is_finite(restored_gameplay_time) or restored_gameplay_time < 0.0:
+		return _fail_restore("WorldSession restore gameplay time is invalid.")
+
+	var world_state_value: Variant = envelope.get("world_state", null)
+	if typeof(world_state_value) != TYPE_DICTIONARY:
+		return _fail_restore("WorldSession restore envelope has no semantic world state.")
+	var world_state: Dictionary = world_state_value
+	if not _validate_world_state_structure(world_state):
 		return false
 
 	state = State.RESTORING
@@ -129,12 +150,323 @@ func begin_restore_from_envelope(envelope: Dictionary) -> bool:
 	return true
 
 
-func complete_restore() -> bool:
+func apply_restore_world_state(world_state: Dictionary) -> bool:
 	if state != State.RESTORING or world == null:
+		return _fail_restore("Semantic restore requires a RESTORING WorldSession.")
+	if not _validate_world_state_structure(world_state):
+		return false
+
+	# Object existence is established before semantic state. The current slice
+	# has no tombstones or runtime-created persistent objects, so non-empty
+	# existence sections fail closed rather than being silently ignored.
+	var existence: Dictionary = world_state.get("object_existence", {})
+	var tombstones: Array = existence.get("authored_tombstones", [])
+	var runtime_entities: Array = existence.get("runtime_entities", [])
+	if not tombstones.is_empty() or not runtime_entities.is_empty():
+		return _fail_restore(
+			"Current Phase 4.2 slice cannot restore tombstones or runtime-persistent entities."
+		)
+
+	var persistent_snapshots: Dictionary = world_state.get(
+		"persistent_entities",
+		{}
+	)
+	var persistent_ids: Array = persistent_snapshots.keys()
+	persistent_ids.sort()
+	for id_value: Variant in persistent_ids:
+		var persistent_id: String = str(id_value).strip_edges()
+		var lookup: Dictionary = lookup_persistent_entity(persistent_id)
+		var owner := lookup.get("node") as Node
+		if not bool(lookup.get("ok", false)) or owner == null:
+			return _fail_restore(
+				"Restore could not resolve persistent entity '%s'." % persistent_id
+			)
+		if not _apply_owner_snapshot(
+			owner,
+			persistent_snapshots[persistent_id],
+			"persistent entity '%s'" % persistent_id
+		):
+			return false
+
+	if (
+		player == null
+		or not player.has_method(APPLY_SEMANTIC_STATE_METHOD)
+		or not _apply_owner_snapshot(
+			player,
+			world_state.get("player", {}),
+			"player"
+		)
+	):
+		return _fail_restore("Restore could not apply player semantic state.")
+
+	var semantic_owners: Dictionary = _collect_semantic_save_owners()
+	if semantic_owners.is_empty() and not (
+		world_state.get("semantic_owners", {}) as Dictionary
+	).is_empty():
+		return false
+	var semantic_snapshots: Dictionary = world_state.get(
+		"semantic_owners",
+		{}
+	)
+	var semantic_ids: Array = semantic_snapshots.keys()
+	semantic_ids.sort()
+	for id_value: Variant in semantic_ids:
+		var save_id: String = str(id_value)
+		var owner := semantic_owners.get(save_id) as Node
+		if owner == null:
+			return _fail_restore(
+				"Restore could not resolve semantic save owner '%s'." % save_id
+			)
+		if not _apply_owner_snapshot(
+			owner,
+			semantic_snapshots[save_id],
+			"semantic owner '%s'" % save_id
+		):
+			return false
+
+	var mission_script_state: Dictionary = world_state.get(
+		"mission_script_state",
+		{}
+	)
+	if not mission_script_state.is_empty():
+		return _fail_restore(
+			"Current slice has no mission-script semantic state owner."
+		)
+
+	for id_value: Variant in persistent_ids:
+		var persistent_id: String = str(id_value).strip_edges()
+		var lookup: Dictionary = lookup_persistent_entity(persistent_id)
+		var owner := lookup.get("node") as Node
+		if owner != null and not _reconcile_owner(
+			owner,
+			"persistent entity '%s'" % persistent_id
+		):
+			return false
+	if not _reconcile_owner(player, "player"):
+		return false
+	for id_value: Variant in semantic_ids:
+		var save_id: String = str(id_value)
+		var owner := semantic_owners.get(save_id) as Node
+		if owner != null and not _reconcile_owner(
+			owner,
+			"semantic owner '%s'" % save_id
+		):
+			return false
+
+	for id_value: Variant in persistent_ids:
+		var persistent_id: String = str(id_value).strip_edges()
+		var lookup: Dictionary = lookup_persistent_entity(persistent_id)
+		var owner := lookup.get("node") as Node
+		if owner != null and not _after_restore_owner(
+			owner,
+			"persistent entity '%s'" % persistent_id
+		):
+			return false
+	if not _after_restore_owner(player, "player"):
+		return false
+	for id_value: Variant in semantic_ids:
+		var save_id: String = str(id_value)
+		var owner := semantic_owners.get(save_id) as Node
+		if owner != null and not _after_restore_owner(
+			owner,
+			"semantic owner '%s'" % save_id
+		):
+			return false
+
+	var restored_state: Dictionary = _capture_world_semantic_state()
+	if restored_state.is_empty() or restored_state != world_state:
+		return _fail_restore(
+			"Restored semantic world state did not validate against the captured snapshot."
+		)
+
+	_restore_state_applied = true
+	return true
+
+
+func complete_restore() -> bool:
+	if state != State.RESTORING or world == null or not _restore_state_applied:
 		return false
 	state = State.READY
 	process_mode = Node.PROCESS_MODE_DISABLED
 	return true
+
+
+func get_last_restore_error() -> String:
+	return _last_restore_error
+
+
+func _capture_world_semantic_state() -> Dictionary:
+	if (
+		player == null
+		or entity_registry == null
+		or not player.has_method(CAPTURE_SEMANTIC_STATE_METHOD)
+	):
+		return {}
+
+	var player_snapshot: Variant = player.call(CAPTURE_SEMANTIC_STATE_METHOD)
+	if (
+		typeof(player_snapshot) != TYPE_DICTIONARY
+		or not _is_detached_semantic_value(player_snapshot)
+	):
+		push_error("Player semantic snapshot is invalid or retains live state.")
+		return {}
+
+	var persistent_snapshots: Dictionary = {}
+	var entries: Array[Dictionary] = entity_registry.call(
+		"get_persistent_entries"
+	)
+	for entry: Dictionary in entries:
+		var owner := entry.get("node") as Node
+		if owner == null or not owner.has_method(CAPTURE_SEMANTIC_STATE_METHOD):
+			continue
+		var persistent_id: String = str(
+			entry.get("persistent_id", "")
+		).strip_edges()
+		var snapshot: Variant = owner.call(CAPTURE_SEMANTIC_STATE_METHOD)
+		if (
+			persistent_id.is_empty()
+			or typeof(snapshot) != TYPE_DICTIONARY
+			or not _is_detached_semantic_value(snapshot)
+		):
+			push_error(
+				"Persistent entity '%s' produced invalid semantic save state."
+				% persistent_id
+			)
+			return {}
+		persistent_snapshots[persistent_id] = (
+			snapshot as Dictionary
+		).duplicate(true)
+
+	var semantic_owners: Dictionary = _collect_semantic_save_owners()
+	if _last_restore_error != "":
+		return {}
+	var semantic_snapshots: Dictionary = {}
+	var semantic_ids: Array = semantic_owners.keys()
+	semantic_ids.sort()
+	for id_value: Variant in semantic_ids:
+		var save_id: String = str(id_value)
+		var owner := semantic_owners[save_id] as Node
+		if owner == null or not owner.has_method(CAPTURE_SEMANTIC_STATE_METHOD):
+			push_error(
+				"Semantic save owner '%s' has no capture_semantic_state()."
+				% save_id
+			)
+			return {}
+		var snapshot: Variant = owner.call(CAPTURE_SEMANTIC_STATE_METHOD)
+		if (
+			typeof(snapshot) != TYPE_DICTIONARY
+			or not _is_detached_semantic_value(snapshot)
+		):
+			push_error(
+				"Semantic save owner '%s' produced invalid detached state."
+				% save_id
+			)
+			return {}
+		semantic_snapshots[save_id] = (
+			snapshot as Dictionary
+		).duplicate(true)
+
+	return {
+		"object_existence": {
+			"authored_tombstones": [],
+			"runtime_entities": [],
+		},
+		"persistent_entities": persistent_snapshots,
+		"player": (player_snapshot as Dictionary).duplicate(true),
+		"semantic_owners": semantic_snapshots,
+		"mission_script_state": {},
+	}
+
+
+func _collect_semantic_save_owners() -> Dictionary:
+	_last_restore_error = ""
+	var result: Dictionary = {}
+	if world == null:
+		_fail_restore("Cannot collect semantic save owners without a world.")
+		return result
+	var nodes: Array[Node] = [world]
+	nodes.append_array(world.find_children("*", "", true, false))
+	for owner: Node in nodes:
+		if not owner.has_method(SEMANTIC_SAVE_ID_METHOD):
+			continue
+		var save_id: String = str(
+			owner.call(SEMANTIC_SAVE_ID_METHOD)
+		).strip_edges()
+		if save_id.is_empty():
+			_fail_restore("A semantic save owner returned an empty save ID.")
+			return {}
+		if result.has(save_id):
+			_fail_restore(
+				"Duplicate semantic save owner ID '%s'." % save_id
+			)
+			return {}
+		result[save_id] = owner
+	return result
+
+
+func _validate_world_state_structure(world_state: Dictionary) -> bool:
+	if not _is_detached_semantic_value(world_state):
+		return _fail_restore("Semantic world state is not detached value data.")
+	if (
+		typeof(world_state.get("object_existence", null)) != TYPE_DICTIONARY
+		or typeof(world_state.get("persistent_entities", null)) != TYPE_DICTIONARY
+		or typeof(world_state.get("player", null)) != TYPE_DICTIONARY
+		or typeof(world_state.get("semantic_owners", null)) != TYPE_DICTIONARY
+		or typeof(world_state.get("mission_script_state", null)) != TYPE_DICTIONARY
+	):
+		return _fail_restore("Semantic world state is missing required ownership sections.")
+	var existence: Dictionary = world_state.get("object_existence", {})
+	if (
+		typeof(existence.get("authored_tombstones", null)) != TYPE_ARRAY
+		or typeof(existence.get("runtime_entities", null)) != TYPE_ARRAY
+	):
+		return _fail_restore("Semantic object-existence state is malformed.")
+	return true
+
+
+func _apply_owner_snapshot(
+	owner: Node,
+	snapshot_value: Variant,
+	label: String
+) -> bool:
+	if (
+		owner == null
+		or not owner.has_method(APPLY_SEMANTIC_STATE_METHOD)
+		or typeof(snapshot_value) != TYPE_DICTIONARY
+		or not _is_detached_semantic_value(snapshot_value)
+	):
+		return _fail_restore("Cannot apply semantic state for %s." % label)
+	var result: Variant = owner.call(
+		APPLY_SEMANTIC_STATE_METHOD,
+		(snapshot_value as Dictionary).duplicate(true)
+	)
+	if typeof(result) != TYPE_BOOL or not bool(result):
+		return _fail_restore("Semantic state application failed for %s." % label)
+	return true
+
+
+func _reconcile_owner(owner: Node, label: String) -> bool:
+	if owner == null or not owner.has_method(RECONCILE_AFTER_RESTORE_METHOD):
+		return true
+	var result: Variant = owner.call(RECONCILE_AFTER_RESTORE_METHOD)
+	if typeof(result) == TYPE_BOOL and not bool(result):
+		return _fail_restore("Restore reconciliation failed for %s." % label)
+	return true
+
+
+func _after_restore_owner(owner: Node, label: String) -> bool:
+	if owner == null or not owner.has_method(AFTER_RESTORE_METHOD):
+		return true
+	var result: Variant = owner.call(AFTER_RESTORE_METHOD)
+	if typeof(result) == TYPE_BOOL and not bool(result):
+		return _fail_restore("after_restore failed for %s." % label)
+	return true
+
+
+func _fail_restore(message: String) -> bool:
+	_last_restore_error = message
+	push_error(message)
+	return false
 
 
 func get_stable_gameplay_boundary_serial() -> int:
@@ -274,6 +606,8 @@ func build(
 	mission_definition = definition
 	state = State.BUILDING
 	gameplay_time_seconds = 0.0
+	_last_restore_error = ""
+	_restore_state_applied = false
 	_reset_semantic_event_state()
 	process_mode = Node.PROCESS_MODE_DISABLED
 
@@ -407,6 +741,8 @@ func teardown() -> void:
 	world_scene = null
 	session_id = 0
 	gameplay_time_seconds = 0.0
+	_last_restore_error = ""
+	_restore_state_applied = false
 	state = State.EMPTY
 
 

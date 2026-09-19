@@ -27,6 +27,9 @@ const PauseArbitrationRegressions = preload(
 const SaveCoordinatorRegressions = preload(
 	"res://tests/application/save_coordinator_regressions.gd"
 )
+const SemanticSnapshotRegressions = preload(
+	"res://tests/application/semantic_snapshot_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -386,6 +389,14 @@ func _run_tests() -> void:
 
 	application.queue_free()
 	await process_frame
+
+	var semantic_snapshot_regressions: RefCounted = (
+		SemanticSnapshotRegressions.new()
+	)
+	await semantic_snapshot_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
 
 	_print_summary()
 	quit(1 if not failures.is_empty() else 0)

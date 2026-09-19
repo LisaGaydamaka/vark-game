@@ -64,6 +64,19 @@ func content_count() -> int:
 	return _by_content_id.size()
 
 
+func get_persistent_entries() -> Array[Dictionary]:
+	var ids: Array = _by_persistent_id.keys()
+	ids.sort()
+	var result: Array[Dictionary] = []
+	for id_value: Variant in ids:
+		var persistent_id: String = str(id_value)
+		result.append({
+			"persistent_id": persistent_id,
+			"node": _by_persistent_id[persistent_id],
+		})
+	return result
+
+
 func lookup_persistent_id(persistent_id: String) -> Dictionary:
 	return _lookup(_by_persistent_id, persistent_id, "persistent_id")
 

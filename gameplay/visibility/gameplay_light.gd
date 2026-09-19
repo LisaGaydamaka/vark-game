@@ -2,6 +2,7 @@ class_name VarkGameplayLight
 extends OmniLight3D
 
 
+@export var persistent_id: String = ""
 @export var gameplay_light_id: StringName = &"light"
 @export_range(0.0, 4.0, 0.01) var gameplay_strength: float = 1.0
 @export var gameplay_enabled: bool = true
@@ -10,6 +11,41 @@ extends OmniLight3D
 
 func _ready() -> void:
 	add_to_group(&"vark_gameplay_light")
+
+
+func is_vark_persistent_entity() -> bool:
+	return not persistent_id.strip_edges().is_empty()
+
+
+func get_persistent_id() -> String:
+	return persistent_id
+
+
+func get_content_id() -> String:
+	return str(gameplay_light_id)
+
+
+func capture_semantic_state() -> Dictionary:
+	return {
+		"gameplay_enabled": gameplay_enabled,
+		"visible": visible,
+	}
+
+
+func apply_semantic_state(snapshot: Dictionary) -> bool:
+	if (
+		snapshot.size() != 2
+		or typeof(snapshot.get("gameplay_enabled", null)) != TYPE_BOOL
+		or typeof(snapshot.get("visible", null)) != TYPE_BOOL
+	):
+		return false
+	gameplay_enabled = bool(snapshot["gameplay_enabled"])
+	visible = bool(snapshot["visible"])
+	return true
+
+
+func reconcile_after_restore() -> bool:
+	return true
 
 
 func sample_gameplay_exposure(

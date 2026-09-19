@@ -10,6 +10,7 @@ const STATE_CHANGED_EVENT_NAME: StringName = &"door.state_changed"
 const USE_SOUND_KIND: StringName = &"door.use"
 
 
+@export var persistent_id: String = ""
 @export var door_id: StringName = &"door"
 @export var transition_seconds: float = 0.55
 @export var open_angle_degrees: float = 90.0
@@ -83,6 +84,18 @@ func _physics_process(delta: float) -> void:
 		return
 
 	_sync_derived_state()
+
+
+func is_vark_persistent_entity() -> bool:
+	return not persistent_id.strip_edges().is_empty()
+
+
+func get_persistent_id() -> String:
+	return persistent_id
+
+
+func get_content_id() -> String:
+	return str(door_id)
 
 
 func can_interact(_interactor: Node) -> bool:

@@ -414,6 +414,13 @@ func _restore_world_from_snapshot(snapshot: Dictionary) -> bool:
 		_discard_session_candidate(candidate)
 		_show_main_menu()
 		return false
+	if not bool(candidate.call(
+		"apply_restore_world_state",
+		session_snapshot.get("world_state", {})
+	)):
+		_discard_session_candidate(candidate)
+		_show_main_menu()
+		return false
 
 	var restored_player := candidate.get("player") as Node
 	if (

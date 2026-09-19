@@ -55,6 +55,57 @@ func get_debug_summary() -> Dictionary:
 	}
 
 
+func get_semantic_save_id() -> String:
+	return "route_trigger:%s:%s:%s" % [
+		event_name,
+		payload_key,
+		payload_id,
+	]
+
+
+func capture_semantic_state() -> Dictionary:
+	return {
+		"event_name": event_name,
+		"payload_key": payload_key,
+		"payload_id": payload_id,
+		"one_shot_on_queue": one_shot_on_queue,
+		"armed": _armed,
+		"queued_count": _queued_count,
+	}
+
+
+func apply_semantic_state(snapshot: Dictionary) -> bool:
+	if (
+		_world_session != null
+		and is_instance_valid(_world_session)
+		and int(_world_session.get("state")) == WorldSession.State.PLAYING
+	):
+		return false
+	if snapshot.size() != 6:
+		return false
+	if (
+		snapshot.get("event_name", &"") != event_name
+		or snapshot.get("payload_key", &"") != payload_key
+		or snapshot.get("payload_id", &"") != payload_id
+		or snapshot.get("one_shot_on_queue", false) != one_shot_on_queue
+		or typeof(snapshot.get("armed", null)) != TYPE_BOOL
+		or typeof(snapshot.get("queued_count", null)) != TYPE_INT
+		or int(snapshot.get("queued_count", -1)) < 0
+	):
+		return false
+	_armed = bool(snapshot["armed"])
+	_queued_count = int(snapshot["queued_count"])
+	return true
+
+
+func reconcile_after_restore() -> bool:
+	return true
+
+
+func after_restore() -> bool:
+	return true
+
+
 func _on_body_entered(body: Node) -> void:
 	queue_for_body(body)
 

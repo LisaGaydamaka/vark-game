@@ -297,6 +297,17 @@ The application regression suite now exercises the first save/restore ownership 
 `save_coordinator_regressions.gd`, wired through the authoritative Application suite and therefore `tests/run_all_tests.gd`, proves: a restart cancels a still-pending source request rather than retargeting it; capture occurs at the requested next stable serial and includes current event-cadence look; later live/caller mutation cannot alter the stored snapshot; captured data can commit after its source session is destroyed; a newer request supersedes an older captured generation for the same slot; committed reads are detached; quickload ignores a newer in-progress request and consumes only the last fully committed slot; and the sole-world restore path rebuilds a disabled candidate, restores gameplay time/view orientation, then resumes exactly one authoritative PLAYING session with gameplay/look input enabled. No manual acceptance is required for this infrastructure-only item; durable filesystem behavior and broad semantic/transient restoration remain later Phase 4 coverage.
 
 
+## Phase 4.2 semantic snapshots and ordered reconstruction
+
+The Application suite now wires `tests/application/semantic_snapshot_regressions.gd` against the real Integrated Slice. It extends the 4.1 detached quicksave envelope with explicit semantic ownership rather than a node-tree dump: object-existence sections, persistent-entity snapshots keyed by persistent ID, player semantic state, stable non-entity semantic owners, and an explicit mission-script section.
+
+The current slice assigns persistent IDs to its ordinary door, both ordinary props, gameplay light, and existing guard. Door/prop implementations reuse their established semantic capture/apply seams; gameplay light persists enabled/visible truth; the guard persists life state, spatial state, and the current resolved patrol-goal semantic ID. Player semantic capture covers body transform/velocity while the 4.1 input-owned view pose stays separate. Objective/fact state, objective/exit attempt/completion counters, one-shot route-trigger arming/counts, and guard-awareness history use stable semantic-save-owner IDs. No current slice system owns independent mission-script state.
+
+The regression deliberately captures a non-default coherent world: partial door progress, moved settled prop, disabled gameplay light, changed player/view pose, a guard whose patrol goal has already changed from its initial choice, completed objective plus an earlier blocked-exit statistic, a consumed one-shot objective trigger, and real guard visual-awareness history. It then mutates those live owners after capture and quickloads. The replacement must be a fresh world, must reconstruct the saved values by stable identity while `RESTORING`, must have no queued restore-time semantic gameplay events when play begins, and must retain the resolved guard goal after the slice's deferred navigation rebuild.
+
+Object existence is explicit even though the current slice has no permanent authored removals or runtime-created persistent entities: both sections must be empty, and unexpected non-empty data fails closed instead of being skipped. `mission_script_state` is likewise explicitly empty because no current save-owning mission script exists. This is coverage of the ordering seam, not an implementation of future tombstones/runtime-spawn persistence. Player traversal restore policy remains Phase 4.3; representative moving door/prop/alert/body transient policies remain Phase 4.4; compatibility/durable filesystem behavior remains Phase 4.6.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.
@@ -1065,7 +1076,7 @@ The current CI barrier:
 - installs Godot `4.7.2` without .NET or export templates;
 - performs `godot --headless --path . --import` so a clean checkout has generated Godot project metadata/class registration before tests load; this clean import is also the authority that ignored/removed `.map.import` sidecars are generated metadata rather than source;
 - runs `godot --headless --path . --script res://tests/run_all_tests.gd`, the same authoritative full-regression command used locally;
-- executes the independent authoring, application menu/development-launch/mission-package/definition/ownership/lifecycle/input/pause-time, props, acoustics, and movement suites through that entry point;
+- executes the independent authoring, application menu/development-launch/mission-package/definition/ownership/lifecycle/input/pause-time/save-snapshot, props, acoustics, and movement suites through that entry point;
 - runs on pushes to `test` and on pull requests if they are used;
 - fails when the all-tests process returns nonzero.
 

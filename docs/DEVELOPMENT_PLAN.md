@@ -1005,7 +1005,7 @@ The accepted 3.10 `VarkSimpleObjectiveState` and semantic route triggers provide
 
 Goal: turn the semantic state contracts and lifecycle used by the slice into ordinary-gameplay quicksave/restore, then prove the same ownership model survives one crude hostile interaction before stealth APIs are hardened.
 
-## 4.1 Save coordinator, detached snapshot capture, and transactional replacement `[~]`
+## 4.1 Save coordinator, detached snapshot capture, and transactional replacement `[x]`
 
 Use the Phase 1 world-session ownership and Phase 3 stable gameplay boundary rather than adding save-only clocks/startup paths.
 
@@ -1044,12 +1044,12 @@ Restore uses the simple sole-world topology already permitted by the foundation 
 
 **Done when:** a request is bound to one source `WorldSession` and captures only at that session's next successful stable boundary; the detached snapshot cannot change when live state or caller-owned copies change; a pending request cancels instead of migrating across teardown; a captured generation can finish committing after source teardown; newer logical-slot requests cannot be overwritten by older commits; quickload reads the latest fully committed snapshot rather than an in-progress newer request; and restore replaces the old world through one non-playing `RESTORING` candidate before gameplay/input resume.
 
-**Automated:** implemented in the existing Application suite through `save_coordinator_regressions.gd`. Coverage verifies source-session cancellation across restart, stable-boundary serial/view-pose capture, detached-copy behavior, post-teardown commit, same-slot generation ordering, latest-committed reads, in-progress-newer-save exclusion during load, fresh-session replacement, restored gameplay time/view orientation, and return to one authoritative PLAYING/input-enabled application state. The suite remains reachable from `tests/run_all_tests.gd`.
+**Automated:** accepted — exact implementation head `2930ab90614602ee706989e7a3696b2e678071a5` passed Godot 4.7.2 GitHub Actions Test run #243. `save_coordinator_regressions.gd` passed source-session cancellation across restart, stable-boundary serial/view-pose capture, detached-copy behavior, post-teardown commit, same-slot generation ordering, latest-committed reads, in-progress-newer-save exclusion during load, fresh-session replacement, restored gameplay time/view orientation, and return to one authoritative PLAYING/input-enabled application state. The run ended with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`, with no new parser/resource/UID/load failures.
 
-**Manual:** none — 4.1 adds deterministic application/session ownership infrastructure only. It deliberately does not yet expose a user-facing quicksave key, durable filesystem write, broad gameplay semantic restore, or target-platform filesystem behavior; those later Phase 4 items own the corresponding focused manual/Windows validation.
+**Manual:** none — 4.1 is accepted from deterministic application/session ownership coverage. It deliberately does not expose a user-facing quicksave key, durable filesystem write, broad gameplay semantic restore, or target-platform filesystem behavior; later Phase 4 items own those surfaces.
 
 
-## 4.2 Semantic snapshots, resolved choices, long-running state, and object-existence order `[ ]`
+## 4.2 Semantic snapshots, resolved choices, long-running state, and object-existence order `[~]`
 
 Persist meaningful state, not arbitrary live node graphs.
 
@@ -1073,6 +1073,30 @@ instantiate/register authored entities
 ```
 
 Long-running saveable behavior stores explicit semantic stage/progress/remaining simulation time. Engine timers, `await` stacks, pending signal continuations, and animation callbacks are reconstructed from that state rather than serialized as truth.
+
+The first 4.2 implementation extends the 4.1 detached envelope with an explicit `world_state` ownership structure rather than serializing live Nodes:
+
+```text
+object_existence
+persistent_entities
+player
+semantic_owners
+mission_script_state
+```
+
+The current Integrated Slice has no permanent authored removals and no runtime-created persistent objects, so `authored_tombstones` and `runtime_entities` are explicitly captured as empty arrays and non-empty values fail closed instead of being silently ignored. The slice likewise has no independent save-owning mission script, so `mission_script_state` is explicitly empty. Future gameplay that introduces those cases must extend the corresponding ownership section rather than bypassing object-existence order.
+
+The real slice door, both ordinary props, gameplay light, and guard now participate in the existing persistent-identity registry with stable slice IDs. Their snapshots use their existing semantic state seams; the guard additionally persists transform/velocity plus its already-resolved current patrol-goal semantic ID so restore resumes the current choice rather than selecting the default goal again. The player snapshot currently owns body transform/velocity while the already-separated 4.1 view pose remains input-owned. Detailed standing/crouched/airborne/hang/mantle/corner/catch policy remains 4.3, and door/prop/guard transient-policy stress remains 4.4.
+
+Objective/fact state, one-shot route-trigger arming/counters, and Integrated Slice guard-awareness history use stable semantic-save-owner IDs rather than fabricated persistent world entities. These owners capture/apply their own facts and current mission-run statistics; restore refreshes derived labels/presentation from semantic truth without re-emitting objective, alarm, dialogue, or other gameplay events.
+
+Restore now performs the bounded 4.2 order while the candidate is processing-disabled in `RESTORING`: validate object-existence sections → resolve/apply persistent-entity snapshots by persistent ID → apply player state → apply stable semantic-owner snapshots → accept the explicit empty mission-script section → reconcile derived/reference state → run optional `after_restore` hooks → recapture and compare the complete semantic world state → only then allow `complete_restore()` to return the candidate to `READY`. Ordinary semantic event queueing remains unavailable until the application later enters `PLAYING`.
+
+**Done when:** the current Integrated Slice quicksave contains detached semantic state for its player, ordinary door, both props, guard life/current goal, gameplay light, objective/fact state, present mission-run counters, one-shot route state, and guard-awareness state; current unsupported tombstone/runtime-persistent/mission-script sections are explicit and fail closed if unexpectedly populated; a fresh quickload resolves owners by stable identity, applies/reconciles/validates them while non-playing, preserves a resolved guard goal, and reaches PLAYING without restore-time semantic event replay.
+
+**Automated:** implemented through new `tests/application/semantic_snapshot_regressions.gd`, wired into the authoritative Application suite and therefore `tests/run_all_tests.gd`. The regression launches the real Integrated Slice, establishes non-default player/view, partial-door progress, moved settled prop, disabled gameplay light, non-default guard patrol goal, objective/fact/statistic state, consumed one-shot trigger, and real visual-awareness history; captures/inspects the detached ownership sections; mutates the live world after capture; quickloads a fresh instance; and verifies all captured semantic owners reconstruct before play with an empty semantic-event queue and the saved guard goal surviving deferred navigation reconstruction.
+
+**Manual:** none — this item exposes no new player-facing save key, durable filesystem behavior, traversal/transient policy, or subjective save/load presentation. Those are owned by later Phase 4 items. 4.2 acceptance is deterministic semantic ownership/order behavior.
 
 ## 4.3 Player transient/traversal restore policy `[ ]`
 
