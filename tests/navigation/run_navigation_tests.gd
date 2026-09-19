@@ -114,6 +114,12 @@ func _assert_application_patrol_and_door() -> void:
 
 	var completed_cycle: bool = await _wait_for_guard_cycle(guard, 720)
 	var final_guard_summary: Dictionary = guard.get_debug_summary()
+	if not completed_cycle:
+		_print_guard_timeout_diagnostics(
+			"production patrol cycle",
+			guard,
+			door
+		)
 	_assert_true(
 		completed_cycle
 		and int(final_guard_summary.get("patrol_leg_count", 0)) >= 2
@@ -171,6 +177,11 @@ func _assert_reimport_rebuild() -> void:
 	var world := session.world as Node3D
 	var ready: bool = await _wait_for_navigation_ready(world, 240)
 	var guard: VarkGuard = _find_guard(world)
+	var door: VarkOrdinaryDoor = (
+		world.get_node_or_null("OrdinaryDoor") as VarkOrdinaryDoor
+		if world != null
+		else null
+	)
 	var patrol_b: VarkPatrolPoint = _find_patrol_point(world, "patrol.b")
 	var navigation_summary: Dictionary = world.call("get_navigation_debug_summary") if world != null else {}
 	_assert_true(
@@ -189,6 +200,12 @@ func _assert_reimport_rebuild() -> void:
 	if ready and guard != null:
 		var reached_edited_target: bool = await _wait_for_patrol_leg(guard, 480)
 		var guard_summary: Dictionary = guard.get_debug_summary()
+		if not reached_edited_target:
+			_print_guard_timeout_diagnostics(
+				"reimport patrol leg",
+				guard,
+				door
+			)
 		_assert_true(
 			reached_edited_target
 			and int(guard_summary.get("patrol_leg_count", 0)) >= 1
@@ -261,6 +278,28 @@ func _find_patrol_point(world: Node3D, patrol_id: String) -> VarkPatrolPoint:
 func _remove_temp_map() -> void:
 	if FileAccess.file_exists(TEMP_REIMPORT_MAP_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(TEMP_REIMPORT_MAP_PATH))
+
+
+func _print_guard_timeout_diagnostics(
+	label: String,
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor
+) -> void:
+	var guard_summary: Dictionary = guard.get_debug_summary() if guard != null else {}
+	var door_summary: Dictionary = {}
+	if door != null:
+		door_summary = {
+			"phase": door.get_semantic_phase(),
+			"open_fraction": door.get_open_fraction(),
+			"motion_blocked": door.is_motion_blocked(),
+			"navigation_passage_open": door.is_navigation_passage_open(),
+			"global_position": door.global_position,
+			"rotation_y": door.rotation.y,
+		}
+	print(
+		"[NAV TIMEOUT] %s guard=%s door=%s"
+		% [label, str(guard_summary), str(door_summary)]
+	)
 
 
 func _assert_true(condition: bool, message: String) -> void:

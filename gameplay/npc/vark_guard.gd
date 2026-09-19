@@ -91,6 +91,8 @@ func get_debug_summary() -> Dictionary:
 		"door_use_count": _door_use_count,
 		"patrol_leg_count": _patrol_leg_count,
 		"patrol_cycle_count": _patrol_cycle_count,
+		"global_position": global_position,
+		"velocity": velocity,
 		"max_observed_path_x": _max_observed_path_x,
 		"max_observed_path_point_count": _max_observed_path_point_count,
 		"last_error": _last_error,
