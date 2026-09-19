@@ -7,6 +7,11 @@ const DOOR_BODY_IN_PASSAGE_METHOD: StringName = &"is_body_in_navigation_passage"
 const DOOR_BLOCKED_BY_METHOD: StringName = &"is_motion_blocked_by"
 const DOOR_SWING_RADIUS_METHOD: StringName = &"get_navigation_swing_radius"
 const DOOR_REQUEST_RETRY_SECONDS: float = 0.35
+const LIFE_STATE_REQUEST_EVENT: StringName = &"actor.life_state_requested"
+const LIFE_STATE_CHANGED_EVENT: StringName = &"actor.life_state_changed"
+const LIFE_CONSCIOUS: StringName = &"conscious"
+const LIFE_UNCONSCIOUS: StringName = &"unconscious"
+const LIFE_DEAD: StringName = &"dead"
 
 enum DoorTraversalState {
 	APPROACHING,
@@ -15,6 +20,8 @@ enum DoorTraversalState {
 	CLEAR,
 }
 
+@export var persistent_id: String = ""
+@export var content_id: String = ""
 @export var guard_id: String = ""
 @export var patrol_a_id: String = ""
 @export var patrol_b_id: String = ""
@@ -23,6 +30,8 @@ enum DoorTraversalState {
 @export var door_use_distance: float = 2.0
 
 var _navigation_agent: NavigationAgent3D = null
+var _world_session: Node = null
+var _life_state: StringName = LIFE_CONSCIOUS
 var _patrol_positions: Array[Vector3] = []
 var _target_index: int = 1
 var _door: Node = null
@@ -48,6 +57,101 @@ func _ready() -> void:
 	collision_mask = 1
 	up_direction = Vector3.UP
 	_ensure_components()
+	_world_session = _find_world_session()
+	if _world_session != null:
+		var registered: bool = bool(_world_session.call(
+			"register_semantic_event_handler",
+			LIFE_STATE_REQUEST_EVENT,
+			Callable(self, "_on_life_state_requested")
+		))
+		if not registered:
+			push_error("Guard '%s' could not register actor life-state requests." % guard_id)
+	_refresh_life_state_presentation()
+
+
+func _exit_tree() -> void:
+	if _world_session == null or not is_instance_valid(_world_session):
+		return
+	_world_session.call(
+		"unregister_semantic_event_handler",
+		LIFE_STATE_REQUEST_EVENT,
+		Callable(self, "_on_life_state_requested")
+	)
+
+
+func is_vark_persistent_entity() -> bool:
+	return true
+
+
+func get_persistent_id() -> String:
+	return persistent_id
+
+
+func get_content_id() -> String:
+	return content_id
+
+
+func get_life_state() -> StringName:
+	return _life_state
+
+
+func query_actor_state() -> Dictionary:
+	return {
+		"persistent_id": persistent_id,
+		"content_id": content_id,
+		"actor_id": guard_id,
+		"life_state": _life_state,
+		"conscious": _life_state == LIFE_CONSCIOUS,
+		"awareness_eligible": _life_state == LIFE_CONSCIOUS,
+		"navigation_owned": _navigation_agent != null,
+		"navigation_active": _life_state == LIFE_CONSCIOUS and _configured,
+		"body_state": _life_state != LIFE_CONSCIOUS,
+	}
+
+
+func request_life_state(target_state: StringName) -> bool:
+	if _world_session == null or not is_instance_valid(_world_session):
+		return false
+	if persistent_id.strip_edges().is_empty():
+		return false
+	if not _is_runtime_transition_allowed(_life_state, target_state):
+		return false
+	return bool(_world_session.call(
+		"queue_semantic_gameplay_event",
+		int(_world_session.get("session_id")),
+		LIFE_STATE_REQUEST_EVENT,
+		{
+			"persistent_id": persistent_id,
+			"actor_id": guard_id,
+			"target_state": target_state,
+		}
+	))
+
+
+func capture_semantic_state() -> Dictionary:
+	return {
+		"persistent_id": persistent_id,
+		"actor_id": guard_id,
+		"life_state": _life_state,
+	}
+
+
+func apply_semantic_state(snapshot: Dictionary) -> bool:
+	if (
+		_world_session != null
+		and is_instance_valid(_world_session)
+		and int(_world_session.get("state")) == WorldSession.State.PLAYING
+	):
+		return false
+	if str(snapshot.get("persistent_id", "")).strip_edges() != persistent_id:
+		return false
+	if str(snapshot.get("actor_id", "")).strip_edges() != guard_id:
+		return false
+	var restored_state: StringName = snapshot.get("life_state", &"")
+	if not _is_valid_life_state(restored_state):
+		return false
+	_apply_life_state(restored_state)
+	return true
 
 
 func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
@@ -108,7 +212,14 @@ func get_debug_summary() -> Dictionary:
 	if _configured and _target_index >= 0 and _target_index < _patrol_positions.size():
 		target_position = _patrol_positions[_target_index]
 	return {
+		"persistent_id": persistent_id,
+		"content_id": content_id,
 		"guard_id": guard_id,
+		"life_state": _life_state,
+		"awareness_eligible": _life_state == LIFE_CONSCIOUS,
+		"navigation_owned": _navigation_agent != null,
+		"navigation_active": _life_state == LIFE_CONSCIOUS and _configured,
+		"body_state": _life_state != LIFE_CONSCIOUS,
 		"configured": _configured,
 		"patrol_a_id": patrol_a_id,
 		"patrol_b_id": patrol_b_id,
@@ -136,6 +247,9 @@ func get_debug_summary() -> Dictionary:
 
 
 func _physics_process(delta: float) -> void:
+	if _life_state != LIFE_CONSCIOUS:
+		velocity = Vector3.ZERO
+		return
 	if not _configured or _navigation_agent == null:
 		velocity = Vector3.ZERO
 		return
@@ -403,6 +517,97 @@ func _record_current_path() -> void:
 	_max_observed_path_point_count = maxi(_max_observed_path_point_count, path.size())
 	for path_point: Vector3 in path:
 		_max_observed_path_x = maxf(_max_observed_path_x, path_point.x)
+
+
+func _on_life_state_requested(event: Dictionary) -> bool:
+	var payload: Dictionary = event.get("payload", {})
+	if str(payload.get("persistent_id", "")).strip_edges() != persistent_id:
+		return true
+	if str(payload.get("actor_id", "")).strip_edges() != guard_id:
+		return true
+
+	var target_state: StringName = payload.get("target_state", &"")
+	if not _is_runtime_transition_allowed(_life_state, target_state):
+		return true
+
+	var previous_state: StringName = _life_state
+	var changed_queued: bool = bool(_world_session.call(
+		"queue_semantic_gameplay_event",
+		int(_world_session.get("session_id")),
+		LIFE_STATE_CHANGED_EVENT,
+		{
+			"persistent_id": persistent_id,
+			"actor_id": guard_id,
+			"from_state": previous_state,
+			"to_state": target_state,
+		}
+	))
+	if not changed_queued:
+		return false
+
+	_apply_life_state(target_state)
+	return true
+
+
+func _apply_life_state(target_state: StringName) -> void:
+	_life_state = target_state
+	if _life_state != LIFE_CONSCIOUS:
+		velocity = Vector3.ZERO
+		_door_use_active = false
+		_door_request_pending = false
+		_door_route_blocked = false
+		_door_obstruction_imminent = false
+		_door_retry_remaining = 0.0
+	_refresh_life_state_presentation()
+
+
+func _refresh_life_state_presentation() -> void:
+	var guard_mesh := get_node_or_null("GuardMesh") as MeshInstance3D
+	if guard_mesh == null:
+		return
+	var material := guard_mesh.material_override as StandardMaterial3D
+	match _life_state:
+		LIFE_UNCONSCIOUS:
+			guard_mesh.rotation_degrees.z = -65.0
+			if material != null:
+				material.albedo_color = Color(0.62, 0.42, 0.16, 1.0)
+		LIFE_DEAD:
+			guard_mesh.rotation_degrees.z = -90.0
+			if material != null:
+				material.albedo_color = Color(0.26, 0.26, 0.26, 1.0)
+		_:
+			guard_mesh.rotation_degrees.z = 0.0
+			if material != null:
+				material.albedo_color = Color(0.58, 0.20, 0.14, 1.0)
+
+
+func _is_valid_life_state(state: StringName) -> bool:
+	return state == LIFE_CONSCIOUS or state == LIFE_UNCONSCIOUS or state == LIFE_DEAD
+
+
+func _is_runtime_transition_allowed(
+	from_state: StringName,
+	to_state: StringName
+) -> bool:
+	if not _is_valid_life_state(to_state) or from_state == to_state:
+		return false
+	if from_state == LIFE_CONSCIOUS:
+		return to_state == LIFE_UNCONSCIOUS or to_state == LIFE_DEAD
+	if from_state == LIFE_UNCONSCIOUS:
+		return to_state == LIFE_DEAD
+	return false
+
+
+func _find_world_session() -> Node:
+	var cursor: Node = get_parent()
+	while cursor != null:
+		if (
+			cursor.has_method("queue_semantic_gameplay_event")
+			and cursor.has_method("register_semantic_event_handler")
+		):
+			return cursor
+		cursor = cursor.get_parent()
+	return null
 
 
 func _ensure_components() -> void:

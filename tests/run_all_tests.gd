@@ -31,6 +31,10 @@ const SUITES = [
 		"script": "res://tests/objectives/run_objective_tests.gd",
 	},
 	{
+		"name": "Actors",
+		"script": "res://tests/actors/run_actor_tests.gd",
+	},
+	{
 		"name": "Navigation",
 		"script": "res://tests/navigation/run_navigation_tests.gd",
 	},

@@ -6,8 +6,10 @@
 [resource]
 script = ExtResource("1_point")
 classname = "vark_guard"
-description = "Primitive Phase 3.7 guard seed. Patrols between two authored patrol IDs and may use one ordinary door through the shared door navigation seam."
+description = "Primitive guard actor seed. Patrols through the shared door/navigation seam and, from Phase 3.11, retains one persistent actor identity across conscious/unconscious/dead semantic life states."
 class_properties = Dictionary[String, Variant]({
+"persistent_id": "",
+"content_id": "",
 "guard_id": "",
 "patrol_a_id": "",
 "patrol_b_id": "",
@@ -17,7 +19,9 @@ class_properties = Dictionary[String, Variant]({
 "angle": 180.0
 })
 class_property_descriptions = Dictionary[String, Variant]({
-"guard_id": "Required guard ID for the Phase 3.7 navigation proof.",
+"persistent_id": "Stable authored persistent identity for this actor. The same ID survives conscious/unconscious/dead life-state changes.",
+"content_id": "Optional authored semantic actor address. This is separate from persistent_id and guard navigation IDs.",
+"guard_id": "Required guard ID for the Phase 3.7 navigation proof and semantic actor reference used by the Phase 3.11 compatibility proof.",
 "patrol_a_id": "First authored vark_patrol_point ID.",
 "patrol_b_id": "Second authored vark_patrol_point ID.",
 "door_id": "Ordinary door ID this guard is allowed to use while following the current proof route.",

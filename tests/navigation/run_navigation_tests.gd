@@ -53,6 +53,8 @@ func _assert_authoring_schema() -> void:
 		and patrol_class.script_class == PatrolPointScript
 		and guard_class.node_class == "CharacterBody3D"
 		and patrol_class.node_class == "Node3D"
+		and guard_class.class_properties.has("persistent_id")
+		and guard_class.class_properties.has("content_id")
 		and guard_class.class_properties.has("guard_id")
 		and guard_class.class_properties.has("patrol_a_id")
 		and guard_class.class_properties.has("patrol_b_id")
@@ -73,6 +75,8 @@ func _assert_guard_nav_doorway_fit() -> void:
 		and source.contains("( -6 43.2 68 )")
 		and source.contains("( 6 84.8 84 )")
 		and source.contains("\"door_use_distance\" \"2.0\"")
+		and source.contains("\"persistent_id\" \"vark_guard_nav_guard\"")
+		and source.contains("\"content_id\" \"guard.nav_probe\"")
 		and not source.contains("( 6 40 84 )")
 		and not source.contains("( -6 88 0 )"),
 		"Guard/Nav Lab authored doorway is exactly 1.30 m wide so the closed ordinary leaf meets both jambs without side gaps"

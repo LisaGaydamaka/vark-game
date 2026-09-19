@@ -653,7 +653,18 @@ When ordinary save-anywhere can occur during an active runtime-created transient
 
 ## Actor-state compatibility fixture
 
-Before final combat, prove conscious/unconscious/dead/body behavior retains the same persistent identity/semantic actor reference even if runtime presentation nodes change.
+Phase 3.11 uses the existing Guard/Nav actor instead of a synthetic corpse/knockout entity:
+
+- authored `vark_guard` now exposes `persistent_id` and optional `content_id`; the Guard/Nav source carries `vark_guard_nav_guard` / `guard.nav_probe`, and the current-world registry must resolve both IDs to the same `VarkGuard` root;
+- the actor root owns semantic `conscious`, `unconscious`, and `dead` life states. Ordinary requests queue `actor.life_state_requested` and accepted changes append `actor.life_state_changed` through the existing deterministic semantic event drain;
+- runtime transitions are monotonic for this proof: conscious → unconscious/dead and unconscious → dead. Wake/resurrection is not gameplay behavior yet;
+- life state gates activity, not identity. Conscious retains the existing configured patrol/navigation behavior; unconscious/dead stop locomotion/door retries and report awareness ineligible/navigation inactive while keeping the same `CharacterBody3D`, collision leaf, `NavigationAgent3D`, configured patrol ownership, persistent/content/guard IDs, and registry reference;
+- an external transform change while non-conscious is allowed to represent future body-moving ownership without introducing a corpse identity. This fixture does not claim ragdoll, dragging, carry, or final body physics;
+- `capture_semantic_state()` returns detached actor identity/life-state value data. `apply_semantic_state()` is restore-only compatibility: it rejects PLAYING sessions, wrong actor identity, and invalid life state; while non-playing it quietly reconstructs valid saved life state on the same actor and emits no ordinary life-state event;
+- the Actors suite launches the real Guard/Nav mission, proves the conscious actor actually moves, checks queued-vs-drained timing for unconscious/dead transitions, verifies the same registry node and exact `NavigationAgent3D` survive, proves locomotion stops and body-compatible repositioning preserves identity, verifies wake/resurrection requests are rejected, mutates a captured dictionary to prove runtime truth is detached, and exercises quiet non-playing restore application;
+- no vitality/damage model, attack intent, knockout interaction, body dragging, ragdoll, awareness implementation, save coordinator, or final combat behavior is introduced here. Those remain later roadmap work.
+
+This fixture protects the actor/persistence/navigation/event seam that Phase 4 save/hostile proofs and later combat must reuse.
 
 ## Crude hostile compatibility fixture
 

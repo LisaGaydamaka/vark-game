@@ -66,6 +66,8 @@
 // entity 4
 {
 "classname" "vark_guard"
+"persistent_id" "vark_guard_nav_guard"
+"content_id" "guard.nav_probe"
 "guard_id" "guard.nav_probe"
 "patrol_a_id" "patrol.a"
 "patrol_b_id" "patrol.b"
