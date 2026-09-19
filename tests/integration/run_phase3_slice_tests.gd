@@ -155,7 +155,7 @@ func _assert_integrated_slice() -> void:
 		if world != null
 		else null
 	)
-	var rendered_lights: Array[Light3D] = _get_rendered_lights(world)
+	var rendered_lights: Array[Light3D] = _get_gameplay_world_rendered_lights(world)
 
 	var propagation_summary: Dictionary = (
 		propagation.get_debug_summary()
@@ -389,19 +389,6 @@ func _assert_integrated_slice() -> void:
 		"Crouching preserves the stone surface identity but lowers each semantic footstep enough for the same cross-room guard-hearing case to become muted"
 	)
 
-	var prop_pickup: bool = bool(player.call("try_carry_prop", crate_a))
-	var carry := player.get("prop_carry") as PlayerPropCarry
-	var prop_thrown: bool = false
-	if prop_pickup and carry != null:
-		prop_thrown = carry.throw_held()
-	_assert_true(
-		prop_pickup
-		and prop_thrown
-		and not bool(player.call("is_carrying_prop"))
-		and crate_a.get_semantic_phase() == VarkOrdinaryProp.PHASE_MOVING
-		and crate_a.get_motion_kind() == VarkOrdinaryProp.MOTION_THROWN,
-		"The accepted Junk carry/throw implementation remains live in the same world as guard hearing, door acoustics, and objectives"
-	)
 
 	var standing_for_vision: bool = await _request_player_stance(
 		player,
@@ -463,6 +450,20 @@ func _assert_integrated_slice() -> void:
 		"Crouching lowers the real guard LOS target enough for low cover to block sight while the player remains gameplay-lit"
 	)
 
+	var prop_pickup: bool = bool(player.call("try_carry_prop", crate_a))
+	var carry := player.get("prop_carry") as PlayerPropCarry
+	var prop_thrown: bool = false
+	if prop_pickup and carry != null:
+		prop_thrown = carry.throw_held()
+	_assert_true(
+		prop_pickup
+		and prop_thrown
+		and not bool(player.call("is_carrying_prop"))
+		and crate_a.get_semantic_phase() == VarkOrdinaryProp.PHASE_MOVING
+		and crate_a.get_motion_kind() == VarkOrdinaryProp.MOTION_THROWN,
+		"The accepted Junk carry/throw implementation remains live in the same world as guard hearing, door acoustics, and objectives"
+	)
+
 	var initial_exit: Dictionary = objective.query_exit(&"exit.slice")
 	var blocked_queued: bool = exit_trigger.queue_for_body(player)
 	await _completed_physics_frame()
@@ -494,15 +495,19 @@ func _assert_integrated_slice() -> void:
 	await process_frame
 
 
-func _get_rendered_lights(world: Node) -> Array[Light3D]:
+func _get_gameplay_world_rendered_lights(world: Node) -> Array[Light3D]:
 	var result: Array[Light3D] = []
-	if world == null:
+	if not (world is Node3D):
 		return result
+	var gameplay_world: World3D = (world as Node3D).get_world_3d()
 	var nodes: Array[Node] = [world]
 	nodes.append_array(world.find_children("*", "", true, false))
 	for node: Node in nodes:
-		if node is Light3D and (node as Light3D).visible:
-			result.append(node as Light3D)
+		if not (node is Light3D):
+			continue
+		var light := node as Light3D
+		if light.visible and light.get_world_3d() == gameplay_world:
+			result.append(light)
 	return result
 
 
