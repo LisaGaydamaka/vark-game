@@ -517,6 +517,7 @@ func _wait_for_guard_in_open_doorway(
 		if (
 			door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
 			and door.is_body_in_navigation_passage(guard)
+			and str(summary.get("door_traversal_state", "")) == "crossing"
 		):
 			return true
 		if not str(summary.get("last_error", "")).is_empty():
