@@ -145,8 +145,8 @@ func _assert_exposure_lab() -> void:
 		and readout.text.contains("EXPOSURE")
 		and readout.text.contains("key")
 		and readout.text.contains("fill")
-		and is_equal_approx(float(bar.value), multi_value),
-		"World-owned exposure continuously drives the development light-gem/debug HUD with source diagnostics"
+		and absf(float(bar.value) - multi_value) <= float(bar.step) + 0.000001,
+		"World-owned exposure continuously drives the stepped development light-gem/debug HUD with source diagnostics"
 	)
 
 	application.call("exit_current_world")
