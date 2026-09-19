@@ -24,6 +24,10 @@ var _speech_reaction_count: int = 0
 var _last_heard_kind: StringName = &""
 var _last_heard_origin: Vector3 = Vector3.ZERO
 var _last_heard_strength: float = 0.0
+var _last_vision_target: Vector3 = Vector3.ZERO
+var _last_vision_exposure: float = 0.0
+var _last_vision_blocked: bool = false
+var _last_vision_blocker: String = ""
 
 
 func _ready() -> void:
@@ -71,18 +75,25 @@ func sample_vision_now() -> bool:
 		return false
 
 	var exposure: float = _exposure.get_current_exposure()
+	_last_vision_exposure = exposure
+	_last_vision_target = _get_player_vision_target()
+	_last_vision_blocked = false
+	_last_vision_blocker = ""
 	if exposure < vision_exposure_threshold:
+		_clear_visual_reaction()
 		return false
 
 	var eye: Vector3 = _guard.global_position + Vector3.UP * 1.35
-	var target: Vector3 = _player.global_position + Vector3.UP * 0.75
+	var target: Vector3 = _last_vision_target
 	var to_player: Vector3 = target - eye
 	var distance: float = to_player.length()
 	if distance <= 0.001 or distance > vision_distance:
+		_clear_visual_reaction()
 		return false
 	var direction: Vector3 = to_player / distance
 	var facing: Vector3 = _guard.global_transform.basis.z.normalized()
 	if facing.dot(direction) < vision_facing_dot:
+		_clear_visual_reaction()
 		return false
 
 	var query := PhysicsRayQueryParameters3D.create(eye, target)
@@ -94,6 +105,11 @@ func sample_vision_now() -> bool:
 		query
 	)
 	if not hit.is_empty():
+		_last_vision_blocked = true
+		var blocker: Object = hit.get("collider") as Object
+		if blocker != null:
+			_last_vision_blocker = str(blocker.get("name"))
+		_clear_visual_reaction()
 		return false
 
 	if _reaction_state != &"saw_player":
@@ -120,10 +136,43 @@ func get_debug_summary() -> Dictionary:
 		"last_heard_kind": _last_heard_kind,
 		"last_heard_origin": _last_heard_origin,
 		"last_heard_strength": _last_heard_strength,
+		"last_vision_target": _last_vision_target,
+		"last_vision_exposure": _last_vision_exposure,
+		"last_vision_blocked": _last_vision_blocked,
+		"last_vision_blocker": _last_vision_blocker,
 		"vision_distance": vision_distance,
 		"vision_facing_dot": vision_facing_dot,
 		"vision_exposure_threshold": vision_exposure_threshold,
 	}
+
+
+func _get_player_vision_target() -> Vector3:
+	if _player == null or not is_instance_valid(_player):
+		return Vector3.ZERO
+	var head := _player.get_node_or_null("Head") as Node3D
+	if head != null:
+		return head.global_position
+
+	var collision := _player.get_node_or_null(
+		"CollisionShape3D"
+	) as CollisionShape3D
+	var capsule: CapsuleShape3D = (
+		collision.shape as CapsuleShape3D
+		if collision != null
+		else null
+	)
+	if collision != null and capsule != null:
+		return collision.to_global(
+			Vector3(0.0, capsule.height * 0.30, 0.0)
+		)
+	return _player.global_position + Vector3.UP * 0.75
+
+
+func _clear_visual_reaction() -> void:
+	if _reaction_state != &"saw_player":
+		return
+	_reaction_state = &"calm"
+	_refresh_label()
 
 
 func _on_gameplay_sound_heard(perception: Dictionary) -> void:

@@ -4,6 +4,7 @@ extends Node
 @export var player_path: NodePath = NodePath("../Player")
 @export_range(0.2, 4.0, 0.05) var step_distance: float = 1.25
 @export_range(0.0, 5.0, 0.05) var minimum_move_speed: float = 0.35
+@export_range(0.05, 1.0, 0.05) var crouched_strength_scale: float = 0.45
 @export var emission_enabled: bool = true
 
 var _player: CharacterBody3D = null
@@ -13,7 +14,9 @@ var _distance_since_step: float = 0.0
 var _queued_count: int = 0
 var _last_surface_id: StringName = &""
 var _last_sound_kind: StringName = &""
+var _last_base_strength: float = 0.0
 var _last_strength: float = 0.0
+var _last_stance: String = "standing"
 
 
 func _ready() -> void:
@@ -77,11 +80,19 @@ func emit_step_now() -> bool:
 	if surface == null:
 		return false
 	var surface_id: StringName = surface.get("surface_id")
-	var strength: float = float(
+	var base_strength: float = float(
 		surface.get("gameplay_sound_strength")
 	)
-	if surface_id.is_empty() or strength <= 0.0:
+	if surface_id.is_empty() or base_strength <= 0.0:
 		return false
+
+	var stance: String = _get_player_stance()
+	var stance_scale: float = (
+		clampf(crouched_strength_scale, 0.05, 1.0)
+		if stance == "crouched"
+		else 1.0
+	)
+	var strength: float = base_strength * stance_scale
 	var kind := StringName("footstep.%s" % str(surface_id))
 	var queued: bool = bool(_world_session.call(
 		"queue_gameplay_sound",
@@ -95,7 +106,9 @@ func emit_step_now() -> bool:
 	_queued_count += 1
 	_last_surface_id = surface_id
 	_last_sound_kind = kind
+	_last_base_strength = base_strength
 	_last_strength = strength
+	_last_stance = stance
 	return true
 
 
@@ -105,9 +118,25 @@ func get_debug_summary() -> Dictionary:
 		"queued_count": _queued_count,
 		"last_surface_id": _last_surface_id,
 		"last_sound_kind": _last_sound_kind,
+		"last_base_strength": _last_base_strength,
 		"last_strength": _last_strength,
+		"last_stance": _last_stance,
+		"crouched_strength_scale": crouched_strength_scale,
 		"step_distance": step_distance,
 	}
+
+
+func _get_player_stance() -> String:
+	if (
+		_player == null
+		or not is_instance_valid(_player)
+		or not _player.has_method("get_movement_semantic_state")
+	):
+		return "standing"
+	var movement_state: Dictionary = _player.call(
+		"get_movement_semantic_state"
+	)
+	return str(movement_state.get("stance", "standing"))
 
 
 func _find_current_surface() -> Area3D:

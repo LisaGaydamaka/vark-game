@@ -145,6 +145,17 @@ func _assert_integrated_slice() -> void:
 		if world != null
 		else null
 	)
+	var gameplay_light := (
+		world.get_node_or_null("NorthGameplayLight") as VarkGameplayLight
+		if world != null
+		else null
+	)
+	var crouch_cover := (
+		world.get_node_or_null("Geometry/CrouchCover") as StaticBody3D
+		if world != null
+		else null
+	)
+	var rendered_lights: Array[Light3D] = _get_rendered_lights(world)
 
 	var propagation_summary: Dictionary = (
 		propagation.get_debug_summary()
@@ -199,11 +210,16 @@ func _assert_integrated_slice() -> void:
 		and carpet_surface != null
 		and crate_a != null
 		and crate_b != null
+		and gameplay_light != null
+		and crouch_cover != null
+		and rendered_lights.size() == 1
+		and rendered_lights[0] == gameplay_light
+		and gameplay_light.shadow_enabled
 		and crate_a.get_script() == OrdinaryPropScript
 		and crate_b.get_script() == OrdinaryPropScript
 		and persistent_guard.get("node") == guard
 		and semantic_guard.get("node") == guard,
-		"One playable slice contains the real guard, door, props, acoustics, exposure, typed speech, objective, exit, and stable actor identity"
+		"One playable slice contains the real guard, door, props, acoustics, exposure, typed speech, objective, exit, and stable actor identity; its only rendered shadow light is the gameplay light sampled by exposure"
 	)
 	if (
 		not ready
@@ -319,6 +335,15 @@ func _assert_integrated_slice() -> void:
 		and reaction_summary.get("state", &"") == &"heard_noise"
 		and int(reaction_summary.get("heard_count", 0)) == 1
 		and reaction_summary.get("last_heard_kind", &"") == &"footstep.stone"
+		and footstep_summary.get("last_stance", "") == "standing"
+		and is_equal_approx(
+			float(footstep_summary.get("last_base_strength", 0.0)),
+			0.52
+		)
+		and is_equal_approx(
+			float(footstep_summary.get("last_strength", 0.0)),
+			0.52
+		)
 		and int(reaction_summary.get("speech_reaction_count", 0)) == 1
 		and int(speech_summary.get("queued_count", 0)) == 1
 		and bool(speech_summary.get("utterance_active", false))
@@ -328,6 +353,40 @@ func _assert_integrated_slice() -> void:
 		and speech_label.visible
 		and speech_label.text == "What was that?",
 		"A real loud stone footstep crosses the acoustic graph, triggers the guard reaction, and produces one acoustically gated world-space spoken response"
+	)
+
+	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
+	var crouched_for_sound: bool = await _request_player_stance(
+		player,
+		PlayerCrouch.Stance.CROUCHED
+	)
+	var crouched_step_queued: bool = bool(footsteps.call("emit_step_now"))
+	await _completed_physics_frame()
+	var crouched_footstep_summary: Dictionary = footsteps.call(
+		"get_debug_summary"
+	)
+	var crouched_guard_perception: Dictionary = guard_listener.get_last_perception()
+	var crouched_reaction_summary: Dictionary = reaction.call(
+		"get_debug_summary"
+	)
+	_assert_true(
+		crouched_for_sound
+		and crouched_step_queued
+		and int(crouched_footstep_summary.get("queued_count", 0)) == 2
+		and crouched_footstep_summary.get("last_stance", "") == "crouched"
+		and is_equal_approx(
+			float(crouched_footstep_summary.get("last_base_strength", 0.0)),
+			0.52
+		)
+		and is_equal_approx(
+			float(crouched_footstep_summary.get("last_strength", 0.0)),
+			0.52 * 0.45
+		)
+		and not bool(crouched_guard_perception.get("heard", true))
+		and crouched_reaction_summary.get("state", &"") == &"calm"
+		and int(crouched_reaction_summary.get("speech_reaction_count", 0)) == 1,
+		"Crouching preserves the stone surface identity but lowers each semantic footstep enough for the same cross-room guard-hearing case to become muted"
 	)
 
 	var prop_pickup: bool = bool(player.call("try_carry_prop", crate_a))
@@ -344,24 +403,64 @@ func _assert_integrated_slice() -> void:
 		"The accepted Junk carry/throw implementation remains live in the same world as guard hearing, door acoustics, and objectives"
 	)
 
+	var standing_for_vision: bool = await _request_player_stance(
+		player,
+		PlayerCrouch.Stance.STANDING
+	)
 	reaction.call("reset_reaction")
-	player.global_position = Vector3(2.7, 0.0, -3.1)
+	player.global_position = Vector3(0.0, 0.0, -2.4)
 	player.velocity = Vector3.ZERO
-	guard.global_position = Vector3(2.7, 0.0, -5.4)
+	guard.global_position = Vector3(0.0, 0.0, -5.6)
 	guard.velocity = Vector3.ZERO
 	guard.look_at(player.global_position, Vector3.UP, true)
 	for _frame_index: int in 2:
 		await physics_frame
 		await process_frame
-	var lit_summary: Dictionary = exposure.sample_now()
-	var saw_player: bool = bool(reaction.call("sample_vision_now"))
-	var vision_summary: Dictionary = reaction.call("get_debug_summary")
+
+	var standing_lit_summary: Dictionary = exposure.sample_now()
+	var standing_saw_player: bool = bool(
+		reaction.call("sample_vision_now")
+	)
+	var standing_vision_summary: Dictionary = reaction.call(
+		"get_debug_summary"
+	)
+	var standing_target: Vector3 = standing_vision_summary.get(
+		"last_vision_target",
+		Vector3.ZERO
+	)
+
+	var crouched_for_vision: bool = await _request_player_stance(
+		player,
+		PlayerCrouch.Stance.CROUCHED
+	)
+	var crouched_lit_summary: Dictionary = exposure.sample_now()
+	var crouched_saw_player: bool = bool(
+		reaction.call("sample_vision_now")
+	)
+	var crouched_vision_summary: Dictionary = reaction.call(
+		"get_debug_summary"
+	)
+	var crouched_target: Vector3 = crouched_vision_summary.get(
+		"last_vision_target",
+		Vector3.ZERO
+	)
 	_assert_true(
-		float(lit_summary.get("exposure", 0.0)) > 0.45
-		and saw_player
-		and vision_summary.get("state", &"") == &"saw_player"
-		and int(vision_summary.get("seen_count", 0)) >= 1,
-		"The same world-owned exposure scalar plus physical line of sight drives the slice-only primitive guard vision reaction"
+		standing_for_vision
+		and crouched_for_vision
+		and float(standing_lit_summary.get("exposure", 0.0)) > 0.45
+		and float(crouched_lit_summary.get("exposure", 0.0)) > 0.28
+		and standing_saw_player
+		and standing_vision_summary.get("state", &"") == &"saw_player"
+		and not bool(
+			standing_vision_summary.get("last_vision_blocked", true)
+		)
+		and not crouched_saw_player
+		and crouched_vision_summary.get("state", &"") != &"saw_player"
+		and bool(crouched_vision_summary.get("last_vision_blocked", false))
+		and crouched_vision_summary.get("last_vision_blocker", "")
+			== "CrouchCover"
+		and standing_target.y > crouched_target.y + 0.40,
+		"Crouching lowers the real guard LOS target enough for low cover to block sight while the player remains gameplay-lit"
 	)
 
 	var initial_exit: Dictionary = objective.query_exit(&"exit.slice")
@@ -393,6 +492,44 @@ func _assert_integrated_slice() -> void:
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
+
+
+func _get_rendered_lights(world: Node) -> Array[Light3D]:
+	var result: Array[Light3D] = []
+	if world == null:
+		return result
+	var nodes: Array[Node] = [world]
+	nodes.append_array(world.find_children("*", "", true, false))
+	for node: Node in nodes:
+		if node is Light3D and (node as Light3D).visible:
+			result.append(node as Light3D)
+	return result
+
+
+func _request_player_stance(
+	player: CharacterBody3D,
+	stance: int
+) -> bool:
+	if player == null:
+		return false
+	var crouch := player.get("crouch") as PlayerCrouch
+	if crouch == null:
+		return false
+	crouch.request_stance(stance)
+	var expected: String = (
+		"crouched"
+		if stance == PlayerCrouch.Stance.CROUCHED
+		else "standing"
+	)
+	for _frame_index: int in 45:
+		await physics_frame
+		await process_frame
+		var movement_state: Dictionary = player.call(
+			"get_movement_semantic_state"
+		)
+		if movement_state.get("stance", "") == expected:
+			return true
+	return false
 
 
 func _wait_for_navigation_ready(world: Node, max_frames: int) -> bool:

@@ -1,4 +1,4 @@
-[gd_scene load_steps=39 format=3]
+[gd_scene load_steps=41 format=3]
 
 [ext_resource type="Script" path="res://missions/integrated_slice/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
@@ -24,7 +24,7 @@ background_mode = 1
 background_color = Color(0.025, 0.025, 0.035, 1)
 ambient_light_source = 2
 ambient_light_color = Color(0.18, 0.19, 0.24, 1)
-ambient_light_energy = 0.45
+ambient_light_energy = 0.28
 
 [sub_resource type="BoxShape3D" id="FloorShape"]
 size = Vector3(10, 0.2, 16)
@@ -60,6 +60,12 @@ size = Vector3(0.3, 2.7, 4)
 [sub_resource type="BoxMesh" id="CoverMesh"]
 size = Vector3(0.3, 2.7, 4)
 
+[sub_resource type="BoxShape3D" id="CrouchCoverShape"]
+size = Vector3(2.4, 1.12, 0.35)
+
+[sub_resource type="BoxMesh" id="CrouchCoverMesh"]
+size = Vector3(2.4, 1.12, 0.35)
+
 [sub_resource type="StandardMaterial3D" id="WallMaterial"]
 albedo_color = Color(0.20, 0.21, 0.24, 1)
 roughness = 0.82
@@ -94,11 +100,6 @@ script = ExtResource("1_world")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_slice")
-
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-rotation_degrees = Vector3(-58, -32, 0)
-light_energy = 0.35
-shadow_enabled = true
 
 [node name="Player" parent="." instance=ExtResource("2_player")]
 position = Vector3(-3.5, 0, 6)
@@ -189,6 +190,24 @@ shape = SubResource("CoverShape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/NorthCover"]
 mesh = SubResource("CoverMesh")
 material_override = SubResource("WallMaterial")
+
+[node name="CrouchCover" type="StaticBody3D" parent="Geometry"]
+position = Vector3(0, 0.56, -4)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/CrouchCover"]
+shape = SubResource("CrouchCoverShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/CrouchCover"]
+mesh = SubResource("CrouchCoverMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="Label" type="Label3D" parent="Geometry/CrouchCover"]
+position = Vector3(0, 0.92, 0)
+text = "CROUCH COVER"
+billboard = 1
+font_size = 17
+outline_size = 6
+no_depth_test = true
 
 [node name="OrdinaryDoor" parent="." instance=ExtResource("3_door")]
 position = Vector3(-0.65, 0, 0)
@@ -285,7 +304,7 @@ debug_label_path = NodePath("../ExposureHUD/Panel/VBox/Readout")
 debug_bar_path = NodePath("../ExposureHUD/Panel/VBox/ExposureBar")
 
 [node name="NorthGameplayLight" type="OmniLight3D" parent="."]
-position = Vector3(2.7, 2.6, -4.3)
+position = Vector3(0, 2.6, -2.7)
 omni_range = 5.8
 light_energy = 3.0
 shadow_enabled = true
@@ -350,6 +369,7 @@ script = ExtResource("18_footsteps")
 player_path = NodePath("../Player")
 step_distance = 1.25
 minimum_move_speed = 0.35
+crouched_strength_scale = 0.45
 
 [node name="CrateA" parent="." instance=ExtResource("4_prop")]
 position = Vector3(-2.4, 0.3, 4.8)
@@ -427,7 +447,7 @@ no_depth_test = true
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(-1.2, 3.3, 6.9)
-text = "3.12 INTEGRATED SLICE\nReach OBJECTIVE in the north room, then return to EXIT.\nF: door / pick up / throw Junk · R: gentle release.\nStone steps + prop impacts are louder; carpet is quieter.\nGuard patrols through the same door, hears the same acoustic graph, and can see high exposure."
+text = "3.12 INTEGRATED SLICE\nReach OBJECTIVE in the north room, then return to EXIT.\nF: door / pick up / throw Junk · R: gentle release · C: crouch.\nCrouching lowers your sightline and makes each footstep quieter.\nStone is louder than carpet; only gameplay lights cast stealth-relevant shadows."
 billboard = 1
 font_size = 18
 outline_size = 7
