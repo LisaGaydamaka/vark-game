@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="VarkSpeechLine" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://gameplay/speech/speech_line.gd" id="1_line"]
+
+[resource]
+script = ExtResource("1_line")
+line_id = &"speech.slice.heard_noise"
+text = "What was that?"
+sound_kind = &"speech.slice.heard_noise"
+gameplay_sound_strength = 0.70
+presentation_duration_seconds = 2.4

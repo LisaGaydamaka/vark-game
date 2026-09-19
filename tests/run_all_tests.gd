@@ -35,6 +35,10 @@ const SUITES = [
 		"script": "res://tests/actors/run_actor_tests.gd",
 	},
 	{
+		"name": "Phase 3 Integration",
+		"script": "res://tests/integration/run_phase3_slice_tests.gd",
+	},
+	{
 		"name": "Navigation",
 		"script": "res://tests/navigation/run_navigation_tests.gd",
 	},

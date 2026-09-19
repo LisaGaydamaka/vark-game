@@ -666,6 +666,22 @@ Phase 3.11 uses the existing Guard/Nav actor instead of a synthetic corpse/knock
 
 This fixture protects the actor/persistence/navigation/event seam that Phase 4 save/hostile proofs and later combat must reuse.
 
+## Phase 3 integrated-slice fixture
+
+Phase 3.12 is the collision test for the accepted micro-proofs. **Integrated Slice** is a development graybox, not a production mission or hardened stealth API:
+
+- it launches through the normal Application → WorldSession → Player path and contains the real `VarkGuard`, `VarkOrdinaryDoor`, two `VarkOrdinaryProp` crates, `VarkAcousticPropagation`, `VarkGameplayExposure`, `VarkWorldSpeechSpeaker`, and `VarkSimpleObjectiveState`;
+- scene static collision is baked into one runtime `NavigationMesh`; the guard patrols A↔B across the room divider and must use the same ordinary door rather than a test-only passage;
+- south/north acoustic spaces connect through one portal bound to that door's existing acoustic-openness seam. The player speech listener and guard hearing listener are ordinary `VarkAcousticListener` consumers of the same graph;
+- two slice-local `Area3D` footstep surfaces label south stone (0.52 source strength) and north carpet (0.20). A tiny distance-step emitter queues only semantic `gameplay.sound` facts; it deliberately establishes neither presentation audio nor a production material/surface database;
+- the slice-local guard-reaction adapter listens only to the guard's actual heard `footstep.*` / `prop.impact` evidence. Its first heard player noise may turn the guard and invoke the existing world-space speech speaker once. It does not own persistent awareness/search state;
+- primitive slice vision uses the existing world-owned exposure scalar plus guard facing/range and a physical LOS ray. This is integration glue to make light/cover collide with the guard route, not the Phase 5 perception algorithm;
+- the objective/exit nodes are the accepted 3.10 semantic owner/triggers. No parallel route-completion truth exists;
+- the automated Phase 3 Integration suite must verify the complete component set and stable actor registry identity, nonempty nav plus real guard door use, door-dependent acoustic strength, loud-stone footstep → guard hearing → one acoustically gated typed response, real player Junk carry→throw coexistence, exposure+LOS visual reaction, and early-exit → objective → final-exit semantics in the same loaded world;
+- the focused Windows manual pass owns coherence/feel only: normal movement, no guard/door stalls or clipping, plausible room/door hearing, whole world-space speech behavior, functional Junk interaction, readable light-gem/cover relation, and objective/exit completion. It does not approve final stealth thresholds, search behavior, sound presentation, combat, or mission art.
+
+Keep this fixture narrow. A failure here should be fixed at the existing ownership seam when possible rather than by adding slice-specific replacement truths.
+
 ## Crude hostile compatibility fixture
 
 Before stealth architecture hardens, exercise:
