@@ -42,6 +42,10 @@ func _assert_speech_lab() -> void:
 		and ProofLine.get("sound_kind") == &"speech.proof.cover"
 		and not str(ProofLine.get("text")).is_empty()
 		and is_equal_approx(
+			float(ProofLine.get("gameplay_sound_strength")),
+			0.75
+		)
+		and is_equal_approx(
 			float(ProofLine.get("presentation_duration_seconds")),
 			2.6
 		),
@@ -114,12 +118,13 @@ func _assert_speech_lab() -> void:
 	speaker.set_auto_repeat_enabled(false)
 	var propagation_summary: Dictionary = propagation.get_debug_summary()
 	_assert_true(
-		int(propagation_summary.get("space_count", 0)) == 1
+		int(propagation_summary.get("space_count", 0)) == 2
+		and int(propagation_summary.get("portal_count", 0)) == 1
 		and int(propagation_summary.get("listener_count", 0)) == 1
 		and is_equal_approx(listener.hearing_threshold, 0.18)
 		and speech_label.no_depth_test
 		and speech_label.billboard == BaseMaterial3D.BILLBOARD_ENABLED,
-		"Speech proof uses the existing acoustic graph plus a world-space Label3D that may remain readable through visual cover"
+		"Speech proof uses two structural acoustic spaces plus one authored opening portal and a world-space Label3D"
 	)
 
 	await _move_player_to_marker(world, player, "NearMarker")
@@ -147,36 +152,123 @@ func _assert_speech_lab() -> void:
 		"Near speech appears above the speaker only after the existing controlled acoustic consequence pass reports it heard"
 	)
 
-	await _move_player_to_marker(world, player, "CoverMarker")
+	await _move_player_to_marker(world, player, "OpeningMarker")
 	listener.clear_perception()
+	var cover_wall: Node = world.get_node("CoverWall")
+	var opening_listener_position: Vector3 = (
+		(world.get_node("OpeningMarker") as Node3D).global_position + Vector3.UP
+	)
+	var cover_listener_position: Vector3 = (
+		(world.get_node("CoverMarker") as Node3D).global_position + Vector3.UP
+	)
+	var opening_direct_distance: float = speaker.global_position.distance_to(
+		opening_listener_position
+	)
+	var cover_direct_distance: float = speaker.global_position.distance_to(
+		cover_listener_position
+	)
+	var opening_ray: Object = _first_world_ray_collider(
+		world,
+		player.global_position + Vector3.UP * 1.1,
+		speaker.global_position + Vector3.UP * 1.1
+	)
+	var opening_queued: bool = speaker.speak_line()
+	await _completed_physics_frame()
+	var opening_summary: Dictionary = speaker.get_debug_summary()
+	var opening_perception: Dictionary = listener.get_last_perception()
+	var opening_live: Dictionary = opening_summary.get("live_propagation", {})
+	var opening_alpha: float = float(opening_summary.get("label_alpha", 0.0))
+	var opening_strength: float = float(
+		opening_summary.get("current_propagated_strength", 0.0)
+	)
+	var live_utterance_queue_count: int = int(
+		opening_summary.get("queued_count", 0)
+	)
+	var semantic_heard_count: int = int(
+		opening_summary.get("heard_count", 0)
+	)
+	_assert_true(
+		opening_queued
+		and opening_ray != cover_wall
+		and bool(opening_perception.get("heard", false))
+		and (opening_live.get("portal_route", []) as Array)
+			== [&"portal.cover_edge"]
+		and speech_label.visible
+		and opening_alpha > 0.95
+		and is_equal_approx(
+			float(opening_summary.get("outline_alpha", -1.0)),
+			opening_alpha
+		),
+		"Speech near the wall opening is loud and routes through the authored acoustic portal without visual obstruction"
+	)
+
+	var cover_path_alphas: Array[float] = []
+	var cover_path_strengths: Array[float] = []
+	var cover_path_positions: Array[Vector3] = [
+		Vector3(3.0, 0.0, 1.5),
+		Vector3(2.5, 0.0, 2.0),
+		Vector3(1.5, 0.0, 2.0),
+		Vector3(0.0, 0.0, 2.0),
+	]
+	var whole_glyph_tracks_alpha: bool = true
+	for cover_path_position: Vector3 in cover_path_positions:
+		await _move_player_to_position(player, cover_path_position)
+		var path_summary: Dictionary = speaker.get_debug_summary()
+		var path_alpha: float = float(
+			path_summary.get("label_alpha", 0.0)
+		)
+		cover_path_alphas.append(path_alpha)
+		cover_path_strengths.append(
+			float(path_summary.get("current_propagated_strength", 0.0))
+		)
+		whole_glyph_tracks_alpha = (
+			whole_glyph_tracks_alpha
+			and is_equal_approx(
+				float(path_summary.get("outline_alpha", -1.0)),
+				path_alpha
+			)
+		)
+
+	var cover_summary: Dictionary = speaker.get_debug_summary()
+	var cover_live: Dictionary = cover_summary.get("live_propagation", {})
+	var cover_alpha: float = float(cover_summary.get("label_alpha", 0.0))
+	var cover_outline_alpha: float = float(
+		cover_summary.get("outline_alpha", -1.0)
+	)
+	var cover_strength: float = float(
+		cover_summary.get("current_propagated_strength", 0.0)
+	)
 	var cover_ray: Object = _first_world_ray_collider(
 		world,
 		player.global_position + Vector3.UP * 1.1,
 		speaker.global_position + Vector3.UP * 1.1
 	)
-	var cover_queued: bool = speaker.speak_line()
-	await _completed_physics_frame()
-	var cover_summary: Dictionary = speaker.get_debug_summary()
-	var cover_perception: Dictionary = listener.get_last_perception()
-	var cover_alpha: float = float(cover_summary.get("label_alpha", 0.0))
-	var cover_outline_alpha: float = float(
-		cover_summary.get("outline_alpha", -1.0)
-	)
-	var live_utterance_queue_count: int = int(
-		cover_summary.get("queued_count", 0)
-	)
-	var semantic_heard_count: int = int(cover_summary.get("heard_count", 0))
 	_assert_true(
-		cover_queued
-		and cover_ray == world.get_node("CoverWall")
-		and bool(cover_perception.get("heard", false))
+		absf(opening_direct_distance - cover_direct_distance) < 0.2
+		and cover_ray == cover_wall
+		and (cover_live.get("portal_route", []) as Array)
+			== [&"portal.cover_edge"]
+		and opening_strength > cover_strength
+		and cover_strength > listener.hearing_threshold
+		and opening_alpha > cover_path_alphas[0]
+		and cover_path_alphas[0] > cover_path_alphas[1]
+		and cover_path_alphas[1] > cover_path_alphas[2]
+		and cover_path_alphas[2] > cover_path_alphas[3]
+		and is_equal_approx(cover_path_alphas[3], cover_alpha)
+		and cover_path_strengths[0] > cover_path_strengths[1]
+		and cover_path_strengths[1] > cover_path_strengths[2]
+		and cover_path_strengths[2] > cover_path_strengths[3]
+		and whole_glyph_tracks_alpha
 		and bool(cover_summary.get("utterance_active", false))
+		and int(cover_summary.get("queued_count", -1))
+			== live_utterance_queue_count
+		and int(cover_summary.get("heard_count", -1))
+			== semantic_heard_count
 		and speech_label.visible
 		and speech_label.no_depth_test
 		and speech_label.text == str(ProofLine.get("text"))
-		and is_equal_approx(cover_outline_alpha, cover_alpha)
-		and is_equal_approx(speech_label.outline_modulate.a, cover_alpha),
-		"Acoustically heard speech remains visible through representative visual cover instead of requiring visual line of sight"
+		and is_equal_approx(cover_outline_alpha, cover_alpha),
+		"Moving behind structural cover during one utterance lengthens the same portal route and continuously lowers speech strength/opacity without another semantic sound"
 	)
 
 	var live_alphas: Array[float] = []
@@ -191,7 +283,6 @@ func _assert_speech_lab() -> void:
 		live_outline_alphas.append(
 			float(live_summary.get("outline_alpha", -1.0))
 		)
-	var whole_glyph_tracks_alpha: bool = true
 	for alpha_index: int in live_alphas.size():
 		whole_glyph_tracks_alpha = (
 			whole_glyph_tracks_alpha
@@ -217,7 +308,7 @@ func _assert_speech_lab() -> void:
 	)
 
 	var threshold_tail_alphas: Array[float] = []
-	for z_position: float in [4.65, 4.8, 4.95, 5.1, 5.2]:
+	for z_position: float in [5.5, 5.75, 6.0, 6.25, 6.5]:
 		await _move_player_to_position(
 			player,
 			Vector3(0.0, 0.0, z_position)

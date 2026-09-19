@@ -1,9 +1,10 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
 [ext_resource type="Script" path="res://gameplay/acoustics/acoustic_propagation.gd" id="2_prop"]
 [ext_resource type="Script" path="res://gameplay/acoustics/acoustic_space.gd" id="3_space"]
 [ext_resource type="Script" path="res://gameplay/acoustics/acoustic_listener.gd" id="4_listener"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_portal.gd" id="4_portal"]
 [ext_resource type="Script" path="res://gameplay/speech/world_speech_speaker.gd" id="5_speaker"]
 [ext_resource type="Resource" path="res://gameplay/speech/lines/proof_cover_line.tres" id="6_line"]
 
@@ -44,13 +45,30 @@ script = ExtResource("4_listener")
 listener_id = &"listener.player_speech"
 hearing_threshold = 0.18
 
-[node name="RoomSpace" type="Area3D" parent="."]
-position = Vector3(0, 1.5, 1.5)
+[node name="SpeakerSpace" type="Area3D" parent="."]
+position = Vector3(0, 1.5, -3.5)
 script = ExtResource("3_space")
-space_id = "room.speech"
+space_id = "space.speech_speaker"
 half_extent_x = 5.0
 half_extent_y = 3.0
-half_extent_z = 8.0
+half_extent_z = 3.5
+
+[node name="CoverSpace" type="Area3D" parent="."]
+position = Vector3(0, 1.5, 3.5)
+script = ExtResource("3_space")
+space_id = "space.speech_cover"
+half_extent_x = 5.0
+half_extent_y = 3.0
+half_extent_z = 3.5
+
+[node name="CoverEdgePortal" type="Node3D" parent="."]
+position = Vector3(2.5, 1, 0)
+script = ExtResource("4_portal")
+portal_id = "portal.cover_edge"
+space_a_id = "space.speech_speaker"
+space_b_id = "space.speech_cover"
+closed_transmission = 1.0
+open_transmission = 1.0
 
 [node name="Floor" type="StaticBody3D" parent="."]
 position = Vector3(0, -0.1, 1.5)
@@ -101,6 +119,18 @@ text = "NEAR"
 billboard = 1
 font_size = 22
 
+[node name="OpeningMarker" type="Node3D" parent="."]
+position = Vector3(3.5, 0.02, 1)
+
+[node name="Pad" type="MeshInstance3D" parent="OpeningMarker"]
+mesh = SubResource("MarkerMesh")
+
+[node name="Label" type="Label3D" parent="OpeningMarker"]
+position = Vector3(0, 0.32, 0)
+text = "OPENING / LOUDER"
+billboard = 1
+font_size = 22
+
 [node name="CoverMarker" type="Node3D" parent="."]
 position = Vector3(0, 0.02, 2)
 
@@ -109,7 +139,7 @@ mesh = SubResource("MarkerMesh")
 
 [node name="Label" type="Label3D" parent="CoverMarker"]
 position = Vector3(0, 0.32, 0)
-text = "HEARD THROUGH COVER"
+text = "BEHIND COVER / MUFFLED"
 billboard = 1
 font_size = 22
 
@@ -139,6 +169,6 @@ font_size = 22
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(3.8, 2.8, 2.5)
-text = "3.9 SPEECH LAB\nSpeaker repeats one line every 3 seconds\nDuring ONE utterance, walk COVER → MARGINAL → INAUDIBLE → back\nFill + outline must fade together, smoothly all the way to nothing"
+text = "3.9 SPEECH LAB\nSpeaker repeats one line every 3 seconds\nDuring ONE utterance, walk OPENING → BEHIND COVER → MARGINAL → INAUDIBLE\nThe wall forces sound around its open edge; whole-glyph opacity follows that acoustic route"
 billboard = 1
 font_size = 21
