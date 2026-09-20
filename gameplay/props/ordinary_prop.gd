@@ -416,10 +416,11 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	return true
 
 
-func reconcile_after_restore() -> bool:
+func reconcile_after_restore(holder: Node = null) -> bool:
 	if _phase == PHASE_CARRIED_JUNK:
-		var holder: Node = null
-		if _world_session != null and is_instance_valid(_world_session):
+		# Keep the established explicit-holder restore seam for callers/tests,
+		# while allowing the generic Phase 4.2 restore pass to omit the argument.
+		if holder == null and _world_session != null and is_instance_valid(_world_session):
 			holder = _world_session.get("player") as Node
 		if holder == null or not holder.has_method("reconcile_carried_junk_prop"):
 			return false
