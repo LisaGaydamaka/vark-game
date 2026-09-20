@@ -57,7 +57,6 @@ var _door_link_entry: Vector3 = Vector3.ZERO
 var _door_link_exit: Vector3 = Vector3.ZERO
 var _last_door_error: String = ""
 var _patrol_leg_count: int = 0
-var _patrol_leg_count: int = 0
 var _patrol_cycle_count: int = 0
 var _max_observed_path_x: float = -INF
 var _max_observed_path_point_count: int = 0
@@ -626,7 +625,6 @@ func _complete_patrol_leg() -> void:
 	_apply_current_navigation_target()
 
 
-func _record_current_path() -> void:
 func _record_current_path() -> void:
 	var path: PackedVector3Array = _navigation_agent.get_current_navigation_path()
 	_max_observed_path_point_count = maxi(_max_observed_path_point_count, path.size())
