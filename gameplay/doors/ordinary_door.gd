@@ -460,6 +460,9 @@ func _ensure_navigation_link() -> void:
 		_navigation_link = NavigationLink3D.new()
 		_navigation_link.name = "NavigationLink3D"
 		add_child(_navigation_link)
+	# The leaf rotates the door root. Keep link geometry in world space so an
+	# open/closing leaf can never rotate the path connection itself.
+	_navigation_link.top_level = true
 	_navigation_link.bidirectional = true
 	_navigation_link.enter_cost = 0.0
 	_navigation_link.travel_cost = 1.0
