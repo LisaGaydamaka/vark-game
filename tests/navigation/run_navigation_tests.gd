@@ -207,49 +207,74 @@ func _assert_same_side_goal_ignores_open_door() -> void:
 	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
 	var tangent: Vector3 = frame.get("tangent", Vector3.ZERO)
 	var clearance: float = door.get_navigation_link_clearance()
-	var side: float = (
-		1.0
-		if (guard.global_position - center).dot(normal) >= 0.0
-		else -1.0
-	)
 	var map: RID = world.get_world_3d().navigation_map
-	var start: Vector3 = NavigationServer3D.map_get_closest_point(
-		map,
-		center + normal * side * (clearance + 0.45) - tangent * 0.65
-	)
-	var target: Vector3 = NavigationServer3D.map_get_closest_point(
-		map,
-		center + normal * side * (clearance + 0.45) + tangent * 0.65
-	)
-	start.y = guard.global_position.y
-	target.y = guard.global_position.y
-	var query := NavigationPathQueryParameters3D.new()
-	query.map = map
-	query.start_position = start
-	query.target_position = target
-	query.metadata_flags = (
-		NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
-	)
-	var result := NavigationPathQueryResult3D.new()
-	NavigationServer3D.query_path(query, result)
 	var link_owner_id: int = door.get_navigation_link().get_instance_id()
-	var query_uses_door_link: bool = result.path_owner_ids.has(link_owner_id)
+
+	# Discover a nearby path from the real baked graph instead of assuming a
+	# particular imported-map axis/layout. Both endpoints must remain on one
+	# doorway side and the query metadata must contain no door-link owner.
+	var start: Vector3 = Vector3.ZERO
+	var target: Vector3 = Vector3.ZERO
+	var found_same_side_path: bool = false
+	var selected_path_size: int = 0
+	for side: float in [1.0, -1.0]:
+		if found_same_side_path:
+			break
+		for outward: float in [0.35, 0.65, 1.0]:
+			if found_same_side_path:
+				break
+			for tangent_span: float in [0.45, 0.75, 1.05]:
+				var candidate_start: Vector3 = NavigationServer3D.map_get_closest_point(
+					map,
+					center
+					+ normal * side * (clearance + outward)
+					- tangent * tangent_span
+				)
+				var candidate_target: Vector3 = NavigationServer3D.map_get_closest_point(
+					map,
+					center
+					+ normal * side * (clearance + outward)
+					+ tangent * tangent_span
+				)
+				var query := NavigationPathQueryParameters3D.new()
+				query.map = map
+				query.start_position = candidate_start
+				query.target_position = candidate_target
+				query.metadata_flags = (
+					NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
+				)
+				var result := NavigationPathQueryResult3D.new()
+				NavigationServer3D.query_path(query, result)
+				if (
+					result.path.size() >= 2
+					and candidate_start.distance_to(candidate_target) >= 0.5
+					and not result.path_owner_ids.has(link_owner_id)
+				):
+					start = candidate_start
+					target = candidate_target
+					selected_path_size = result.path.size()
+					found_same_side_path = true
+					break
 
 	guard.global_position = start
 	guard.velocity = Vector3.ZERO
 	var before: Dictionary = guard.get_debug_summary()
 	var initial_uses: int = int(before.get("door_use_count", 0))
 	var initial_open_requests: int = int(before.get("door_open_request_count", 0))
-	var target_set: bool = guard.set_awareness_navigation_target(&"search", target)
+	var target_set: bool = (
+		guard.set_awareness_navigation_target(&"search", target)
+		if found_same_side_path
+		else false
+	)
 	for _frame_index: int in 90:
 		await physics_frame
 		await process_frame
 	var after: Dictionary = guard.get_debug_summary()
 	_assert_true(
 		opened
+		and found_same_side_path
+		and selected_path_size >= 2
 		and target_set
-		and result.path.size() >= 2
-		and not query_uses_door_link
 		and int(after.get("door_use_count", 0)) == initial_uses
 		and int(after.get("door_open_request_count", 0)) == initial_open_requests
 		and not bool(after.get("door_use_active", true))
@@ -257,7 +282,6 @@ func _assert_same_side_goal_ignores_open_door() -> void:
 		"A nearby same-side search path contains no ordinary-door link and cannot trigger door interaction"
 	)
 	_cleanup_application(application)
-
 
 func _assert_player_close_during_crossing() -> void:
 	var fixture: Dictionary = await _launch_guard_nav()
