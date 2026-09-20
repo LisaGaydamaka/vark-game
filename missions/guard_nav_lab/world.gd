@@ -135,6 +135,14 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 
 	_navigation_mesh = navigation_mesh
 	var navigation_map: RID = get_world_3d().navigation_map
+	# These proof worlds bake tiny meshes synchronously. Disable the engine's
+	# default background map/region iteration so headless and interactive runs
+	# observe the same deterministic graph barrier.
+	NavigationServer3D.map_set_use_async_iterations(navigation_map, false)
+	NavigationServer3D.region_set_use_async_iterations(
+		navigation_region.get_rid(),
+		false
+	)
 	NavigationServer3D.map_set_cell_size(navigation_map, navigation_mesh.cell_size)
 	var region_iteration_before: int = NavigationServer3D.map_get_iteration_id(
 		navigation_map

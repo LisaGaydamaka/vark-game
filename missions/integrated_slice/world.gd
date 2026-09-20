@@ -154,6 +154,14 @@ func _rebuild_navigation() -> void:
 
 	_navigation_mesh = navigation_mesh
 	var navigation_map: RID = get_world_3d().navigation_map
+	# The Integrated Slice is still the tiny runtime-baked proof world. Keep
+	# navigation map/region iteration synchronous here so the explicit door link
+	# is finalized against a deterministic carved graph.
+	NavigationServer3D.map_set_use_async_iterations(navigation_map, false)
+	NavigationServer3D.region_set_use_async_iterations(
+		navigation_region.get_rid(),
+		false
+	)
 	NavigationServer3D.map_set_cell_size(
 		navigation_map,
 		navigation_mesh.cell_size
