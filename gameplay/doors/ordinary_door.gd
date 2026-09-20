@@ -410,7 +410,6 @@ func finalize_navigation_traversal(navigation_map: RID) -> bool:
 
 
 func get_navigation_link() -> NavigationLink3D:
-func get_navigation_link() -> NavigationLink3D:
 	return _navigation_link
 
 
