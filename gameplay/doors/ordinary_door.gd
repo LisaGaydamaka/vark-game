@@ -337,7 +337,13 @@ func contribute_navigation_bake_cut(
 	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
 	var tangent: Vector3 = frame.get("tangent", Vector3.ZERO)
 	var half_width: float = float(frame.get("half_width", 0.0)) + 0.06
-	var half_depth: float = maxf(navigation_cut_depth * 0.5, 0.05)
+	# Reserve the complete smart-link corridor, not only a slit at the doorway.
+	# Normal navigation therefore cannot cut diagonally through the moving leaf
+	# before link_reached hands locomotion to the traversal task.
+	var half_depth: float = maxf(
+		_navigation_link_clearance,
+		maxf(navigation_cut_depth * 0.5, 0.05)
+	)
 	if (
 		normal.length_squared() <= 0.000001
 		or tangent.length_squared() <= 0.000001
@@ -345,10 +351,10 @@ func contribute_navigation_bake_cut(
 	):
 		return false
 
-	# The tiny carve splits the otherwise continuous floor navmesh at the
-	# doorway. The door-owned NavigationLink3D becomes the only graph edge that
-	# crosses this opening, so door interaction is explicit path metadata rather
-	# than inferred from nearby collision.
+	# The reserved carve removes the entire controlled approach/crossing lane
+	# from ordinary navmesh movement. The door-owned NavigationLink3D becomes
+	# the only graph edge through that lane, so the leaf can never be discovered
+	# accidentally by collision-driven normal navigation.
 	var vertices := PackedVector3Array([
 		center - tangent * half_width - normal * half_depth,
 		center - tangent * half_width + normal * half_depth,
