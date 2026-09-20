@@ -1123,7 +1123,7 @@ The player snapshot records both the source semantic state and the declared rest
 **Manual:** none — 4.3 is accepted from deterministic save/load reconstruction coverage. It introduces no player-facing save control or subjective presentation; target-platform/user-facing save validation remains later Phase 4 work.
 
 
-## 4.4 Other transient-state save policy `[~]`
+## 4.4 Other transient-state save policy `[x]`
 
 Explicitly test/define saving during door movement, prop falling/thrown, guard investigating/alert, actor unconscious/dead/body, and any other transient state present in the slice.
 
@@ -1142,12 +1142,12 @@ The current slice has no separate timed investigation/search decay, stun timer, 
 
 **Done when:** the real Integrated Slice can capture/restore a partially moving door without wall-clock progress, a physically falling thrown prop with its motion/velocity intact, heard-noise investigation and confirmed visual alert without replaying the source consequence, and unconscious/dead body states on the same persistent guard identity. Each representative transient remains save-requestable, resumes or normalizes according to the policy above, and no engine timer/callback/solver continuation becomes save truth.
 
-**Automated:** implemented through new `tests/application/transient_state_restore_regressions.gd`, wired into the authoritative Application suite. The regression launches the real Integrated Slice and exercises moving-door progress plus stopped-application frames, a descending thrown rigid prop, a real acoustic `gameplay.sound` investigation path, the existing real visual-alert path, and queued semantic conscious→unconscious→dead actor transitions. Every snapshot restores through the production Application/WorldSession replacement path and then checks the selected direct/reconstructed policy before ordinary simulation resumes.
+**Automated:** accepted — exact `test` head `808e9ab6e9b29c07d8d3002c3daad7305494902b` passed Godot 4.7.2 GitHub Actions Test run #252. `transient_state_restore_regressions.gd` passed moving-door semantic progress/simulation-time resume, falling thrown-prop reconstruction/continued simulation, real heard-noise investigation restore, confirmed visual-alert restore, and unconscious/dead body restoration. Existing Props, Actors, Movement, and Application suites all passed, and CI ended with `ALL TEST SUITES PASSED`.
 
-**Manual:** none — 4.4 adds deterministic transient save semantics only. No user-facing save binding, durable file behavior, migration/compatibility UI, or subjective presentation is introduced here.
+**Manual:** none — 4.4 is accepted from deterministic transient save/load coverage. No user-facing save binding, durable file behavior, migration/compatibility UI, or subjective presentation is introduced here.
 
 
-## 4.5 Snapshot coherence, restore suppression, operation ordering, and failure safety `[ ]`
+## 4.5 Snapshot coherence, restore suppression, operation ordering, and failure safety `[~]`
 
 Regression coverage proves:
 
@@ -1160,6 +1160,26 @@ Regression coverage proves:
 - if restore uses sole-world replacement instead, failure still leaves a coherent application-owned recovery state;
 - deliberately invalid/incompatible restore fails closed;
 - rapid repeated saves cannot let an older snapshot overwrite a newer request.
+
+The bounded 4.5 proof uses the existing sole-world replacement topology and strengthens the already-present 4.1 coordinator/order coverage instead of adding a second transaction system:
+
+- a save request is bound to the source `WorldSession` and its next stable gameplay-boundary serial; queued semantic consequences must drain before capture can succeed;
+- the coordinator captures session semantic state and the current input-owned view pose synchronously in one physics callback after that boundary. Look remains event-driven before the physics tick; the captured player transform and view pose must describe the same already-applied request-side orientation;
+- pending saves are cancelled when restart, load, mission transition, or exit tears down their source session. Captured detached snapshots may finish their logical slot commit after source teardown because they no longer reference live world objects;
+- one application-owned top-level operation excludes load/restart/transition/exit and new save requests until its owner finishes;
+- restore runs while the replacement session is `RESTORING`, where semantic event enqueue is unavailable. Reconciliation/`after_restore` must reproduce the captured semantic owners without replaying one-shot objective/stat/awareness consequences;
+- successful restore is sole-world replacement: the old session is torn down, one fresh candidate is restored/validated while non-playing, then only that candidate becomes PLAYING;
+- malformed snapshots rejected by coordinator validation do not tear down the source world. If a structurally valid snapshot fails deeper semantic reconstruction after sole-world teardown, the candidate is discarded and the application owns a coherent menu/no-world recovery state with gameplay/look disabled; a fresh launch must still work;
+- same-slot save generations retain the existing 4.1 newest-request-wins rule, so a captured older request cannot overwrite a newer request.
+
+The current slice has no collected-loot tombstone or alarm/rule subsystem yet. Restore-suppression coverage therefore uses the real one-shot objective trigger, blocked-exit run statistic, acoustic guard-awareness consequence, door semantic state, and the existing semantic event queue. Later content owners must use the same suppressed RESTORING/after-restore contract.
+
+**Done when:** one regression demonstrates a multi-system queued consequence boundary captured coherently with immediate input-owned view pose; restore reproduces that boundary with zero queued gameplay events and no duplicated one-shot/stat/awareness effects; transition/exit source binding and direct top-level exclusion are proven; invalid restore paths leave either the original source authoritative or a coherent menu/no-world recovery state; and the existing save-coordinator ordering regressions remain green.
+
+**Automated:** implemented through new `tests/application/snapshot_coherence_regressions.gd`, wired into the authoritative Application suite, plus the existing `save_coordinator_regressions.gd` newest-request/source-binding checks and the existing application top-level-operation guard coverage.
+
+**Manual:** none — 4.5 proves deterministic ownership, suppression, ordering, and failure-state behavior only. Durable filesystem failure/atomic replacement and compatibility/revision UX are owned by 4.6.
+
 
 ## 4.6 Save compatibility, content revision ownership, and durable write `[ ]`
 

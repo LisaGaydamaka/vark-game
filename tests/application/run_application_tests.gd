@@ -36,6 +36,9 @@ const PlayerRestorePolicyRegressions = preload(
 const TransientStateRestoreRegressions = preload(
 	"res://tests/application/transient_state_restore_regressions.gd"
 )
+const SnapshotCoherenceRegressions = preload(
+	"res://tests/application/snapshot_coherence_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -416,6 +419,14 @@ func _run_tests() -> void:
 		TransientStateRestoreRegressions.new()
 	)
 	await transient_state_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var snapshot_coherence_regressions: RefCounted = (
+		SnapshotCoherenceRegressions.new()
+	)
+	await snapshot_coherence_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)

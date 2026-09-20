@@ -334,6 +334,17 @@ Unconscious and dead remain life states of the same registry-addressable guard a
 The current slice has no other save-owning gameplay duration such as investigation decay, stun, bleedout, or animation callback. Door transition fraction is therefore the representative long-running duration proof: saved semantic progress plus authored duration determines remaining simulation work, and paused/load wall-clock time does not advance it.
 
 
+## Phase 4.5 snapshot coherence, restore suppression, ordering, and failure safety
+
+`tests/application/snapshot_coherence_regressions.gd` is wired into the Application suite. It queues an exit attempt, objective completion, and gameplay sound before one requested save boundary while also starting door motion and applying immediate event-driven mouse look. The save coordinator may capture only after the next WorldSession stable consequence pass. The captured snapshot must therefore contain the ordered blocked-exit statistic + completed objective + consumed one-shot trigger + heard-noise awareness + in-progress door together, while its input-owned view pose and player transform match the same already-applied request-side orientation.
+
+The regression then mutates live owners and restores the snapshot through the normal sole-world replacement path. The old session must be gone, exactly one replacement session may remain, semantic owners must equal the captured values, and the replacement event queue must be empty. This is the explicit restore/`after_restore` suppression proof for the current slice; no source objective/sound consequence is replayed. Loot tombstones, alarms, and broader rule owners do not exist yet and must extend this same contract when introduced.
+
+Source-session binding is exercised across mission transition and exit in addition to the restart/load coverage already present in `save_coordinator_regressions.gd`. A manually held top-level operation must block load, restart, mission transition, exit, and new save requests without changing the current session. The existing same-slot generation regression remains the authority that a captured older save becomes superseded when a newer request exists and cannot overwrite that newer request.
+
+Failure safety covers both sides of the sole-world topology. A malformed snapshot rejected by coordinator validation leaves the current PLAYING source session and input domains untouched. A structurally valid but semantically invalid player snapshot is allowed to enter replacement, must fail closed during RESTORING, discard the candidate, and leave the application in one coherent menu/no-world state with input disabled and no active top-level operation. The same application must then be able to launch a fresh world successfully.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.
