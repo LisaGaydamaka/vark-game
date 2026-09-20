@@ -510,6 +510,10 @@ func _assert_open_leaf_side_block_recovery() -> void:
 
 	var original_speed: float = guard.movement_speed
 	guard.movement_speed = 0.0
+	# Freeze only the guard root while selecting a deterministic real nav path.
+	# NavigationAgent3D still updates its requested path, but production door
+	# behavior cannot consume the candidate before the fixture inspects it.
+	guard.set_physics_process(false)
 	var blocked_start: Vector3 = Vector3.ZERO
 	var blocked_target: Vector3 = Vector3.ZERO
 	var found_blocked_side_route: bool = false
@@ -544,6 +548,7 @@ func _assert_open_leaf_side_block_recovery() -> void:
 	guard.velocity = Vector3.ZERO
 	guard.set_awareness_navigation_target(&"investigate", blocked_target)
 	guard.movement_speed = original_speed
+	guard.set_physics_process(true)
 	var observed_closing: bool = false
 	var minimum_fraction: float = 1.0
 	var crossed_after_maneuver: bool = false
