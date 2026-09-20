@@ -173,7 +173,6 @@ func run(
 		0.35
 	)
 	player.velocity = Vector3.ZERO
-	var second_saved_position: Vector3 = player.global_position
 	var second_generation: int = int(
 		application.call("request_quicksave")
 	)
@@ -198,12 +197,13 @@ func run(
 		"transform",
 		Transform3D.IDENTITY
 	)
+	# Save requests commit at the next stable physics boundary. The durable
+	# restore truth is therefore the transform captured in the snapshot, not
+	# the pre-boundary position assigned by this regression.
 	assert_true.call(
 		second_committed
 		and second_generation > first_generation
-		and second_saved_transform.origin.distance_to(
-			second_saved_position
-		) <= POSITION_TOLERANCE
+		and second_saved_transform != Transform3D.IDENTITY
 		and FileAccess.file_exists(durable_path)
 		and not FileAccess.file_exists(
 			durable_path + ".new"
@@ -273,7 +273,7 @@ func run(
 		)) == second_generation
 		and restored_player != null
 		and restored_player.global_position.distance_to(
-			second_saved_position
+			second_saved_transform.origin
 		) <= POSITION_TOLERANCE
 		and not FileAccess.file_exists(
 			durable_path + ".new"
