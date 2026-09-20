@@ -1015,7 +1015,14 @@ func _assert_advanced_local_search_behavior() -> void:
 		and lateral_alert_summary.get("awareness_state", &"") == STATE_ALERTED
 		and lateral_alert_summary.get("pursuit_mode", &"") == PURSUIT_VISIBLE
 		and guard.is_navigation_position_reachable(lateral_pursuit_goal)
-		and lateral_pursuit_goal.distance_to(elevated_pursuit_goal) > 0.10
+		and _dict_vector(
+			lateral_alert_summary,
+			"last_seen_position"
+		).distance_to(player.global_position) <= 0.001
+		and _dict_vector(
+			lateral_alert_summary,
+			"last_confirmed_velocity"
+		).distance_to(player.velocity) <= 0.001
 		and float(elevated_alert_summary.get(
 			"last_vision_vertical_angle_degrees",
 			0.0
