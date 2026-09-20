@@ -139,6 +139,11 @@ func _rebuild_navigation() -> void:
 		navigation_mesh.cell_size
 	)
 	navigation_region.navigation_mesh = navigation_mesh
+	if not ordinary_door.bind_navigation_map(navigation_map):
+		navigation_errors.append(
+			"Integrated Slice ordinary door could not bind its navigation link to the active map."
+		)
+		return
 
 	await get_tree().physics_frame
 	await get_tree().physics_frame

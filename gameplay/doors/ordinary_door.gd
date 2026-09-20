@@ -368,6 +368,14 @@ func contribute_navigation_bake_cut(
 	return true
 
 
+func bind_navigation_map(navigation_map: RID) -> bool:
+	_ensure_navigation_link()
+	if _navigation_link == null or not navigation_map.is_valid():
+		return false
+	NavigationServer3D.link_set_map(_navigation_link.get_rid(), navigation_map)
+	return true
+
+
 func get_navigation_link() -> NavigationLink3D:
 	return _navigation_link
 
@@ -401,6 +409,15 @@ func get_navigation_link_summary() -> Dictionary:
 		"rid_valid": (
 			_navigation_link != null
 			and _navigation_link.get_rid().is_valid()
+		),
+		"map_bound": (
+			_navigation_link != null
+			and NavigationServer3D.link_get_map(_navigation_link.get_rid()).is_valid()
+		),
+		"iteration_id": (
+			NavigationServer3D.link_get_iteration_id(_navigation_link.get_rid())
+			if _navigation_link != null
+			else 0
 		),
 	}
 
