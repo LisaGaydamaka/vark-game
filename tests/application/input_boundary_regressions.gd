@@ -50,8 +50,10 @@ func _test_gameplay_frame_lifetime(
 	Input.action_press("sprint")
 	Input.action_press("jump")
 	Input.action_press("interact")
+	Input.action_press("attack")
 	var first: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
 	var first_interact: bool = bool(probe.call("sample_interaction_pressed"))
+	var first_attack: bool = bool(probe.call("sample_attack_pressed"))
 	assert_true.call(
 		first.movement_vector.y < -0.9
 		and first.sprint_held
@@ -60,76 +62,98 @@ func _test_gameplay_frame_lifetime(
 		"Gameplay intent frame samples held state and a fresh press together"
 	)
 	assert_true.call(
-		first_interact,
-		"Interaction uses a separate fresh one-frame gameplay edge"
+		first_interact and first_attack,
+		"Interaction and crude hostile attack use separate fresh one-frame gameplay edges"
 	)
 
 	var same_frame: PlayerCommand = probe.call("sample_locomotion_command") as PlayerCommand
 	var same_frame_interact: bool = bool(probe.call("sample_interaction_pressed"))
+	var same_frame_attack: bool = bool(probe.call("sample_attack_pressed"))
 	assert_true.call(
-		same_frame == first and same_frame.jump_pressed and same_frame_interact,
+		same_frame == first
+		and same_frame.jump_pressed
+		and same_frame_interact
+		and same_frame_attack,
 		"Gameplay input edges are sampled only once for one physics frame"
 	)
 
 	var held_next_frame: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
 	var held_interact: bool = bool(probe.call("sample_interaction_pressed"))
+	var held_attack: bool = bool(probe.call("sample_attack_pressed"))
 	assert_true.call(
 		held_next_frame.movement_vector.y < -0.9
 		and held_next_frame.sprint_held
 		and held_next_frame.jump_held
 		and not held_next_frame.jump_pressed
-		and not held_interact,
+		and not held_interact
+		and not held_attack,
 		"Held gameplay state persists while pressed edges expire after one gameplay frame"
 	)
 
 	probe.call("set_gameplay_enabled", false)
 	var disabled: PlayerCommand = probe.call("sample_locomotion_command") as PlayerCommand
 	var disabled_interact: bool = bool(probe.call("sample_interaction_pressed"))
+	var disabled_attack: bool = bool(probe.call("sample_attack_pressed"))
 	assert_true.call(
 		disabled.movement_vector == Vector2.ZERO
 		and not disabled.sprint_held
 		and not disabled.jump_pressed
 		and not disabled.jump_held
-		and not disabled_interact,
+		and not disabled_interact
+		and not disabled_attack,
 		"Disabled gameplay domain produces neutral locomotion and interaction intent"
 	)
 
 	probe.call("set_gameplay_enabled", true)
 	var resumed_while_held: PlayerCommand = probe.call("sample_locomotion_command") as PlayerCommand
 	var resumed_interact: bool = bool(probe.call("sample_interaction_pressed"))
+	var resumed_attack: bool = bool(probe.call("sample_attack_pressed"))
 	assert_true.call(
 		resumed_while_held.movement_vector.y < -0.9
 		and resumed_while_held.sprint_held
 		and not resumed_while_held.jump_pressed
 		and not resumed_while_held.jump_held
-		and not resumed_interact,
+		and not resumed_interact
+		and not resumed_attack,
 		"Domain resume restores continuous intent but does not replay held edge-dependent actions"
 	)
 
 	Input.action_release("jump")
 	Input.action_release("interact")
+	Input.action_release("attack")
 	var released: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
 	var released_interact: bool = bool(probe.call("sample_interaction_pressed"))
+	var released_attack: bool = bool(probe.call("sample_attack_pressed"))
 	assert_true.call(
-		not released.jump_pressed and not released.jump_held and not released_interact,
+		not released.jump_pressed
+		and not released.jump_held
+		and not released_interact
+		and not released_attack,
 		"Releasing after domain loss clears blocked edge-dependent actions"
 	)
 
 	Input.action_press("jump")
 	Input.action_press("interact")
+	Input.action_press("attack")
 	var fresh_press: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
 	var fresh_interact: bool = bool(probe.call("sample_interaction_pressed"))
+	var fresh_attack: bool = bool(probe.call("sample_attack_pressed"))
 	assert_true.call(
-		fresh_press.jump_pressed and fresh_press.jump_held and fresh_interact,
+		fresh_press.jump_pressed
+		and fresh_press.jump_held
+		and fresh_interact
+		and fresh_attack,
 		"Fresh post-resume presses create new locomotion and interaction edges"
 	)
 
 	var edge_expired: PlayerCommand = await _sample_on_next_physics_frame(tree, probe)
 	var interaction_edge_expired: bool = bool(probe.call("sample_interaction_pressed"))
+	var attack_edge_expired: bool = bool(probe.call("sample_attack_pressed"))
 	assert_true.call(
 		not edge_expired.jump_pressed
 		and edge_expired.jump_held
-		and not interaction_edge_expired,
+		and not interaction_edge_expired
+		and not attack_edge_expired,
 		"Fresh gameplay press edges expire after one physics frame"
 	)
 
@@ -228,3 +252,4 @@ func _release_actions() -> void:
 	Input.action_release("crouch")
 	Input.action_release("sprint")
 	Input.action_release("interact")
+	Input.action_release("attack")

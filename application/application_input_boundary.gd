@@ -15,10 +15,13 @@ var _jump_blocked_until_release: bool = false
 var _crouch_blocked_until_release: bool = false
 var _interact_blocked_until_release: bool = false
 var _release_prop_blocked_until_release: bool = false
+var _attack_blocked_until_release: bool = false
 var _last_interaction_sampled_physics_frame: int = -1
 var _last_interaction_pressed: bool = false
 var _last_prop_release_sampled_physics_frame: int = -1
 var _last_prop_release_pressed: bool = false
+var _last_attack_sampled_physics_frame: int = -1
+var _last_attack_pressed: bool = false
 
 
 func bind_player(player: Node) -> void:
@@ -36,6 +39,8 @@ func bind_player(player: Node) -> void:
 	_last_interaction_pressed = false
 	_last_prop_release_sampled_physics_frame = -1
 	_last_prop_release_pressed = false
+	_last_attack_sampled_physics_frame = -1
+	_last_attack_pressed = false
 
 	if current_player != null:
 		current_player.call("bind_gameplay_input_boundary", self)
@@ -55,6 +60,8 @@ func set_gameplay_enabled(enabled: bool) -> void:
 	_last_interaction_pressed = false
 	_last_prop_release_sampled_physics_frame = -1
 	_last_prop_release_pressed = false
+	_last_attack_sampled_physics_frame = -1
+	_last_attack_pressed = false
 	if current_player != null and is_instance_valid(current_player):
 		current_player.call("set_interaction_input_enabled", enabled)
 
@@ -63,12 +70,14 @@ func set_gameplay_enabled(enabled: bool) -> void:
 		_crouch_blocked_until_release = Input.is_action_pressed("crouch") or Input.is_action_just_pressed("crouch")
 		_interact_blocked_until_release = Input.is_action_pressed("interact") or Input.is_action_just_pressed("interact")
 		_release_prop_blocked_until_release = Input.is_action_pressed("release_prop") or Input.is_action_just_pressed("release_prop")
+		_attack_blocked_until_release = Input.is_action_pressed("attack") or Input.is_action_just_pressed("attack")
 		return
 
 	_jump_blocked_until_release = Input.is_action_pressed("jump")
 	_crouch_blocked_until_release = Input.is_action_pressed("crouch")
 	_interact_blocked_until_release = Input.is_action_pressed("interact")
 	_release_prop_blocked_until_release = Input.is_action_pressed("release_prop")
+	_attack_blocked_until_release = Input.is_action_pressed("attack")
 	if current_player != null and is_instance_valid(current_player):
 		current_player.call("cancel_gameplay_input_gestures")
 
@@ -144,6 +153,23 @@ func sample_prop_release_pressed() -> bool:
 		return false
 	_last_prop_release_pressed = Input.is_action_just_pressed("release_prop")
 	return _last_prop_release_pressed
+
+
+func sample_attack_pressed() -> bool:
+	var physics_frame: int = Engine.get_physics_frames()
+	if physics_frame == _last_attack_sampled_physics_frame:
+		return _last_attack_pressed
+	_last_attack_sampled_physics_frame = physics_frame
+	_last_attack_pressed = false
+	if not gameplay_enabled:
+		return false
+	var held: bool = Input.is_action_pressed("attack")
+	if _attack_blocked_until_release:
+		if not held:
+			_attack_blocked_until_release = false
+		return false
+	_last_attack_pressed = Input.is_action_just_pressed("attack")
+	return _last_attack_pressed
 
 
 func route_input_event(event: InputEvent) -> void:

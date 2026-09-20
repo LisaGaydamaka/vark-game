@@ -42,6 +42,9 @@ const SnapshotCoherenceRegressions = preload(
 const SaveCompatibilityRegressions = preload(
 	"res://tests/application/save_compatibility_regressions.gd"
 )
+const HostileCompatibilityRegressions = preload(
+	"res://tests/application/hostile_compatibility_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -438,6 +441,14 @@ func _run_tests() -> void:
 		SaveCompatibilityRegressions.new()
 	)
 	await save_compatibility_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var hostile_compatibility_regressions: RefCounted = (
+		HostileCompatibilityRegressions.new()
+	)
+	await hostile_compatibility_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)

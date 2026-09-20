@@ -356,6 +356,19 @@ Committed quicksaves are binary detached-Variant files under `user://vark/saves`
 `tests/application/save_compatibility_regressions.gd` uses an isolated test directory and the real authored Playground MissionDefinition. It proves the three compatibility fields, pre-destructive version/mission/revision rejection and error text, validated durable replacement, no leftover committed temp, and durable quickload after destroying the entire source Application. The fresh coordinator must select the valid final snapshot rather than an uncommitted temp artifact and restore the expected player/mission state through the ordinary Application/WorldSession path.
 
 
+## Phase 4.7 crude hostile-interaction compatibility proof
+
+The project declares an unbound development `attack` InputMap action. `ApplicationInputBoundary` samples it as a separate one-frame gameplay edge with the same domain-loss/held-until-release behavior as interaction; the input-boundary regression covers first-frame, same-frame cached, held-next-frame, disabled, resume-while-held, release, fresh re-press, and edge-expiry behavior.
+
+`PlayerHostileInteraction` is a deliberately tiny RefCounted player component. On a fresh attack edge, while ordinary hand actions are available, it center-raycasts within the crude hostile range. A conscious guard hit queues detached `combat.crude_hostile_effect` data addressed by persistent/actor IDs. It never directly mutates actor state.
+
+`VarkGuard` registers the crude hostile event alongside its existing actor life-state event. For the only supported development effect (`knockout`), its synchronous semantic handler queues `gameplay.sound` with kind `combat.hostile_impact` and then queues the existing unconscious life-state request. Because nested events append FIFO, the acoustic event reaches conscious listeners before the actor life-state transition is consumed. The Integrated Slice reaction accepts that sound kind through its existing acoustic-listener callback; after the guard becomes unconscious, current awareness normalizes to `inactive` while the resolved heard evidence remains in the reaction semantic snapshot.
+
+`tests/application/hostile_compatibility_regressions.gd` positions the real Integrated Slice player for a deterministic center-view guard hit, drives the application-owned attack action, checks the transient heard-noise evidence and final unconscious/inactive state, holds attack for a second frame to prove no replay edge, commits an isolated quicksave, changes the live guard to dead, and quickloads. The fresh replacement must restore unconscious body state, inactive awareness with exactly one hostile-impact evidence record, zero pending semantic events, and remain stable over resumed simulation.
+
+This is not combat implementation. It intentionally adds no player-facing attack binding, animation, weapon/inventory model, health/damage numbers, timing/tuning, block/parry, hit feedback, or combat AI.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.

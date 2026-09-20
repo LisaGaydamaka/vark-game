@@ -19,6 +19,7 @@ extends CharacterBody3D
 
 @export_category("Interaction")
 @export var interaction_range: float = 2.5
+@export var crude_hostile_range: float = 2.0
 
 
 var gameplay_input_boundary: Node = null
@@ -38,6 +39,7 @@ var ledge_mantle: PlayerMantle
 var ledge_controller: PlayerLedgeController
 var locomotion_controller: PlayerLocomotionController
 var player_interaction: PlayerInteraction
+var player_hostile_interaction: PlayerHostileInteraction
 var prop_carry: PlayerPropCarry
 var junk_hud_container: Control
 var junk_hud_mesh: MeshInstance3D
@@ -62,12 +64,15 @@ func _physics_process(delta: float) -> void:
 
 	var interact_pressed: bool = false
 	var release_prop_pressed: bool = false
+	var attack_pressed: bool = false
 	if gameplay_input_boundary != null and is_instance_valid(gameplay_input_boundary):
 		interact_pressed = bool(gameplay_input_boundary.call("sample_interaction_pressed"))
 		release_prop_pressed = bool(gameplay_input_boundary.call("sample_prop_release_pressed"))
+		attack_pressed = bool(gameplay_input_boundary.call("sample_attack_pressed"))
 	else:
 		interact_pressed = Input.is_action_just_pressed("interact")
 		release_prop_pressed = Input.is_action_just_pressed("release_prop")
+		attack_pressed = Input.is_action_just_pressed("attack")
 
 	player_input.current_command = command
 	velocity_state.apply_to_body(self)
@@ -98,6 +103,12 @@ func _physics_process(delta: float) -> void:
 			player_interaction.update(false)
 	elif player_interaction != null:
 		player_interaction.update(interact_pressed)
+
+	if (
+		player_hostile_interaction != null
+		and are_hand_actions_available()
+	):
+		player_hostile_interaction.update(attack_pressed)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -491,6 +502,11 @@ func _create_components() -> void:
 		self,
 		view_camera,
 		interaction_range
+	)
+	player_hostile_interaction = PlayerHostileInteraction.new(
+		self,
+		view_camera,
+		crude_hostile_range
 	)
 	_create_junk_hud()
 	prop_carry = PlayerPropCarry.new(

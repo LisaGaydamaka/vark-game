@@ -9,6 +9,9 @@ const DOOR_SWING_RADIUS_METHOD: StringName = &"get_navigation_swing_radius"
 const DOOR_REQUEST_RETRY_SECONDS: float = 0.35
 const LIFE_STATE_REQUEST_EVENT: StringName = &"actor.life_state_requested"
 const LIFE_STATE_CHANGED_EVENT: StringName = &"actor.life_state_changed"
+const CRUDE_HOSTILE_EFFECT_EVENT: StringName = &"combat.crude_hostile_effect"
+const CRUDE_HOSTILE_EFFECT_KNOCKOUT: StringName = &"knockout"
+const CRUDE_HOSTILE_IMPACT_SOUND_KIND: StringName = &"combat.hostile_impact"
 const LIFE_CONSCIOUS: StringName = &"conscious"
 const LIFE_UNCONSCIOUS: StringName = &"unconscious"
 const LIFE_DEAD: StringName = &"dead"
@@ -60,13 +63,20 @@ func _ready() -> void:
 	_ensure_components()
 	_world_session = _find_world_session()
 	if _world_session != null:
-		var registered: bool = bool(_world_session.call(
+		var life_registered: bool = bool(_world_session.call(
 			"register_semantic_event_handler",
 			LIFE_STATE_REQUEST_EVENT,
 			Callable(self, "_on_life_state_requested")
 		))
-		if not registered:
+		if not life_registered:
 			push_error("Guard '%s' could not register actor life-state requests." % guard_id)
+		var hostile_registered: bool = bool(_world_session.call(
+			"register_semantic_event_handler",
+			CRUDE_HOSTILE_EFFECT_EVENT,
+			Callable(self, "_on_crude_hostile_effect")
+		))
+		if not hostile_registered:
+			push_error("Guard '%s' could not register crude hostile effects." % guard_id)
 	_refresh_life_state_presentation()
 
 
@@ -77,6 +87,11 @@ func _exit_tree() -> void:
 		"unregister_semantic_event_handler",
 		LIFE_STATE_REQUEST_EVENT,
 		Callable(self, "_on_life_state_requested")
+	)
+	_world_session.call(
+		"unregister_semantic_event_handler",
+		CRUDE_HOSTILE_EFFECT_EVENT,
+		Callable(self, "_on_crude_hostile_effect")
 	)
 
 
@@ -560,6 +575,48 @@ func _record_current_path() -> void:
 	_max_observed_path_point_count = maxi(_max_observed_path_point_count, path.size())
 	for path_point: Vector3 in path:
 		_max_observed_path_x = maxf(_max_observed_path_x, path_point.x)
+
+
+func _on_crude_hostile_effect(event: Dictionary) -> bool:
+	var payload: Dictionary = event.get("payload", {})
+	if str(payload.get("target_persistent_id", "")).strip_edges() != persistent_id:
+		return true
+	if str(payload.get("target_actor_id", "")).strip_edges() != guard_id:
+		return true
+	if _life_state != LIFE_CONSCIOUS:
+		return true
+	if payload.get("effect", &"") != CRUDE_HOSTILE_EFFECT_KNOCKOUT:
+		return true
+
+	var impact_origin: Vector3 = payload.get(
+		"impact_origin",
+		global_position + Vector3.UP * 0.9
+	)
+	var sound_strength: float = float(
+		payload.get("sound_strength", 0.0)
+	)
+	if (
+		not _is_finite_vector(impact_origin)
+		or not is_finite(sound_strength)
+		or sound_strength <= 0.0
+	):
+		return false
+
+	# FIFO ordering is intentional: conscious acoustic listeners react to the
+	# impact before this actor's existing semantic life-state request applies.
+	var sound_queued: bool = bool(_world_session.call(
+		"queue_semantic_gameplay_event",
+		int(_world_session.get("session_id")),
+		&"gameplay.sound",
+		{
+			"kind": CRUDE_HOSTILE_IMPACT_SOUND_KIND,
+			"origin": impact_origin,
+			"strength": sound_strength,
+		}
+	))
+	if not sound_queued:
+		return false
+	return request_life_state(LIFE_UNCONSCIOUS)
 
 
 func _on_life_state_requested(event: Dictionary) -> bool:

@@ -284,7 +284,11 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 		return
 	var kind: StringName = perception.get("kind", &"")
 	var kind_text: String = str(kind)
-	if kind != &"prop.impact" and not kind_text.begins_with("footstep."):
+	if (
+		kind != &"prop.impact"
+		and kind != VarkGuard.CRUDE_HOSTILE_IMPACT_SOUND_KIND
+		and not kind_text.begins_with("footstep.")
+	):
 		return
 
 	_heard_count += 1

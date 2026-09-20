@@ -1181,7 +1181,7 @@ The current slice has no collected-loot tombstone or alarm/rule subsystem yet. R
 **Manual:** none — 4.5 is accepted from deterministic ownership, suppression, ordering, and failure-state coverage. Durable filesystem behavior and compatibility/revision ownership remain 4.6.
 
 
-## 4.6 Save compatibility, content revision ownership, and durable write `[~]`
+## 4.6 Save compatibility, content revision ownership, and durable write `[x]`
 
 Record separately:
 
@@ -1215,12 +1215,12 @@ The in-memory committed-slot cache remains an optimization, not persistence trut
 
 **Done when:** a real MissionDefinition-backed Playground save records all three compatibility fields; format, mission-id, and content-revision mismatches are rejected before replacing the current world with clear errors; a committed quicksave produces one validated durable slot without a committed temp artifact; a later valid save replaces that slot only after temp validation; and a completely fresh Application instance can quickload the latest durable snapshot from disk while ignoring an uncommitted stale temp.
 
-**Automated:** implemented through new `tests/application/save_compatibility_regressions.gd`, wired into the authoritative Application suite. It uses an isolated `user://vark_tests/phase46` directory, saves the authored Playground MissionDefinition, exercises unsupported format/revision/mission errors, replaces the slot with a newer generation, leaves a fake interrupted temp beside the valid final, destroys the entire Application instance, then proves a fresh Application quickloads the latest durable mission snapshot and removes the uncommitted temp. Existing raw-scene save/restore regressions remain authoritative for the development-fixture fallback identity.
+**Automated:** accepted — exact `test` head `d85fcba936781f7680309fbeff0882d087b83bdb` passed Godot 4.7.2 GitHub Actions Test run #256. All 4.6 compatibility metadata, unsupported-format/mission/revision rejection, validated durable replacement, stale-temp handling, and fresh-Application disk quickload assertions passed. CI ended with `ALL APPLICATION TESTS PASSED`, `ALL PROP TESTS PASSED`, `ALL ACTOR TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
 
-**Manual:** none — this item introduces durable developer quicksave storage and deterministic compatibility errors but still no player-facing save/load controls, slot UI, migration UX, or subjective presentation. Platform-specific/user-facing save experience remains later product work.
+**Manual:** none — 4.6 is accepted from deterministic durability/compatibility coverage. It still introduces no player-facing save/load controls, slot UI, migration UX, or subjective presentation.
 
 
-## 4.7 Crude hostile-interaction compatibility proof `[ ]`
+## 4.7 Crude hostile-interaction compatibility proof `[~]`
 
 Exercise one intentionally crude path through the same architecture:
 
@@ -1236,6 +1236,23 @@ player attack intent
 ```
 
 Use the same gameplay-intent timing, actor identity, controlled mutation, event, gameplay-time, perception, world ownership, and persistence contracts. Do not pull final Phase 9 combat feel/tuning forward.
+
+
+The bounded 4.7 implementation adds only the smallest hostile seam needed to exercise the existing architecture:
+
+- project input declares an intentionally unbound development `attack` action. `ApplicationInputBoundary.sample_attack_pressed()` gives it the same one-physics-frame edge, held-across-domain-loss suppression, and cancellation semantics already used by interaction;
+- `PlayerHostileInteraction` performs one short center-view raycast only on a fresh attack edge and only while ordinary hand actions are available. A conscious `VarkGuard` hit queues detached `combat.crude_hostile_effect` semantic work with stable target IDs; it does not mutate the guard directly;
+- the target guard handles only the current crude `knockout` effect. During the controlled semantic drain it queues `gameplay.sound(kind=combat.hostile_impact)` first, then uses the existing `actor.life_state_requested` path for conscious→unconscious. FIFO ordering lets conscious acoustic listeners resolve the impact before the actor becomes inactive;
+- the Integrated Slice guard reaction recognizes the hostile-impact gameplay sound through the existing acoustic listener path. The reaction evidence (`heard_count`/last heard kind) remains semantic save state even after the unconscious guard's current reaction state normalizes to `inactive`;
+- no new hostile-specific persistence format exists. Guard life state/body state and reaction evidence are captured by the already-established actor and semantic-owner snapshots, then restored through ordinary quickload without replaying attack, sound, or life-state events.
+
+There is deliberately no physical attack animation, weapon selection, health/damage arithmetic, hit-stop, stamina, block/parry, lethal tuning, AI pursuit logic, or final control binding here. Those belong to later combat/stealth phases.
+
+**Done when:** the real Integrated Slice accepts one fresh application-owned attack edge, resolves one center-view guard hit through queued semantic hostility → gameplay sound/perception → existing life-state transition, proves a held attack does not create a second edge, saves the resulting unconscious actor plus resolved reaction evidence, mutates the live actor away from that state, then quickloads a fresh world whose actor/awareness state matches the save with an empty semantic event queue and no replayed consequences.
+
+**Automated:** implemented through new `tests/application/hostile_compatibility_regressions.gd`, wired into the authoritative Application suite. Existing input-boundary regressions are extended so attack follows the same fresh-edge/domain-loss contract as interaction. The hostile regression uses an isolated durable slot, the real Integrated Slice player/camera/guard/acoustic listener, existing actor life-state events, and production quicksave/quickload.
+
+**Manual:** none for 4.7 — this is intentionally an architecture compatibility proof, not a player-facing combat-feel milestone. The development attack action has no physical binding and there is no subjective timing/animation/feedback to accept yet.
 
 **Phase gate:** developer quicksave/restore captures detached coherent semantic state/view pose during ordinary/transient play, keeps pending captures bound to their source session, commits saves in correct request order, restores through a simple transactional topology without gameplay side effects, handles global/mission compatibility failures coherently, and proves crude active hostility survives the same architecture without replacement.
 
