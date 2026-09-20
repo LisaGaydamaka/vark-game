@@ -414,7 +414,16 @@ The awareness semantic snapshot stores state, evidence counters, last heard/visi
 
 `tests/awareness/run_awareness_tests.gd` is an authoritative top-level suite using the real Integrated Slice. It proves weak suspicion/decay, strong investigation/search, deterministic target preservation, save/quickload of search stage + remaining simulation duration, point-blank direct-facing confirmation at effectively zero gameplay exposure, ordinary exposed visual pursuit, lost-sight grace, last-seen search, recovery, and return of navigation ownership to patrol. The suite uses shortened exported durations only to keep CI fast; production defaults remain longer.
 
-Because 5.4 changes actual guard behavior rather than only ownership/debug structure, automated green CI is not the final acceptance gate. A focused user playtest of noise investigation, visual pursuit, break-contact search, and eventual patrol recovery is required before marking 5.4 complete.
+Phase 5.4 manual acceptance is complete. After the green implementation/fix-forward runs, the user iterated door traversal, darkness/point-blank sight, movement-noise readability, pursuit/loss, and recovery, then explicitly advanced to the immediate dependent 5.5 item. The old single-point stationary search presentation is intentionally superseded by 5.5 rather than treated as a reason to keep 5.4 open.
+
+
+## Phase 5.5 advanced search / local investigation
+
+The first advanced-search implementation remains TARGET for feel but replaces the temporary stationary search with a deterministic multi-point local plan. `VarkGuard.resolve_local_search_points(anchor, radius, count)` receives only the resolved heard/last-seen evidence position plus its synchronized navigation map. It projects an ordered local candidate pattern to navigation, rejects large projection jumps, unreachable points, duplicates, and points outside the bounded radius, and exposes a reachability query for diagnostics/tests. It never accepts or looks up the player's hidden current position.
+
+`guard_awareness.gd` owns the resolved search anchor, point array/current index, visited count, scan state/remaining gameplay seconds, and scan base direction. Search movement continues through the existing awareness navigation override. At each reached point the guard stops and sweeps its facing left/right while ordinary vision remains live; then it advances to the next resolved point. A heard local gameplay sound during search interrupts back to investigation and reseeds a fresh plan from that evidence. Exhausting the point list or total search duration enters recovery and returns navigation to patrol.
+
+The resolved point array/index and in-progress scan state are semantic save truth. Quicksave/quickload restores the same plan/progress instead of regenerating or rerolling search. The Awareness suite keeps the earlier 5.4 perception barriers and now additionally proves multiple reachable points in the real Integrated Slice, hidden-player movement cannot rewrite an existing plan, heard evidence reseeds it, multiple stops are visited before bounded recovery, and the resolved plan/index/scan progress survive quickload. Route aesthetics, scan cadence, and whether deterministic search needs later controlled variation remain focused manual playtest territory.
 
 
 ## Gameplay input boundary and view pose

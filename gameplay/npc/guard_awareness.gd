@@ -34,7 +34,12 @@ const NAV_PURSUIT: StringName = &"pursuit"
 @export var hearing_investigate_strength: float = 0.16
 @export var suspicion_seconds: float = 1.25
 @export var investigation_seconds: float = 2.50
-@export var search_seconds: float = 3.50
+@export var search_seconds: float = 8.00
+@export_range(2, 6, 1) var search_point_count: int = 4
+@export_range(0.5, 5.0, 0.1) var search_radius: float = 2.20
+@export_range(0.20, 1.0, 0.05) var search_arrival_distance: float = 0.40
+@export_range(0.10, 2.0, 0.05) var search_scan_seconds: float = 0.70
+@export_range(10.0, 90.0, 1.0) var search_scan_degrees: float = 55.0
 @export var alert_loss_seconds: float = 1.00
 @export var recovery_seconds: float = 1.25
 
@@ -67,6 +72,14 @@ var _state_remaining_seconds: float = 0.0
 var _alert_loss_remaining_seconds: float = 0.0
 var _has_alert_loss_timer: bool = false
 var _last_gameplay_time_sample: float = 0.0
+var _search_anchor: Vector3 = Vector3.ZERO
+var _search_points: Array[Vector3] = []
+var _search_index: int = 0
+var _search_scan_active: bool = false
+var _search_scan_remaining_seconds: float = 0.0
+var _search_scan_base_direction: Vector3 = Vector3.FORWARD
+var _search_points_visited: int = 0
+var _search_reseed_count: int = 0
 
 
 func _ready() -> void:
@@ -105,7 +118,9 @@ func _physics_process(_delta: float) -> void:
 		_sync_gameplay_clock()
 		return
 
-	_advance_gameplay_timers()
+	var elapsed: float = _advance_gameplay_timers()
+	if _awareness_state == STATE_SEARCHING:
+		_advance_search_behavior(elapsed)
 	sample_vision_now()
 	_advance_state_if_expired()
 
@@ -233,6 +248,8 @@ func reset_reaction() -> void:
 	_last_seen_position = Vector3.ZERO
 	_investigation_target = Vector3.ZERO
 	_has_investigation_target = false
+	_clear_search_plan(true)
+	_search_reseed_count = 0
 	_refresh_label()
 
 
@@ -261,6 +278,15 @@ func get_debug_summary() -> Dictionary:
 		"state_remaining_seconds": _state_remaining_seconds,
 		"alert_loss_remaining_seconds": _alert_loss_remaining_seconds,
 		"has_alert_loss_timer": _has_alert_loss_timer,
+		"search_anchor": _search_anchor,
+		"search_points": _search_points.duplicate(),
+		"search_index": _search_index,
+		"search_scan_active": _search_scan_active,
+		"search_scan_remaining_seconds": _search_scan_remaining_seconds,
+		"search_points_visited": _search_points_visited,
+		"search_reseed_count": _search_reseed_count,
+		"search_radius": search_radius,
+		"search_point_count": search_point_count,
 		"vision_distance": vision_distance,
 		"vision_facing_dot": vision_facing_dot,
 		"vision_suspicion_exposure_threshold": (
@@ -306,6 +332,13 @@ func capture_semantic_state() -> Dictionary:
 		"state_remaining_seconds": _state_remaining_seconds,
 		"alert_loss_remaining_seconds": _alert_loss_remaining_seconds,
 		"has_alert_loss_timer": _has_alert_loss_timer,
+		"search_anchor": _search_anchor,
+		"search_points": _search_points.duplicate(),
+		"search_index": _search_index,
+		"search_scan_active": _search_scan_active,
+		"search_scan_remaining_seconds": _search_scan_remaining_seconds,
+		"search_scan_base_direction": _search_scan_base_direction,
+		"search_points_visited": _search_points_visited,
 	}
 
 
@@ -317,7 +350,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		and int(session.get("state")) == WORLD_SESSION_STATE_PLAYING
 	):
 		return false
-	if snapshot.size() != 18:
+	if snapshot.size() != 25:
 		return false
 	if _guard == null or not is_instance_valid(_guard):
 		return false
@@ -346,6 +379,12 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or typeof(snapshot.get("investigation_target", null)) != TYPE_VECTOR3
 		or typeof(snapshot.get("has_investigation_target", null)) != TYPE_BOOL
 		or typeof(snapshot.get("has_alert_loss_timer", null)) != TYPE_BOOL
+		or typeof(snapshot.get("search_anchor", null)) != TYPE_VECTOR3
+		or typeof(snapshot.get("search_points", null)) != TYPE_ARRAY
+		or typeof(snapshot.get("search_index", null)) != TYPE_INT
+		or typeof(snapshot.get("search_scan_active", null)) != TYPE_BOOL
+		or typeof(snapshot.get("search_scan_base_direction", null)) != TYPE_VECTOR3
+		or typeof(snapshot.get("search_points_visited", null)) != TYPE_INT
 	):
 		return false
 	for key: String in [
@@ -353,6 +392,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"last_vision_exposure",
 		"state_remaining_seconds",
 		"alert_loss_remaining_seconds",
+		"search_scan_remaining_seconds",
 	]:
 		var value: Variant = snapshot.get(key, null)
 		if (
@@ -372,10 +412,44 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"last_vision_target",
 		"last_seen_position",
 		"investigation_target",
+		"search_anchor",
+		"search_scan_base_direction",
 	]:
 		var vector_value: Vector3 = snapshot[vector_key]
 		if not _is_finite_vector(vector_value):
 			return false
+
+	var restored_search_points: Array[Vector3] = []
+	for point_value: Variant in snapshot.get("search_points", []):
+		if typeof(point_value) != TYPE_VECTOR3:
+			return false
+		var point: Vector3 = point_value
+		if not _is_finite_vector(point):
+			return false
+		restored_search_points.append(point)
+	var restored_search_index: int = int(snapshot.get("search_index", 0))
+	var restored_visited: int = int(snapshot.get("search_points_visited", 0))
+	if (
+		restored_search_index < 0
+		or restored_visited < 0
+		or (
+			restored_search_points.is_empty()
+			and restored_search_index != 0
+		)
+		or (
+			not restored_search_points.is_empty()
+			and restored_search_index >= restored_search_points.size()
+		)
+		or (
+			restored_state != STATE_SEARCHING
+			and not restored_search_points.is_empty()
+		)
+		or (
+			bool(snapshot.get("search_scan_active", false))
+			and restored_state != STATE_SEARCHING
+		)
+	):
+		return false
 
 	_awareness_state = restored_state
 	_heard_count = int(snapshot["heard_count"])
@@ -396,6 +470,15 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		snapshot["alert_loss_remaining_seconds"]
 	)
 	_has_alert_loss_timer = bool(snapshot["has_alert_loss_timer"])
+	_search_anchor = snapshot["search_anchor"]
+	_search_points = restored_search_points
+	_search_index = restored_search_index
+	_search_scan_active = bool(snapshot["search_scan_active"])
+	_search_scan_remaining_seconds = float(
+		snapshot["search_scan_remaining_seconds"]
+	)
+	_search_scan_base_direction = snapshot["search_scan_base_direction"]
+	_search_points_visited = restored_visited
 	_last_gameplay_time_sample = _get_gameplay_time()
 	return true
 
@@ -403,6 +486,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 func reconcile_after_restore() -> bool:
 	_last_gameplay_time_sample = _get_gameplay_time()
 	_apply_navigation_for_state()
+	if _awareness_state == STATE_SEARCHING and _search_scan_active:
+		_apply_search_scan_pose()
 	_refresh_label()
 	return true
 
@@ -411,7 +496,7 @@ func after_restore() -> bool:
 	return true
 
 
-func _advance_gameplay_timers() -> void:
+func _advance_gameplay_timers() -> float:
 	var now: float = _get_gameplay_time()
 	var elapsed: float = maxf(
 		0.0,
@@ -419,7 +504,7 @@ func _advance_gameplay_timers() -> void:
 	)
 	_last_gameplay_time_sample = now
 	if elapsed <= 0.0:
-		return
+		return 0.0
 	if _state_remaining_seconds > 0.0:
 		_state_remaining_seconds = maxf(
 			0.0,
@@ -430,6 +515,7 @@ func _advance_gameplay_timers() -> void:
 			0.0,
 			_alert_loss_remaining_seconds - elapsed
 		)
+	return elapsed
 
 
 func _advance_state_if_expired() -> void:
@@ -479,6 +565,8 @@ func _enter_state(
 	target: Vector3 = Vector3.ZERO,
 	has_target: bool = false
 ) -> void:
+	if _awareness_state == STATE_SEARCHING and new_state != STATE_SEARCHING:
+		_clear_search_plan(false)
 	_awareness_state = new_state
 	_has_alert_loss_timer = false
 	_alert_loss_remaining_seconds = 0.0
@@ -512,6 +600,13 @@ func _enter_state(
 	elif new_state == STATE_UNAWARE:
 		_investigation_target = Vector3.ZERO
 		_has_investigation_target = false
+	if new_state == STATE_SEARCHING:
+		var search_source: Vector3 = (
+			target
+			if has_target
+			else _investigation_target
+		)
+		_begin_search(search_source)
 	_apply_navigation_for_state()
 	_refresh_label()
 
@@ -531,7 +626,13 @@ func _apply_navigation_for_state() -> void:
 					_investigation_target
 				)
 		STATE_SEARCHING:
-			if _has_investigation_target:
+			if not _search_points.is_empty():
+				_guard.call(
+					"set_awareness_navigation_target",
+					NAV_SEARCH,
+					_search_points[_search_index]
+				)
+			elif _has_investigation_target:
 				_guard.call(
 					"set_awareness_navigation_target",
 					NAV_SEARCH,
@@ -546,6 +647,112 @@ func _apply_navigation_for_state() -> void:
 				)
 		_:
 			_guard.call("clear_awareness_navigation_target")
+
+
+func _begin_search(anchor: Vector3) -> void:
+	_search_anchor = anchor
+	_search_points.clear()
+	_search_index = 0
+	_search_scan_active = false
+	_search_scan_remaining_seconds = 0.0
+	_search_scan_base_direction = Vector3.FORWARD
+	_search_points_visited = 0
+	if (
+		_guard != null
+		and is_instance_valid(_guard)
+		and _guard.has_method("resolve_local_search_points")
+	):
+		var resolved: Variant = _guard.call(
+			"resolve_local_search_points",
+			anchor,
+			search_radius,
+			search_point_count
+		)
+		if typeof(resolved) == TYPE_ARRAY:
+			for point_value: Variant in resolved:
+				if typeof(point_value) == TYPE_VECTOR3:
+					_search_points.append(point_value)
+	if _search_points.is_empty():
+		_search_points.append(anchor)
+
+
+func _clear_search_plan(reset_visited: bool) -> void:
+	_search_anchor = Vector3.ZERO
+	_search_points.clear()
+	_search_index = 0
+	_search_scan_active = false
+	_search_scan_remaining_seconds = 0.0
+	_search_scan_base_direction = Vector3.FORWARD
+	if reset_visited:
+		_search_points_visited = 0
+
+
+func _advance_search_behavior(elapsed: float) -> void:
+	if (
+		_awareness_state != STATE_SEARCHING
+		or _guard == null
+		or not is_instance_valid(_guard)
+		or _search_points.is_empty()
+	):
+		return
+	if _search_scan_active:
+		_search_scan_remaining_seconds = maxf(
+			0.0,
+			_search_scan_remaining_seconds - elapsed
+		)
+		_apply_search_scan_pose()
+		if _search_scan_remaining_seconds > 0.0:
+			return
+		_search_scan_active = false
+		_search_points_visited += 1
+		_search_index += 1
+		if _search_index >= _search_points.size():
+			_enter_state(STATE_RECOVERING)
+			return
+		_apply_navigation_for_state()
+		return
+
+	var current_point: Vector3 = _search_points[_search_index]
+	var horizontal_distance := Vector3(
+		current_point.x - _guard.global_position.x,
+		0.0,
+		current_point.z - _guard.global_position.z
+	).length()
+	if horizontal_distance > maxf(search_arrival_distance, 0.20):
+		return
+	_search_scan_active = true
+	_search_scan_remaining_seconds = maxf(search_scan_seconds, 0.10)
+	_search_scan_base_direction = _guard.global_transform.basis.z
+	_search_scan_base_direction.y = 0.0
+	if _search_scan_base_direction.length_squared() <= 0.000001:
+		_search_scan_base_direction = Vector3.FORWARD
+	else:
+		_search_scan_base_direction = _search_scan_base_direction.normalized()
+	_apply_search_scan_pose()
+
+
+func _apply_search_scan_pose() -> void:
+	if (
+		_guard == null
+		or not is_instance_valid(_guard)
+		or not _search_scan_active
+	):
+		return
+	var duration: float = maxf(search_scan_seconds, 0.10)
+	var progress: float = clampf(
+		1.0 - (_search_scan_remaining_seconds / duration),
+		0.0,
+		1.0
+	)
+	var sweep_radians: float = deg_to_rad(search_scan_degrees)
+	var angle: float = sin(progress * TAU) * sweep_radians
+	var direction: Vector3 = _search_scan_base_direction.rotated(
+		Vector3.UP,
+		angle
+	)
+	var look_target: Vector3 = _guard.global_position + direction
+	look_target.y = _guard.global_position.y
+	_guard.look_at(look_target, Vector3.UP, true)
 
 
 func _on_gameplay_sound_heard(perception: Dictionary) -> void:
@@ -577,7 +784,14 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 	if flat_origin.distance_squared_to(_guard.global_position) > 0.001:
 		_guard.look_at(flat_origin, Vector3.UP, true)
 
-	if _awareness_state != STATE_ALERTED:
+	if _awareness_state == STATE_SEARCHING:
+		_search_reseed_count += 1
+		_enter_state(
+			STATE_INVESTIGATING,
+			_last_heard_origin,
+			true
+		)
+	elif _awareness_state != STATE_ALERTED:
 		if _last_heard_strength >= hearing_investigate_strength:
 			_enter_state(
 				STATE_INVESTIGATING,

@@ -172,6 +172,115 @@ func get_awareness_navigation_state() -> Dictionary:
 	}
 
 
+func resolve_local_search_points(
+	anchor: Vector3,
+	radius: float,
+	desired_count: int
+) -> Array[Vector3]:
+	var resolved: Array[Vector3] = []
+	if (
+		_navigation_agent == null
+		or not _configured
+		or not _is_finite_vector(anchor)
+	):
+		return resolved
+	var navigation_map: RID = _navigation_agent.get_navigation_map()
+	if (
+		not navigation_map.is_valid()
+		or NavigationServer3D.map_get_iteration_id(navigation_map) == 0
+	):
+		return resolved
+
+	var clamped_radius: float = maxf(radius, 0.50)
+	var clamped_count: int = clampi(desired_count, 2, 6)
+	var near_radius: float = clamped_radius * 0.55
+	var offsets: Array[Vector3] = [
+		Vector3.ZERO,
+		Vector3.RIGHT * near_radius,
+		Vector3.FORWARD * near_radius,
+		Vector3.LEFT * near_radius,
+		Vector3.BACK * near_radius,
+		(Vector3.RIGHT + Vector3.FORWARD).normalized() * clamped_radius,
+		(Vector3.LEFT + Vector3.FORWARD).normalized() * clamped_radius,
+		(Vector3.LEFT + Vector3.BACK).normalized() * clamped_radius,
+		(Vector3.RIGHT + Vector3.BACK).normalized() * clamped_radius,
+	]
+	var max_projection_error: float = maxf(0.75, clamped_radius * 0.45)
+	for offset: Vector3 in offsets:
+		if resolved.size() >= clamped_count:
+			break
+		var candidate: Vector3 = anchor + offset
+		var projected: Vector3 = NavigationServer3D.map_get_closest_point(
+			navigation_map,
+			candidate
+		)
+		if not _is_finite_vector(projected):
+			continue
+		var projection_error := Vector3(
+			projected.x - candidate.x,
+			0.0,
+			projected.z - candidate.z
+		).length()
+		var anchor_distance := Vector3(
+			projected.x - anchor.x,
+			0.0,
+			projected.z - anchor.z
+		).length()
+		if (
+			projection_error > max_projection_error
+			or anchor_distance > clamped_radius + 0.35
+		):
+			continue
+		if not is_navigation_position_reachable(projected):
+			continue
+		var duplicate: bool = false
+		for existing: Vector3 in resolved:
+			if Vector3(
+				existing.x - projected.x,
+				0.0,
+				existing.z - projected.z
+			).length() < 0.45:
+				duplicate = true
+				break
+		if duplicate:
+			continue
+		resolved.append(projected)
+	return resolved
+
+
+func is_navigation_position_reachable(target_position: Vector3) -> bool:
+	if (
+		_navigation_agent == null
+		or not _configured
+		or not _is_finite_vector(target_position)
+	):
+		return false
+	var navigation_map: RID = _navigation_agent.get_navigation_map()
+	if (
+		not navigation_map.is_valid()
+		or NavigationServer3D.map_get_iteration_id(navigation_map) == 0
+	):
+		return false
+	var start: Vector3 = NavigationServer3D.map_get_closest_point(
+		navigation_map,
+		global_position
+	)
+	var path: PackedVector3Array = NavigationServer3D.map_get_path(
+		navigation_map,
+		start,
+		target_position,
+		true
+	)
+	if path.is_empty():
+		return false
+	var endpoint: Vector3 = path[path.size() - 1]
+	return Vector3(
+		endpoint.x - target_position.x,
+		0.0,
+		endpoint.z - target_position.z
+	).length() <= 0.55
+
+
 func request_life_state(target_state: StringName) -> bool:
 	if _world_session == null or not is_instance_valid(_world_session):
 		return false
