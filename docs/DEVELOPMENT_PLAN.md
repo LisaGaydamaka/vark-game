@@ -1371,25 +1371,22 @@ The player-facing contract is:
 
 Do not turn this item into room-clearing combat tactics, squad coordination, alarm broadcasting, or combat decision-making. Those remain separate later work.
 
-The current first implementation deliberately uses a deterministic local plan rather than random wandering. `VarkGuard.resolve_local_search_points()` projects a small ordered set around the evidence onto the synchronized navigation map and keeps only reachable, non-duplicate points within one bounded radius. `guard_awareness.gd` owns the resolved point array/index, movement between those points, a short left/right scan at each arrival, evidence-driven reseeding, total search timeout, and restore semantics. The planner receives only the evidence anchor and navigation map; it has no player argument or hidden-position lookup. This is a valid first-stage proof, **not the 5.5 production-complete search architecture**.
+The production-target implementation now keeps the same anti-omniscience foundation while replacing the first fixed-radius proof:
 
-Before 5.5 can be marked complete, evolve that proof without replacing its information model:
+- `guard_awareness.gd` owns explicit search anchor, stable semantic seed, stage, uncertainty radius, confidence, gameplay-time age, resolved current candidate order, visited positions, scan progress, and residual recovery alertness;
+- `VarkGuard.resolve_local_search_points()` samples the local navigation map, scores candidates only from evidence proximity, separation from searched locations, path cost, and stable deterministic variation, and never receives a player reference/position;
+- exhausting a local candidate stage expands the bounded uncertainty radius and lowers confidence; new evidence recenters the search at stage zero with high confidence;
+- resolved candidate order remains direct save truth; stable seed/stage/uncertainty/confidence/visited positions also persist so later expansion after restore is deterministic rather than rerolled;
+- active search still uses move → stop → scan/listen behavior with ordinary senses live;
+- recovery immediately releases awareness navigation back to patrol but carries a simulation-time residual-alert value that temporarily lowers the strength needed for a local sound to restart investigation, then decays fully to unaware.
 
-1. add explicit uncertainty/confidence/age semantics and bounded radius expansion as certainty falls;
-2. replace the obvious fixed candidate order with scored local candidates plus deterministic variation from stable semantic inputs;
-3. keep resolved candidate/order choices as direct semantic save truth;
-4. retain active move/scan/listen investigation with ordinary senses live;
-5. make new evidence recenter/reseed the uncertainty search;
-6. make recovery carry temporary residual alertness so ending active search is not instant amnesia;
-7. add spatial scoring only from mission-proven needs (for example useful room transitions/corners), never from hidden player location.
-
-Do not build a universal tactical/cover-search framework preemptively. Introduce scoring signals only when representative mission geometry proves they improve believable search.
+No cover prediction, hidden-player scoring, room-clearing tactics, or squad behavior is introduced. Spatial scoring can grow later only from concrete mission-proven needs.
 
 **Done when:** after losing confirmed sight or investigating a strong sound, the guard searches from an explicit local evidence/uncertainty model rather than hidden player truth; selects and visits several reachable plausible locations with controlled non-robotic variation; visibly investigates at stops; can reacquire from new local vision/hearing; expands/decays uncertainty in a bounded way when evidence dries up; new evidence recenters the search; active search ends into temporary residual alert/recovery before full unaware patrol; and save/load restores the same resolved search plan/progress/confidence/uncertainty state without materially rerolling the search.
 
-**Automated:** the existing authoritative Awareness suite already proves the first-stage invariants: evidence resolves multiple reachable local points, moving a hidden player cannot rewrite the resolved plan, newly heard evidence interrupts/reseeds search, multiple search stops can be visited before bounded recovery, navigation ownership returns to patrol, and quicksave/quickload preserves the resolved point array/index/scan progress. Before 5.5 completion, extend deterministic coverage to uncertainty-radius/confidence progression, stable deterministic variation, direct persistence of resolved candidate/order choices, new-evidence recentering, and residual-alert decay. Keep subjective candidate quality, scan cadence, and believability out of hard-coded tests until user acceptance.
+**Automated:** implemented in the authoritative Awareness suite. In addition to the first-stage barriers, it now proves explicit seed/radius/confidence truth, simulation-time confidence decay, hidden-player movement cannot alter resolved search, local-stage exhaustion expands radius and lowers confidence, new evidence recenters uncertainty and resolves a new stable seed/order, resolved plan + seed/stage/radius/confidence/age/visited positions survive quickload, multiple stops remain reachable, residual alert releases patrol ownership while decaying, a borderline local sound can re-trigger investigation during that residual window, and residual alert reaches zero when the guard becomes fully unaware. Subjective candidate quality and cadence remain manual TARGET acceptance.
 
-**Manual:** required after the production-complete 5.5 behavior is implemented — user/playtester runs the Integrated Slice and verifies that search reads as purposeful rather than as a visible fixed waypoint script; explores plausible nearby space without seeming omniscient; broadens naturally as certainty falls; reacts naturally to deliberately new visual/sound evidence; gives up active search without instant emotional/awareness reset; and later returns to ordinary predictable patrol. Repeat the same setup several times to verify controlled variation does not randomly invalidate carefully observed stealth planning.
+**Manual:** required — user/playtester runs the Integrated Slice and verifies that search reads as purposeful rather than as a visible fixed waypoint script; explores plausible nearby space without seeming omniscient; broadens naturally as certainty falls; reacts naturally to deliberately new visual/sound evidence; gives up active search without instant emotional/awareness reset; and later returns to ordinary predictable patrol. Repeat the same setup several times to verify controlled variation does not randomly invalidate carefully observed stealth planning.
 
 ## 5.6 NPC communication/local knowledge `[ ]`
 

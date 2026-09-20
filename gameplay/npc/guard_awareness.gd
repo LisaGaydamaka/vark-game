@@ -36,12 +36,18 @@ const NAV_PURSUIT: StringName = &"pursuit"
 @export var investigation_seconds: float = 2.50
 @export var search_seconds: float = 8.00
 @export_range(2, 6, 1) var search_point_count: int = 4
-@export_range(0.5, 5.0, 0.1) var search_radius: float = 2.20
+@export_range(0.5, 5.0, 0.1) var search_radius: float = 1.80
+@export_range(0.5, 8.0, 0.1) var search_max_radius: float = 4.20
+@export_range(0.1, 3.0, 0.1) var search_radius_expansion: float = 1.00
+@export_range(0.0, 0.5, 0.01) var search_confidence_decay_per_second: float = 0.08
+@export_range(0.0, 0.5, 0.01) var search_confidence_drop_per_expansion: float = 0.12
+@export_range(0.05, 0.75, 0.05) var search_min_confidence: float = 0.20
 @export_range(0.20, 1.0, 0.05) var search_arrival_distance: float = 0.40
 @export_range(0.10, 2.0, 0.05) var search_scan_seconds: float = 0.70
 @export_range(10.0, 90.0, 1.0) var search_scan_degrees: float = 55.0
 @export var alert_loss_seconds: float = 1.00
-@export var recovery_seconds: float = 1.25
+@export var recovery_seconds: float = 2.00
+@export_range(0.25, 1.0, 0.05) var recovery_hearing_threshold_scale: float = 0.65
 
 var _guard: CharacterBody3D = null
 var _player: CharacterBody3D = null
@@ -80,6 +86,13 @@ var _search_scan_remaining_seconds: float = 0.0
 var _search_scan_base_direction: Vector3 = Vector3.FORWARD
 var _search_points_visited: int = 0
 var _search_reseed_count: int = 0
+var _search_seed: int = 0
+var _search_stage: int = 0
+var _search_uncertainty_radius: float = 0.0
+var _search_confidence: float = 0.0
+var _search_age_seconds: float = 0.0
+var _search_visited_positions: Array[Vector3] = []
+var _residual_alert_strength: float = 0.0
 
 
 func _ready() -> void:
@@ -285,7 +298,15 @@ func get_debug_summary() -> Dictionary:
 		"search_scan_remaining_seconds": _search_scan_remaining_seconds,
 		"search_points_visited": _search_points_visited,
 		"search_reseed_count": _search_reseed_count,
+		"search_seed": _search_seed,
+		"search_stage": _search_stage,
+		"search_uncertainty_radius": _search_uncertainty_radius,
+		"search_confidence": _search_confidence,
+		"search_age_seconds": _search_age_seconds,
+		"search_visited_positions": _search_visited_positions.duplicate(),
+		"residual_alert_strength": _residual_alert_strength,
 		"search_radius": search_radius,
+		"search_max_radius": search_max_radius,
 		"search_point_count": search_point_count,
 		"vision_distance": vision_distance,
 		"vision_facing_dot": vision_facing_dot,
@@ -339,6 +360,13 @@ func capture_semantic_state() -> Dictionary:
 		"search_scan_remaining_seconds": _search_scan_remaining_seconds,
 		"search_scan_base_direction": _search_scan_base_direction,
 		"search_points_visited": _search_points_visited,
+		"search_seed": _search_seed,
+		"search_stage": _search_stage,
+		"search_uncertainty_radius": _search_uncertainty_radius,
+		"search_confidence": _search_confidence,
+		"search_age_seconds": _search_age_seconds,
+		"search_visited_positions": _search_visited_positions.duplicate(),
+		"residual_alert_strength": _residual_alert_strength,
 	}
 
 
@@ -350,7 +378,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		and int(session.get("state")) == WORLD_SESSION_STATE_PLAYING
 	):
 		return false
-	if snapshot.size() != 25:
+	if snapshot.size() != 32:
 		return false
 	if _guard == null or not is_instance_valid(_guard):
 		return false
@@ -385,6 +413,9 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or typeof(snapshot.get("search_scan_active", null)) != TYPE_BOOL
 		or typeof(snapshot.get("search_scan_base_direction", null)) != TYPE_VECTOR3
 		or typeof(snapshot.get("search_points_visited", null)) != TYPE_INT
+		or typeof(snapshot.get("search_seed", null)) != TYPE_INT
+		or typeof(snapshot.get("search_stage", null)) != TYPE_INT
+		or typeof(snapshot.get("search_visited_positions", null)) != TYPE_ARRAY
 	):
 		return false
 	for key: String in [
@@ -393,6 +424,10 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"state_remaining_seconds",
 		"alert_loss_remaining_seconds",
 		"search_scan_remaining_seconds",
+		"search_uncertainty_radius",
+		"search_confidence",
+		"search_age_seconds",
+		"residual_alert_strength",
 	]:
 		var value: Variant = snapshot.get(key, null)
 		if (
@@ -427,11 +462,34 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		if not _is_finite_vector(point):
 			return false
 		restored_search_points.append(point)
+	var restored_visited_positions: Array[Vector3] = []
+	for visited_value: Variant in snapshot.get("search_visited_positions", []):
+		if typeof(visited_value) != TYPE_VECTOR3:
+			return false
+		var visited_point: Vector3 = visited_value
+		if not _is_finite_vector(visited_point):
+			return false
+		restored_visited_positions.append(visited_point)
 	var restored_search_index: int = int(snapshot.get("search_index", 0))
 	var restored_visited: int = int(snapshot.get("search_points_visited", 0))
+	var restored_seed: int = int(snapshot.get("search_seed", 0))
+	var restored_stage: int = int(snapshot.get("search_stage", 0))
+	var restored_radius: float = float(snapshot.get("search_uncertainty_radius", 0.0))
+	var restored_confidence: float = float(snapshot.get("search_confidence", 0.0))
+	var restored_age: float = float(snapshot.get("search_age_seconds", 0.0))
+	var restored_residual: float = float(snapshot.get("residual_alert_strength", 0.0))
 	if (
 		restored_search_index < 0
 		or restored_visited < 0
+		or restored_seed < 0
+		or restored_stage < 0
+		or restored_radius < 0.0
+		or restored_confidence < 0.0
+		or restored_confidence > 1.0
+		or restored_age < 0.0
+		or restored_residual < 0.0
+		or restored_residual > 1.0
+		or restored_visited != restored_visited_positions.size()
 		or (
 			restored_search_points.is_empty()
 			and restored_search_index != 0
@@ -442,11 +500,21 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		)
 		or (
 			restored_state != STATE_SEARCHING
-			and not restored_search_points.is_empty()
+			and (
+				not restored_search_points.is_empty()
+				or not restored_visited_positions.is_empty()
+				or restored_radius > 0.0
+				or restored_confidence > 0.0
+				or restored_age > 0.0
+			)
 		)
 		or (
 			bool(snapshot.get("search_scan_active", false))
 			and restored_state != STATE_SEARCHING
+		)
+		or (
+			restored_state != STATE_RECOVERING
+			and restored_residual > 0.0
 		)
 	):
 		return false
@@ -479,6 +547,13 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	)
 	_search_scan_base_direction = snapshot["search_scan_base_direction"]
 	_search_points_visited = restored_visited
+	_search_seed = restored_seed
+	_search_stage = restored_stage
+	_search_uncertainty_radius = restored_radius
+	_search_confidence = restored_confidence
+	_search_age_seconds = restored_age
+	_search_visited_positions = restored_visited_positions
+	_residual_alert_strength = restored_residual
 	_last_gameplay_time_sample = _get_gameplay_time()
 	return true
 
@@ -514,6 +589,12 @@ func _advance_gameplay_timers() -> float:
 		_alert_loss_remaining_seconds = maxf(
 			0.0,
 			_alert_loss_remaining_seconds - elapsed
+		)
+	if _awareness_state == STATE_RECOVERING:
+		_residual_alert_strength = clampf(
+			_state_remaining_seconds / maxf(recovery_seconds, 0.01),
+			0.0,
+			1.0
 		)
 	return elapsed
 
@@ -569,6 +650,7 @@ func _enter_state(
 		_clear_search_plan(false)
 	_awareness_state = new_state
 	_has_alert_loss_timer = false
+	_residual_alert_strength = 1.0 if new_state == STATE_RECOVERING else 0.0
 	_alert_loss_remaining_seconds = 0.0
 	match new_state:
 		STATE_SUSPICIOUS:
@@ -657,23 +739,60 @@ func _begin_search(anchor: Vector3) -> void:
 	_search_scan_remaining_seconds = 0.0
 	_search_scan_base_direction = Vector3.FORWARD
 	_search_points_visited = 0
+	_search_visited_positions.clear()
+	_search_seed = _derive_search_seed(anchor)
+	_search_stage = 0
+	_search_uncertainty_radius = maxf(search_radius, 0.50)
+	_search_confidence = 1.0
+	_search_age_seconds = 0.0
+	_resolve_search_stage()
+
+
+func _resolve_search_stage() -> void:
+	_search_points.clear()
+	_search_index = 0
+	_search_scan_active = false
+	_search_scan_remaining_seconds = 0.0
 	if (
 		_guard != null
 		and is_instance_valid(_guard)
 		and _guard.has_method("resolve_local_search_points")
 	):
+		var variation_key: int = posmod(
+			_search_seed + _search_stage * 7919,
+			2147483647
+		)
 		var resolved: Variant = _guard.call(
 			"resolve_local_search_points",
-			anchor,
-			search_radius,
-			search_point_count
+			_search_anchor,
+			_search_uncertainty_radius,
+			search_point_count,
+			variation_key,
+			_search_visited_positions
 		)
 		if typeof(resolved) == TYPE_ARRAY:
 			for point_value: Variant in resolved:
 				if typeof(point_value) == TYPE_VECTOR3:
 					_search_points.append(point_value)
 	if _search_points.is_empty():
-		_search_points.append(anchor)
+		_search_points.append(_search_anchor)
+
+
+func _try_expand_search() -> bool:
+	var maximum_radius: float = maxf(search_max_radius, search_radius)
+	if _search_uncertainty_radius >= maximum_radius - 0.01:
+		return false
+	_search_stage += 1
+	_search_uncertainty_radius = minf(
+		maximum_radius,
+		_search_uncertainty_radius + maxf(search_radius_expansion, 0.10)
+	)
+	_search_confidence = maxf(
+		search_min_confidence,
+		_search_confidence - maxf(search_confidence_drop_per_expansion, 0.0)
+	)
+	_resolve_search_stage()
+	return not _search_points.is_empty()
 
 
 func _clear_search_plan(reset_visited: bool) -> void:
@@ -683,6 +802,12 @@ func _clear_search_plan(reset_visited: bool) -> void:
 	_search_scan_active = false
 	_search_scan_remaining_seconds = 0.0
 	_search_scan_base_direction = Vector3.FORWARD
+	_search_seed = 0
+	_search_stage = 0
+	_search_uncertainty_radius = 0.0
+	_search_confidence = 0.0
+	_search_age_seconds = 0.0
+	_search_visited_positions.clear()
 	if reset_visited:
 		_search_points_visited = 0
 
@@ -695,6 +820,12 @@ func _advance_search_behavior(elapsed: float) -> void:
 		or _search_points.is_empty()
 	):
 		return
+	_search_age_seconds += elapsed
+	_search_confidence = maxf(
+		search_min_confidence,
+		_search_confidence
+			- elapsed * maxf(search_confidence_decay_per_second, 0.0)
+	)
 	if _search_scan_active:
 		_search_scan_remaining_seconds = maxf(
 			0.0,
@@ -704,9 +835,14 @@ func _advance_search_behavior(elapsed: float) -> void:
 		if _search_scan_remaining_seconds > 0.0:
 			return
 		_search_scan_active = false
-		_search_points_visited += 1
+		var completed_point: Vector3 = _search_points[_search_index]
+		_search_visited_positions.append(completed_point)
+		_search_points_visited = _search_visited_positions.size()
 		_search_index += 1
 		if _search_index >= _search_points.size():
+			if _try_expand_search():
+				_apply_navigation_for_state()
+				return
 			_enter_state(STATE_RECOVERING)
 			return
 		_apply_navigation_for_state()
@@ -729,6 +865,33 @@ func _advance_search_behavior(elapsed: float) -> void:
 	else:
 		_search_scan_base_direction = _search_scan_base_direction.normalized()
 	_apply_search_scan_pose()
+
+
+func _derive_search_seed(anchor: Vector3) -> int:
+	var guard_id: String = (
+		str(_guard.call("get_persistent_id"))
+		if _guard != null and is_instance_valid(_guard)
+		else ""
+	)
+	var semantic_key: String = "%s|%d|%d|%d|%d|%s" % [
+		guard_id,
+		roundi(anchor.x * 100.0),
+		roundi(anchor.z * 100.0),
+		_heard_count,
+		_seen_count,
+		str(_last_heard_kind),
+	]
+	return _stable_text_hash(semantic_key)
+
+
+func _stable_text_hash(text: String) -> int:
+	var value: int = 5381
+	for index: int in text.length():
+		value = posmod(
+			value * 33 + text.unicode_at(index),
+			2147483647
+		)
+	return value
 
 
 func _apply_search_scan_pose() -> void:
@@ -792,7 +955,7 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 			true
 		)
 	elif _awareness_state != STATE_ALERTED:
-		if _last_heard_strength >= hearing_investigate_strength:
+		if _last_heard_strength >= _effective_hearing_investigate_strength():
 			_enter_state(
 				STATE_INVESTIGATING,
 				_last_heard_origin,
@@ -809,6 +972,18 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 		if bool(_speech.call("speak_line")):
 			_speech_reaction_count += 1
 	_refresh_label()
+
+
+func _effective_hearing_investigate_strength() -> float:
+	var threshold: float = hearing_investigate_strength
+	if _awareness_state != STATE_RECOVERING:
+		return threshold
+	var scale: float = lerpf(
+		1.0,
+		clampf(recovery_hearing_threshold_scale, 0.25, 1.0),
+		clampf(_residual_alert_strength, 0.0, 1.0)
+	)
+	return threshold * scale
 
 
 func _legacy_debug_state() -> StringName:
@@ -933,8 +1108,12 @@ func _refresh_label() -> void:
 			)
 		STATE_SEARCHING:
 			_status_label.text = (
-				"SEARCHING\n%.1fs"
-				% _state_remaining_seconds
+				"SEARCHING\nr %.1f · confidence %.0f%%\n%.1fs"
+				% [
+					_search_uncertainty_radius,
+					_search_confidence * 100.0,
+					_state_remaining_seconds,
+				]
 			)
 		STATE_ALERTED:
 			_status_label.text = (
@@ -943,8 +1122,11 @@ func _refresh_label() -> void:
 			)
 		STATE_RECOVERING:
 			_status_label.text = (
-				"RECOVERING\n%.1fs"
-				% _state_remaining_seconds
+				"RECOVERING\nresidual alert %.0f%%\n%.1fs"
+				% [
+					_residual_alert_strength * 100.0,
+					_state_remaining_seconds,
+				]
 			)
 		STATE_INACTIVE:
 			_status_label.text = "ACTOR INACTIVE"

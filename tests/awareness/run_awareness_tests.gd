@@ -221,7 +221,11 @@ func _assert_guard_awareness_state_machine() -> void:
 			0.0
 		)) > 0.0
 		and (saved_awareness.get("search_points", []) as Array).size() >= 2
-		and int(saved_awareness.get("search_index", -1)) >= 0,
+		and int(saved_awareness.get("search_index", -1)) >= 0
+		and int(saved_awareness.get("search_seed", 0)) > 0
+		and float(saved_awareness.get("search_uncertainty_radius", 0.0)) > 0.0
+		and float(saved_awareness.get("search_confidence", 0.0)) > 0.0
+		and float(saved_awareness.get("search_confidence", 0.0)) <= 1.0,
 		"Phase 5.5 search stage, resolved multi-point plan/progress, target, and remaining gameplay-time duration are detached save truth"
 	)
 
@@ -288,6 +292,26 @@ func _assert_guard_awareness_state_machine() -> void:
 				"search_scan_remaining_seconds",
 				-2.0
 			))
+		)
+		and int(restored_search.get("search_seed", -1))
+			== int(saved_awareness.get("search_seed", -2))
+		and int(restored_search.get("search_stage", -1))
+			== int(saved_awareness.get("search_stage", -2))
+		and is_equal_approx(
+			float(restored_search.get("search_uncertainty_radius", -1.0)),
+			float(saved_awareness.get("search_uncertainty_radius", -2.0))
+		)
+		and is_equal_approx(
+			float(restored_search.get("search_confidence", -1.0)),
+			float(saved_awareness.get("search_confidence", -2.0))
+		)
+		and is_equal_approx(
+			float(restored_search.get("search_age_seconds", -1.0)),
+			float(saved_awareness.get("search_age_seconds", -2.0))
+		)
+		and _vector_arrays_equal(
+			restored_search.get("search_visited_positions", []),
+			saved_awareness.get("search_visited_positions", [])
 		)
 		and int(session.call(
 			"get_pending_semantic_event_count"
@@ -478,12 +502,18 @@ func _assert_advanced_local_search_behavior() -> void:
 	reaction.hearing_investigate_strength = 0.20
 	reaction.investigation_seconds = 0.06
 	reaction.search_seconds = 2.00
-	reaction.search_point_count = 3
-	reaction.search_radius = 1.00
+	reaction.search_point_count = 2
+	reaction.search_radius = 0.60
+	reaction.search_max_radius = 1.40
+	reaction.search_radius_expansion = 0.40
+	reaction.search_confidence_decay_per_second = 0.20
+	reaction.search_confidence_drop_per_expansion = 0.15
+	reaction.search_min_confidence = 0.20
 	reaction.search_arrival_distance = 0.30
 	reaction.search_scan_seconds = 0.08
 	reaction.search_scan_degrees = 55.0
-	reaction.recovery_seconds = 0.08
+	reaction.recovery_seconds = 0.30
+	reaction.recovery_hearing_threshold_scale = 0.60
 	guard.movement_speed = 5.0
 	light.gameplay_enabled = false
 	light.visible = false
@@ -523,8 +553,18 @@ func _assert_advanced_local_search_behavior() -> void:
 		and all_reachable
 		and _dict_vector(first_summary, "search_anchor").distance_to(
 			first_origin
-		) <= 0.001,
-		"Phase 5.5 real Integrated Slice search resolves multiple reachable local points around evidence"
+		) <= 0.001
+		and int(first_summary.get("search_seed", 0)) > 0
+		and int(first_summary.get("search_stage", -1)) == 0
+		and is_equal_approx(
+			float(first_summary.get("search_uncertainty_radius", 0.0)),
+			0.60
+		)
+		and is_equal_approx(
+			float(first_summary.get("search_confidence", 0.0)),
+			1.0
+		),
+		"Phase 5.5 real Integrated Slice search resolves reachable candidates from explicit evidence uncertainty without player-position input"
 	)
 
 	var plan_before_hidden_move: Array = (
@@ -539,14 +579,34 @@ func _assert_advanced_local_search_behavior() -> void:
 		and _vector_arrays_equal(
 			plan_before_hidden_move,
 			after_hidden_move.get("search_points", [])
-		),
-		"Phase 5.5 moving the hidden player cannot rewrite an already-resolved search plan"
+		)
+		and float(after_hidden_move.get("search_age_seconds", 0.0)) > 0.0
+		and float(after_hidden_move.get("search_confidence", 1.0)) < 1.0,
+		"Phase 5.5 moving the hidden player cannot rewrite resolved search truth while confidence decays only with simulation-time uncertainty"
 	)
 
 	var visited_first: bool = await _wait_for_search_visited(
 		reaction,
 		1,
 		120
+	)
+	var expanded: bool = await _wait_for_search_stage(
+		reaction,
+		1,
+		120
+	)
+	var expanded_summary: Dictionary = reaction.get_debug_summary()
+	_assert_true(
+		visited_first
+		and expanded
+		and int(expanded_summary.get("search_stage", 0)) >= 1
+		and float(expanded_summary.get(
+			"search_uncertainty_radius",
+			0.0
+		)) > 0.60
+		and float(expanded_summary.get("search_confidence", 1.0))
+			< float(after_hidden_move.get("search_confidence", 1.0)),
+		"Phase 5.5 exhausted local evidence expands the bounded uncertainty radius while confidence falls"
 	)
 	var second_origin: Vector3 = guard.global_position + Vector3(-0.35, 0.0, 0.40)
 	var reseed_queued: bool = bool(session.call(
@@ -576,6 +636,14 @@ func _assert_advanced_local_search_behavior() -> void:
 		and _dict_vector(second_summary, "search_anchor").distance_to(
 			second_origin
 		) <= 0.001
+		and int(second_summary.get("search_stage", -1)) == 0
+		and is_equal_approx(
+			float(second_summary.get("search_uncertainty_radius", 0.0)),
+			0.60
+		)
+		and float(second_summary.get("search_confidence", 0.0)) >= 0.99
+		and int(second_summary.get("search_seed", 0))
+			!= int(first_summary.get("search_seed", 0))
 		and not _vector_arrays_equal(
 			plan_before_hidden_move,
 			second_summary.get("search_points", [])
@@ -593,24 +661,78 @@ func _assert_advanced_local_search_behavior() -> void:
 		STATE_RECOVERING,
 		180
 	)
+	var recovery_start: Dictionary = reaction.get_debug_summary()
+	var recovery_nav: Dictionary = guard.get_awareness_navigation_state()
+	await _settle_frames(3)
+	var recovery_later: Dictionary = reaction.get_debug_summary()
+	var residual_decays: bool = (
+		float(recovery_start.get("residual_alert_strength", 0.0)) > 0.0
+		and float(recovery_later.get("residual_alert_strength", 1.0))
+			< float(recovery_start.get("residual_alert_strength", 0.0))
+	)
+	var borderline_strength: float = reaction.hearing_investigate_strength * 0.75
+	var residual_realert_queued: bool = bool(session.call(
+		"queue_gameplay_sound",
+		int(session.get("session_id")),
+		&"footstep.stone",
+		guard.global_position + Vector3(0.25, 0.0, 0.15),
+		borderline_strength
+	))
+	await _completed_physics_frame()
+	var residual_realert: Dictionary = reaction.get_debug_summary()
+	var residual_realerted: bool = (
+		residual_realert.get("awareness_state", &"") == STATE_INVESTIGATING
+	)
+	var second_recovery: bool = await _wait_for_awareness_state(
+		reaction,
+		STATE_RECOVERING,
+		180
+	)
 	var returned_unaware: bool = await _wait_for_awareness_state(
 		reaction,
 		STATE_UNAWARE,
-		60
+		90
 	)
+	var unaware_summary: Dictionary = reaction.get_debug_summary()
 	_assert_true(
 		visited_multiple
 		and reached_recovery
+		and not bool(recovery_nav.get("active", true))
+		and residual_decays
+		and residual_realert_queued
+		and residual_realerted
+		and second_recovery
 		and returned_unaware
+		and is_zero_approx(float(
+			unaware_summary.get("residual_alert_strength", -1.0)
+		))
 		and not bool(
 			guard.get_awareness_navigation_state().get("active", true)
 		),
-		"Phase 5.5 guard visits multiple local search stops, exhausts the bounded plan, recovers, and returns navigation ownership to patrol"
+		"Phase 5.5 bounded search returns patrol ownership with decaying residual alertness, temporarily lowers the local re-alert threshold, then fully calms"
 	)
 
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
+
+
+func _wait_for_search_stage(
+	reaction: Node,
+	minimum_stage: int,
+	max_frames: int
+) -> bool:
+	for _frame: int in max_frames:
+		if int(reaction.get_debug_summary().get(
+			"search_stage",
+			0
+		)) >= minimum_stage:
+			return true
+		await _completed_physics_frame()
+	return int(reaction.get_debug_summary().get(
+		"search_stage",
+		0
+	)) >= minimum_stage
 
 
 func _wait_for_search_visited(
@@ -666,12 +788,18 @@ func _configure_short_durations(
 	reaction.investigation_seconds = 0.10
 	reaction.search_seconds = 0.60
 	reaction.search_point_count = 3
-	reaction.search_radius = 0.80
+	reaction.search_radius = 0.60
+	reaction.search_max_radius = 1.20
+	reaction.search_radius_expansion = 0.30
+	reaction.search_confidence_decay_per_second = 0.12
+	reaction.search_confidence_drop_per_expansion = 0.10
+	reaction.search_min_confidence = 0.20
 	reaction.search_arrival_distance = 0.30
 	reaction.search_scan_seconds = 0.05
 	reaction.search_scan_degrees = 45.0
 	reaction.alert_loss_seconds = 0.08
-	reaction.recovery_seconds = 0.08
+	reaction.recovery_seconds = 0.12
+	reaction.recovery_hearing_threshold_scale = 0.65
 
 
 func _launch_slice() -> Node:
