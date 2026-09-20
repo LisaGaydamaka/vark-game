@@ -254,6 +254,100 @@ func get_navigation_passage_center() -> Vector3:
 	return _collision_transform_at_fraction(0.0).origin
 
 
+func get_navigation_doorway_frame() -> Dictionary:
+	if door_collision == null or door_collision.shape == null:
+		return {"valid": false}
+	var box := door_collision.shape as BoxShape3D
+	if box == null:
+		return {"valid": false}
+
+	var closed_transform: Transform3D = _collision_transform_at_fraction(0.0)
+	var normal: Vector3 = closed_transform.basis.z
+	var tangent: Vector3 = closed_transform.basis.x
+	normal.y = 0.0
+	tangent.y = 0.0
+	if normal.length_squared() <= 0.000001 or tangent.length_squared() <= 0.000001:
+		return {"valid": false}
+	normal = normal.normalized()
+	tangent = tangent.normalized()
+
+	# The closed visual leaf expresses the authored doorway span. Some fixtures
+	# deliberately shrink only the collision leaf for sweep tolerance, so do
+	# not mistake that local physics tolerance for a narrower doorway.
+	var doorway_width: float = box.size.x
+	var model: Mesh = get_visual_model()
+	if model != null:
+		doorway_width = maxf(doorway_width, model.get_aabb().size.x)
+	return {
+		"valid": true,
+		"center": closed_transform.origin,
+		"normal": normal,
+		"tangent": tangent,
+		"half_width": doorway_width * 0.5,
+	}
+
+
+func does_navigation_route_cross_passage(
+	route_points: PackedVector3Array,
+	body_radius: float,
+	lateral_margin: float = 0.02
+) -> bool:
+	# Door interaction is relevant only when the route actually changes sides
+	# through this fixed doorway. Merely approaching, walking beside, or having
+	# a capsule prediction touch the moving leaf is not traversal intent.
+	if route_points.size() < 2:
+		return false
+	var frame: Dictionary = get_navigation_doorway_frame()
+	if not bool(frame.get("valid", false)):
+		return false
+
+	var center: Vector3 = frame.get("center", global_position)
+	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
+	var tangent: Vector3 = frame.get("tangent", Vector3.ZERO)
+	var half_width: float = float(frame.get("half_width", 0.0))
+	var usable_half_width: float = maxf(
+		0.0,
+		half_width - maxf(body_radius, 0.0) + maxf(lateral_margin, 0.0)
+	)
+	if usable_half_width <= 0.0:
+		return false
+
+	const PLANE_EPSILON: float = 0.02
+	var previous_nonzero_point: Vector3 = Vector3.ZERO
+	var previous_side_distance: float = 0.0
+	var has_previous_nonzero: bool = false
+	for point: Vector3 in route_points:
+		var offset: Vector3 = point - center
+		offset.y = 0.0
+		var side_distance: float = offset.dot(normal)
+		if absf(side_distance) <= PLANE_EPSILON:
+			continue
+		if not has_previous_nonzero:
+			previous_nonzero_point = point
+			previous_side_distance = side_distance
+			has_previous_nonzero = true
+			continue
+		if previous_side_distance * side_distance < 0.0:
+			var denominator: float = side_distance - previous_side_distance
+			if absf(denominator) > 0.000001:
+				var crossing_weight: float = clampf(
+					-previous_side_distance / denominator,
+					0.0,
+					1.0
+				)
+				var crossing: Vector3 = previous_nonzero_point.lerp(
+					point,
+					crossing_weight
+				)
+				var crossing_offset: Vector3 = crossing - center
+				crossing_offset.y = 0.0
+				if absf(crossing_offset.dot(tangent)) <= usable_half_width:
+					return true
+		previous_nonzero_point = point
+		previous_side_distance = side_distance
+	return false
+
+
 func get_navigation_operating_point(
 	reference_position: Vector3,
 	body_radius: float,

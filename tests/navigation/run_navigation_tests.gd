@@ -26,6 +26,7 @@ func _run_tests() -> void:
 	await _assert_application_patrol_and_door()
 	await _assert_guard_obstructs_player_close()
 	await _assert_guard_reopens_player_closed_route()
+	await _assert_open_leaf_nearby_route_ignored()
 	await _assert_open_leaf_side_block_recovery()
 	await _assert_guard_uses_passable_partial_door()
 	await _assert_blocked_door_recovery()
@@ -434,6 +435,136 @@ func _assert_guard_reopens_player_closed_route() -> void:
 	application.queue_free()
 	await process_frame
 
+func _assert_open_leaf_nearby_route_ignored() -> void:
+	var application: Node = ApplicationScene.instantiate()
+	application.set("development_launch_labels", PackedStringArray(["Guard/Nav Lab"]))
+	application.set("development_launch_resource_paths", PackedStringArray([GUARD_NAV_DEFINITION_PATH]))
+	get_root().add_child(application)
+	await process_frame
+
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	var world := application.get("current_world") as Node3D
+	var door: VarkOrdinaryDoor = (
+		world.get_node_or_null("OrdinaryDoor") as VarkOrdinaryDoor
+		if world != null
+		else null
+	)
+	var fixture_opened: bool = false
+	if door != null:
+		fixture_opened = door.apply_semantic_state({
+			"phase": VarkOrdinaryDoor.PHASE_OPEN,
+			"open_fraction": 1.0,
+			"motion_blocked": false,
+		})
+	var ready: bool = await _wait_for_navigation_ready(world, 240)
+	var guard: VarkGuard = _find_guard(world)
+	_assert_true(
+		launched and fixture_opened and ready and world != null and guard != null and door != null,
+		"Open-leaf intent fixture launches the real Guard/Nav Lab with a fully open ordinary door"
+	)
+	if not launched or not fixture_opened or not ready or world == null or guard == null or door == null:
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	var frame: Dictionary = door.get_navigation_doorway_frame()
+	var door_collision := door.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	_assert_true(
+		bool(frame.get("valid", false)) and door_collision != null,
+		"Ordinary door exposes a fixed closed-doorway frame independent of current leaf angle"
+	)
+	if not bool(frame.get("valid", false)) or door_collision == null:
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	var center: Vector3 = frame.get("center", door.global_position)
+	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
+	var tangent: Vector3 = frame.get("tangent", Vector3.ZERO)
+	var same_side_route := PackedVector3Array([
+		center + normal * 1.0 - tangent * 0.9,
+		center + normal * 1.0 + tangent * 0.9,
+	])
+	var crossing_route := PackedVector3Array([
+		center + normal * 1.0,
+		center - normal * 1.0,
+	])
+	_assert_true(
+		not door.does_navigation_route_cross_passage(same_side_route, 0.28)
+		and door.does_navigation_route_cross_passage(crossing_route, 0.28),
+		"Doorway intent distinguishes a same-side nearby route from a real side-to-side passage crossing"
+	)
+
+	# Build a real NavigationAgent path across the fully-open leaf while both
+	# endpoints stay on the leaf's current side of the fixed doorway. This was
+	# the old false-positive trigger: capsule prediction touched the leaf, so
+	# the guard closed/reopened a door it did not intend to traverse.
+	var open_leaf_center: Vector3 = door_collision.global_position
+	var navigation_map: RID = world.get_world_3d().navigation_map
+	var original_speed: float = guard.movement_speed
+	guard.movement_speed = 0.0
+	guard.set_physics_process(false)
+	var found_leaf_contact_without_crossing: bool = false
+	var nearby_start: Vector3 = Vector3.ZERO
+	var nearby_target: Vector3 = Vector3.ZERO
+	for tangent_span: float in [0.8, 1.0, 1.2]:
+		var candidate_start: Vector3 = NavigationServer3D.map_get_closest_point(
+			navigation_map,
+			open_leaf_center - tangent * tangent_span
+		)
+		var candidate_target: Vector3 = NavigationServer3D.map_get_closest_point(
+			navigation_map,
+			open_leaf_center + tangent * tangent_span
+		)
+		candidate_start.y = guard.global_position.y
+		candidate_target.y = guard.global_position.y
+		guard.global_position = candidate_start
+		guard.velocity = Vector3.ZERO
+		guard.set_awareness_navigation_target(&"investigate", candidate_target)
+		await physics_frame
+		await process_frame
+		await physics_frame
+		await process_frame
+		if (
+			bool(guard.call("_current_route_hits_door"))
+			and not bool(guard.call("_current_route_requires_doorway"))
+		):
+			nearby_start = candidate_start
+			nearby_target = candidate_target
+			found_leaf_contact_without_crossing = true
+			break
+
+	_assert_true(
+		found_leaf_contact_without_crossing,
+		"Real same-side NavigationAgent route can pass near the open leaf without becoming doorway traversal intent"
+	)
+	if found_leaf_contact_without_crossing:
+		guard.global_position = nearby_start
+		guard.velocity = Vector3.ZERO
+		guard.set_awareness_navigation_target(&"investigate", nearby_target)
+		guard.set_physics_process(true)
+		for _frame_index: int in 12:
+			await physics_frame
+			await process_frame
+		var summary: Dictionary = guard.get_debug_summary()
+		_assert_true(
+			not bool(summary.get("doorway_traversal_required", true))
+			and int(summary.get("door_maneuver_count", 0)) == 0
+			and int(summary.get("door_use_count", 0)) == 0
+			and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN,
+			"Open leaf proximity/contact cannot trigger close-reposition-reopen when the route does not cross the doorway"
+		)
+	else:
+		guard.set_physics_process(true)
+	guard.movement_speed = original_speed
+
+	application.call("exit_current_world")
+	application.queue_free()
+	await process_frame
+
+
 func _assert_open_leaf_side_block_recovery() -> void:
 	var application: Node = ApplicationScene.instantiate()
 	application.set("development_launch_labels", PackedStringArray(["Guard/Nav Lab"]))
@@ -537,7 +668,10 @@ func _assert_open_leaf_side_block_recovery() -> void:
 	var maneuver_started: bool = false
 	for _frame_index: int in 60:
 		var start_summary: Dictionary = guard.get_debug_summary()
-		if int(start_summary.get("door_maneuver_count", 0)) == 1:
+		if (
+			int(start_summary.get("door_maneuver_count", 0)) == 1
+			and bool(start_summary.get("doorway_traversal_required", false))
+		):
 			maneuver_started = true
 			break
 		if not str(start_summary.get("last_error", "")).is_empty():
@@ -546,7 +680,7 @@ func _assert_open_leaf_side_block_recovery() -> void:
 		await process_frame
 	_assert_true(
 		maneuver_started,
-		"A fully open leaf that blocks the swing-side route is classified as a door maneuver instead of another OPEN request"
+		"A fully open leaf starts the recovery maneuver only after the remaining route is classified as a real doorway crossing"
 	)
 	if not maneuver_started:
 		_print_guard_timeout_diagnostics("open-leaf maneuver start", guard, door)

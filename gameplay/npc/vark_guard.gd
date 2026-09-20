@@ -9,6 +9,7 @@ const DOOR_BLOCKED_BY_METHOD: StringName = &"is_motion_blocked_by"
 const DOOR_SWING_RADIUS_METHOD: StringName = &"get_navigation_swing_radius"
 const DOOR_OPERATING_POINT_METHOD: StringName = &"get_navigation_operating_point"
 const DOOR_PASSAGE_CENTER_METHOD: StringName = &"get_navigation_passage_center"
+const DOOR_ROUTE_CROSSES_METHOD: StringName = &"does_navigation_route_cross_passage"
 const DOOR_PHASE_METHOD: StringName = &"get_semantic_phase"
 const DOOR_PHASE_CLOSED: StringName = &"closed"
 const DOOR_PHASE_OPEN: StringName = &"open"
@@ -52,6 +53,7 @@ var _door_traversal_state: DoorTraversalState = DoorTraversalState.APPROACHING
 var _door_use_active: bool = false
 var _door_request_pending: bool = false
 var _door_close_request_pending: bool = false
+var _doorway_traversal_required: bool = false
 var _door_route_blocked: bool = false
 var _door_obstruction_imminent: bool = false
 var _door_retry_remaining: float = 0.0
@@ -268,6 +270,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_door_use_active = false
 	_door_request_pending = false
 	_door_close_request_pending = false
+	_doorway_traversal_required = false
 	_door_route_blocked = false
 	_door_obstruction_imminent = false
 	_door_retry_remaining = 0.0
@@ -305,6 +308,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		or not door.has_method(DOOR_SWING_RADIUS_METHOD)
 		or not door.has_method(DOOR_OPERATING_POINT_METHOD)
 		or not door.has_method(DOOR_PASSAGE_CENTER_METHOD)
+		or not door.has_method(DOOR_ROUTE_CROSSES_METHOD)
 		or not door.has_method(DOOR_PHASE_METHOD)
 	):
 		_last_error = "Guard '%s' received a door without the ordinary navigation seam." % guard_id
@@ -353,6 +357,7 @@ func get_debug_summary() -> Dictionary:
 		"door_use_active": _door_use_active,
 		"door_request_pending": _door_request_pending,
 		"door_close_request_pending": _door_close_request_pending,
+		"doorway_traversal_required": _doorway_traversal_required,
 		"door_route_blocked": _door_route_blocked,
 		"door_obstruction_imminent": _door_obstruction_imminent,
 		"door_approach_clearance": _door_approach_clearance(),
@@ -457,6 +462,7 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 	var body_in_passage: bool = bool(_door.call(DOOR_BODY_IN_PASSAGE_METHOD, self))
 	if body_in_passage:
 		_door_traversal_state = DoorTraversalState.CROSSING
+		_doorway_traversal_required = true
 		_door_route_blocked = false
 		_door_obstruction_imminent = false
 
@@ -486,6 +492,7 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 		_door_obstruction_imminent = false
 		_door_request_pending = false
 		_door_close_request_pending = false
+		_doorway_traversal_required = false
 		_door_retry_remaining = 0.0
 		if _door_maneuver_crossing_active:
 			_door_maneuver_crossing_active = false
@@ -502,18 +509,38 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 		_door_obstruction_imminent = false
 		_door_request_pending = false
 		_door_close_request_pending = false
+		_doorway_traversal_required = false
 		_door_retry_remaining = 0.0
 		_door_operating_point = Vector3.ZERO
 		return false
 
 	if _door_traversal_state == DoorTraversalState.CLEAR:
+		_doorway_traversal_required = false
 		_door_route_blocked = false
 		_door_obstruction_imminent = false
 		return false
 
-	# Door phase is not traversability. Probe the guard's real capsule along
-	# its near-future NavigationAgent path against the door's current collider.
-	# A partially open/closing leaf that already leaves enough room is clear.
+	# Door use has a semantic prerequisite: the current remaining navigation
+	# route must actually cross the fixed doorway from one side to the other.
+	# Leaf contact/proximity is only meaningful after that route intent exists.
+	_doorway_traversal_required = (
+		_door_maneuver_crossing_active
+		or _current_route_requires_doorway()
+	)
+	if not _doorway_traversal_required:
+		_door_route_blocked = false
+		_door_obstruction_imminent = false
+		_door_request_pending = false
+		_door_close_request_pending = false
+		_door_retry_remaining = 0.0
+		if _door_traversal_state == DoorTraversalState.WAITING_OPEN:
+			_door_traversal_state = DoorTraversalState.APPROACHING
+			_door_use_active = false
+		return false
+
+	# Door phase is not traversability. Once traversal intent is established,
+	# probe the guard's real capsule along that committed route against the
+	# moving leaf's current collider transform.
 	_door_route_blocked = _current_route_hits_door()
 	if (
 		_door_route_blocked
@@ -794,6 +821,28 @@ func _fail_door_maneuver(reason: String) -> void:
 	push_error(_last_error)
 
 
+func _current_route_requires_doorway() -> bool:
+	if _door == null or _navigation_agent == null:
+		return false
+	if not _door.has_method(DOOR_ROUTE_CROSSES_METHOD):
+		return false
+
+	var path: PackedVector3Array = _navigation_agent.get_current_navigation_path()
+	var path_index: int = _navigation_agent.get_current_navigation_path_index()
+	var route := PackedVector3Array()
+	route.append(global_position)
+	for point_index: int in range(path_index, path.size()):
+		route.append(path[point_index])
+	if route.size() < 2:
+		return false
+	return bool(_door.call(
+		DOOR_ROUTE_CROSSES_METHOD,
+		route,
+		_navigation_agent.radius,
+		0.02
+	))
+
+
 func _current_route_hits_door() -> bool:
 	if _door == null or _navigation_agent == null or not is_inside_tree():
 		return false
@@ -904,6 +953,7 @@ func _complete_patrol_leg() -> void:
 	_door_traversal_state = DoorTraversalState.APPROACHING
 	_door_use_active = false
 	_door_request_pending = false
+	_doorway_traversal_required = false
 	_door_route_blocked = false
 	_door_obstruction_imminent = false
 	_door_retry_remaining = 0.0
