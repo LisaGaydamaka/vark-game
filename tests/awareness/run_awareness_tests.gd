@@ -77,7 +77,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		int(session.get("session_id")),
 		&"footstep.test",
 		guard.global_position,
-		0.10
+		0.15
 	))
 	await _completed_physics_frame()
 	var weak_summary: Dictionary = reaction.get_debug_summary()
@@ -247,7 +247,19 @@ func _assert_guard_awareness_state_machine() -> void:
 		and int(session.call(
 			"get_pending_semantic_event_count"
 		)) == 0,
-		"Phase 5.4 quickload restores the resolved search choice and remaining simulation-time stage without replaying hearing"
+		(
+			"Phase 5.4 quickload restores the resolved search choice and remaining simulation-time stage without replaying hearing "
+			+ "(mutated=%s loaded=%s state=%s remaining=%.6f/%.6f nav=%s pending=%d)"
+			% [
+				str(mutated_to_unaware),
+				str(loaded),
+				str(restored_search.get("awareness_state", &"")),
+				float(restored_search.get("state_remaining_seconds", -1.0)),
+				float(saved_awareness.get("state_remaining_seconds", -2.0)),
+				str(restored_nav),
+				int(session.call("get_pending_semantic_event_count")),
+			]
+		)
 	)
 
 	reaction.reset_reaction()
