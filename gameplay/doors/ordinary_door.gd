@@ -321,7 +321,7 @@ func configure_navigation_traversal(
 	_navigation_link.set_global_end_position(
 		center - normal * _navigation_link_clearance
 	)
-	_navigation_link.enabled = true
+	_navigation_link.enabled = false
 	return true
 
 
@@ -368,14 +368,48 @@ func contribute_navigation_bake_cut(
 	return true
 
 
-func bind_navigation_map(navigation_map: RID) -> bool:
+func finalize_navigation_traversal(navigation_map: RID) -> bool:
 	_ensure_navigation_link()
 	if _navigation_link == null or not navigation_map.is_valid():
 		return false
+
+	# The region must already be synchronized. Snap both authored endpoints to
+	# the actual baked polygons on their respective sides, then expose the link.
+	# This avoids relying on pre-bake guesses or scene-tree registration order.
+	var desired_start: Vector3 = _navigation_link.get_global_start_position()
+	var desired_end: Vector3 = _navigation_link.get_global_end_position()
+	var projected_start: Vector3 = NavigationServer3D.map_get_closest_point(
+		navigation_map,
+		desired_start
+	)
+	var projected_end: Vector3 = NavigationServer3D.map_get_closest_point(
+		navigation_map,
+		desired_end
+	)
+	if (
+		not is_finite(projected_start.x)
+		or not is_finite(projected_start.y)
+		or not is_finite(projected_start.z)
+		or not is_finite(projected_end.x)
+		or not is_finite(projected_end.y)
+		or not is_finite(projected_end.z)
+	):
+		return false
+	if (
+		projected_start.distance_to(projected_end) <= 0.10
+		or desired_start.distance_to(projected_start) > 0.75
+		or desired_end.distance_to(projected_end) > 0.75
+	):
+		return false
+
+	_navigation_link.set_global_start_position(projected_start)
+	_navigation_link.set_global_end_position(projected_end)
 	NavigationServer3D.link_set_map(_navigation_link.get_rid(), navigation_map)
+	_navigation_link.enabled = true
 	return true
 
 
+func get_navigation_link() -> NavigationLink3D:
 func get_navigation_link() -> NavigationLink3D:
 	return _navigation_link
 
@@ -413,6 +447,16 @@ func get_navigation_link_summary() -> Dictionary:
 		"map_bound": (
 			_navigation_link != null
 			and NavigationServer3D.link_get_map(_navigation_link.get_rid()).is_valid()
+		),
+		"server_start": (
+			NavigationServer3D.link_get_start_position(_navigation_link.get_rid())
+			if _navigation_link != null
+			else Vector3.ZERO
+		),
+		"server_end": (
+			NavigationServer3D.link_get_end_position(_navigation_link.get_rid())
+			if _navigation_link != null
+			else Vector3.ZERO
 		),
 		"iteration_id": (
 			NavigationServer3D.link_get_iteration_id(_navigation_link.get_rid())

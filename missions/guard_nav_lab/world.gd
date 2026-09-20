@@ -137,12 +137,17 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 	var navigation_map: RID = get_world_3d().navigation_map
 	NavigationServer3D.map_set_cell_size(navigation_map, navigation_mesh.cell_size)
 	navigation_region.navigation_mesh = navigation_mesh
-	if not ordinary_door.bind_navigation_map(navigation_map):
-		navigation_errors.append("Ordinary door could not bind its navigation link to the active map.")
-		return
 
-	# NavigationServer changes synchronize on physics frames. Bind the first
-	# consumer only after the new region is visible on the default World3D map.
+	# First synchronize the carved region, then snap/bind the door link to the
+	# actual baked polygons, then synchronize the completed graph before any
+	# NavigationAgent receives a semantic target.
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	if not ordinary_door.finalize_navigation_traversal(navigation_map):
+		navigation_errors.append(
+			"Ordinary door could not finalize its navigation link on the baked map."
+		)
+		return
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 
