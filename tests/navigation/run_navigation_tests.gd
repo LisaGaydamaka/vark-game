@@ -510,45 +510,51 @@ func _assert_open_leaf_side_block_recovery() -> void:
 
 	var original_speed: float = guard.movement_speed
 	guard.movement_speed = 0.0
-	# Freeze only the guard root while selecting a deterministic real nav path.
-	# NavigationAgent3D still updates its requested path, but production door
-	# behavior cannot consume the candidate before the fixture inspects it.
+	# Freeze only the guard root while placing the deterministic swing-side
+	# scenario. The production guard itself will decide whether the current
+	# route is physically blocked once processing resumes.
 	guard.set_physics_process(false)
-	var blocked_start: Vector3 = Vector3.ZERO
-	var blocked_target: Vector3 = Vector3.ZERO
-	var found_blocked_side_route: bool = false
-	for hinge_offset: float in [0.26, 0.30, 0.34]:
-		guard.global_position = side_operating - doorway_tangent * hinge_offset
-		guard.velocity = Vector3.ZERO
-		blocked_target = opposite_operating - doorway_tangent * hinge_offset
-		guard.set_awareness_navigation_target(&"investigate", blocked_target)
-		await physics_frame
-		await process_frame
-		await physics_frame
-		await process_frame
-		if bool(guard.call("_current_route_hits_door")):
-			blocked_start = guard.global_position
-			found_blocked_side_route = true
-			break
-
-	_assert_true(
-		found_blocked_side_route
-		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
-		and not door.is_body_in_navigation_passage(guard),
-		"A fully open leaf can physically block the guard's current side approach before the guard enters the doorway"
+	var hinge_offset: float = 0.34
+	var blocked_start: Vector3 = (
+		side_operating - doorway_tangent * hinge_offset
 	)
-	if not found_blocked_side_route:
-		_print_guard_timeout_diagnostics("open-leaf side-route fixture", guard, door)
+	var blocked_target: Vector3 = (
+		opposite_operating - doorway_tangent * hinge_offset
+	)
+	guard.global_position = blocked_start
+	guard.velocity = Vector3.ZERO
+	guard.set_awareness_navigation_target(&"investigate", blocked_target)
+	await physics_frame
+	await process_frame
+	_assert_true(
+		door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
+		and not door.is_body_in_navigation_passage(guard),
+		"The swing-side fixture starts outside the doorway with the ordinary leaf fully open"
+	)
+
+	guard.movement_speed = original_speed
+	guard.set_physics_process(true)
+	var maneuver_started: bool = false
+	for _frame_index: int in 60:
+		var start_summary: Dictionary = guard.get_debug_summary()
+		if int(start_summary.get("door_maneuver_count", 0)) == 1:
+			maneuver_started = true
+			break
+		if not str(start_summary.get("last_error", "")).is_empty():
+			break
+		await physics_frame
+		await process_frame
+	_assert_true(
+		maneuver_started,
+		"A fully open leaf that blocks the swing-side route is classified as a door maneuver instead of another OPEN request"
+	)
+	if not maneuver_started:
+		_print_guard_timeout_diagnostics("open-leaf maneuver start", guard, door)
 		application.call("exit_current_world")
 		application.queue_free()
 		await process_frame
 		return
 
-	guard.global_position = blocked_start
-	guard.velocity = Vector3.ZERO
-	guard.set_awareness_navigation_target(&"investigate", blocked_target)
-	guard.movement_speed = original_speed
-	guard.set_physics_process(true)
 	var observed_closing: bool = false
 	var minimum_fraction: float = 1.0
 	var crossed_after_maneuver: bool = false
