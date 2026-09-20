@@ -38,6 +38,11 @@ func get_navigation_debug_summary() -> Dictionary:
 		"guard_configured": bool(
 			guard.get_debug_summary().get("configured", false)
 		) if guard != null else false,
+		"door_link": (
+			ordinary_door.get_navigation_link_summary()
+			if ordinary_door != null
+			else {}
+		),
 	}
 
 
@@ -103,6 +108,19 @@ func _rebuild_navigation() -> void:
 		source_geometry,
 		geometry_root
 	)
+	if not ordinary_door.configure_navigation_traversal(
+		navigation_mesh.agent_radius,
+		0.30
+	):
+		navigation_errors.append(
+			"Integrated Slice ordinary door could not configure its navigation link."
+		)
+		return
+	if not ordinary_door.contribute_navigation_bake_cut(source_geometry):
+		navigation_errors.append(
+			"Integrated Slice ordinary door could not contribute its navigation bake cut."
+		)
+		return
 	NavigationServer3D.bake_from_source_geometry_data(
 		navigation_mesh,
 		source_geometry

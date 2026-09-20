@@ -18,6 +18,7 @@ const USE_SOUND_KIND: StringName = &"door.use"
 @export var base_color: Color = Color(0.34, 0.20, 0.10, 1.0)
 @export var visual_model: Mesh
 @export var obstacle_probe_step_degrees: float = 2.0
+@export var navigation_cut_depth: float = 0.20
 
 @onready var door_mesh: MeshInstance3D = $DoorMesh
 @onready var door_collision: CollisionShape3D = $CollisionShape3D
@@ -30,6 +31,8 @@ var _motion_blocker: CollisionObject3D = null
 var _highlighted: bool = false
 var _material: StandardMaterial3D = null
 var _world_session: Node = null
+var _navigation_link: NavigationLink3D = null
+var _navigation_link_clearance: float = 0.0
 
 
 func _ready() -> void:
@@ -40,6 +43,7 @@ func _ready() -> void:
 	door_mesh.material_override = _material
 	if not set_visual_model(visual_model):
 		push_error("VarkOrdinaryDoor requires a configured visual_model Mesh.")
+	_ensure_navigation_link()
 	_sync_derived_state()
 
 
@@ -262,6 +266,8 @@ func get_navigation_doorway_frame() -> Dictionary:
 		return {"valid": false}
 
 	var closed_transform: Transform3D = _collision_transform_at_fraction(0.0)
+	var navigation_center: Vector3 = closed_transform.origin
+	navigation_center.y = global_position.y
 	var normal: Vector3 = closed_transform.basis.z
 	var tangent: Vector3 = closed_transform.basis.x
 	normal.y = 0.0
@@ -280,108 +286,185 @@ func get_navigation_doorway_frame() -> Dictionary:
 		doorway_width = maxf(doorway_width, model.get_aabb().size.x)
 	return {
 		"valid": true,
-		"center": closed_transform.origin,
+		"center": navigation_center,
 		"normal": normal,
 		"tangent": tangent,
 		"half_width": doorway_width * 0.5,
 	}
 
 
-func does_navigation_route_cross_passage(
-	route_points: PackedVector3Array,
-	body_radius: float,
-	lateral_margin: float = 0.02
+func configure_navigation_traversal(
+	agent_radius: float,
+	path_reach_tolerance: float = 0.30
 ) -> bool:
-	# Door interaction is relevant only when the route actually changes sides
-	# through this fixed doorway. Merely approaching, walking beside, or having
-	# a capsule prediction touch the moving leaf is not traversal intent.
-	if route_points.size() < 2:
+	_ensure_navigation_link()
+	var frame: Dictionary = get_navigation_doorway_frame()
+	if _navigation_link == null or not bool(frame.get("valid", false)):
+		return false
+	var center: Vector3 = frame.get("center", global_position)
+	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
+	if normal.length_squared() <= 0.000001:
+		return false
+
+	# Link endpoints are fixed navigation truth, independent of the moving leaf.
+	# Keep the entry far enough outside the complete sweep that link_reached can
+	# fire without the actor first colliding with an already-open leaf.
+	_navigation_link_clearance = (
+		get_navigation_swing_radius()
+		+ maxf(agent_radius, 0.0)
+		+ maxf(path_reach_tolerance, 0.0)
+		+ 0.05
+	)
+	_navigation_link.set_global_start_position(
+		center + normal * _navigation_link_clearance
+	)
+	_navigation_link.set_global_end_position(
+		center - normal * _navigation_link_clearance
+	)
+	_navigation_link.enabled = true
+	return true
+
+
+func contribute_navigation_bake_cut(
+	source_geometry: NavigationMeshSourceGeometryData3D
+) -> bool:
+	if source_geometry == null:
 		return false
 	var frame: Dictionary = get_navigation_doorway_frame()
 	if not bool(frame.get("valid", false)):
 		return false
-
 	var center: Vector3 = frame.get("center", global_position)
 	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
 	var tangent: Vector3 = frame.get("tangent", Vector3.ZERO)
-	var half_width: float = float(frame.get("half_width", 0.0))
-	# route_points are NavigationAgent centerline truth and are already
-	# radius-safe against baked static geometry. Subtracting body_radius here
-	# would erode the opening a second time and reject valid edge-of-opening
-	# routes. Body fit against the moving leaf remains the later physical query.
-	var usable_half_width: float = (
-		half_width + maxf(lateral_margin, 0.0)
-	)
-	if usable_half_width <= 0.0:
+	var half_width: float = float(frame.get("half_width", 0.0)) + 0.06
+	var half_depth: float = maxf(navigation_cut_depth * 0.5, 0.05)
+	if (
+		normal.length_squared() <= 0.000001
+		or tangent.length_squared() <= 0.000001
+		or half_width <= 0.0
+	):
 		return false
 
-	const PLANE_EPSILON: float = 0.02
-	var previous_nonzero_point: Vector3 = Vector3.ZERO
-	var previous_side_distance: float = 0.0
-	var has_previous_nonzero: bool = false
-	for point: Vector3 in route_points:
-		var offset: Vector3 = point - center
-		offset.y = 0.0
-		var side_distance: float = offset.dot(normal)
-		if absf(side_distance) <= PLANE_EPSILON:
-			continue
-		if not has_previous_nonzero:
-			previous_nonzero_point = point
-			previous_side_distance = side_distance
-			has_previous_nonzero = true
-			continue
-		if previous_side_distance * side_distance < 0.0:
-			var denominator: float = side_distance - previous_side_distance
-			if absf(denominator) > 0.000001:
-				var crossing_weight: float = clampf(
-					-previous_side_distance / denominator,
-					0.0,
-					1.0
-				)
-				var crossing: Vector3 = previous_nonzero_point.lerp(
-					point,
-					crossing_weight
-				)
-				var crossing_offset: Vector3 = crossing - center
-				crossing_offset.y = 0.0
-				if absf(crossing_offset.dot(tangent)) <= usable_half_width:
-					return true
-		previous_nonzero_point = point
-		previous_side_distance = side_distance
-	return false
+	# The tiny carve splits the otherwise continuous floor navmesh at the
+	# doorway. The door-owned NavigationLink3D becomes the only graph edge that
+	# crosses this opening, so door interaction is explicit path metadata rather
+	# than inferred from nearby collision.
+	var vertices := PackedVector3Array([
+		center - tangent * half_width - normal * half_depth,
+		center - tangent * half_width + normal * half_depth,
+		center + tangent * half_width + normal * half_depth,
+		center + tangent * half_width - normal * half_depth,
+	])
+	var height: float = 2.4
+	var box := door_collision.shape as BoxShape3D
+	if box != null:
+		height = maxf(height, box.size.y + 0.2)
+	source_geometry.add_projected_obstruction(
+		vertices,
+		global_position.y - 0.05,
+		height,
+		true
+	)
+	return true
 
 
-func get_navigation_operating_point(
-	reference_position: Vector3,
-	body_radius: float,
-	safety_margin: float = 0.05
-) -> Vector3:
-	# Door operation is side-aware and based on the closed doorway frame, not
-	# the current leaf angle. The point sits in front of the passage center and
-	# outside the full physical swing radius, so closing/reopening cannot sweep
-	# through the requesting body merely because the leaf started fully open.
-	if door_collision == null or door_collision.shape == null:
-		return reference_position
-	var closed_transform: Transform3D = _collision_transform_at_fraction(0.0)
-	var closed_normal: Vector3 = closed_transform.basis.z
-	closed_normal.y = 0.0
-	if closed_normal.length_squared() <= 0.000001:
-		return reference_position
-	closed_normal = closed_normal.normalized()
-	var reference_offset: Vector3 = reference_position - closed_transform.origin
-	reference_offset.y = 0.0
-	var side: float = 1.0 if reference_offset.dot(closed_normal) >= 0.0 else -1.0
-	var clearance: float = (
-		get_navigation_swing_radius()
-		+ maxf(body_radius, 0.0)
-		+ maxf(safety_margin, 0.0)
+func get_navigation_link() -> NavigationLink3D:
+	return _navigation_link
+
+
+func owns_navigation_link(candidate: Object) -> bool:
+	return (
+		_navigation_link != null
+		and candidate != null
+		and candidate == _navigation_link
 	)
-	var result: Vector3 = (
-		closed_transform.origin
-		+ closed_normal * side * clearance
-	)
-	result.y = reference_position.y
-	return result
+
+
+func get_navigation_link_clearance() -> float:
+	return _navigation_link_clearance
+
+
+func get_navigation_link_summary() -> Dictionary:
+	return {
+		"configured": _navigation_link != null and _navigation_link.enabled,
+		"clearance": _navigation_link_clearance,
+		"start": (
+			_navigation_link.get_global_start_position()
+			if _navigation_link != null
+			else Vector3.ZERO
+		),
+		"end": (
+			_navigation_link.get_global_end_position()
+			if _navigation_link != null
+			else Vector3.ZERO
+		),
+		"rid_valid": (
+			_navigation_link != null
+			and _navigation_link.get_rid().is_valid()
+		),
+	}
+
+
+func is_navigation_traversal_clear(
+	body: CollisionObject3D,
+	entry_position: Vector3,
+	exit_position: Vector3
+) -> bool:
+	if (
+		body == null
+		or not body.is_inside_tree()
+		or door_collision == null
+		or door_collision.shape == null
+		or not is_inside_tree()
+	):
+		return false
+	var body_shape := body.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if body_shape == null or body_shape.shape == null:
+		return false
+
+	var horizontal_segment: Vector3 = exit_position - entry_position
+	horizontal_segment.y = 0.0
+	var segment_length: float = horizontal_segment.length()
+	if segment_length <= 0.0001:
+		return false
+	var sample_step: float = 0.10
+	var capsule := body_shape.shape as CapsuleShape3D
+	if capsule != null:
+		sample_step = maxf(capsule.radius * 0.5, 0.08)
+	var sample_count: int = maxi(1, ceili(segment_length / sample_step))
+	var base_transform: Transform3D = body_shape.global_transform
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = body_shape.shape
+	query.collision_mask = collision_layer
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.exclude = [body.get_rid()]
+	for sample_index: int in range(sample_count + 1):
+		var weight: float = float(sample_index) / float(sample_count)
+		var sample_position: Vector3 = entry_position.lerp(exit_position, weight)
+		sample_position.y = body.global_position.y
+		var offset: Vector3 = sample_position - body.global_position
+		query.transform = Transform3D(
+			base_transform.basis,
+			base_transform.origin + offset
+		)
+		for result: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
+			if result.get("collider", null) == self:
+				return false
+	return true
+
+
+func _ensure_navigation_link() -> void:
+	_navigation_link = get_node_or_null("NavigationLink3D") as NavigationLink3D
+	if _navigation_link == null:
+		_navigation_link = NavigationLink3D.new()
+		_navigation_link.name = "NavigationLink3D"
+		add_child(_navigation_link)
+	_navigation_link.bidirectional = true
+	_navigation_link.enter_cost = 0.0
+	_navigation_link.travel_cost = 1.0
+	_navigation_link.navigation_layers = 1
+	_navigation_link.enabled = false
 
 
 func capture_semantic_state() -> Dictionary:

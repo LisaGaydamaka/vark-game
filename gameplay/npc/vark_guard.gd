@@ -3,13 +3,12 @@ extends CharacterBody3D
 
 
 const DOOR_REQUEST_OPEN_METHOD: StringName = &"request_open"
-const DOOR_REQUEST_CLOSE_METHOD: StringName = &"request_close"
 const DOOR_BODY_IN_PASSAGE_METHOD: StringName = &"is_body_in_navigation_passage"
 const DOOR_BLOCKED_BY_METHOD: StringName = &"is_motion_blocked_by"
-const DOOR_SWING_RADIUS_METHOD: StringName = &"get_navigation_swing_radius"
-const DOOR_OPERATING_POINT_METHOD: StringName = &"get_navigation_operating_point"
-const DOOR_PASSAGE_CENTER_METHOD: StringName = &"get_navigation_passage_center"
-const DOOR_ROUTE_CROSSES_METHOD: StringName = &"does_navigation_route_cross_passage"
+const DOOR_TRAVERSAL_CLEAR_METHOD: StringName = &"is_navigation_traversal_clear"
+const DOOR_OWNS_LINK_METHOD: StringName = &"owns_navigation_link"
+const DOOR_GET_LINK_METHOD: StringName = &"get_navigation_link"
+const DOOR_LINK_CLEARANCE_METHOD: StringName = &"get_navigation_link_clearance"
 const DOOR_PHASE_METHOD: StringName = &"get_semantic_phase"
 const DOOR_PHASE_CLOSED: StringName = &"closed"
 const DOOR_PHASE_OPEN: StringName = &"open"
@@ -24,11 +23,8 @@ const LIFE_UNCONSCIOUS: StringName = &"unconscious"
 const LIFE_DEAD: StringName = &"dead"
 
 enum DoorTraversalState {
-	APPROACHING,
+	IDLE,
 	WAITING_OPEN,
-	REPOSITIONING_FOR_CLOSE,
-	WAITING_CLOSE,
-	REOPENING,
 	CROSSING,
 	CLEAR,
 }
@@ -49,22 +45,18 @@ var _patrol_positions: Array[Vector3] = []
 var _target_index: int = 1
 var _door: Node = null
 var _configured: bool = false
-var _door_traversal_state: DoorTraversalState = DoorTraversalState.APPROACHING
+var _door_traversal_state: DoorTraversalState = DoorTraversalState.IDLE
 var _door_use_active: bool = false
 var _door_request_pending: bool = false
-var _door_close_request_pending: bool = false
-var _doorway_traversal_required: bool = false
-var _door_route_blocked: bool = false
-var _door_obstruction_imminent: bool = false
 var _door_retry_remaining: float = 0.0
 var _door_use_count: int = 0
+var _door_open_request_count: int = 0
 var _crossing_block_open_count: int = 0
-var _door_maneuver_count: int = 0
-var _door_close_request_count: int = 0
-var _door_operating_point: Vector3 = Vector3.ZERO
-var _door_crossing_point: Vector3 = Vector3.ZERO
-var _door_maneuver_crossing_active: bool = false
-var _door_saved_target_desired_distance: float = -1.0
+var _door_traversal_failure_count: int = 0
+var _door_link_entry: Vector3 = Vector3.ZERO
+var _door_link_exit: Vector3 = Vector3.ZERO
+var _last_door_error: String = ""
+var _patrol_leg_count: int = 0
 var _patrol_leg_count: int = 0
 var _patrol_cycle_count: int = 0
 var _max_observed_path_x: float = -INF
@@ -266,24 +258,20 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_configured = false
 	_patrol_positions.clear()
 	_door = null
-	_door_traversal_state = DoorTraversalState.APPROACHING
+	_door_traversal_state = DoorTraversalState.IDLE
 	_door_use_active = false
 	_door_request_pending = false
-	_door_close_request_pending = false
-	_doorway_traversal_required = false
-	_door_route_blocked = false
-	_door_obstruction_imminent = false
 	_door_retry_remaining = 0.0
+	_door_use_count = 0
+	_door_open_request_count = 0
+	_crossing_block_open_count = 0
+	_door_traversal_failure_count = 0
+	_door_link_entry = Vector3.ZERO
+	_door_link_exit = Vector3.ZERO
+	_last_door_error = ""
 	_patrol_leg_count = 0
 	_patrol_cycle_count = 0
-	_door_use_count = 0
-	_crossing_block_open_count = 0
-	_door_maneuver_count = 0
-	_door_close_request_count = 0
-	_door_operating_point = Vector3.ZERO
-	_door_crossing_point = Vector3.ZERO
-	_door_maneuver_crossing_active = false
-	_door_saved_target_desired_distance = -1.0
+	_max_observed_path_x = -INF
 	_max_observed_path_x = -INF
 	_max_observed_path_point_count = 0
 
@@ -302,13 +290,12 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		return false
 	if (
 		not door.has_method(DOOR_REQUEST_OPEN_METHOD)
-		or not door.has_method(DOOR_REQUEST_CLOSE_METHOD)
 		or not door.has_method(DOOR_BODY_IN_PASSAGE_METHOD)
 		or not door.has_method(DOOR_BLOCKED_BY_METHOD)
-		or not door.has_method(DOOR_SWING_RADIUS_METHOD)
-		or not door.has_method(DOOR_OPERATING_POINT_METHOD)
-		or not door.has_method(DOOR_PASSAGE_CENTER_METHOD)
-		or not door.has_method(DOOR_ROUTE_CROSSES_METHOD)
+		or not door.has_method(DOOR_TRAVERSAL_CLEAR_METHOD)
+		or not door.has_method(DOOR_OWNS_LINK_METHOD)
+		or not door.has_method(DOOR_GET_LINK_METHOD)
+		or not door.has_method(DOOR_LINK_CLEARANCE_METHOD)
 		or not door.has_method(DOOR_PHASE_METHOD)
 	):
 		_last_error = "Guard '%s' received a door without the ordinary navigation seam." % guard_id
@@ -356,11 +343,21 @@ func get_debug_summary() -> Dictionary:
 		"door_traversal_state": _door_traversal_state_name(),
 		"door_use_active": _door_use_active,
 		"door_request_pending": _door_request_pending,
-		"door_close_request_pending": _door_close_request_pending,
-		"doorway_traversal_required": _doorway_traversal_required,
-		"door_route_blocked": _door_route_blocked,
-		"door_obstruction_imminent": _door_obstruction_imminent,
-		"door_approach_clearance": _door_approach_clearance(),
+		"door_close_request_pending": false,
+		"doorway_traversal_required": _door_use_active,
+		"door_route_blocked": (
+			_door_use_active
+			and _door_traversal_state == DoorTraversalState.WAITING_OPEN
+		),
+		"door_obstruction_imminent": (
+			_door_use_active
+			and _door_traversal_state == DoorTraversalState.WAITING_OPEN
+		),
+		"door_approach_clearance": (
+			float(_door.call(DOOR_LINK_CLEARANCE_METHOD))
+			if _door != null
+			else 0.0
+		),
 		"door_distance": _horizontal_distance_to_door(),
 		"target_index": _target_index,
 		"target_position": target_position,
@@ -368,17 +365,23 @@ func get_debug_summary() -> Dictionary:
 		"awareness_goal_reason": _awareness_goal_reason,
 		"awareness_goal_position": _awareness_goal_position,
 		"door_use_count": _door_use_count,
+		"door_open_request_count": _door_open_request_count,
 		"crossing_block_open_count": _crossing_block_open_count,
-		"door_maneuver_count": _door_maneuver_count,
-		"door_close_request_count": _door_close_request_count,
-		"door_operating_point": _door_operating_point,
-		"door_crossing_point": _door_crossing_point,
-		"door_maneuver_crossing_active": _door_maneuver_crossing_active,
+		"door_maneuver_count": 0,
+		"door_close_request_count": 0,
+		"door_operating_point": Vector3.ZERO,
+		"door_crossing_point": _door_link_exit,
+		"door_maneuver_crossing_active": false,
 		"door_maneuver_target_tolerance": (
 			_navigation_agent.target_desired_distance
 			if _navigation_agent != null
 			else -1.0
 		),
+		"door_link_entry": _door_link_entry,
+		"door_link_exit": _door_link_exit,
+		"door_traversal_failure_count": _door_traversal_failure_count,
+		"last_door_error": _last_door_error,
+		"patrol_leg_count": _patrol_leg_count,
 		"patrol_leg_count": _patrol_leg_count,
 		"patrol_cycle_count": _patrol_cycle_count,
 		"global_position": global_position,
@@ -396,19 +399,23 @@ func _physics_process(delta: float) -> void:
 	if not _configured or _navigation_agent == null:
 		velocity = Vector3.ZERO
 		return
-	if _process_door_maneuver(delta):
+	if _door_use_active:
+		_process_door_traversal(delta)
 		return
 
 	var next_position: Vector3 = _navigation_agent.get_next_path_position()
+	# get_next_path_position() can synchronously emit link_reached. Once that
+	# happens the explicit traversal task owns this frame and normal navigation
+	# stops touching the agent until the body exits the link.
+	if _door_use_active:
+		_process_door_traversal(delta)
+		return
+
 	_record_current_path()
 	var target_position: Vector3 = (
-		_door_crossing_point
-		if _door_maneuver_crossing_active
-		else (
-			_awareness_goal_position
-			if _awareness_goal_active
-			else _patrol_positions[_target_index]
-		)
+		_awareness_goal_position
+		if _awareness_goal_active
+		else _patrol_positions[_target_index]
 	)
 	var horizontal_to_target := Vector3(
 		target_position.x - global_position.x,
@@ -439,149 +446,91 @@ func _physics_process(delta: float) -> void:
 	if direction.length_squared() <= 0.000001:
 		velocity = Vector3.ZERO
 		return
-
 	direction = direction.normalized()
-	var planned_motion := Vector3(
-		direction.x * movement_speed * delta,
-		0.0,
-		direction.z * movement_speed * delta
-	)
-	if _wait_for_door_if_needed(delta, planned_motion):
-		velocity = Vector3.ZERO
-		return
-
 	velocity = Vector3(direction.x * movement_speed, 0.0, direction.z * movement_speed)
 	look_at(global_position + direction, Vector3.UP, true)
 	move_and_slide()
 
 
-func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
+func _on_navigation_link_reached(details: Dictionary) -> void:
+	if _door == null or _door_use_active:
+		return
+	var owner: Object = details.get("owner", null)
+	if not bool(_door.call(DOOR_OWNS_LINK_METHOD, owner)):
+		return
+	var entry_value: Variant = details.get("link_entry_position", null)
+	var exit_value: Variant = details.get("link_exit_position", null)
+	if typeof(entry_value) != TYPE_VECTOR3 or typeof(exit_value) != TYPE_VECTOR3:
+		_record_door_traversal_failure("door link metadata did not contain entry/exit positions")
+		return
+	var entry: Vector3 = entry_value
+	var exit_position: Vector3 = exit_value
+	if not _is_finite_vector(entry) or not _is_finite_vector(exit_position):
+		_record_door_traversal_failure("door link metadata contained non-finite positions")
+		return
+
+	_door_link_entry = entry
+	_door_link_exit = exit_position
+	_door_use_active = true
+	_door_request_pending = false
+	_door_retry_remaining = 0.0
+	_door_traversal_state = DoorTraversalState.WAITING_OPEN
+	_door_use_count += 1
+	_last_door_error = ""
+
+
+func _process_door_traversal(delta: float) -> void:
 	if _door == null:
-		return false
+		_abort_door_traversal("configured ordinary door disappeared")
+		return
 
-	var body_in_passage: bool = bool(_door.call(DOOR_BODY_IN_PASSAGE_METHOD, self))
-	if body_in_passage:
-		_door_traversal_state = DoorTraversalState.CROSSING
-		_doorway_traversal_required = true
-		_door_route_blocked = false
-		_door_obstruction_imminent = false
-
-		# Player CLOSE keeps ownership until real physical contact. Once the
-		# ordinary sweep actually latches on this guard body, crossing intent
-		# changes: request the same door OPEN and keep retrying while the guard
-		# moves through. Locomotion itself remains physical, so movement begins
-		# as soon as the current gap fits rather than waiting for terminal OPEN.
-		var blocked_by_self: bool = bool(_door.call(DOOR_BLOCKED_BY_METHOD, self))
-		if blocked_by_self and not _door_request_pending:
-			if not _door_use_active:
-				_door_use_active = true
-				_door_use_count += 1
-			_door_request_pending = true
-			_door_retry_remaining = 0.0
-			_crossing_block_open_count += 1
-		if _door_request_pending:
-			_retry_door_open_request(delta)
-		return false
-
-	if _door_traversal_state == DoorTraversalState.CROSSING:
-		# Leaving the doorway completes this traversal. A door closing behind
-		# the guard must not cause an unnecessary reopen.
-		_door_traversal_state = DoorTraversalState.CLEAR
-		_door_use_active = false
-		_door_route_blocked = false
-		_door_obstruction_imminent = false
-		_door_request_pending = false
-		_door_close_request_pending = false
-		_doorway_traversal_required = false
-		_door_retry_remaining = 0.0
-		if _door_maneuver_crossing_active:
-			_door_maneuver_crossing_active = false
-			_door_crossing_point = Vector3.ZERO
-			_restore_door_navigation_tolerance()
-			_apply_current_navigation_target()
-		_door_operating_point = Vector3.ZERO
-		return false
-
-	if _horizontal_distance_to_door() > maxf(door_use_distance, _door_approach_clearance()):
-		_door_traversal_state = DoorTraversalState.APPROACHING
-		_door_use_active = false
-		_door_route_blocked = false
-		_door_obstruction_imminent = false
-		_door_request_pending = false
-		_door_close_request_pending = false
-		_doorway_traversal_required = false
-		_door_retry_remaining = 0.0
-		_door_operating_point = Vector3.ZERO
-		return false
-
-	if _door_traversal_state == DoorTraversalState.CLEAR:
-		_doorway_traversal_required = false
-		_door_route_blocked = false
-		_door_obstruction_imminent = false
-		return false
-
-	# Door use has a semantic prerequisite: the current remaining navigation
-	# route must actually cross the fixed doorway from one side to the other.
-	# Leaf contact/proximity is only meaningful after that route intent exists.
-	_doorway_traversal_required = (
-		_door_maneuver_crossing_active
-		or _current_route_requires_doorway()
-	)
-	if not _doorway_traversal_required:
-		_door_route_blocked = false
-		_door_obstruction_imminent = false
-		_door_request_pending = false
-		_door_close_request_pending = false
-		_door_retry_remaining = 0.0
-		if _door_traversal_state == DoorTraversalState.WAITING_OPEN:
-			_door_traversal_state = DoorTraversalState.APPROACHING
-			_door_use_active = false
-		return false
-
-	# Door phase is not traversability. Once traversal intent is established,
-	# probe the guard's real capsule along that committed route against the
-	# moving leaf's current collider transform.
-	_door_route_blocked = _current_route_hits_door()
-	if (
-		_door_route_blocked
-		and _door_phase() == DOOR_PHASE_OPEN
-		and not _door_maneuver_crossing_active
-	):
-		_begin_open_leaf_maneuver()
-		return true
+	var passage_clear: bool = bool(_door.call(
+		DOOR_TRAVERSAL_CLEAR_METHOD,
+		self,
+		_door_link_entry,
+		_door_link_exit
+	))
 	if _door_traversal_state == DoorTraversalState.WAITING_OPEN:
-		if not _door_route_blocked:
-			_door_traversal_state = DoorTraversalState.APPROACHING
-			_door_obstruction_imminent = false
+		velocity = Vector3.ZERO
+		if passage_clear:
 			_door_request_pending = false
 			_door_retry_remaining = 0.0
-			return false
-		_door_obstruction_imminent = true
+			_door_traversal_state = DoorTraversalState.CROSSING
+		else:
+			_retry_door_open_request(delta)
+			return
+
+	if _door_traversal_state != DoorTraversalState.CROSSING:
+		velocity = Vector3.ZERO
+		return
+
+	var body_in_passage: bool = bool(_door.call(DOOR_BODY_IN_PASSAGE_METHOD, self))
+	if not passage_clear and not body_in_passage:
+		_door_traversal_state = DoorTraversalState.WAITING_OPEN
 		_retry_door_open_request(delta)
-		return true
+		velocity = Vector3.ZERO
+		return
 
-	# The safe sweep boundary is only where the guard is allowed to stop.
-	# It does not imply blockage: WAITING_OPEN begins only when the current
-	# leaf also physically intersects the guard's near-future route.
-	_door_obstruction_imminent = (
-		_door_route_blocked
-		and _planned_motion_enters_door_clearance(planned_motion)
+	if bool(_door.call(DOOR_BLOCKED_BY_METHOD, self)):
+		_crossing_block_open_count += 1
+		_retry_door_open_request(delta)
+
+	var to_exit := Vector3(
+		_door_link_exit.x - global_position.x,
+		0.0,
+		_door_link_exit.z - global_position.z
 	)
-	if not _door_obstruction_imminent:
-		_door_traversal_state = DoorTraversalState.APPROACHING
-		_door_request_pending = false
-		_door_retry_remaining = 0.0
-		return false
+	if to_exit.length() <= maxf(_navigation_agent.path_desired_distance * 0.5, 0.12):
+		_finish_door_traversal()
+		return
+	if to_exit.length_squared() <= 0.000001:
+		_finish_door_traversal()
+		return
 
-	_door_traversal_state = DoorTraversalState.WAITING_OPEN
-	if not _door_use_active:
-		_door_use_active = true
-		_door_use_count += 1
-	if not _door_request_pending:
-		_door_request_pending = true
-		_door_retry_remaining = 0.0
-	_retry_door_open_request(delta)
-	return true
+	var direction: Vector3 = to_exit.normalized()
+	velocity = Vector3(direction.x * movement_speed, 0.0, direction.z * movement_speed)
+	look_at(global_position + direction, Vector3.UP, true)
+	move_and_slide()
 
 
 func _retry_door_open_request(delta: float) -> void:
@@ -589,179 +538,42 @@ func _retry_door_open_request(delta: float) -> void:
 	_door_retry_remaining = maxf(0.0, _door_retry_remaining - delta)
 	if is_zero_approx(_door_retry_remaining):
 		_door.call(DOOR_REQUEST_OPEN_METHOD, self)
+		_door_open_request_count += 1
 		_door_retry_remaining = DOOR_REQUEST_RETRY_SECONDS
 
 
-func _retry_door_close_request(delta: float) -> void:
-	_door_close_request_pending = true
-	_door_retry_remaining = maxf(0.0, _door_retry_remaining - delta)
-	if is_zero_approx(_door_retry_remaining):
-		_door.call(DOOR_REQUEST_CLOSE_METHOD, self)
-		_door_retry_remaining = DOOR_REQUEST_RETRY_SECONDS
-
-
-func _begin_open_leaf_maneuver() -> bool:
-	if _door == null or _navigation_agent == null:
-		return false
-	var point_value: Variant = _door.call(
-		DOOR_OPERATING_POINT_METHOD,
-		global_position,
-		_navigation_agent.radius,
-		maxf(safe_margin, 0.05)
-	)
-	if typeof(point_value) != TYPE_VECTOR3:
-		_fail_door_maneuver("ordinary door returned no valid operating point")
-		return false
-	var operating_point: Vector3 = point_value
-	if not _is_finite_vector(operating_point):
-		_fail_door_maneuver("ordinary door returned a non-finite operating point")
-		return false
-	var passage_value: Variant = _door.call(DOOR_PASSAGE_CENTER_METHOD)
-	if typeof(passage_value) != TYPE_VECTOR3:
-		_fail_door_maneuver("ordinary door returned no valid passage center")
-		return false
-	var passage_center: Vector3 = passage_value
-	var opposite_reference: Vector3 = (
-		passage_center + (passage_center - operating_point)
-	)
-	opposite_reference.y = global_position.y
-	var crossing_value: Variant = _door.call(
-		DOOR_OPERATING_POINT_METHOD,
-		opposite_reference,
-		_navigation_agent.radius,
-		maxf(safe_margin, 0.05)
-	)
-	if typeof(crossing_value) != TYPE_VECTOR3:
-		_fail_door_maneuver("ordinary door returned no opposite crossing point")
-		return false
-	var crossing_point: Vector3 = crossing_value
-	if not _is_finite_vector(crossing_point):
-		_fail_door_maneuver("ordinary door returned a non-finite crossing point")
-		return false
-	var navigation_map: RID = _navigation_agent.get_navigation_map()
-	operating_point = NavigationServer3D.map_get_closest_point(
-		navigation_map,
-		operating_point
-	)
-	crossing_point = NavigationServer3D.map_get_closest_point(
-		navigation_map,
-		crossing_point
-	)
-	if (
-		not _is_finite_vector(operating_point)
-		or not _is_finite_vector(crossing_point)
-	):
-		_fail_door_maneuver("navigation projection produced a non-finite door point")
-		return false
-	var path: PackedVector3Array = NavigationServer3D.map_get_path(
-		navigation_map,
-		global_position,
-		operating_point,
-		false
-	)
-	if path.is_empty():
-		_fail_door_maneuver("no navigation route reaches the safe door operating point")
-		return false
-
-	_door_operating_point = operating_point
-	_door_crossing_point = crossing_point
-	_door_maneuver_crossing_active = false
-	if _door_saved_target_desired_distance < 0.0:
-		_door_saved_target_desired_distance = (
-			_navigation_agent.target_desired_distance
-		)
-	_navigation_agent.target_desired_distance = minf(
-		maxf(_door_saved_target_desired_distance, 0.001),
-		0.05
-	)
-	_door_traversal_state = DoorTraversalState.REPOSITIONING_FOR_CLOSE
+func _finish_door_traversal() -> void:
+	velocity = Vector3.ZERO
+	_door_use_active = false
 	_door_request_pending = false
-	_door_close_request_pending = false
 	_door_retry_remaining = 0.0
-	if not _door_use_active:
-		_door_use_active = true
-		_door_use_count += 1
-	_door_maneuver_count += 1
-	_navigation_agent.target_position = _door_operating_point
-	return true
+	_door_traversal_state = DoorTraversalState.CLEAR
+	_door_link_entry = Vector3.ZERO
+	_door_link_exit = Vector3.ZERO
+	# Awareness/patrol may have changed while crossing. Re-issue only the
+	# semantic destination now; the door task never substitutes its own target.
+	_apply_current_navigation_target()
 
 
-func _process_door_maneuver(delta: float) -> bool:
-	if _door == null or _navigation_agent == null:
-		return false
-	match _door_traversal_state:
-		DoorTraversalState.REPOSITIONING_FOR_CLOSE:
-			var to_operating_point := Vector3(
-				_door_operating_point.x - global_position.x,
-				0.0,
-				_door_operating_point.z - global_position.z
-			)
-			var reached_operating_point: bool = (
-				to_operating_point.length()
-				<= maxf(_navigation_agent.target_desired_distance, 0.01)
-			)
-			var reached_safe_clearance: bool = (
-				_horizontal_distance_to_door()
-				>= _door_approach_clearance() + 0.02
-			)
-			if reached_operating_point or (
-				_navigation_agent.is_navigation_finished()
-				and reached_safe_clearance
-			):
-				velocity = Vector3.ZERO
-				_door_traversal_state = DoorTraversalState.WAITING_CLOSE
-				_door_close_request_count += 1
-				_door_retry_remaining = 0.0
-				_retry_door_close_request(delta)
-				return true
-			if _navigation_agent.is_navigation_finished():
-				_fail_door_maneuver(
-					"navigation ended before reaching safe door-sweep clearance"
-				)
-				return true
-			var next_position: Vector3 = _navigation_agent.get_next_path_position()
-			var direction := Vector3(
-				next_position.x - global_position.x,
-				0.0,
-				next_position.z - global_position.z
-			)
-			if direction.length_squared() <= 0.000001:
-				velocity = Vector3.ZERO
-				return true
-			direction = direction.normalized()
-			velocity = Vector3(
-				direction.x * movement_speed,
-				0.0,
-				direction.z * movement_speed
-			)
-			look_at(global_position + direction, Vector3.UP, true)
-			move_and_slide()
-			return true
+func _abort_door_traversal(reason: String) -> void:
+	_record_door_traversal_failure(reason)
+	velocity = Vector3.ZERO
+	_door_use_active = false
+	_door_request_pending = false
+	_door_retry_remaining = 0.0
+	_door_traversal_state = DoorTraversalState.IDLE
+	_door_link_entry = Vector3.ZERO
+	_door_link_exit = Vector3.ZERO
+	_apply_current_navigation_target()
 
-		DoorTraversalState.WAITING_CLOSE:
-			velocity = Vector3.ZERO
-			if _door_phase() == DOOR_PHASE_CLOSED:
-				_door_close_request_pending = false
-				_door_traversal_state = DoorTraversalState.REOPENING
-				_door_maneuver_crossing_active = true
-				_door_retry_remaining = 0.0
-				_apply_current_navigation_target()
-				_retry_door_open_request(delta)
-				return true
-			_retry_door_close_request(delta)
-			return true
 
-		DoorTraversalState.REOPENING:
-			velocity = Vector3.ZERO
-			_door_route_blocked = _current_route_hits_door()
-			if not _door_route_blocked:
-				_door_traversal_state = DoorTraversalState.APPROACHING
-				_door_request_pending = false
-				_door_retry_remaining = 0.0
-				return false
-			_retry_door_open_request(delta)
-			return true
-	return false
+func _record_door_traversal_failure(reason: String) -> void:
+	_door_traversal_failure_count += 1
+	_last_door_error = reason
+	# A local smart-link failure must never invalidate the guard's whole
+	# navigation configuration. Keep the semantic goal and let normal routing
+	# retry/replan rather than turning the NPC off.
+	push_warning("Guard '%s' door traversal: %s" % [guard_id, reason])
 
 
 func _apply_current_navigation_target() -> void:
@@ -769,156 +581,14 @@ func _apply_current_navigation_target() -> void:
 		not _configured
 		or _navigation_agent == null
 		or _patrol_positions.size() != 2
+		or _door_use_active
 	):
-		return
-	if (
-		_door_traversal_state == DoorTraversalState.REPOSITIONING_FOR_CLOSE
-		or _door_traversal_state == DoorTraversalState.WAITING_CLOSE
-	):
-		_navigation_agent.target_position = _door_operating_point
-		return
-	if _door_maneuver_crossing_active:
-		_navigation_agent.target_position = _door_crossing_point
 		return
 	_navigation_agent.target_position = (
 		_awareness_goal_position
 		if _life_state == LIFE_CONSCIOUS and _awareness_goal_active
 		else _patrol_positions[_target_index]
 	)
-
-
-func _door_phase() -> StringName:
-	if _door == null or not _door.has_method(DOOR_PHASE_METHOD):
-		return &""
-	return StringName(_door.call(DOOR_PHASE_METHOD))
-
-
-func _restore_door_navigation_tolerance() -> void:
-	if (
-		_navigation_agent != null
-		and _door_saved_target_desired_distance >= 0.0
-	):
-		_navigation_agent.target_desired_distance = (
-			_door_saved_target_desired_distance
-		)
-	_door_saved_target_desired_distance = -1.0
-
-
-func _fail_door_maneuver(reason: String) -> void:
-	velocity = Vector3.ZERO
-	_door_request_pending = false
-	_door_close_request_pending = false
-	_door_retry_remaining = 0.0
-	_door_maneuver_crossing_active = false
-	_door_crossing_point = Vector3.ZERO
-	_restore_door_navigation_tolerance()
-	_last_error = "Guard '%s' cannot operate door '%s': %s." % [
-		guard_id,
-		door_id,
-		reason,
-	]
-	_configured = false
-	push_error(_last_error)
-
-
-func _current_route_requires_doorway() -> bool:
-	if _door == null or _navigation_agent == null:
-		return false
-	if not _door.has_method(DOOR_ROUTE_CROSSES_METHOD):
-		return false
-
-	var path: PackedVector3Array = _navigation_agent.get_current_navigation_path()
-	var path_index: int = _navigation_agent.get_current_navigation_path_index()
-	var route := PackedVector3Array()
-	route.append(global_position)
-	for point_index: int in range(path_index, path.size()):
-		route.append(path[point_index])
-	if route.size() < 2:
-		return false
-	return bool(_door.call(
-		DOOR_ROUTE_CROSSES_METHOD,
-		route,
-		_navigation_agent.radius,
-		0.02
-	))
-
-
-func _current_route_hits_door() -> bool:
-	if _door == null or _navigation_agent == null or not is_inside_tree():
-		return false
-	var collision_shape := get_node_or_null("CollisionShape3D") as CollisionShape3D
-	if collision_shape == null or collision_shape.shape == null:
-		return false
-
-	var path: PackedVector3Array = _navigation_agent.get_current_navigation_path()
-	var path_index: int = _navigation_agent.get_current_navigation_path_index()
-	var segment_start: Vector3 = global_position
-	var remaining_distance: float = maxf(
-		door_use_distance,
-		_door_approach_clearance() + _navigation_agent.radius
-	)
-	var sample_step: float = maxf(_navigation_agent.radius * 0.5, 0.08)
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = collision_shape.shape
-	query.collision_mask = int(_door.get("collision_layer"))
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	query.exclude = [get_rid()]
-	var base_transform: Transform3D = collision_shape.global_transform
-
-	for point_index: int in range(path_index, path.size()):
-		var segment_end: Vector3 = path[point_index]
-		segment_end.y = global_position.y
-		var segment: Vector3 = segment_end - segment_start
-		var segment_length: float = segment.length()
-		if segment_length <= 0.0001:
-			segment_start = segment_end
-			continue
-		var tested_length: float = minf(segment_length, remaining_distance)
-		var sample_count: int = maxi(1, ceili(tested_length / sample_step))
-		for sample_index: int in range(1, sample_count + 1):
-			var sample_distance: float = minf(
-				tested_length,
-				sample_step * float(sample_index)
-			)
-			var sample_position: Vector3 = (
-				segment_start + segment.normalized() * sample_distance
-			)
-			var offset: Vector3 = sample_position - global_position
-			query.transform = Transform3D(
-				base_transform.basis,
-				base_transform.origin + offset
-			)
-			for result: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
-				if result.get("collider", null) == _door:
-					return true
-		remaining_distance -= tested_length
-		if remaining_distance <= 0.0:
-			break
-		segment_start = segment_end
-	return false
-
-
-func _planned_motion_enters_door_clearance(planned_motion: Vector3) -> bool:
-	if planned_motion.length_squared() <= 0.000001 or _door == null:
-		return false
-	var current_distance: float = _horizontal_distance_to_door()
-	var next_position: Vector3 = global_position + planned_motion
-	var next_to_door: Vector3 = _door.global_position - next_position
-	next_to_door.y = 0.0
-	var next_distance: float = next_to_door.length()
-	if next_distance >= current_distance:
-		return false
-	return next_distance <= _door_approach_clearance()
-
-
-func _door_approach_clearance() -> float:
-	if _door == null or _navigation_agent == null:
-		return 0.0
-	var swing_radius: float = float(_door.call(DOOR_SWING_RADIUS_METHOD))
-	if swing_radius <= 0.0:
-		return 0.0
-	return swing_radius + _navigation_agent.radius + maxf(safe_margin, 0.01)
 
 
 func _horizontal_distance_to_door() -> float:
@@ -933,29 +603,20 @@ func _door_traversal_state_name() -> StringName:
 	match _door_traversal_state:
 		DoorTraversalState.WAITING_OPEN:
 			return &"waiting_open"
-		DoorTraversalState.REPOSITIONING_FOR_CLOSE:
-			return &"repositioning_for_close"
-		DoorTraversalState.WAITING_CLOSE:
-			return &"waiting_close"
-		DoorTraversalState.REOPENING:
-			return &"reopening"
 		DoorTraversalState.CROSSING:
 			return &"crossing"
 		DoorTraversalState.CLEAR:
 			return &"clear"
 		_:
-			return &"approaching"
+			return &"idle"
 
 
 func _complete_patrol_leg() -> void:
 	velocity = Vector3.ZERO
 	_patrol_leg_count += 1
-	_door_traversal_state = DoorTraversalState.APPROACHING
+	_door_traversal_state = DoorTraversalState.IDLE
 	_door_use_active = false
 	_door_request_pending = false
-	_doorway_traversal_required = false
-	_door_route_blocked = false
-	_door_obstruction_imminent = false
 	_door_retry_remaining = 0.0
 	if _target_index == 1:
 		_target_index = 0
@@ -965,6 +626,7 @@ func _complete_patrol_leg() -> void:
 	_apply_current_navigation_target()
 
 
+func _record_current_path() -> void:
 func _record_current_path() -> void:
 	var path: PackedVector3Array = _navigation_agent.get_current_navigation_path()
 	_max_observed_path_point_count = maxi(_max_observed_path_point_count, path.size())
@@ -1050,9 +712,10 @@ func _apply_life_state(target_state: StringName) -> void:
 		velocity = Vector3.ZERO
 		_door_use_active = false
 		_door_request_pending = false
-		_door_route_blocked = false
-		_door_obstruction_imminent = false
 		_door_retry_remaining = 0.0
+		_door_traversal_state = DoorTraversalState.IDLE
+		_door_link_entry = Vector3.ZERO
+		_door_link_exit = Vector3.ZERO
 	_refresh_life_state_presentation()
 
 
@@ -1161,3 +824,8 @@ func _ensure_components() -> void:
 		_navigation_agent.height = 1.7
 		_navigation_agent.avoidance_enabled = false
 		add_child(_navigation_agent)
+	_navigation_agent.path_metadata_flags = (
+		NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
+	)
+	if not _navigation_agent.link_reached.is_connected(_on_navigation_link_reached):
+		_navigation_agent.link_reached.connect(_on_navigation_link_reached)

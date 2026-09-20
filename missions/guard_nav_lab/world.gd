@@ -55,6 +55,7 @@ func get_navigation_debug_summary() -> Dictionary:
 		"agent_radius": _navigation_mesh.agent_radius if _navigation_mesh != null else 0.0,
 		"door_visual_width": _get_guard_nav_door_visual_width(),
 		"door_sweep_width": _get_guard_nav_door_sweep_width(),
+		"door_link": ordinary_door.get_navigation_link_summary(),
 		"map_source_path": func_map.local_map_file,
 	}
 
@@ -114,6 +115,15 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 
 	var source_geometry := NavigationMeshSourceGeometryData3D.new()
 	NavigationServer3D.parse_source_geometry_data(navigation_mesh, source_geometry, func_map)
+	if not ordinary_door.configure_navigation_traversal(
+		navigation_mesh.agent_radius,
+		0.30
+	):
+		navigation_errors.append("Ordinary door could not configure its navigation link.")
+		return
+	if not ordinary_door.contribute_navigation_bake_cut(source_geometry):
+		navigation_errors.append("Ordinary door could not contribute its navigation bake cut.")
+		return
 	NavigationServer3D.bake_from_source_geometry_data(navigation_mesh, source_geometry)
 
 	if navigation_mesh.get_polygon_count() <= 0:
