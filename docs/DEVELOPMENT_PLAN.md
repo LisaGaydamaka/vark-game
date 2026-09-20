@@ -1354,26 +1354,42 @@ The current implementation does not add guard-to-guard communication, alarm broa
 
 Replace the temporary single-point stationary search with believable local investigation while preserving the 5.4 information model: guards search from what they actually heard/saw, never from hidden current player position.
 
-This is **TARGET** behavior until integrated play proves the final search cadence and spatial pattern. The implementation may use deterministic or randomized point selection, but the player-facing contract is:
+This is **TARGET** behavior until integrated play proves the final search cadence and spatial pattern. The production direction is an evidence-driven uncertainty search rather than a fixed waypoint script. Preserve the existing ownership split: perception creates local evidence, awareness owns knowledge/search state, and `VarkGuard` executes navigation/facing without gaining hidden-player knowledge.
+
+The player-facing contract is:
 
 - search begins from the resolved heard location or last-seen position already owned by awareness;
-- generate multiple reachable, plausible local search points around that evidence, constrained by navigation and nearby space rather than global player knowledge;
+- awareness owns an explicit search anchor, uncertainty/search radius, confidence/age, resolved search plan, current progress, and visited locations; the hidden current player position is not part of search state;
+- generate several reachable, plausible candidate points from the navigation space around the evidence. Candidate scoring may prefer evidence proximity, useful spatial separation, unsearched space, reasonable path cost, and later mission-proven spatial features such as room transitions/corners, but must never score against the hidden player's actual position;
+- use controlled deterministic variation so repeated searches need not expose the exact same visible point order. Any pseudo-random seed/choice must derive from stable semantic inputs such as guard identity plus the evidence instance, and once candidates/order become resolved gameplay truth they are saved directly rather than regenerated on restore;
 - move between several search points instead of standing indefinitely at one destination;
-- visibly scan/look around at search stops so the state reads as active investigation rather than idle behavior;
-- ordinary vision/hearing remain live throughout the search, and new local evidence may interrupt/reseed the current search;
-- search expansion remains bounded in radius/time and eventually enters recovery, then returns navigation ownership to patrol;
-- do not query the hidden player's current position, choose cover because the player is actually behind it, or otherwise manufacture omniscient search choices;
-- if randomness is used, once search points/order become resolved gameplay truth they must survive save/restore rather than rerolling on load.
+- treat each reached point as investigation: stop, visibly scan/look around/listen briefly, then continue. Ordinary vision/hearing remain live throughout the stop and movement;
+- immediately after strong/visual evidence, search close to the anchor while confidence is high. If nothing is found, uncertainty may expand outward while confidence decays; both radius and total duration stay bounded;
+- new local evidence may interrupt/recenter/reseed the search and collapse uncertainty around the new useful evidence;
+- exhausting active search enters a meaningful residual-alert/recovery period rather than instant amnesia. During recovery the guard may resume its ordinary route while remaining temporarily easier to re-alert before decaying fully to unaware;
+- do not query the hidden player's current position, choose cover because the player is actually behind it, or otherwise manufacture omniscient search choices.
 
 Do not turn this item into room-clearing combat tactics, squad coordination, alarm broadcasting, or combat decision-making. Those remain separate later work.
 
-The first implementation deliberately uses a deterministic local plan rather than random wandering. `VarkGuard.resolve_local_search_points()` projects a small ordered set around the evidence onto the synchronized navigation map and keeps only reachable, non-duplicate points within the bounded search radius. `guard_awareness.gd` owns the resolved point array/index, movement between those points, a short left/right scan at each arrival, evidence-driven reseeding, total search timeout, and restore semantics. The planner receives only the evidence anchor and navigation map; it has no player argument or hidden-position lookup.
+The current first implementation deliberately uses a deterministic local plan rather than random wandering. `VarkGuard.resolve_local_search_points()` projects a small ordered set around the evidence onto the synchronized navigation map and keeps only reachable, non-duplicate points within one bounded radius. `guard_awareness.gd` owns the resolved point array/index, movement between those points, a short left/right scan at each arrival, evidence-driven reseeding, total search timeout, and restore semantics. The planner receives only the evidence anchor and navigation map; it has no player argument or hidden-position lookup. This is a valid first-stage proof, **not the 5.5 production-complete search architecture**.
 
-**Done when:** after losing confirmed sight or investigating a strong sound, the guard searches multiple reachable locations around the resolved evidence, visibly scans at search stops, can reacquire the player from new local vision/hearing, never tracks hidden player movement without evidence, gives up after a bounded search, and resumes patrol. Saving/loading during search restores the same resolved current search plan/progress closely enough that load does not reroll a materially different search.
+Before 5.5 can be marked complete, evolve that proof without replacing its information model:
 
-**Automated:** implemented in the authoritative Awareness suite. The real Integrated Slice now proves that evidence resolves multiple reachable local points, moving a hidden player cannot rewrite the resolved plan, newly heard evidence interrupts/reseeds the search, at least two search stops can be visited before bounded recovery, navigation ownership returns to patrol, and quicksave/quickload preserves the resolved search point array, current index, scan progress, and remaining simulation-time search duration. The first implementation uses deterministic local point ordering so restore never rerolls; subjective route quality, scan cadence, and believability remain manual TARGET acceptance.
+1. add explicit uncertainty/confidence/age semantics and bounded radius expansion as certainty falls;
+2. replace the obvious fixed candidate order with scored local candidates plus deterministic variation from stable semantic inputs;
+3. keep resolved candidate/order choices as direct semantic save truth;
+4. retain active move/scan/listen investigation with ordinary senses live;
+5. make new evidence recenter/reseed the uncertainty search;
+6. make recovery carry temporary residual alertness so ending active search is not instant amnesia;
+7. add spatial scoring only from mission-proven needs (for example useful room transitions/corners), never from hidden player location.
 
-**Manual:** required — user/playtester runs the Integrated Slice and verifies that the deterministic first implementation reads as purposeful rather than idle: the guard moves among several plausible nearby locations, visibly scans at stops, never appears to follow hidden movement without new evidence, reacts naturally when the player deliberately exposes themselves or makes a new sound, and eventually gives up/returns to patrol. Randomized variety remains optional TARGET tuning; if introduced after this first acceptance, its resolved choices must keep the same save/restore rule.
+Do not build a universal tactical/cover-search framework preemptively. Introduce scoring signals only when representative mission geometry proves they improve believable search.
+
+**Done when:** after losing confirmed sight or investigating a strong sound, the guard searches from an explicit local evidence/uncertainty model rather than hidden player truth; selects and visits several reachable plausible locations with controlled non-robotic variation; visibly investigates at stops; can reacquire from new local vision/hearing; expands/decays uncertainty in a bounded way when evidence dries up; new evidence recenters the search; active search ends into temporary residual alert/recovery before full unaware patrol; and save/load restores the same resolved search plan/progress/confidence/uncertainty state without materially rerolling the search.
+
+**Automated:** the existing authoritative Awareness suite already proves the first-stage invariants: evidence resolves multiple reachable local points, moving a hidden player cannot rewrite the resolved plan, newly heard evidence interrupts/reseeds search, multiple search stops can be visited before bounded recovery, navigation ownership returns to patrol, and quicksave/quickload preserves the resolved point array/index/scan progress. Before 5.5 completion, extend deterministic coverage to uncertainty-radius/confidence progression, stable deterministic variation, direct persistence of resolved candidate/order choices, new-evidence recentering, and residual-alert decay. Keep subjective candidate quality, scan cadence, and believability out of hard-coded tests until user acceptance.
+
+**Manual:** required after the production-complete 5.5 behavior is implemented — user/playtester runs the Integrated Slice and verifies that search reads as purposeful rather than as a visible fixed waypoint script; explores plausible nearby space without seeming omniscient; broadens naturally as certainty falls; reacts naturally to deliberately new visual/sound evidence; gives up active search without instant emotional/awareness reset; and later returns to ordinary predictable patrol. Repeat the same setup several times to verify controlled variation does not randomly invalidate carefully observed stealth planning.
 
 ## 5.6 NPC communication/local knowledge `[ ]`
 
