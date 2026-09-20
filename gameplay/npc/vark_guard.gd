@@ -381,7 +381,6 @@ func get_debug_summary() -> Dictionary:
 		"door_traversal_failure_count": _door_traversal_failure_count,
 		"last_door_error": _last_door_error,
 		"patrol_leg_count": _patrol_leg_count,
-		"patrol_leg_count": _patrol_leg_count,
 		"patrol_cycle_count": _patrol_cycle_count,
 		"global_position": global_position,
 		"velocity": velocity,
