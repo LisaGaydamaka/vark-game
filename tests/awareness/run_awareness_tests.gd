@@ -917,7 +917,10 @@ func _assert_advanced_local_search_behavior() -> void:
 	player.set_physics_process(false)
 	player.velocity = Vector3.ZERO
 	guard.global_position = Vector3(0.0, 0.0, -5.60)
-	player.global_position = Vector3(0.0, 2.20, -5.15)
+	# Keep every sampled body point genuinely above the calm vertical field;
+	# multi-sample vision now includes center/lower body, so 2.20 m was no
+	# longer an unambiguous overhead fixture.
+	player.global_position = Vector3(0.0, 3.00, -5.15)
 	guard.look_at(
 		Vector3(
 			player.global_position.x,
@@ -996,8 +999,14 @@ func _assert_advanced_local_search_behavior() -> void:
 				-1.0
 			)),
 			base_vertical_limit
+		),
+		(
+			"Phase 5.5 calm vertical attention rejects a genuinely overhead player "
+			+ "(summary=%s)" % str(unaware_vertical_summary)
 		)
-		and elevated_sound_queued
+	)
+	_assert_true(
+		elevated_sound_queued
 		and reached_elevated_search
 		and elevated_points_reachable
 		and _dict_vector(elevated_search_summary, "search_anchor").distance_to(
@@ -1006,8 +1015,14 @@ func _assert_advanced_local_search_behavior() -> void:
 		and float(elevated_search_summary.get(
 			"current_vision_vertical_limit_degrees",
 			0.0
-		)) > base_vertical_limit
-		and search_elevated_confirmed
+		)) > base_vertical_limit,
+		(
+			"Phase 5.5 elevated evidence keeps true height while search resolves only reachable navigation "
+			+ "(summary=%s)" % str(elevated_search_summary)
+		)
+	)
+	_assert_true(
+		search_elevated_confirmed
 		and elevated_alert_summary.get("awareness_state", &"") == STATE_ALERTED
 		and guard.is_navigation_position_reachable(elevated_pursuit_goal)
 		and absf(elevated_pursuit_goal.y - player.global_position.y) > 0.50
@@ -1034,7 +1049,11 @@ func _assert_advanced_local_search_behavior() -> void:
 			"last_vision_vertical_limit_degrees",
 			0.0
 		)),
-		"Phase 5.5 elevated pursuit keeps true visual evidence separate from a reachable floor approach and follows visible lateral movement without dropping alert"
+		(
+			"Phase 5.5 engaged vertical attention reacquires and retains visible lateral elevated pursuit "
+			+ "(first=%s lateral=%s)"
+			% [str(elevated_alert_summary), str(lateral_alert_summary)]
+		)
 	)
 
 	application.call("exit_current_world")
