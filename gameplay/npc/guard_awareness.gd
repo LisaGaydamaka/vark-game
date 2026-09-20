@@ -29,6 +29,8 @@ const NAV_PURSUIT: StringName = &"pursuit"
 @export var vision_facing_dot: float = 0.30
 @export var vision_suspicion_exposure_threshold: float = 0.12
 @export var vision_confirm_exposure_threshold: float = 0.28
+@export var vision_darkness_confirm_distance: float = 1.50
+@export var vision_darkness_confirm_facing_dot: float = 0.75
 @export var hearing_investigate_strength: float = 0.16
 @export var suspicion_seconds: float = 1.25
 @export var investigation_seconds: float = 2.50
@@ -55,6 +57,9 @@ var _last_vision_target: Vector3 = Vector3.ZERO
 var _last_vision_exposure: float = 0.0
 var _last_vision_blocked: bool = false
 var _last_vision_blocker: String = ""
+var _last_vision_distance: float = 0.0
+var _last_vision_facing_dot: float = -1.0
+var _last_vision_darkness_override: bool = false
 var _last_seen_position: Vector3 = Vector3.ZERO
 var _investigation_target: Vector3 = Vector3.ZERO
 var _has_investigation_target: bool = false
@@ -124,20 +129,27 @@ func sample_vision_now() -> bool:
 	_last_vision_target = _get_player_vision_target()
 	_last_vision_blocked = false
 	_last_vision_blocker = ""
-	if exposure < vision_suspicion_exposure_threshold:
-		_record_vision_loss()
-		return false
+	_last_vision_distance = 0.0
+	_last_vision_facing_dot = -1.0
+	_last_vision_darkness_override = false
 
+	# Darkness is strong protection, not magical invisibility. Distance, facing,
+	# and physical LOS must be resolved before exposure can reject vision so a
+	# guard standing face-to-face with the player can still receive decisive
+	# visual evidence in complete gameplay darkness.
 	var eye: Vector3 = _guard.global_position + Vector3.UP * 1.35
 	var target: Vector3 = _last_vision_target
 	var to_player: Vector3 = target - eye
 	var distance: float = to_player.length()
+	_last_vision_distance = distance
 	if distance <= 0.001 or distance > vision_distance:
 		_record_vision_loss()
 		return false
 	var direction: Vector3 = to_player / distance
 	var facing: Vector3 = _guard.global_transform.basis.z.normalized()
-	if facing.dot(direction) < vision_facing_dot:
+	var facing_dot: float = facing.dot(direction)
+	_last_vision_facing_dot = facing_dot
+	if facing_dot < vision_facing_dot:
 		_record_vision_loss()
 		return false
 
@@ -157,6 +169,18 @@ func sample_vision_now() -> bool:
 		_record_vision_loss()
 		return false
 
+	_last_vision_darkness_override = (
+		exposure < vision_confirm_exposure_threshold
+		and distance <= maxf(vision_darkness_confirm_distance, 0.0)
+		and facing_dot >= vision_darkness_confirm_facing_dot
+	)
+	if (
+		exposure < vision_suspicion_exposure_threshold
+		and not _last_vision_darkness_override
+	):
+		_record_vision_loss()
+		return false
+
 	_last_seen_position = target
 	_investigation_target = target
 	_has_investigation_target = true
@@ -165,6 +189,7 @@ func sample_vision_now() -> bool:
 
 	if (
 		exposure >= vision_confirm_exposure_threshold
+		or _last_vision_darkness_override
 		or _awareness_state == STATE_ALERTED
 	):
 		if _awareness_state != STATE_ALERTED:
@@ -202,6 +227,9 @@ func reset_reaction() -> void:
 	_last_vision_exposure = 0.0
 	_last_vision_blocked = false
 	_last_vision_blocker = ""
+	_last_vision_distance = 0.0
+	_last_vision_facing_dot = -1.0
+	_last_vision_darkness_override = false
 	_last_seen_position = Vector3.ZERO
 	_investigation_target = Vector3.ZERO
 	_has_investigation_target = false
@@ -224,6 +252,9 @@ func get_debug_summary() -> Dictionary:
 		"last_vision_exposure": _last_vision_exposure,
 		"last_vision_blocked": _last_vision_blocked,
 		"last_vision_blocker": _last_vision_blocker,
+		"last_vision_distance": _last_vision_distance,
+		"last_vision_facing_dot": _last_vision_facing_dot,
+		"last_vision_darkness_override": _last_vision_darkness_override,
 		"last_seen_position": _last_seen_position,
 		"investigation_target": _investigation_target,
 		"has_investigation_target": _has_investigation_target,
@@ -238,6 +269,8 @@ func get_debug_summary() -> Dictionary:
 		"vision_confirm_exposure_threshold": (
 			vision_confirm_exposure_threshold
 		),
+		"vision_darkness_confirm_distance": vision_darkness_confirm_distance,
+		"vision_darkness_confirm_facing_dot": vision_darkness_confirm_facing_dot,
 		"hearing_investigate_strength": hearing_investigate_strength,
 		"gameplay_time_seconds": _get_gameplay_time(),
 	}

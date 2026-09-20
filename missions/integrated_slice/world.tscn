@@ -1,4 +1,4 @@
-[gd_scene load_steps=44 format=3]
+[gd_scene load_steps=45 format=3]
 
 [ext_resource type="Script" path="res://missions/integrated_slice/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
@@ -21,6 +21,7 @@
 [ext_resource type="Resource" path="res://gameplay/noise/profiles/stone.tres" id="19_stone_profile"]
 [ext_resource type="Resource" path="res://gameplay/noise/profiles/carpet.tres" id="20_carpet_profile"]
 [ext_resource type="Script" path="res://gameplay/visibility/light_gem.gd" id="21_light_gem"]
+[ext_resource type="Script" path="res://gameplay/noise/noise_meter.gd" id="22_noise_meter"]
 
 [sub_resource type="Environment" id="Environment_slice"]
 background_mode = 1
@@ -479,3 +480,25 @@ show_percentage = false
 
 [node name="Readout" type="Label" parent="ExposureHUD/Panel/VBox"]
 text = "EXPOSURE 0.00"
+
+[node name="NoisePanel" type="PanelContainer" parent="ExposureHUD"]
+script = ExtResource("22_noise_meter")
+emitter_path = NodePath("../../FootstepEmitter")
+offset_left = 446.0
+offset_top = 16.0
+offset_right = 860.0
+offset_bottom = 118.0
+
+[node name="VBox" type="VBoxContainer" parent="ExposureHUD/NoisePanel"]
+
+[node name="Title" type="Label" parent="ExposureHUD/NoisePanel/VBox"]
+text = "DEBUG FOOTSTEP LOUDNESS"
+
+[node name="LoudnessBar" type="ProgressBar" parent="ExposureHUD/NoisePanel/VBox"]
+custom_minimum_size = Vector2(390, 18)
+max_value = 1.0
+step = 0.01
+show_percentage = false
+
+[node name="Readout" type="Label" parent="ExposureHUD/NoisePanel/VBox"]
+text = "LOUDNESS 0.00"

@@ -5,6 +5,7 @@ const ApplicationScene = preload("res://application/Application.tscn")
 const SLICE_PATH: String = "res://missions/integrated_slice/world.tscn"
 const STONE_PROFILE_PATH: String = "res://gameplay/noise/profiles/stone.tres"
 const CARPET_PROFILE_PATH: String = "res://gameplay/noise/profiles/carpet.tres"
+const NoiseMeter = preload("res://gameplay/noise/noise_meter.gd")
 
 var failures: Array[String] = []
 
@@ -108,6 +109,18 @@ func _assert_integrated_surface_noise() -> void:
 		if world != null
 		else null
 	)
+	var noise_meter := (
+		world.get_node_or_null("ExposureHUD/NoisePanel") as VarkNoiseMeter
+		if world != null
+		else null
+	)
+	var noise_bar := (
+		world.get_node_or_null(
+			"ExposureHUD/NoisePanel/VBox/LoudnessBar"
+		) as ProgressBar
+		if world != null
+		else null
+	)
 
 	_assert_true(
 		launched
@@ -119,6 +132,9 @@ func _assert_integrated_surface_noise() -> void:
 		and footsteps != null
 		and stone_surface != null
 		and carpet_surface != null
+		and noise_meter != null
+		and noise_meter.get_script() == NoiseMeter
+		and noise_bar != null
 		and stone_surface.get_surface_profile().resource_path
 			== STONE_PROFILE_PATH
 		and carpet_surface.get_surface_profile().resource_path
@@ -135,6 +151,8 @@ func _assert_integrated_surface_noise() -> void:
 		or footsteps == null
 		or stone_surface == null
 		or carpet_surface == null
+		or noise_meter == null
+		or noise_bar == null
 	):
 		_cleanup_application(application)
 		return
@@ -181,6 +199,20 @@ func _assert_integrated_surface_noise() -> void:
 		"Phase 5.1 standing stone footsteps derive identity/strength from SurfaceProfile and resolve through the existing gameplay.sound acoustic reaction path"
 	)
 
+	var stone_meter_summary: Dictionary = noise_meter.get_last_summary()
+	_assert_true(
+		is_equal_approx(noise_meter.get_current_loudness(), 0.52)
+		and is_equal_approx(float(noise_bar.value), 0.52)
+		and stone_meter_summary.get("last_sound_kind", &"")
+			== &"footstep.stone"
+		and is_equal_approx(
+			float(stone_meter_summary.get("last_strength", 0.0)),
+			0.52
+		)
+		and noise_meter.get_debug_text().contains("footstep.stone"),
+		"Integrated Slice development loudness meter observes the actual semantic footstep source strength beside the exposure meter"
+	)
+
 	player.global_position = Vector3(0.0, 0.0, -4.0)
 	player.velocity = Vector3.ZERO
 	guard.global_position = Vector3(0.0, 0.0, -3.0)
@@ -218,6 +250,7 @@ func _assert_integrated_surface_noise() -> void:
 	var crouched_queued: bool = footsteps.emit_step_now()
 	await _completed_physics_frame()
 	var crouched_summary: Dictionary = footsteps.get_debug_summary()
+	var crouched_meter_summary: Dictionary = noise_meter.get_last_summary()
 
 	_assert_true(
 		crouched_ready
@@ -233,6 +266,21 @@ func _assert_integrated_surface_noise() -> void:
 			0.20 * 0.45
 		),
 		"Phase 5.1 stance modifies emitted strength without changing the authored surface identity or semantic sound kind"
+	)
+
+	_assert_true(
+		is_equal_approx(
+			noise_meter.get_current_loudness(),
+			0.20 * 0.45
+		)
+		and is_equal_approx(
+			float(crouched_meter_summary.get("last_strength", 0.0)),
+			0.20 * 0.45
+		)
+		and crouched_meter_summary.get("last_stance", "")
+			== "crouched"
+		and noise_meter.get_debug_text().contains("footstep.carpet"),
+		"Development loudness meter tracks the crouched carpet source value without creating independent stealth-noise truth"
 	)
 
 	_cleanup_application(application)

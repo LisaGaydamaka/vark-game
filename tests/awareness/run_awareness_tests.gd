@@ -274,6 +274,44 @@ func _assert_guard_awareness_state_machine() -> void:
 	)
 
 	reaction.reset_reaction()
+	light.gameplay_enabled = false
+	light.visible = false
+	player.global_position = Vector3(0.0, 0.0, -4.2)
+	player.velocity = Vector3.ZERO
+	guard.global_position = Vector3(0.0, 0.0, -5.2)
+	guard.velocity = Vector3.ZERO
+	guard.look_at(player.global_position, Vector3.UP, true)
+	await _settle_frames(2)
+	var dark_exposure: float = exposure.sample_now()
+	var dark_close_confirmed: bool = reaction.sample_vision_now()
+	var dark_close_summary: Dictionary = reaction.get_debug_summary()
+	_assert_true(
+		dark_exposure <= 0.02
+		and dark_close_confirmed
+		and dark_close_summary.get("awareness_state", &"")
+			== STATE_ALERTED
+		and bool(dark_close_summary.get(
+			"last_vision_darkness_override",
+			false
+		))
+		and float(dark_close_summary.get(
+			"last_vision_distance",
+			INF
+		)) <= float(dark_close_summary.get(
+			"vision_darkness_confirm_distance",
+			0.0
+		))
+		and float(dark_close_summary.get(
+			"last_vision_facing_dot",
+			-1.0
+		)) >= float(dark_close_summary.get(
+			"vision_darkness_confirm_facing_dot",
+			1.0
+		)),
+		"Phase 5.4 complete darkness remains protective at range but cannot make a point-blank directly-facing player magically invisible"
+	)
+
+	reaction.reset_reaction()
 	light.gameplay_enabled = true
 	light.visible = true
 	player.global_position = Vector3(0.0, 0.0, -2.4)

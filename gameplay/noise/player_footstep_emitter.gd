@@ -2,6 +2,9 @@ class_name VarkPlayerFootstepEmitter
 extends Node
 
 
+signal gameplay_noise_emitted(summary: Dictionary)
+
+
 @export var player_path: NodePath = NodePath("../Player")
 @export_range(0.2, 4.0, 0.05) var step_distance: float = 1.25
 @export_range(0.0, 5.0, 0.05) var minimum_move_speed: float = 0.35
@@ -108,6 +111,7 @@ func emit_step_now() -> bool:
 	_last_base_strength = base_strength
 	_last_strength = strength
 	_last_stance = stance
+	gameplay_noise_emitted.emit(get_debug_summary())
 	return true
 
 
