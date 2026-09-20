@@ -39,6 +39,42 @@ func get_transmission(door: Node = null) -> float:
 	)
 
 
+func get_debug_state(door: Node = null) -> Dictionary:
+	var uses_door: bool = not door_id.is_empty()
+	var openness: float = 1.0
+	if uses_door:
+		openness = 0.0
+		if (
+			door != null
+			and is_instance_valid(door)
+			and door.has_method("get_acoustic_openness")
+		):
+			openness = clampf(
+				float(door.call("get_acoustic_openness")),
+				0.0,
+				1.0
+			)
+	return {
+		"portal_id": StringName(portal_id),
+		"space_a_id": StringName(space_a_id),
+		"space_b_id": StringName(space_b_id),
+		"door_id": StringName(door_id),
+		"uses_door": uses_door,
+		"door_openness": openness,
+		"closed_transmission": clampf(
+			closed_transmission,
+			0.0,
+			1.0
+		),
+		"open_transmission": clampf(
+			open_transmission,
+			0.0,
+			1.0
+		),
+		"current_transmission": get_transmission(door),
+	}
+
+
 func has_valid_transmission() -> bool:
 	return (
 		is_finite(closed_transmission)

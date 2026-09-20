@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
 [ext_resource type="PackedScene" path="res://gameplay/doors/OrdinaryDoor.tscn" id="2_door"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://gameplay/acoustics/acoustic_portal.gd" id="5_portal"]
 [ext_resource type="Script" path="res://gameplay/acoustics/acoustic_listener.gd" id="6_listener"]
 [ext_resource type="Script" path="res://scenes/acoustic_probe_emitter.gd" id="7_emitter"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_debug_inspector.gd" id="8_debug"]
 
 [sub_resource type="BoxShape3D" id="FloorShape"]
 size = Vector3(24, 0.2, 18)
@@ -36,6 +37,18 @@ size = Vector3(0.55, 0.55, 0.55)
 
 [node name="AcousticPropagation" type="Node" parent="."]
 script = ExtResource("3_propagation")
+
+[node name="AcousticDebugInspector" type="Node3D" parent="."]
+position = Vector3(0, 4.2, -2)
+script = ExtResource("8_debug")
+propagation_path = NodePath("../AcousticPropagation")
+
+[node name="StatusLabel" type="Label3D" parent="AcousticDebugInspector"]
+billboard = 1
+font_size = 16
+outline_size = 6
+no_depth_test = true
+text = "ACOUSTIC"
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 rotation_degrees = Vector3(-55, -30, 0)

@@ -19,6 +19,7 @@ var _configured: bool = false
 var _topology_enabled: bool = false
 var _handler_registered: bool = false
 var _errors: PackedStringArray = PackedStringArray()
+var _last_sound_debug: Dictionary = {}
 
 
 func _ready() -> void:
@@ -164,6 +165,7 @@ func clear() -> void:
 	_configured = false
 	_topology_enabled = false
 	_errors = PackedStringArray()
+	_last_sound_debug.clear()
 
 
 func is_configured() -> bool:
@@ -191,6 +193,41 @@ func get_debug_summary() -> Dictionary:
 	}
 
 
+func get_portal_debug_states() -> Array[Dictionary]:
+	var states: Array[Dictionary] = []
+	for portal_value: Variant in _portals:
+		var portal := portal_value as VarkAcousticPortal
+		if portal == null or not is_instance_valid(portal):
+			continue
+		var door: Node = null
+		if not portal.door_id.is_empty():
+			door = _doors_by_id.get(portal.door_id) as Node
+		states.append(portal.get_debug_state(door))
+	states.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return str(a.get("portal_id", &"")) < str(b.get("portal_id", &""))
+	)
+	return states
+
+
+func get_portal_debug_state(portal_id: StringName) -> Dictionary:
+	for state: Dictionary in get_portal_debug_states():
+		if state.get("portal_id", &"") == portal_id:
+			return state.duplicate(true)
+	return {}
+
+
+func get_last_sound_debug_snapshot() -> Dictionary:
+	return _last_sound_debug.duplicate(true)
+
+
+func get_debug_inspection() -> Dictionary:
+	return {
+		"summary": get_debug_summary(),
+		"portals": get_portal_debug_states(),
+		"last_sound": get_last_sound_debug_snapshot(),
+	}
+
+
 func handle_gameplay_sound(event: Dictionary) -> bool:
 	if not _configured:
 		return false
@@ -199,15 +236,44 @@ func handle_gameplay_sound(event: Dictionary) -> bool:
 	var payload: Dictionary = event.get("payload", {})
 	var origin: Vector3 = payload.get("origin", Vector3.ZERO)
 	var strength: float = float(payload.get("strength", 0.0))
+	var listener_results: Array[Dictionary] = []
 	for listener_value: Variant in _listeners:
 		if not (listener_value is VarkAcousticListener):
 			continue
 		var listener: VarkAcousticListener = listener_value as VarkAcousticListener
 		if listener == null or not is_instance_valid(listener):
 			continue
-		var propagation: Dictionary = evaluate(origin, strength, listener.global_position)
+		var propagation: Dictionary = evaluate(
+			origin,
+			strength,
+			listener.global_position
+		)
 		if not listener.receive_gameplay_sound(event, propagation):
 			return false
+		var perception: Dictionary = listener.get_last_perception()
+		perception["path_distance"] = propagation.get(
+			"path_distance",
+			INF
+		)
+		perception["path_cost"] = propagation.get(
+			"path_cost",
+			INF
+		)
+		perception["listener_position"] = listener.global_position
+		listener_results.append(perception)
+	listener_results.sort_custom(
+		func(a: Dictionary, b: Dictionary) -> bool:
+			return str(a.get("listener_id", &"")) < str(
+				b.get("listener_id", &"")
+			)
+	)
+	_last_sound_debug = {
+		"kind": payload.get("kind", &""),
+		"origin": origin,
+		"source_strength": strength,
+		"portal_states": get_portal_debug_states(),
+		"listeners": listener_results,
+	}
 	return true
 
 

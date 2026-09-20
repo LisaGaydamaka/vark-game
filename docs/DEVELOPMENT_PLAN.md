@@ -1262,7 +1262,7 @@ There is deliberately no physical attack animation, weapon selection, health/dam
 
 Goal: turn spike implementations into reliable Vark systems only after their interactions, save semantics, and hostile compatibility are known.
 
-## 5.1 Surface profiles and gameplay noise `[~]`
+## 5.1 Surface profiles and gameplay noise `[x]`
 
 Generalize the proven semantic gameplay-sound contract only as far as real use requires.
 
@@ -1278,14 +1278,31 @@ Door use, prop impact, speech, and crude hostile-impact sounds continue using th
 
 **Done when:** authored surface profiles can be validated independently; the real Integrated Slice consumes reusable profile-driven surfaces/emitter; standing stone emits `footstep.stone` at 0.52, standing carpet emits `footstep.carpet` at 0.20, crouch scales strength without changing surface identity/kind, and the existing guard acoustic listener receives those events through the unchanged gameplay-sound path.
 
-**Automated:** implemented through new authoritative `tests/noise/run_noise_tests.gd`, added to `tests/run_all_tests.gd`. It validates authored profiles, invalid-profile fail-closed behavior, reusable surface/profile composition, real Integrated Slice wiring, stone/carpet standing emissions, acoustic listener delivery, and crouch-strength scaling. The Phase 3 Integration suite is updated only to read profile-derived surface strength instead of the removed mission-local raw field.
+**Automated:** accepted — exact `test` head `55f5cf0c96c12b5efd8beb3a373f63ad43374897` passed Godot 4.7.2 GitHub Actions Test run #259. The new Gameplay Noise suite passed authored profile validation, invalid-profile fail-closed behavior, reusable surface/profile composition, real Integrated Slice wiring, stone/carpet semantic emission through the existing acoustic reaction path, and crouch-strength scaling. The unchanged Phase 3 Integration suite also passed, and CI ended with `ALL TEST SUITES PASSED`.
 
-**Manual:** none — 5.1 preserves the already user-accepted Phase 3 stone/carpet/crouch behavior and changes ownership/authoring structure rather than sound feel, audibility tuning, or presentation. Any future tuning that changes stealth readability will require a focused user playtest.
+**Manual:** none — 5.1 is accepted because it preserves the already user-accepted Phase 3 stone/carpet/crouch behavior and changes ownership/authoring structure rather than sound feel, audibility tuning, or presentation. Any future tuning that changes stealth readability requires a focused user playtest.
 
 
-## 5.2 Acoustic model `[ ]`
+## 5.2 Acoustic model `[~]`
 
 Stabilize the propagation architecture chosen by the spike. Doors/openings affect transmission consistently. Add debug visualization/inspection.
+
+The Phase 3 space/portal model remains the propagation authority. 5.2 hardens that model without retuning it:
+
+- every `VarkAcousticPortal` continues to connect exactly two authored acoustic spaces. A portal with no `door_id` is a constant authored opening and uses its configured `open_transmission`; a portal with a `door_id` resolves the matching world object through the existing `get_acoustic_openness()` seam and linearly interpolates `closed_transmission → open_transmission` from the same live 0–1 openness;
+- topology configuration already fails closed for duplicate/missing spaces and invalid transmission. 5.2 explicitly protects missing door/opening references as an authoring error rather than silently treating them as open or closed;
+- the accepted distance model remains `strength * exp(-path_cost)`, with path cost built from authored portal-route distance plus `-log(transmission)`. Same-space sound remains direct distance attenuation; disconnected spaces remain unreachable. No raycast-wall absorption, material-frequency model, reverberation, diffraction solver, or alternate door path is introduced;
+- propagation now exposes detached debug inspection: current topology summary, sorted portal states (spaces, linked door, live openness, closed/open/current transmission), and the last semantic sound's per-listener heard/muted result, threshold, propagated strength, path distance/cost, and portal route;
+- a reusable `VarkAcousticDebugInspector` renders that inspection to a development Label3D. The Acoustic Lab includes the inspector so opening/closing the ordinary door and emitting probe sounds visibly updates the same values used by gameplay.
+
+Debug state is observational only and is not save state or gameplay truth.
+
+**Done when:** malformed topology with a missing door reference fails closed; the Acoustic Lab proves its constant opening portal remains at authored transmission while the door-linked portal reports 0.08 at closed, 0.54 at half-open, and 1.0 at open from the existing ordinary-door openness; and after a semantic sound, debug inspection identifies the exact source kind plus per-listener heard/muted route results, including the direct, door, corner, and disconnected cases.
+
+**Automated:** extends the authoritative Acoustics suite. The existing same-room, disconnected-room, L-corridor, closed/half/open door, footstep, speech, and impact assertions remain. New checks cover missing door references, live portal-debug state, exact door transmission interpolation, constant opening transmission, the last-sound per-listener inspection snapshot, and the Acoustic Lab's visible debug text.
+
+**Manual:** none — 5.2 deliberately keeps the already accepted Phase 3 attenuation constants, portal topology, door transmission values, and hearing thresholds unchanged. The new development readout is deterministic inspection rather than subjective stealth tuning. Any later transmission/threshold retuning that changes what the player can predict must receive a focused user playtest.
+
 
 ## 5.3 Gameplay lighting/exposure `[ ]`
 

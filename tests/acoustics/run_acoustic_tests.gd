@@ -161,6 +161,7 @@ func _assert_invalid_topology_fails_closed() -> void:
 	broken_portal.portal_id = "portal.broken"
 	broken_portal.space_a_id = "duplicate"
 	broken_portal.space_b_id = "missing"
+	broken_portal.door_id = "door.missing"
 	root.add_child(broken_portal)
 	var propagation := VarkAcousticPropagation.new()
 	var result: Dictionary = propagation.configure(root)
@@ -168,8 +169,9 @@ func _assert_invalid_topology_fails_closed() -> void:
 	_assert_true(
 		not bool(result.get("ok", true))
 		and _errors_contain(errors, "Duplicate acoustic space_id")
-		and _errors_contain(errors, "references missing space 'missing'"),
-		"Malformed acoustic topology fails closed with useful duplicate/missing-link diagnostics"
+		and _errors_contain(errors, "references missing space 'missing'")
+		and _errors_contain(errors, "references missing door_id 'door.missing'"),
+		"Malformed acoustic topology fails closed with useful duplicate/missing-space/missing-opening diagnostics"
 	)
 	propagation.free()
 	root.free()
@@ -202,6 +204,9 @@ func _assert_acoustic_lab_integration() -> void:
 		return
 
 	var propagation := world.get_node("AcousticPropagation") as VarkAcousticPropagation
+	var inspector := world.get_node(
+		"AcousticDebugInspector"
+	) as VarkAcousticDebugInspector
 	var door := world.get_node("OrdinaryDoor") as VarkOrdinaryDoor
 	var same_listener := world.get_node("SameRoomListener") as VarkAcousticListener
 	var door_listener := world.get_node("DoorRoomListener") as VarkAcousticListener
@@ -213,6 +218,7 @@ func _assert_acoustic_lab_integration() -> void:
 	var summary: Dictionary = propagation.get_debug_summary() if propagation != null else {}
 	_assert_true(
 		propagation != null
+		and inspector != null
 		and propagation.is_configured()
 		and propagation.has_topology()
 		and bool(summary.get("handler_registered", false))
@@ -224,6 +230,7 @@ func _assert_acoustic_lab_integration() -> void:
 	)
 	if (
 		propagation == null
+		or inspector == null
 		or door == null
 		or same_listener == null
 		or door_listener == null
@@ -237,6 +244,44 @@ func _assert_acoustic_lab_integration() -> void:
 		application.queue_free()
 		await process_frame
 		return
+
+	var initial_portals: Array[Dictionary] = (
+		propagation.get_portal_debug_states()
+	)
+	var initial_door_portal: Dictionary = (
+		propagation.get_portal_debug_state(&"portal.door")
+	)
+	var initial_east_portal: Dictionary = (
+		propagation.get_portal_debug_state(&"portal.east")
+	)
+	var initial_debug_text: String = inspector.refresh_now()
+	_assert_true(
+		initial_portals.size() == 3
+		and bool(initial_door_portal.get("uses_door", false))
+		and initial_door_portal.get("door_id", &"")
+			== &"door.acoustic"
+		and is_equal_approx(
+			float(initial_door_portal.get(
+				"current_transmission",
+				0.0
+			)),
+			0.08
+		)
+		and not bool(initial_east_portal.get("uses_door", true))
+		and is_equal_approx(
+			float(initial_east_portal.get(
+				"current_transmission",
+				0.0
+			)),
+			1.0
+		)
+		and initial_debug_text.contains("portal.door")
+		and initial_debug_text.contains("open=0.00")
+		and initial_debug_text.contains("tx=0.080")
+		and initial_debug_text.contains("portal.east")
+		and initial_debug_text.contains("opening tx=1.000"),
+		"Phase 5.2 acoustic inspection exposes live door-linked transmission and constant authored opening transmission from the same portal graph"
+	)
 
 	var same_room: Dictionary = propagation.evaluate(
 		impact_emitter.global_position,
@@ -290,6 +335,9 @@ func _assert_acoustic_lab_integration() -> void:
 		1.0,
 		door_listener.global_position
 	)
+	var closed_portal_debug: Dictionary = (
+		propagation.get_portal_debug_state(&"portal.door")
+	)
 	_assert_true(
 		bool(door.apply_semantic_state({
 			"phase": VarkOrdinaryDoor.PHASE_OPENING,
@@ -302,6 +350,9 @@ func _assert_acoustic_lab_integration() -> void:
 		impact_emitter.global_position,
 		1.0,
 		door_listener.global_position
+	)
+	var half_portal_debug: Dictionary = (
+		propagation.get_portal_debug_state(&"portal.door")
 	)
 	_assert_true(
 		bool(door.apply_semantic_state({
@@ -316,6 +367,9 @@ func _assert_acoustic_lab_integration() -> void:
 		1.0,
 		door_listener.global_position
 	)
+	var open_portal_debug: Dictionary = (
+		propagation.get_portal_debug_state(&"portal.door")
+	)
 	var closed_strength: float = float(closed_door.get("propagated_strength", 0.0))
 	var half_strength: float = float(half_open_door.get("propagated_strength", 0.0))
 	var open_strength: float = float(open_door.get("propagated_strength", 0.0))
@@ -325,8 +379,41 @@ func _assert_acoustic_lab_integration() -> void:
 		and closed_strength > 0.0
 		and closed_strength < half_strength
 		and half_strength < open_strength
-		and open_strength > closed_strength * 5.0,
-		"Ordinary-door acoustic openness continuously controls the same portal instead of switching to a second door-specific model"
+		and open_strength > closed_strength * 5.0
+		and is_equal_approx(
+			float(closed_portal_debug.get("door_openness", -1.0)),
+			0.0
+		)
+		and is_equal_approx(
+			float(closed_portal_debug.get(
+				"current_transmission",
+				-1.0
+			)),
+			0.08
+		)
+		and is_equal_approx(
+			float(half_portal_debug.get("door_openness", -1.0)),
+			0.5
+		)
+		and is_equal_approx(
+			float(half_portal_debug.get(
+				"current_transmission",
+				-1.0
+			)),
+			0.54
+		)
+		and is_equal_approx(
+			float(open_portal_debug.get("door_openness", -1.0)),
+			1.0
+		)
+		and is_equal_approx(
+			float(open_portal_debug.get(
+				"current_transmission",
+				-1.0
+			)),
+			1.0
+		),
+		"Phase 5.2 ordinary-door openness continuously drives one portal transmission curve and exposes the same live values for inspection"
 	)
 
 	door.apply_semantic_state({
@@ -406,17 +493,52 @@ func _assert_acoustic_lab_integration() -> void:
 		1.0
 	))
 	await _completed_physics_frame()
+	var last_sound_debug: Dictionary = (
+		propagation.get_last_sound_debug_snapshot()
+	)
+	var debug_door_listener: Dictionary = _find_debug_listener(
+		last_sound_debug,
+		&"listener.behind_door"
+	)
+	var debug_corner_listener: Dictionary = _find_debug_listener(
+		last_sound_debug,
+		&"listener.around_corner"
+	)
+	var final_debug_text: String = inspector.refresh_now()
 	_assert_true(
 		open_impact_queued
 		and door_listener.get_heard_count() == 1
 		and bool(door_listener.get_last_perception().get("heard", false))
-		and (door_listener.get_last_perception().get("portal_route", []) as Array) == [&"portal.door"],
-		"Opening the real ordinary door makes the separated-room listener hear the same semantic impact through the existing door openness seam"
+		and (door_listener.get_last_perception().get("portal_route", []) as Array) == [&"portal.door"]
+		and last_sound_debug.get("kind", &"") == &"impact.test"
+		and bool(debug_door_listener.get("heard", false))
+		and (
+			debug_door_listener.get("portal_route", []) as Array
+		) == [&"portal.door"]
+		and bool(debug_corner_listener.get("heard", false))
+		and (
+			debug_corner_listener.get("portal_route", []) as Array
+		) == [&"portal.east", &"portal.corner"]
+		and final_debug_text.contains("last=impact.test")
+		and final_debug_text.contains("listener.behind_door HEARD")
+		and final_debug_text.contains("route=[&\"portal.door\"]")
+		and final_debug_text.contains("listener.around_corner HEARD"),
+		"Phase 5.2 acoustic debug inspection reports the exact last semantic sound, per-listener heard/muted result, and authored portal route"
 	)
 
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
+
+
+func _find_debug_listener(
+	sound_debug: Dictionary,
+	listener_id: StringName
+) -> Dictionary:
+	for listener: Dictionary in sound_debug.get("listeners", []):
+		if listener.get("listener_id", &"") == listener_id:
+			return listener.duplicate(true)
+	return {}
 
 
 func _authored_acoustic_probe_source() -> String:

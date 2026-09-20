@@ -380,6 +380,17 @@ This is not combat implementation. It intentionally adds no player-facing attack
 The existing Phase 3 Integration suite continues to protect the accepted cross-system route, but now reads the surface strength from the profile-derived semantic summary. Prop impacts, doors, speech, and hostile-impact sounds remain direct users of the same three-field `gameplay.sound` contract; 5.1 does not change propagation or hearing thresholds.
 
 
+## Phase 5.2 acoustic model hardening and inspection
+
+The established acoustic model remains authored spaces connected by portals. Same-space propagation uses distance attenuation directly; cross-space propagation chooses the minimum-cost authored portal route where distance contributes `DISTANCE_DECAY_PER_METER * meters` and each portal contributes `-log(transmission)`. Disconnected spaces remain unreachable.
+
+`VarkAcousticPortal` has one transmission rule for openings. Unlinked portals are constant openings at their authored `open_transmission`. Door-linked portals query only the ordinary world object's `get_acoustic_openness()` value and interpolate from configured closed to open transmission. The Acoustic suite proves the real ordinary door produces the existing 0.08 / 0.54 / 1.00 transmission values at closed / half-open / open; no separate acoustic door state exists.
+
+`VarkAcousticPropagation.get_debug_inspection()` exposes detached observational data: topology counts/errors, current portal states, and the most recently handled semantic sound with each listener's heard/muted result, source/propagated strength, threshold, path distance/cost, and authored portal route. This data is not persisted and does not influence route selection.
+
+`VarkAcousticDebugInspector` formats that inspection into a development Label3D. The Acoustic Lab includes it alongside the existing listener markers. The authoritative Acoustics suite verifies the readout reflects constant openings, live ordinary-door openness/transmission, and the last impact's door/corner listener routes. Missing door IDs referenced by authored portals are explicitly validated as topology errors.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.
