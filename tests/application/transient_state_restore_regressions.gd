@@ -315,6 +315,10 @@ func _prove_guard_awareness_and_body_restore(
 
 	guard.movement_speed = 0.0
 	guard.velocity = Vector3.ZERO
+	# This fixture owns the exact facing used by the visual sample. Disable only
+	# the guard root's patrol physics so its normal navigation tick cannot rotate
+	# the guard away during the two frames needed to refresh exposure geometry.
+	guard.set_physics_process(false)
 	light.gameplay_enabled = true
 	light.visible = true
 	player.global_position = Vector3(0.0, 0.0, -2.4)
