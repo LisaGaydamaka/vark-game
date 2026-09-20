@@ -130,6 +130,11 @@ func _prove_direct_airborne_restore(
 	var application: Node = await _launch_application(tree, FLAT_PATH)
 	var player := application.get("current_player") as CharacterBody3D
 
+	# Gameplay input enables with held edge actions blocked until their release is
+	# observed. Establish one neutral released frame before issuing the fresh jump
+	# edge this regression intends to test.
+	Input.action_release("jump")
+	await _completed_physics_frame(tree)
 	Input.action_press("jump")
 	var reached_rising_airborne: bool = await _wait_for_rising_airborne(
 		tree,
