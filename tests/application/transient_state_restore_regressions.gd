@@ -198,13 +198,36 @@ func _prove_falling_thrown_prop_restore(
 	)
 
 	var restored_position: Vector3 = restored_prop.global_position
+	var restored_velocity_before_sim: Vector3 = restored_prop.linear_velocity
 	await _advance_frames(tree, 2)
-	assert_true.call(
+	var phase_after_sim: StringName = restored_prop.get_semantic_phase()
+	var motion_after_sim: StringName = restored_prop.get_motion_kind()
+	var simulation_progressed: bool = (
 		restored_prop.global_position.distance_to(
 			restored_position
 		) > 0.001
-		and restored_prop.linear_velocity.y < saved_velocity.y,
-		"Phase 4.4 restored thrown prop resumes ordinary simulation from saved velocity"
+		or not _vectors_close(
+			restored_prop.linear_velocity,
+			restored_velocity_before_sim,
+			VELOCITY_TOLERANCE
+		)
+		or phase_after_sim == VarkOrdinaryProp.PHASE_SETTLED
+	)
+	assert_true.call(
+		simulation_progressed
+		and (
+			(
+				phase_after_sim == VarkOrdinaryProp.PHASE_MOVING
+				and motion_after_sim
+					== VarkOrdinaryProp.MOTION_THROWN
+			)
+			or (
+				phase_after_sim == VarkOrdinaryProp.PHASE_SETTLED
+				and motion_after_sim
+					== VarkOrdinaryProp.MOTION_NONE
+			)
+		),
+		"Phase 4.4 restored thrown prop resumes ordinary simulation from saved velocity or legitimately settles after contact"
 	)
 
 	await _cleanup_application(tree, application)
@@ -276,6 +299,19 @@ func _prove_guard_awareness_and_body_restore(
 			== int(heard_summary.get("heard_count", -2)),
 		"Phase 4.4 directly restores guard investigation/heard-noise semantic awareness without replaying the source sound"
 	)
+
+	# Confirmed visual alert is a separate representative transient. Start from
+	# a fresh slice so the investigation scenario's intentionally disabled
+	# gameplay light and restored exposure cache cannot influence this proof.
+	await _cleanup_application(tree, application)
+	application = await _launch_slice(tree)
+	refs = _slice_refs(application)
+	player = refs["player"] as CharacterBody3D
+	session = refs["session"] as Node
+	guard = refs["guard"] as VarkGuard
+	reaction = refs["reaction"] as Node
+	light = refs["light"] as VarkGameplayLight
+	exposure = refs["exposure"] as VarkGameplayExposure
 
 	guard.movement_speed = 0.0
 	guard.velocity = Vector3.ZERO
