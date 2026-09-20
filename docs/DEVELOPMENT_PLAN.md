@@ -1330,7 +1330,7 @@ Implement unaware, mild suspicion, investigation/search, confirmed alert/pursuit
 
 Meaningful durations/decay use world simulation time. If search/patrol behavior uses randomness, once a choice becomes current gameplay truth it must survive save/restore as that resolved choice rather than being rerolled by restore.
 
-5.4 promotes the Integrated Slice reaction spike into reusable `VarkGuardAwareness` semantics while preserving the existing local hearing/vision sensors:
+5.4 promotes the Integrated Slice reaction spike into reusable `gameplay/npc/guard_awareness.gd` semantics while preserving the existing local hearing/vision sensors:
 
 - semantic awareness states are `unaware`, `suspicious`, `investigating`, `searching`, `alerted`, `recovering`, and `inactive`. The old Phase 3 debug `state` field remains a compatibility-only presentation alias; `awareness_state` and the saved semantic state are authoritative;
 - hearing evidence is strictly local to the guard's existing acoustic listener. Heard gameplay sound increments local evidence; weak heard evidence creates mild suspicion, while sufficiently strong heard evidence creates an investigation target at the resolved sound origin. No global alert or player-position lookup is introduced;

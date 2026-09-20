@@ -2,6 +2,7 @@ extends SceneTree
 
 
 const ApplicationScene = preload("res://application/Application.tscn")
+const GuardAwarenessScript = preload("res://gameplay/npc/guard_awareness.gd")
 const SLICE_PATH: String = "res://missions/integrated_slice/world.tscn"
 const TEST_SAVE_DIRECTORY: String = "user://vark_tests/phase54"
 
@@ -30,7 +31,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	var session := application.get("current_session") as Node
 	var player := application.get("current_player") as CharacterBody3D
 	var guard := world.get_node("Guard") as VarkGuard
-	var reaction := world.get_node("Guard/Reaction") as VarkGuardAwareness
+	var reaction := world.get_node("Guard/Reaction") as Node
 	var light := world.get_node(
 		"NorthGameplayLight"
 	) as VarkGameplayLight
@@ -59,7 +60,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		weak_queued
 		and weak_summary.get("awareness_state", &"")
-			== VarkGuardAwareness.STATE_SUSPICIOUS
+			== GuardAwarenessScript.STATE_SUSPICIOUS
 		and weak_summary.get("state", &"") == &"heard_noise"
 		and int(weak_summary.get("heard_count", 0)) == 1
 		and not bool(weak_nav.get("active", true)),
@@ -68,7 +69,7 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var returned_unaware: bool = await _wait_for_awareness_state(
 		reaction,
-		VarkGuardAwareness.STATE_UNAWARE,
+		GuardAwarenessScript.STATE_UNAWARE,
 		30
 	)
 	_assert_true(
@@ -98,10 +99,10 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		strong_queued
 		and investigate_summary.get("awareness_state", &"")
-			== VarkGuardAwareness.STATE_INVESTIGATING
+			== GuardAwarenessScript.STATE_INVESTIGATING
 		and bool(investigate_nav.get("active", false))
 		and investigate_nav.get("reason", &"")
-			== VarkGuardAwareness.NAV_INVESTIGATE
+			== GuardAwarenessScript.NAV_INVESTIGATE
 		and _dict_vector(
 			investigate_nav,
 			"target_position"
@@ -111,7 +112,7 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var reached_search: bool = await _wait_for_awareness_state(
 		reaction,
-		VarkGuardAwareness.STATE_SEARCHING,
+		GuardAwarenessScript.STATE_SEARCHING,
 		30
 	)
 	var search_summary: Dictionary = reaction.get_debug_summary()
@@ -124,7 +125,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		reached_search
 		and bool(search_nav.get("active", false))
 		and search_nav.get("reason", &"")
-			== VarkGuardAwareness.NAV_SEARCH
+			== GuardAwarenessScript.NAV_SEARCH
 		and resolved_search_target.distance_to(
 			strong_origin
 		) <= 0.001,
@@ -154,7 +155,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		committed
 		and saved_awareness.get("state", &"")
-			== VarkGuardAwareness.STATE_SEARCHING
+			== GuardAwarenessScript.STATE_SEARCHING
 		and bool(saved_awareness.get(
 			"has_investigation_target",
 			false
@@ -172,7 +173,7 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var mutated_to_unaware: bool = await _wait_for_awareness_state(
 		reaction,
-		VarkGuardAwareness.STATE_UNAWARE,
+		GuardAwarenessScript.STATE_UNAWARE,
 		60
 	)
 	var loaded: bool = bool(
@@ -182,7 +183,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	session = application.get("current_session") as Node
 	player = application.get("current_player") as CharacterBody3D
 	guard = world.get_node("Guard") as VarkGuard
-	reaction = world.get_node("Guard/Reaction") as VarkGuardAwareness
+	reaction = world.get_node("Guard/Reaction") as Node
 	light = world.get_node(
 		"NorthGameplayLight"
 	) as VarkGameplayLight
@@ -200,7 +201,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		mutated_to_unaware
 		and loaded
 		and restored_search.get("awareness_state", &"")
-			== VarkGuardAwareness.STATE_SEARCHING
+			== GuardAwarenessScript.STATE_SEARCHING
 		and _dict_vector(
 			restored_search,
 			"investigation_target"
@@ -217,7 +218,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		)
 		and bool(restored_nav.get("active", false))
 		and restored_nav.get("reason", &"")
-			== VarkGuardAwareness.NAV_SEARCH
+			== GuardAwarenessScript.NAV_SEARCH
 		and int(session.call(
 			"get_pending_semantic_event_count"
 		)) == 0,
@@ -244,12 +245,12 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		confirmed
 		and alert_summary.get("awareness_state", &"")
-			== VarkGuardAwareness.STATE_ALERTED
+			== GuardAwarenessScript.STATE_ALERTED
 		and alert_summary.get("state", &"") == &"saw_player"
 		and int(alert_summary.get("seen_count", 0)) >= 1
 		and bool(alert_nav.get("active", false))
 		and alert_nav.get("reason", &"")
-			== VarkGuardAwareness.NAV_PURSUIT
+			== GuardAwarenessScript.NAV_PURSUIT
 		and _dict_vector(
 			alert_nav,
 			"target_position"
@@ -265,7 +266,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		lost_now
 		and loss_summary.get("awareness_state", &"")
-			== VarkGuardAwareness.STATE_ALERTED
+			== GuardAwarenessScript.STATE_ALERTED
 		and bool(loss_summary.get(
 			"has_alert_loss_timer",
 			false
@@ -280,7 +281,7 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var lost_to_search: bool = await _wait_for_awareness_state(
 		reaction,
-		VarkGuardAwareness.STATE_SEARCHING,
+		GuardAwarenessScript.STATE_SEARCHING,
 		30
 	)
 	var lost_search_nav: Dictionary = guard.get_awareness_navigation_state()
@@ -288,7 +289,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		lost_to_search
 		and bool(lost_search_nav.get("active", false))
 		and lost_search_nav.get("reason", &"")
-			== VarkGuardAwareness.NAV_SEARCH
+			== GuardAwarenessScript.NAV_SEARCH
 		and _dict_vector(
 			lost_search_nav,
 			"target_position"
@@ -298,13 +299,13 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var recovering: bool = await _wait_for_awareness_state(
 		reaction,
-		VarkGuardAwareness.STATE_RECOVERING,
+		GuardAwarenessScript.STATE_RECOVERING,
 		40
 	)
 	var recovery_nav: Dictionary = guard.get_awareness_navigation_state()
 	var final_unaware: bool = await _wait_for_awareness_state(
 		reaction,
-		VarkGuardAwareness.STATE_UNAWARE,
+		GuardAwarenessScript.STATE_UNAWARE,
 		40
 	)
 	_assert_true(
@@ -335,7 +336,7 @@ func _dict_vector(
 
 
 func _configure_short_durations(
-	reaction: VarkGuardAwareness
+	reaction: Node
 ) -> void:
 	reaction.hearing_investigate_strength = 0.20
 	reaction.suspicion_seconds = 0.08
@@ -376,7 +377,7 @@ func _launch_slice() -> Node:
 
 
 func _wait_for_awareness_state(
-	reaction: VarkGuardAwareness,
+	reaction: Node,
 	expected: StringName,
 	max_frames: int
 ) -> bool:
