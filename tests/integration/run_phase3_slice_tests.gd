@@ -273,7 +273,7 @@ func _assert_integrated_slice() -> void:
 			float((
 				stone_surface.call("get_surface_summary") as Dictionary
 			).get("footstep_strength", 0.0)),
-			0.52
+			0.45
 		)
 		and is_equal_approx(
 			float((
@@ -288,7 +288,7 @@ func _assert_integrated_slice() -> void:
 			float((
 				tile_surface.call("get_surface_summary") as Dictionary
 			).get("footstep_strength", 0.0)),
-			0.80
+			0.90
 		),
 		"The slice reuses one baked nav route, one door-controlled acoustic portal, two listeners, and explicit quiet-carpet / normal-stone / loud-tile footstep tiers"
 	)
@@ -320,7 +320,7 @@ func _assert_integrated_slice() -> void:
 	})
 	var closed_route: Dictionary = propagation.evaluate(
 		player.global_position,
-		0.52,
+		0.45,
 		guard.global_position
 	)
 	door.request_open(player)
@@ -331,7 +331,7 @@ func _assert_integrated_slice() -> void:
 	)
 	var open_route: Dictionary = propagation.evaluate(
 		player.global_position,
-		0.52,
+		0.45,
 		guard.global_position
 	)
 	_assert_true(
@@ -369,11 +369,11 @@ func _assert_integrated_slice() -> void:
 		and footstep_summary.get("last_stance", "") == "standing"
 		and is_equal_approx(
 			float(footstep_summary.get("last_base_strength", 0.0)),
-			0.52
+			0.45
 		)
 		and is_equal_approx(
 			float(footstep_summary.get("last_strength", 0.0)),
-			0.52
+			0.45
 		)
 		and int(reaction_summary.get("speech_reaction_count", 0)) == 1
 		and int(speech_summary.get("queued_count", 0)) == 1
@@ -408,11 +408,11 @@ func _assert_integrated_slice() -> void:
 		and crouched_footstep_summary.get("last_stance", "") == "crouched"
 		and is_equal_approx(
 			float(crouched_footstep_summary.get("last_base_strength", 0.0)),
-			0.52
+			0.45
 		)
 		and is_equal_approx(
 			float(crouched_footstep_summary.get("last_strength", 0.0)),
-			0.52 * 0.45
+			0.45 * 0.45
 		)
 		and not bool(crouched_guard_perception.get("heard", true))
 		and crouched_reaction_summary.get("state", &"") == &"calm"

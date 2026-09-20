@@ -7,8 +7,8 @@ const LOUDNESS_NORMAL: int = 1
 const LOUDNESS_LOUD: int = 2
 
 const QUIET_FOOTSTEP_STRENGTH: float = 0.20
-const NORMAL_FOOTSTEP_STRENGTH: float = 0.52
-const LOUD_FOOTSTEP_STRENGTH: float = 0.80
+const NORMAL_FOOTSTEP_STRENGTH: float = 0.45
+const LOUD_FOOTSTEP_STRENGTH: float = 0.90
 
 
 @export var surface_id: StringName = &""

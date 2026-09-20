@@ -49,8 +49,8 @@ func _assert_surface_profile_contract() -> void:
 		and stone.get_footstep_sound_kind() == &"footstep.stone"
 		and tile.get_footstep_sound_kind() == &"footstep.tile"
 		and is_equal_approx(carpet.get_footstep_strength(), 0.20)
-		and is_equal_approx(stone.get_footstep_strength(), 0.52)
-		and is_equal_approx(tile.get_footstep_strength(), 0.80)
+		and is_equal_approx(stone.get_footstep_strength(), 0.45)
+		and is_equal_approx(tile.get_footstep_strength(), 0.90)
 		and carpet.get_footstep_strength() < stone.get_footstep_strength()
 		and stone.get_footstep_strength() < tile.get_footstep_strength(),
 		"Phase 5.1 SurfaceProfiles enforce exactly quiet/normal/loud footstep tiers with canonical strengths"
@@ -215,11 +215,11 @@ func _assert_integrated_surface_noise() -> void:
 		and stone_summary.get("last_sound_kind", &"") == &"footstep.stone"
 		and is_equal_approx(
 			float(stone_summary.get("last_base_strength", 0.0)),
-			0.52
+			0.45
 		)
 		and is_equal_approx(
 			float(stone_summary.get("last_strength", 0.0)),
-			0.52
+			0.45
 		)
 		and int(stone_reaction.get("heard_count", 0)) == 1
 		and stone_reaction.get("last_heard_kind", &"")
@@ -229,13 +229,13 @@ func _assert_integrated_surface_noise() -> void:
 
 	var stone_meter_summary: Dictionary = noise_meter.get_last_summary()
 	_assert_true(
-		is_equal_approx(noise_meter.get_current_loudness(), 0.52)
-		and is_equal_approx(float(noise_bar.value), 0.52)
+		is_equal_approx(noise_meter.get_current_loudness(), 0.45)
+		and is_equal_approx(float(noise_bar.value), 0.45)
 		and stone_meter_summary.get("last_sound_kind", &"")
 			== &"footstep.stone"
 		and is_equal_approx(
 			float(stone_meter_summary.get("last_strength", 0.0)),
-			0.52
+			0.45
 		)
 		and noise_meter.get_debug_text().contains("footstep.stone"),
 		"Integrated Slice development loudness meter observes the actual semantic footstep source strength beside the exposure meter"
@@ -260,11 +260,11 @@ func _assert_integrated_surface_noise() -> void:
 		and tile_summary.get("last_sound_kind", &"") == &"footstep.tile"
 		and is_equal_approx(
 			float(tile_summary.get("last_base_strength", 0.0)),
-			0.80
+			0.90
 		)
 		and bool(tile_perception.get("heard", false))
 		and tile_perception.get("kind", &"") == &"footstep.tile"
-		and is_equal_approx(noise_meter.get_current_loudness(), 0.80)
+		and is_equal_approx(noise_meter.get_current_loudness(), 0.90)
 		and tile_meter_summary.get("last_loudness_id", &"") == &"loud"
 		and noise_meter.get_debug_text().contains("loud"),
 		"Phase 5.1 tile is the loud surface tier and uses the same semantic sound, acoustic listener, and debug-meter path"
