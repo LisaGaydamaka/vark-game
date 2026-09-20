@@ -62,6 +62,7 @@ var _door_close_request_count: int = 0
 var _door_operating_point: Vector3 = Vector3.ZERO
 var _door_crossing_point: Vector3 = Vector3.ZERO
 var _door_maneuver_crossing_active: bool = false
+var _door_saved_target_desired_distance: float = -1.0
 var _patrol_leg_count: int = 0
 var _patrol_cycle_count: int = 0
 var _max_observed_path_x: float = -INF
@@ -279,6 +280,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_door_operating_point = Vector3.ZERO
 	_door_crossing_point = Vector3.ZERO
 	_door_maneuver_crossing_active = false
+	_door_saved_target_desired_distance = -1.0
 	_max_observed_path_x = -INF
 	_max_observed_path_point_count = 0
 
@@ -367,6 +369,11 @@ func get_debug_summary() -> Dictionary:
 		"door_operating_point": _door_operating_point,
 		"door_crossing_point": _door_crossing_point,
 		"door_maneuver_crossing_active": _door_maneuver_crossing_active,
+		"door_maneuver_target_tolerance": (
+			_navigation_agent.target_desired_distance
+			if _navigation_agent != null
+			else -1.0
+		),
 		"patrol_leg_count": _patrol_leg_count,
 		"patrol_cycle_count": _patrol_cycle_count,
 		"global_position": global_position,
@@ -483,6 +490,7 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 		if _door_maneuver_crossing_active:
 			_door_maneuver_crossing_active = false
 			_door_crossing_point = Vector3.ZERO
+			_restore_door_navigation_tolerance()
 			_apply_current_navigation_target()
 		_door_operating_point = Vector3.ZERO
 		return false
@@ -616,6 +624,14 @@ func _begin_open_leaf_maneuver() -> bool:
 	_door_operating_point = operating_point
 	_door_crossing_point = crossing_point
 	_door_maneuver_crossing_active = false
+	if _door_saved_target_desired_distance < 0.0:
+		_door_saved_target_desired_distance = (
+			_navigation_agent.target_desired_distance
+		)
+	_navigation_agent.target_desired_distance = minf(
+		maxf(_door_saved_target_desired_distance, 0.001),
+		0.05
+	)
 	_door_traversal_state = DoorTraversalState.REPOSITIONING_FOR_CLOSE
 	_door_request_pending = false
 	_door_close_request_pending = false
@@ -640,7 +656,7 @@ func _process_door_maneuver(delta: float) -> bool:
 			)
 			if (
 				to_operating_point.length()
-				<= maxf(_navigation_agent.target_desired_distance, 0.3)
+				<= maxf(_navigation_agent.target_desired_distance, 0.01)
 			):
 				velocity = Vector3.ZERO
 				_door_traversal_state = DoorTraversalState.WAITING_CLOSE
@@ -725,6 +741,17 @@ func _door_phase() -> StringName:
 	return StringName(_door.call(DOOR_PHASE_METHOD))
 
 
+func _restore_door_navigation_tolerance() -> void:
+	if (
+		_navigation_agent != null
+		and _door_saved_target_desired_distance >= 0.0
+	):
+		_navigation_agent.target_desired_distance = (
+			_door_saved_target_desired_distance
+		)
+	_door_saved_target_desired_distance = -1.0
+
+
 func _fail_door_maneuver(reason: String) -> void:
 	velocity = Vector3.ZERO
 	_door_request_pending = false
@@ -732,6 +759,7 @@ func _fail_door_maneuver(reason: String) -> void:
 	_door_retry_remaining = 0.0
 	_door_maneuver_crossing_active = false
 	_door_crossing_point = Vector3.ZERO
+	_restore_door_navigation_tolerance()
 	_last_error = "Guard '%s' cannot operate door '%s': %s." % [
 		guard_id,
 		door_id,
