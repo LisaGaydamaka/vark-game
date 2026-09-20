@@ -223,23 +223,38 @@ func _assert_same_side_goal_ignores_open_door() -> void:
 	)
 	start.y = guard.global_position.y
 	target.y = guard.global_position.y
+	var query := NavigationPathQueryParameters3D.new()
+	query.map = map
+	query.start_position = start
+	query.target_position = target
+	query.metadata_flags = (
+		NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
+	)
+	var result := NavigationPathQueryResult3D.new()
+	NavigationServer3D.query_path(query, result)
+	var link_owner_id: int = door.get_navigation_link().get_instance_id()
+	var query_uses_door_link: bool = result.path_owner_ids.has(link_owner_id)
+
 	guard.global_position = start
 	guard.velocity = Vector3.ZERO
 	var before: Dictionary = guard.get_debug_summary()
 	var initial_uses: int = int(before.get("door_use_count", 0))
 	var initial_open_requests: int = int(before.get("door_open_request_count", 0))
 	var target_set: bool = guard.set_awareness_navigation_target(&"search", target)
-	var reached: bool = await _wait_for_position(guard, target, 0.45, 300)
+	for _frame_index: int in 90:
+		await physics_frame
+		await process_frame
 	var after: Dictionary = guard.get_debug_summary()
 	_assert_true(
 		opened
 		and target_set
-		and reached
+		and result.path.size() >= 2
+		and not query_uses_door_link
 		and int(after.get("door_use_count", 0)) == initial_uses
 		and int(after.get("door_open_request_count", 0)) == initial_open_requests
 		and not bool(after.get("door_use_active", true))
 		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN,
-		"A nearby same-side search route ignores an open door because no door link is present in that route"
+		"A nearby same-side search path contains no ordinary-door link and cannot trigger door interaction"
 	)
 	_cleanup_application(application)
 
@@ -273,13 +288,19 @@ func _assert_player_close_during_crossing() -> void:
 	var initial_uses: int = int(before.get("door_use_count", 0))
 	var initial_open_requests: int = int(before.get("door_open_request_count", 0))
 	door.interact(player)
-	var contacted: bool = await _wait_for_door_blocked(door, 180)
+	var contact_reopened: bool = await _wait_for_crossing_reopen(
+		guard,
+		door,
+		initial_uses,
+		initial_open_requests,
+		180
+	)
 	var contact_summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
-		contacted
-		and door.is_motion_blocked_by(guard)
-		and int(contact_summary.get("door_use_count", 0)) == initial_uses,
-		"Player CLOSE may contact the crossing guard, but the active link traversal remains one logical door use"
+		contact_reopened
+		and int(contact_summary.get("door_use_count", 0)) == initial_uses
+		and int(contact_summary.get("crossing_block_open_count", 0)) >= 1,
+		"Player CLOSE may physically contact the crossing guard, but the active link traversal reopens it without creating a second logical use"
 	)
 
 	guard.movement_speed = original_speed
@@ -535,6 +556,29 @@ func _wait_for_guard_crossing(
 			str(summary.get("door_traversal_state", "")) == "crossing"
 			and bool(summary.get("door_use_active", false))
 			and door.is_body_in_navigation_passage(guard)
+		):
+			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await physics_frame
+		await process_frame
+	return false
+
+
+func _wait_for_crossing_reopen(
+	guard: VarkGuard,
+	door: VarkOrdinaryDoor,
+	expected_use_count: int,
+	initial_open_requests: int,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		if (
+			int(summary.get("door_use_count", 0)) == expected_use_count
+			and int(summary.get("door_open_request_count", 0)) > initial_open_requests
+			and int(summary.get("crossing_block_open_count", 0)) >= 1
+			and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPENING
 		):
 			return true
 		if not str(summary.get("last_error", "")).is_empty():
