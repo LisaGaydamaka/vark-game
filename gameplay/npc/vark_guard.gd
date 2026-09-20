@@ -201,6 +201,105 @@ func set_awareness_motion_profile(
 	return true
 
 
+func resolve_pursuit_approach(
+	known_position: Vector3,
+	observed_velocity: Vector3 = Vector3.ZERO,
+	prediction_seconds: float = 0.0
+) -> Dictionary:
+	var fallback := {
+		"valid": false,
+		"position": known_position,
+		"predicted_position": known_position,
+	}
+	if (
+		_navigation_agent == null
+		or not _configured
+		or not _is_finite_vector(known_position)
+		or not _is_finite_vector(observed_velocity)
+	):
+		return fallback
+	var navigation_map: RID = _navigation_agent.get_navigation_map()
+	if (
+		not navigation_map.is_valid()
+		or NavigationServer3D.map_get_iteration_id(navigation_map) == 0
+	):
+		return fallback
+
+	var horizontal_velocity := Vector3(
+		observed_velocity.x,
+		0.0,
+		observed_velocity.z
+	)
+	if horizontal_velocity.length() > 8.0:
+		horizontal_velocity = horizontal_velocity.normalized() * 8.0
+	var horizon: float = clampf(prediction_seconds, 0.0, 1.0)
+	var predicted: Vector3 = known_position + horizontal_velocity * horizon
+	fallback["predicted_position"] = predicted
+	var start: Vector3 = NavigationServer3D.map_get_closest_point(
+		navigation_map,
+		global_position
+	)
+	var best_position: Vector3 = Vector3.ZERO
+	var best_score: float = INF
+	var found: bool = false
+	var radii: Array[float] = [0.0, 0.55, 1.10]
+	var request_heights: Array[float] = [predicted.y]
+	if absf(predicted.y - global_position.y) >= 0.50:
+		request_heights.append(global_position.y)
+	for radius: float in radii:
+		var direction_count: int = 1 if is_zero_approx(radius) else 8
+		for direction_index: int in direction_count:
+			var offset: Vector3 = Vector3.ZERO
+			if not is_zero_approx(radius):
+				var angle: float = TAU * float(direction_index) / float(direction_count)
+				offset = Vector3.RIGHT.rotated(Vector3.UP, angle) * radius
+			for request_height: float in request_heights:
+				var requested: Vector3 = predicted + offset
+				requested.y = request_height
+				var projected: Vector3 = NavigationServer3D.map_get_closest_point(
+					navigation_map,
+					requested
+				)
+				if not _is_finite_vector(projected):
+					continue
+				var projection_error: float = _horizontal_distance(
+					projected,
+					requested
+				)
+				if projection_error > maxf(0.75, radius + 0.35):
+					continue
+				var path: PackedVector3Array = NavigationServer3D.map_get_path(
+					navigation_map,
+					start,
+					projected,
+					true
+				)
+				if path.is_empty():
+					continue
+				var endpoint: Vector3 = path[path.size() - 1]
+				if (
+					_horizontal_distance(endpoint, projected) > 0.55
+					or absf(endpoint.y - projected.y) > 0.75
+				):
+					continue
+				var score: float = (
+					_horizontal_distance(projected, predicted)
+					+ absf(projected.y - predicted.y) * 0.20
+					+ _path_length(path) * 0.05
+				)
+				if score < best_score:
+					best_score = score
+					best_position = projected
+					found = true
+	if not found:
+		return fallback
+	return {
+		"valid": true,
+		"position": best_position,
+		"predicted_position": predicted,
+	}
+
+
 func resolve_local_search_points(
 	anchor: Vector3,
 	radius: float,

@@ -27,6 +27,10 @@ const SEARCH_ACTION_LOOK_HOLD: StringName = &"look_hold"
 const SEARCH_ACTION_BETWEEN_PAUSE: StringName = &"between_look_pause"
 const SEARCH_ACTION_DEPARTURE_PAUSE: StringName = &"departure_pause"
 
+const PURSUIT_VISIBLE: StringName = &"visible"
+const PURSUIT_CONTACT_GRACE: StringName = &"contact_grace"
+const PURSUIT_CHECKING_LAST_KNOWN: StringName = &"checking_last_known"
+
 @export var player_path: NodePath = NodePath("../../Player")
 @export var listener_path: NodePath = NodePath("../Hearing")
 @export var speech_path: NodePath = NodePath("../Speech")
@@ -34,6 +38,8 @@ const SEARCH_ACTION_DEPARTURE_PAUSE: StringName = &"departure_pause"
 @export var status_label_path: NodePath = NodePath("../ReactionLabel")
 @export var vision_distance: float = 6.0
 @export var vision_facing_dot: float = 0.30
+@export_range(-1.0, 1.0, 0.05) var vision_alert_retain_facing_dot: float = -0.10
+@export_range(0.0, 1.0, 0.01) var vision_alert_retain_exposure_threshold: float = 0.06
 @export_range(10.0, 85.0, 1.0) var vision_vertical_angle_degrees: float = 55.0
 @export_range(10.0, 89.0, 1.0) var vision_engaged_vertical_angle_degrees: float = 80.0
 @export var vision_suspicion_exposure_threshold: float = 0.12
@@ -69,7 +75,11 @@ const SEARCH_ACTION_DEPARTURE_PAUSE: StringName = &"departure_pause"
 @export_range(1, 4, 1) var search_look_count_max: int = 3
 @export_range(5.0, 60.0, 1.0) var search_look_min_degrees: float = 20.0
 @export_range(10.0, 100.0, 1.0) var search_scan_degrees: float = 70.0
-@export var alert_loss_seconds: float = 1.00
+@export var alert_loss_seconds: float = 0.45
+@export_range(0.0, 1.0, 0.05) var pursuit_prediction_seconds: float = 0.45
+@export_range(0.1, 5.0, 0.05) var pursuit_check_seconds: float = 1.25
+@export_range(0.5, 15.0, 0.25) var pursuit_max_lost_seconds: float = 6.00
+@export_range(0.2, 2.0, 0.05) var pursuit_arrival_distance: float = 0.75
 @export var recovery_seconds: float = 2.00
 @export_range(0.25, 1.0, 0.05) var recovery_hearing_threshold_scale: float = 0.65
 
@@ -127,6 +137,13 @@ var _search_looks_remaining: int = 0
 var _search_look_start_direction: Vector3 = Vector3.FORWARD
 var _search_look_target_direction: Vector3 = Vector3.FORWARD
 var _search_move_speed_scale: float = 0.60
+var _pursuit_mode: StringName = PURSUIT_VISIBLE
+var _pursuit_goal_position: Vector3 = Vector3.ZERO
+var _has_pursuit_goal: bool = false
+var _last_confirmed_velocity: Vector3 = Vector3.ZERO
+var _attention_direction: Vector3 = Vector3.FORWARD
+var _pursuit_lost_seconds: float = 0.0
+var _pursuit_check_remaining_seconds: float = 0.0
 
 
 func _ready() -> void:
@@ -169,6 +186,8 @@ func _physics_process(_delta: float) -> void:
 	if _awareness_state == STATE_SEARCHING:
 		_advance_search_behavior(elapsed)
 	sample_vision_now()
+	if _awareness_state == STATE_ALERTED:
+		_advance_alerted_pursuit(elapsed)
 	_advance_state_if_expired()
 
 
@@ -194,89 +213,71 @@ func sample_vision_now() -> bool:
 	_last_vision_distance = 0.0
 	_last_vision_facing_dot = -1.0
 	_last_vision_vertical_angle_degrees = 0.0
-	_last_vision_vertical_limit_degrees = 0.0
+	_last_vision_vertical_limit_degrees = _current_vision_vertical_limit_degrees()
 	_last_vision_darkness_override = false
 
-	# Darkness is strong protection, not magical invisibility. Distance, facing,
-	# and physical LOS must be resolved before exposure can reject vision so a
-	# guard standing face-to-face with the player can still receive decisive
-	# visual evidence in complete gameplay darkness.
-	var eye: Vector3 = _guard.global_position + Vector3.UP * 1.35
-	var target: Vector3 = _last_vision_target
-	var to_player: Vector3 = target - eye
-	var distance: float = to_player.length()
-	_last_vision_distance = distance
-	if distance <= 0.001 or distance > vision_distance:
-		_record_vision_loss()
-		return false
-	var horizontal_to_player := Vector3(to_player.x, 0.0, to_player.z)
-	var horizontal_distance: float = horizontal_to_player.length()
-	var facing: Vector3 = _horizontal_facing_direction()
-	var facing_dot: float = 1.0
-	if horizontal_distance > 0.001:
-		facing_dot = facing.dot(horizontal_to_player / horizontal_distance)
-	_last_vision_facing_dot = facing_dot
-	_last_vision_vertical_angle_degrees = rad_to_deg(atan2(
-		absf(to_player.y),
-		maxf(horizontal_distance, 0.001)
-	))
-	_last_vision_vertical_limit_degrees = _current_vision_vertical_limit_degrees()
-	if (
-		facing_dot < vision_facing_dot
-		or _last_vision_vertical_angle_degrees
-			> _last_vision_vertical_limit_degrees
-	):
-		_record_vision_loss()
-		return false
-
-	var query := PhysicsRayQueryParameters3D.create(eye, target)
-	query.collision_mask = 1 | 4
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	query.exclude = [_guard.get_rid()]
-	var hit: Dictionary = _guard.get_world_3d().direct_space_state.intersect_ray(
-		query
+	var facing_direction: Vector3 = _current_vision_facing_direction()
+	var facing_threshold: float = (
+		vision_alert_retain_facing_dot
+		if _awareness_state == STATE_ALERTED
+		else vision_facing_dot
 	)
-	if not hit.is_empty():
-		_last_vision_blocked = true
-		var blocker: Object = hit.get("collider") as Object
-		if blocker != null:
-			_last_vision_blocker = str(blocker.get("name"))
+	var geometry: Dictionary = _resolve_player_vision_sample(
+		facing_direction,
+		facing_threshold,
+		_last_vision_vertical_limit_degrees
+	)
+	_last_vision_target = geometry.get("target", _last_vision_target)
+	_last_vision_distance = float(geometry.get("distance", 0.0))
+	_last_vision_facing_dot = float(geometry.get("facing_dot", -1.0))
+	_last_vision_vertical_angle_degrees = float(
+		geometry.get("vertical_angle_degrees", 0.0)
+	)
+	_last_vision_blocked = bool(geometry.get("blocked", false))
+	_last_vision_blocker = str(geometry.get("blocker", ""))
+	if not bool(geometry.get("visible", false)):
 		_record_vision_loss()
 		return false
 
 	_last_vision_darkness_override = (
 		exposure < vision_confirm_exposure_threshold
-		and distance <= maxf(vision_darkness_confirm_distance, 0.0)
-		and facing_dot >= vision_darkness_confirm_facing_dot
+		and _last_vision_distance <= maxf(vision_darkness_confirm_distance, 0.0)
+		and _last_vision_facing_dot >= vision_darkness_confirm_facing_dot
+	)
+	var exposure_threshold: float = (
+		minf(
+			vision_alert_retain_exposure_threshold,
+			vision_confirm_exposure_threshold
+		)
+		if _awareness_state == STATE_ALERTED
+		else vision_suspicion_exposure_threshold
 	)
 	if (
-		exposure < vision_suspicion_exposure_threshold
+		exposure < exposure_threshold
 		and not _last_vision_darkness_override
 	):
 		_record_vision_loss()
 		return false
 
-	_last_seen_position = target
-	_investigation_target = target
+	var observed_position: Vector3 = _player.global_position
+	_investigation_target = observed_position
 	_has_investigation_target = true
-	_has_alert_loss_timer = false
-	_alert_loss_remaining_seconds = 0.0
-
-	if (
+	var confirmed: bool = (
 		exposure >= vision_confirm_exposure_threshold
 		or _last_vision_darkness_override
 		or _awareness_state == STATE_ALERTED
-	):
+	)
+	if confirmed:
+		_last_seen_position = observed_position
+		_last_confirmed_velocity = _player.velocity
+		_set_attention_toward(observed_position)
+		_resolve_pursuit_goal(observed_position, _last_confirmed_velocity)
+		_mark_pursuit_visible()
 		if _awareness_state != STATE_ALERTED:
 			_seen_count += 1
-			_enter_state(STATE_ALERTED, target, true)
+			_enter_state(STATE_ALERTED, observed_position, true)
 		else:
-			_guard.call(
-				"set_awareness_navigation_target",
-				NAV_PURSUIT,
-				target
-			)
+			_apply_navigation_for_state()
 		_refresh_label()
 		return true
 
@@ -284,7 +285,7 @@ func sample_vision_now() -> bool:
 		_awareness_state == STATE_UNAWARE
 		or _awareness_state == STATE_RECOVERING
 	):
-		_enter_state(STATE_SUSPICIOUS, target, true)
+		_enter_state(STATE_SUSPICIOUS, observed_position, true)
 	elif _awareness_state == STATE_SUSPICIOUS:
 		_state_remaining_seconds = maxf(
 			_state_remaining_seconds,
@@ -312,6 +313,7 @@ func reset_reaction() -> void:
 	_investigation_target = Vector3.ZERO
 	_has_investigation_target = false
 	_clear_search_plan(true)
+	_clear_pursuit_state()
 	_search_reseed_count = 0
 	_refresh_label()
 
@@ -365,12 +367,21 @@ func get_debug_summary() -> Dictionary:
 		"search_look_start_direction": _search_look_start_direction,
 		"search_look_target_direction": _search_look_target_direction,
 		"search_move_speed_scale": _search_move_speed_scale,
+		"pursuit_mode": _pursuit_mode,
+		"pursuit_goal_position": _pursuit_goal_position,
+		"has_pursuit_goal": _has_pursuit_goal,
+		"last_confirmed_velocity": _last_confirmed_velocity,
+		"attention_direction": _attention_direction,
+		"pursuit_lost_seconds": _pursuit_lost_seconds,
+		"pursuit_check_remaining_seconds": _pursuit_check_remaining_seconds,
 		"search_radius": search_radius,
 		"search_max_radius": search_max_radius,
 		"search_point_count": search_point_count,
 		"search_point_min_separation": search_point_min_separation,
 		"vision_distance": vision_distance,
 		"vision_facing_dot": vision_facing_dot,
+		"vision_alert_retain_facing_dot": vision_alert_retain_facing_dot,
+		"vision_alert_retain_exposure_threshold": vision_alert_retain_exposure_threshold,
 		"vision_vertical_angle_degrees": vision_vertical_angle_degrees,
 		"vision_engaged_vertical_angle_degrees": vision_engaged_vertical_angle_degrees,
 		"current_vision_vertical_limit_degrees": _current_vision_vertical_limit_degrees(),
@@ -382,6 +393,11 @@ func get_debug_summary() -> Dictionary:
 		),
 		"vision_darkness_confirm_distance": vision_darkness_confirm_distance,
 		"vision_darkness_confirm_facing_dot": vision_darkness_confirm_facing_dot,
+		"alert_loss_seconds": alert_loss_seconds,
+		"pursuit_prediction_seconds": pursuit_prediction_seconds,
+		"pursuit_check_seconds": pursuit_check_seconds,
+		"pursuit_max_lost_seconds": pursuit_max_lost_seconds,
+		"pursuit_arrival_distance": pursuit_arrival_distance,
 		"hearing_investigate_strength": hearing_investigate_strength,
 		"gameplay_time_seconds": _get_gameplay_time(),
 	}
@@ -439,6 +455,13 @@ func capture_semantic_state() -> Dictionary:
 		"search_look_start_direction": _search_look_start_direction,
 		"search_look_target_direction": _search_look_target_direction,
 		"search_move_speed_scale": _search_move_speed_scale,
+		"pursuit_mode": _pursuit_mode,
+		"pursuit_goal_position": _pursuit_goal_position,
+		"has_pursuit_goal": _has_pursuit_goal,
+		"last_confirmed_velocity": _last_confirmed_velocity,
+		"attention_direction": _attention_direction,
+		"pursuit_lost_seconds": _pursuit_lost_seconds,
+		"pursuit_check_remaining_seconds": _pursuit_check_remaining_seconds,
 	}
 
 
@@ -450,7 +473,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		and int(session.get("state")) == WORLD_SESSION_STATE_PLAYING
 	):
 		return false
-	if snapshot.size() != 40:
+	if snapshot.size() != 47:
 		return false
 	if _guard == null or not is_instance_valid(_guard):
 		return false
@@ -493,6 +516,11 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or typeof(snapshot.get("search_looks_remaining", null)) != TYPE_INT
 		or typeof(snapshot.get("search_look_start_direction", null)) != TYPE_VECTOR3
 		or typeof(snapshot.get("search_look_target_direction", null)) != TYPE_VECTOR3
+		or typeof(snapshot.get("pursuit_mode", null)) != TYPE_STRING_NAME
+		or typeof(snapshot.get("pursuit_goal_position", null)) != TYPE_VECTOR3
+		or typeof(snapshot.get("has_pursuit_goal", null)) != TYPE_BOOL
+		or typeof(snapshot.get("last_confirmed_velocity", null)) != TYPE_VECTOR3
+		or typeof(snapshot.get("attention_direction", null)) != TYPE_VECTOR3
 	):
 		return false
 	for key: String in [
@@ -508,6 +536,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"search_action_remaining_seconds",
 		"search_action_duration_seconds",
 		"search_move_speed_scale",
+		"pursuit_lost_seconds",
+		"pursuit_check_remaining_seconds",
 	]:
 		var value: Variant = snapshot.get(key, null)
 		if (
@@ -531,6 +561,9 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"search_scan_base_direction",
 		"search_look_start_direction",
 		"search_look_target_direction",
+		"pursuit_goal_position",
+		"last_confirmed_velocity",
+		"attention_direction",
 	]:
 		var vector_value: Vector3 = snapshot[vector_key]
 		if not _is_finite_vector(vector_value):
@@ -568,6 +601,13 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	var restored_look_start: Vector3 = snapshot.get("search_look_start_direction", Vector3.FORWARD)
 	var restored_look_target: Vector3 = snapshot.get("search_look_target_direction", Vector3.FORWARD)
 	var restored_move_scale: float = float(snapshot.get("search_move_speed_scale", 0.0))
+	var restored_pursuit_mode: StringName = snapshot.get("pursuit_mode", &"")
+	var restored_pursuit_goal: Vector3 = snapshot.get("pursuit_goal_position", Vector3.ZERO)
+	var restored_has_pursuit_goal: bool = bool(snapshot.get("has_pursuit_goal", false))
+	var restored_confirmed_velocity: Vector3 = snapshot.get("last_confirmed_velocity", Vector3.ZERO)
+	var restored_attention_direction: Vector3 = snapshot.get("attention_direction", Vector3.FORWARD)
+	var restored_pursuit_lost: float = float(snapshot.get("pursuit_lost_seconds", 0.0))
+	var restored_pursuit_check: float = float(snapshot.get("pursuit_check_remaining_seconds", 0.0))
 	if (
 		restored_search_index < 0
 		or restored_visited < 0
@@ -579,6 +619,9 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or restored_age < 0.0
 		or restored_residual < 0.0
 		or restored_residual > 1.0
+		or not _is_valid_pursuit_mode(restored_pursuit_mode)
+		or restored_pursuit_lost < 0.0
+		or restored_pursuit_check < 0.0
 		or restored_visited != restored_visited_positions.size()
 		or (
 			restored_search_points.is_empty()
@@ -609,6 +652,19 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or (
 			restored_state != STATE_SEARCHING
 			and restored_action != SEARCH_ACTION_MOVING
+		)
+		or (
+			restored_state != STATE_ALERTED
+			and (
+				restored_has_pursuit_goal
+				or restored_pursuit_mode != PURSUIT_VISIBLE
+				or restored_pursuit_lost > 0.0
+				or restored_pursuit_check > 0.0
+			)
+		)
+		or (
+			restored_state == STATE_ALERTED
+			and not restored_has_pursuit_goal
 		)
 	):
 		return false
@@ -656,6 +712,13 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	_search_look_start_direction = restored_look_start
 	_search_look_target_direction = restored_look_target
 	_search_move_speed_scale = restored_move_scale
+	_pursuit_mode = restored_pursuit_mode
+	_pursuit_goal_position = restored_pursuit_goal
+	_has_pursuit_goal = restored_has_pursuit_goal
+	_last_confirmed_velocity = restored_confirmed_velocity
+	_attention_direction = restored_attention_direction
+	_pursuit_lost_seconds = restored_pursuit_lost
+	_pursuit_check_remaining_seconds = restored_pursuit_check
 	_last_gameplay_time_sample = _get_gameplay_time()
 	return true
 
@@ -704,17 +767,6 @@ func _advance_gameplay_timers() -> float:
 
 
 func _advance_state_if_expired() -> void:
-	if (
-		_awareness_state == STATE_ALERTED
-		and _has_alert_loss_timer
-		and _alert_loss_remaining_seconds <= 0.0
-	):
-		_enter_state(
-			STATE_SEARCHING,
-			_last_seen_position,
-			true
-		)
-		return
 	if _state_remaining_seconds > 0.0:
 		return
 	match _awareness_state:
@@ -732,11 +784,39 @@ func _advance_state_if_expired() -> void:
 			_enter_state(STATE_UNAWARE)
 
 
+func _advance_alerted_pursuit(elapsed: float) -> void:
+	if _awareness_state != STATE_ALERTED or _pursuit_mode == PURSUIT_VISIBLE:
+		return
+	_pursuit_lost_seconds += maxf(elapsed, 0.0)
+	if _pursuit_mode == PURSUIT_CONTACT_GRACE:
+		if _has_alert_loss_timer and _alert_loss_remaining_seconds > 0.0:
+			return
+		_has_alert_loss_timer = false
+		_alert_loss_remaining_seconds = 0.0
+		_pursuit_mode = PURSUIT_CHECKING_LAST_KNOWN
+		_pursuit_check_remaining_seconds = maxf(pursuit_check_seconds, 0.0)
+		_apply_navigation_for_state()
+	if _pursuit_lost_seconds >= maxf(pursuit_max_lost_seconds, 0.1):
+		_begin_search_from_failed_pursuit()
+		return
+	if (
+		_pursuit_mode == PURSUIT_CHECKING_LAST_KNOWN
+		and _is_guard_at_pursuit_goal()
+	):
+		_pursuit_check_remaining_seconds = maxf(
+			0.0,
+			_pursuit_check_remaining_seconds - maxf(elapsed, 0.0)
+		)
+		if _pursuit_check_remaining_seconds <= 0.0:
+			_begin_search_from_failed_pursuit()
+
+
 func _record_vision_loss() -> void:
 	if (
 		_awareness_state == STATE_ALERTED
-		and not _has_alert_loss_timer
+		and _pursuit_mode == PURSUIT_VISIBLE
 	):
+		_pursuit_mode = PURSUIT_CONTACT_GRACE
 		_has_alert_loss_timer = true
 		_alert_loss_remaining_seconds = maxf(
 			alert_loss_seconds,
@@ -750,7 +830,8 @@ func _enter_state(
 	target: Vector3 = Vector3.ZERO,
 	has_target: bool = false
 ) -> void:
-	if _awareness_state == STATE_SEARCHING and new_state != STATE_SEARCHING:
+	var previous_state: StringName = _awareness_state
+	if previous_state == STATE_SEARCHING and new_state != STATE_SEARCHING:
 		_clear_search_plan(false)
 	_awareness_state = new_state
 	_has_alert_loss_timer = false
@@ -786,6 +867,8 @@ func _enter_state(
 	elif new_state == STATE_UNAWARE:
 		_investigation_target = Vector3.ZERO
 		_has_investigation_target = false
+	if previous_state == STATE_ALERTED and new_state != STATE_ALERTED:
+		_clear_pursuit_state()
 	if new_state == STATE_SEARCHING:
 		var search_source: Vector3 = (
 			target
@@ -830,7 +913,13 @@ func _apply_navigation_for_state() -> void:
 					_investigation_target
 				)
 		STATE_ALERTED:
-			if _has_investigation_target:
+			if _has_pursuit_goal:
+				_guard.call(
+					"set_awareness_navigation_target",
+					NAV_PURSUIT,
+					_pursuit_goal_position
+				)
+			elif _has_investigation_target:
 				_guard.call(
 					"set_awareness_navigation_target",
 					NAV_PURSUIT,
@@ -838,6 +927,105 @@ func _apply_navigation_for_state() -> void:
 				)
 		_:
 			_guard.call("clear_awareness_navigation_target")
+
+
+func _mark_pursuit_visible() -> void:
+	_pursuit_mode = PURSUIT_VISIBLE
+	_has_alert_loss_timer = false
+	_alert_loss_remaining_seconds = 0.0
+	_pursuit_lost_seconds = 0.0
+	_pursuit_check_remaining_seconds = 0.0
+
+
+func _resolve_pursuit_goal(
+	known_position: Vector3,
+	observed_velocity: Vector3
+) -> void:
+	_pursuit_goal_position = known_position
+	_has_pursuit_goal = true
+	if (
+		_guard == null
+		or not is_instance_valid(_guard)
+		or not _guard.has_method("resolve_pursuit_approach")
+	):
+		return
+	var resolved: Variant = _guard.call(
+		"resolve_pursuit_approach",
+		known_position,
+		observed_velocity,
+		pursuit_prediction_seconds
+	)
+	if typeof(resolved) != TYPE_DICTIONARY:
+		return
+	var result: Dictionary = resolved
+	if (
+		bool(result.get("valid", false))
+		and typeof(result.get("position", null)) == TYPE_VECTOR3
+	):
+		var resolved_position: Vector3 = result.get("position", known_position)
+		if _is_finite_vector(resolved_position):
+			_pursuit_goal_position = resolved_position
+
+
+func _refresh_lost_pursuit_from_evidence(evidence_position: Vector3) -> void:
+	_investigation_target = evidence_position
+	_has_investigation_target = true
+	_set_attention_toward(evidence_position)
+	_resolve_pursuit_goal(evidence_position, Vector3.ZERO)
+	_pursuit_mode = PURSUIT_CHECKING_LAST_KNOWN
+	_has_alert_loss_timer = false
+	_alert_loss_remaining_seconds = 0.0
+	_pursuit_lost_seconds = 0.0
+	_pursuit_check_remaining_seconds = maxf(pursuit_check_seconds, 0.0)
+	_apply_navigation_for_state()
+
+
+func _begin_search_from_failed_pursuit() -> void:
+	var search_source: Vector3 = (
+		_investigation_target
+		if _has_investigation_target
+		else _last_seen_position
+	)
+	_enter_state(STATE_SEARCHING, search_source, true)
+
+
+func _is_guard_at_pursuit_goal() -> bool:
+	if (
+		_guard == null
+		or not is_instance_valid(_guard)
+		or not _has_pursuit_goal
+	):
+		return false
+	var offset := Vector3(
+		_pursuit_goal_position.x - _guard.global_position.x,
+		0.0,
+		_pursuit_goal_position.z - _guard.global_position.z
+	)
+	return offset.length() <= maxf(pursuit_arrival_distance, 0.20)
+
+
+func _clear_pursuit_state() -> void:
+	_pursuit_mode = PURSUIT_VISIBLE
+	_pursuit_goal_position = Vector3.ZERO
+	_has_pursuit_goal = false
+	_last_confirmed_velocity = Vector3.ZERO
+	_attention_direction = Vector3.FORWARD
+	_pursuit_lost_seconds = 0.0
+	_pursuit_check_remaining_seconds = 0.0
+	_has_alert_loss_timer = false
+	_alert_loss_remaining_seconds = 0.0
+
+
+func _set_attention_toward(world_position: Vector3) -> void:
+	if _guard == null or not is_instance_valid(_guard):
+		return
+	var direction := Vector3(
+		world_position.x - _guard.global_position.x,
+		0.0,
+		world_position.z - _guard.global_position.z
+	)
+	if direction.length_squared() > 0.000001:
+		_attention_direction = direction.normalized()
 
 
 func _begin_search(anchor: Vector3) -> void:
@@ -1241,26 +1429,32 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 	_last_heard_strength = float(
 		perception.get("propagated_strength", 0.0)
 	)
-	_investigation_target = _last_heard_origin
-	_has_investigation_target = true
 
-	var flat_origin := Vector3(
-		_last_heard_origin.x,
-		_guard.global_position.y,
-		_last_heard_origin.z
-	)
-	if flat_origin.distance_squared_to(_guard.global_position) > 0.001:
-		_guard.look_at(flat_origin, Vector3.UP, true)
-
-	if _awareness_state == STATE_SEARCHING:
-		_search_reseed_count += 1
-		_enter_state(
-			STATE_INVESTIGATING,
-			_last_heard_origin,
-			true
+	if _awareness_state == STATE_ALERTED:
+		if (
+			_pursuit_mode != PURSUIT_VISIBLE
+			and _last_heard_strength >= _effective_hearing_investigate_strength()
+		):
+			_refresh_lost_pursuit_from_evidence(_last_heard_origin)
+	else:
+		_investigation_target = _last_heard_origin
+		_has_investigation_target = true
+		var flat_origin := Vector3(
+			_last_heard_origin.x,
+			_guard.global_position.y,
+			_last_heard_origin.z
 		)
-	elif _awareness_state != STATE_ALERTED:
-		if _last_heard_strength >= _effective_hearing_investigate_strength():
+		if flat_origin.distance_squared_to(_guard.global_position) > 0.001:
+			_guard.look_at(flat_origin, Vector3.UP, true)
+
+		if _awareness_state == STATE_SEARCHING:
+			_search_reseed_count += 1
+			_enter_state(
+				STATE_INVESTIGATING,
+				_last_heard_origin,
+				true
+			)
+		elif _last_heard_strength >= _effective_hearing_investigate_strength():
 			_enter_state(
 				STATE_INVESTIGATING,
 				_last_heard_origin,
@@ -1299,13 +1493,21 @@ func _legacy_debug_state() -> StringName:
 			return &"heard_noise"
 		STATE_ALERTED:
 			return (
-				&"heard_noise"
-				if _has_alert_loss_timer
-				else &"saw_player"
+				&"saw_player"
+				if _pursuit_mode == PURSUIT_VISIBLE
+				else &"heard_noise"
 			)
 		STATE_INACTIVE:
 			return &"inactive"
 	return &"calm"
+
+
+func _is_valid_pursuit_mode(mode: StringName) -> bool:
+	return mode in [
+		PURSUIT_VISIBLE,
+		PURSUIT_CONTACT_GRACE,
+		PURSUIT_CHECKING_LAST_KNOWN,
+	]
 
 
 func _is_valid_search_action(action: StringName) -> bool:
@@ -1331,6 +1533,90 @@ func _is_valid_awareness_state(state: StringName) -> bool:
 	]
 
 
+func _current_vision_facing_direction() -> Vector3:
+	if _awareness_state == STATE_ALERTED and _has_investigation_target:
+		var toward_known := Vector3(
+			_investigation_target.x - _guard.global_position.x,
+			0.0,
+			_investigation_target.z - _guard.global_position.z
+		)
+		if toward_known.length_squared() > 0.000001:
+			return toward_known.normalized()
+	if (
+		_awareness_state == STATE_ALERTED
+		and _attention_direction.length_squared() > 0.000001
+	):
+		return _attention_direction.normalized()
+	return _horizontal_facing_direction()
+
+
+func _resolve_player_vision_sample(
+	facing_direction: Vector3,
+	facing_threshold: float,
+	vertical_limit_degrees: float
+) -> Dictionary:
+	var eye: Vector3 = _guard.global_position + Vector3.UP * 1.35
+	var result := {
+		"visible": false,
+		"target": _get_player_vision_target(),
+		"distance": INF,
+		"facing_dot": -1.0,
+		"vertical_angle_degrees": 0.0,
+		"blocked": false,
+		"blocker": "",
+	}
+	for target: Vector3 in _get_player_vision_targets():
+		var to_player: Vector3 = target - eye
+		var distance: float = to_player.length()
+		var horizontal_to_player := Vector3(to_player.x, 0.0, to_player.z)
+		var horizontal_distance: float = horizontal_to_player.length()
+		var facing_dot: float = 1.0
+		if horizontal_distance > 0.001:
+			facing_dot = facing_direction.dot(
+				horizontal_to_player / horizontal_distance
+			)
+		var vertical_angle: float = rad_to_deg(atan2(
+			absf(to_player.y),
+			maxf(horizontal_distance, 0.001)
+		))
+		if distance < float(result.get("distance", INF)):
+			result["target"] = target
+			result["distance"] = distance
+			result["facing_dot"] = facing_dot
+			result["vertical_angle_degrees"] = vertical_angle
+		if (
+			distance <= 0.001
+			or distance > vision_distance
+			or facing_dot < facing_threshold
+			or vertical_angle > vertical_limit_degrees
+		):
+			continue
+		var query := PhysicsRayQueryParameters3D.create(eye, target)
+		query.collision_mask = 1 | 4
+		query.collide_with_bodies = true
+		query.collide_with_areas = false
+		query.exclude = [_guard.get_rid()]
+		var hit: Dictionary = _guard.get_world_3d().direct_space_state.intersect_ray(
+			query
+		)
+		if not hit.is_empty():
+			result["blocked"] = true
+			if str(result.get("blocker", "")).is_empty():
+				var blocker: Object = hit.get("collider") as Object
+				if blocker != null:
+					result["blocker"] = str(blocker.get("name"))
+			continue
+		result["visible"] = true
+		result["target"] = target
+		result["distance"] = distance
+		result["facing_dot"] = facing_dot
+		result["vertical_angle_degrees"] = vertical_angle
+		result["blocked"] = false
+		result["blocker"] = ""
+		return result
+	return result
+
+
 func _current_vision_vertical_limit_degrees() -> float:
 	var base_limit: float = clampf(vision_vertical_angle_degrees, 10.0, 85.0)
 	var engaged_limit: float = clampf(
@@ -1349,26 +1635,40 @@ func _current_vision_vertical_limit_degrees() -> float:
 			return base_limit
 
 
-func _get_player_vision_target() -> Vector3:
+func _get_player_vision_targets() -> Array[Vector3]:
+	var targets: Array[Vector3] = []
 	if _player == null or not is_instance_valid(_player):
-		return Vector3.ZERO
+		return targets
 	var head := _player.get_node_or_null("Head") as Node3D
 	if head != null:
-		return head.global_position
-
+		targets.append(head.global_position)
 	var collision := _player.get_node_or_null(
 		"CollisionShape3D"
 	) as CollisionShape3D
-	var capsule: CapsuleShape3D = (
-		collision.shape as CapsuleShape3D
-		if collision != null
-		else null
-	)
-	if collision != null and capsule != null:
-		return collision.to_global(
-			Vector3(0.0, capsule.height * 0.30, 0.0)
-		)
-	return _player.global_position + Vector3.UP * 0.75
+	if collision != null:
+		var center: Vector3 = collision.global_position
+		if targets.is_empty() or targets[0].distance_to(center) > 0.05:
+			targets.append(center)
+		var capsule: CapsuleShape3D = collision.shape as CapsuleShape3D
+		if capsule != null:
+			var lower: Vector3 = collision.to_global(
+				Vector3(0.0, -capsule.height * 0.20, 0.0)
+			)
+			var duplicate: bool = false
+			for existing: Vector3 in targets:
+				if existing.distance_to(lower) <= 0.05:
+					duplicate = true
+					break
+			if not duplicate:
+				targets.append(lower)
+	if targets.is_empty():
+		targets.append(_player.global_position + Vector3.UP * 0.75)
+	return targets
+
+
+func _get_player_vision_target() -> Vector3:
+	var targets: Array[Vector3] = _get_player_vision_targets()
+	return targets[0] if not targets.is_empty() else Vector3.ZERO
 
 
 func _get_gameplay_time() -> float:
@@ -1452,8 +1752,12 @@ func _refresh_label() -> void:
 			)
 		STATE_ALERTED:
 			_status_label.text = (
-				"ALERT / PURSUIT\nexposure %.2f"
-				% _last_vision_exposure
+				"ALERT / %s\nexposure %.2f · lost %.1fs"
+				% [
+					str(_pursuit_mode),
+					_last_vision_exposure,
+					_pursuit_lost_seconds,
+				]
 			)
 		STATE_RECOVERING:
 			_status_label.text = (

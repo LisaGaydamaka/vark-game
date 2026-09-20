@@ -12,6 +12,9 @@ const STATE_RECOVERING: StringName = &"recovering"
 const NAV_INVESTIGATE: StringName = &"investigate"
 const NAV_SEARCH: StringName = &"search"
 const NAV_PURSUIT: StringName = &"pursuit"
+const PURSUIT_VISIBLE: StringName = &"visible"
+const PURSUIT_CONTACT_GRACE: StringName = &"contact_grace"
+const PURSUIT_CHECKING_LAST_KNOWN: StringName = &"checking_last_known"
 const SLICE_PATH: String = "res://missions/integrated_slice/world.tscn"
 const TEST_SAVE_DIRECTORY: String = "user://vark_tests/phase55"
 
@@ -412,11 +415,95 @@ func _assert_guard_awareness_state_machine() -> void:
 			== NAV_PURSUIT
 		and float(alert_nav.get("current_movement_speed", 0.0))
 			> guard.movement_speed
+		and alert_summary.get("pursuit_mode", &"") == PURSUIT_VISIBLE
+		and bool(alert_summary.get("has_pursuit_goal", false))
+		and guard.is_navigation_position_reachable(
+			_dict_vector(alert_summary, "pursuit_goal_position")
+		)
 		and _dict_vector(
 			alert_nav,
 			"target_position"
-		).distance_to(last_seen) <= 0.001,
+		).distance_to(_dict_vector(
+			alert_summary,
+			"pursuit_goal_position"
+		)) <= 0.001,
 		"Phase 5.4 confirmed local vision enters alert/pursuit and continuously owns a last-seen navigation target"
+	)
+
+	var pursuit_generation: int = int(application.call("request_quicksave"))
+	var pursuit_committed: bool = await _wait_for_save_status(
+		coordinator,
+		pursuit_generation,
+		&"committed",
+		30
+	)
+	var pursuit_snapshot: Dictionary = coordinator.call(
+		"get_request_snapshot",
+		pursuit_generation
+	)
+	var pursuit_awareness: Dictionary = (
+		pursuit_snapshot.get("session", {})
+		.get("world_state", {})
+		.get("semantic_owners", {})
+		.get(reaction.get_semantic_save_id(), {})
+	)
+	var saved_pursuit_goal: Vector3 = _dict_vector(
+		pursuit_awareness,
+		"pursuit_goal_position"
+	)
+	var visible_distraction_origin: Vector3 = guard.global_position + Vector3(-0.65, 0.0, 0.45)
+	var visible_distraction_queued: bool = bool(session.call(
+		"queue_gameplay_sound",
+		int(session.get("session_id")),
+		&"prop.impact",
+		visible_distraction_origin,
+		0.90
+	))
+	await _completed_physics_frame()
+	var after_visible_distraction: Dictionary = reaction.get_debug_summary()
+	_assert_true(
+		pursuit_committed
+		and pursuit_awareness.get("state", &"") == STATE_ALERTED
+		and pursuit_awareness.get("pursuit_mode", &"") == PURSUIT_VISIBLE
+		and bool(pursuit_awareness.get("has_pursuit_goal", false))
+		and saved_pursuit_goal.distance_to(
+			_dict_vector(alert_summary, "pursuit_goal_position")
+		) <= 0.001
+		and visible_distraction_queued
+		and after_visible_distraction.get("pursuit_mode", &"") == PURSUIT_VISIBLE
+		and _dict_vector(
+			after_visible_distraction,
+			"investigation_target"
+		).distance_to(player.global_position) <= 0.001,
+		"Phase 5.5 visible confirmed pursuit persists resolved chase truth and ignores unrelated distraction navigation"
+	)
+
+	reaction.reset_reaction()
+	var pursuit_loaded: bool = bool(application.call("quickload_latest"))
+	world = application.get("current_world") as Node3D
+	session = application.get("current_session") as Node
+	player = application.get("current_player") as CharacterBody3D
+	guard = world.get_node("Guard") as VarkGuard
+	reaction = world.get_node("Guard/Reaction") as Node
+	light = world.get_node("NorthGameplayLight") as VarkGameplayLight
+	exposure = world.get_node("GameplayExposure") as VarkGameplayExposure
+	_configure_short_durations(reaction)
+	guard.velocity = Vector3.ZERO
+	guard.set_physics_process(false)
+	var restored_pursuit: Dictionary = reaction.get_debug_summary()
+	_assert_true(
+		pursuit_loaded
+		and restored_pursuit.get("awareness_state", &"") == STATE_ALERTED
+		and restored_pursuit.get("pursuit_mode", &"") == PURSUIT_VISIBLE
+		and _dict_vector(
+			restored_pursuit,
+			"pursuit_goal_position"
+		).distance_to(saved_pursuit_goal) <= 0.001
+		and _dict_vector(
+			guard.get_awareness_navigation_state(),
+			"target_position"
+		).distance_to(saved_pursuit_goal) <= 0.001,
+		"Phase 5.5 quickload restores the already-resolved pursuit mode/goal instead of recomputing from hidden player state"
 	)
 
 	light.gameplay_enabled = false
@@ -436,8 +523,50 @@ func _assert_guard_awareness_state_machine() -> void:
 			"alert_loss_remaining_seconds",
 			0.0
 		)) > 0.0
-		and loss_summary.get("state", &"") != &"saw_player",
-		"Phase 5.4 losing sight starts a gameplay-time alert-loss grace instead of instantly forgetting confirmed knowledge"
+		and loss_summary.get("pursuit_mode", &"") == PURSUIT_CONTACT_GRACE
+		and loss_summary.get("state", &"") != &"saw_player"
+		and guard.get_awareness_navigation_state().get("reason", &"") == NAV_PURSUIT,
+		"Phase 5.5 losing sight starts only a contact-grace substate while confirmed pursuit remains active"
+	)
+
+	var checking_last_known: bool = await _wait_for_pursuit_mode(
+		reaction,
+		PURSUIT_CHECKING_LAST_KNOWN,
+		30
+	)
+	var checking_summary: Dictionary = reaction.get_debug_summary()
+	var checking_nav: Dictionary = guard.get_awareness_navigation_state()
+	_assert_true(
+		checking_last_known
+		and checking_summary.get("awareness_state", &"") == STATE_ALERTED
+		and checking_summary.get("pursuit_mode", &"") == PURSUIT_CHECKING_LAST_KNOWN
+		and float(checking_summary.get("pursuit_lost_seconds", 0.0)) > 0.0
+		and checking_nav.get("reason", &"") == NAV_PURSUIT,
+		"Phase 5.5 contact-grace expiry keeps the guard ALERTED while it checks the last useful reachable pursuit approach"
+	)
+
+	var lost_sound_origin: Vector3 = guard.global_position + Vector3(0.40, 0.0, 0.55)
+	var old_pursuit_goal: Vector3 = _dict_vector(checking_summary, "pursuit_goal_position")
+	var lost_sound_queued: bool = bool(session.call(
+		"queue_gameplay_sound",
+		int(session.get("session_id")),
+		&"footstep.stone",
+		lost_sound_origin,
+		0.70
+	))
+	await _completed_physics_frame()
+	var heard_during_lost: Dictionary = reaction.get_debug_summary()
+	_assert_true(
+		lost_sound_queued
+		and heard_during_lost.get("awareness_state", &"") == STATE_ALERTED
+		and heard_during_lost.get("pursuit_mode", &"") == PURSUIT_CHECKING_LAST_KNOWN
+		and _dict_vector(heard_during_lost, "investigation_target").distance_to(
+			lost_sound_origin
+		) <= 0.001
+		and _dict_vector(heard_during_lost, "pursuit_goal_position").distance_to(
+			old_pursuit_goal
+		) > 0.01,
+		"Phase 5.5 strong local evidence can update a lost confirmed trail without dropping to search, while visible pursuit ignores distractions"
 	)
 
 	var lost_to_search: bool = await _wait_for_awareness_state(
@@ -462,13 +591,13 @@ func _assert_guard_awareness_state_machine() -> void:
 		and _dict_vector(
 			lost_search_summary,
 			"search_anchor"
-		).distance_to(last_seen) <= 0.001
+		).distance_to(lost_sound_origin) <= 0.001
 		and lost_points.size() >= 2
 		and _dict_vector(
 			lost_search_nav,
 			"target_position"
 		).distance_to(lost_current) <= 0.001,
-		"Phase 5.5 confirmed-alert loss builds local search around the resolved last-seen position rather than global player knowledge"
+		"Phase 5.5 search begins only after failed alerted pursuit and uses the latest explicit local evidence rather than hidden player knowledge"
 	)
 
 	var recovering: bool = await _wait_for_awareness_state(
@@ -843,6 +972,18 @@ func _assert_advanced_local_search_behavior() -> void:
 	reaction.vision_confirm_exposure_threshold = 0.0
 	var search_elevated_confirmed: bool = reaction.sample_vision_now()
 	var elevated_alert_summary: Dictionary = reaction.get_debug_summary()
+	var elevated_pursuit_goal: Vector3 = _dict_vector(
+		elevated_alert_summary,
+		"pursuit_goal_position"
+	)
+	player.global_position += Vector3(0.65, 0.0, 0.0)
+	player.velocity = Vector3(1.5, 0.0, 0.0)
+	var lateral_elevated_confirmed: bool = reaction.sample_vision_now()
+	var lateral_alert_summary: Dictionary = reaction.get_debug_summary()
+	var lateral_pursuit_goal: Vector3 = _dict_vector(
+		lateral_alert_summary,
+		"pursuit_goal_position"
+	)
 	_assert_true(
 		not unaware_elevated_confirmed
 		and float(unaware_vertical_summary.get(
@@ -868,6 +1009,13 @@ func _assert_advanced_local_search_behavior() -> void:
 		)) > base_vertical_limit
 		and search_elevated_confirmed
 		and elevated_alert_summary.get("awareness_state", &"") == STATE_ALERTED
+		and guard.is_navigation_position_reachable(elevated_pursuit_goal)
+		and absf(elevated_pursuit_goal.y - player.global_position.y) > 0.50
+		and lateral_elevated_confirmed
+		and lateral_alert_summary.get("awareness_state", &"") == STATE_ALERTED
+		and lateral_alert_summary.get("pursuit_mode", &"") == PURSUIT_VISIBLE
+		and guard.is_navigation_position_reachable(lateral_pursuit_goal)
+		and lateral_pursuit_goal.distance_to(elevated_pursuit_goal) > 0.10
 		and float(elevated_alert_summary.get(
 			"last_vision_vertical_angle_degrees",
 			0.0
@@ -879,7 +1027,7 @@ func _assert_advanced_local_search_behavior() -> void:
 			"last_vision_vertical_limit_degrees",
 			0.0
 		)),
-		"Phase 5.5 search preserves elevated evidence, stays on reachable navigation, and can reacquire a steeply elevated climbing player without giving calm guards overhead omnivision"
+		"Phase 5.5 elevated pursuit keeps true visual evidence separate from a reachable floor approach and follows visible lateral movement without dropping alert"
 	)
 
 	application.call("exit_current_world")
@@ -1022,7 +1170,11 @@ func _configure_short_durations(
 	reaction.search_look_count_max = 2
 	reaction.search_look_min_degrees = 15.0
 	reaction.search_scan_degrees = 45.0
-	reaction.alert_loss_seconds = 0.08
+	reaction.alert_loss_seconds = 0.05
+	reaction.pursuit_prediction_seconds = 0.10
+	reaction.pursuit_check_seconds = 0.08
+	reaction.pursuit_max_lost_seconds = 0.28
+	reaction.pursuit_arrival_distance = 0.30
 	reaction.recovery_seconds = 0.12
 	reaction.recovery_hearing_threshold_scale = 0.65
 
@@ -1055,6 +1207,18 @@ func _launch_slice() -> Node:
 		await process_frame
 		return null
 	return application
+
+
+func _wait_for_pursuit_mode(
+	reaction: Node,
+	expected: StringName,
+	max_frames: int
+) -> bool:
+	for _frame: int in max_frames:
+		if reaction.get_debug_summary().get("pursuit_mode", &"") == expected:
+			return true
+		await _completed_physics_frame()
+	return reaction.get_debug_summary().get("pursuit_mode", &"") == expected
 
 
 func _wait_for_awareness_state(
