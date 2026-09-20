@@ -53,6 +53,9 @@ var _max_observed_path_x: float = -INF
 var _max_observed_path_point_count: int = 0
 var _last_error: String = ""
 var _restored_goal_id: String = ""
+var _awareness_goal_active: bool = false
+var _awareness_goal_position: Vector3 = Vector3.ZERO
+var _awareness_goal_reason: StringName = &""
 
 
 func _ready() -> void:
@@ -122,6 +125,48 @@ func query_actor_state() -> Dictionary:
 		"navigation_owned": _navigation_agent != null,
 		"navigation_active": _life_state == LIFE_CONSCIOUS and _configured,
 		"body_state": _life_state != LIFE_CONSCIOUS,
+	}
+
+
+func set_awareness_navigation_target(
+	reason: StringName,
+	target_position: Vector3
+) -> bool:
+	if (
+		_life_state != LIFE_CONSCIOUS
+		or not _configured
+		or _navigation_agent == null
+		or reason.is_empty()
+		or not _is_finite_vector(target_position)
+	):
+		return false
+	_awareness_goal_active = true
+	_awareness_goal_reason = reason
+	_awareness_goal_position = target_position
+	_navigation_agent.target_position = target_position
+	return true
+
+
+func clear_awareness_navigation_target() -> bool:
+	var had_goal: bool = _awareness_goal_active
+	_awareness_goal_active = false
+	_awareness_goal_reason = &""
+	_awareness_goal_position = Vector3.ZERO
+	if (
+		_life_state == LIFE_CONSCIOUS
+		and _configured
+		and _navigation_agent != null
+		and _patrol_positions.size() == 2
+	):
+		_navigation_agent.target_position = _patrol_positions[_target_index]
+	return had_goal
+
+
+func get_awareness_navigation_state() -> Dictionary:
+	return {
+		"active": _awareness_goal_active,
+		"reason": _awareness_goal_reason,
+		"target_position": _awareness_goal_position,
 	}
 
 
@@ -223,6 +268,9 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_crossing_block_open_count = 0
 	_max_observed_path_x = -INF
 	_max_observed_path_point_count = 0
+	_awareness_goal_active = false
+	_awareness_goal_reason = &""
+	_awareness_goal_position = Vector3.ZERO
 
 	var patrol_a := patrol_points.get(patrol_a_id) as Node3D
 	var patrol_b := patrol_points.get(patrol_b_id) as Node3D
@@ -267,7 +315,9 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 
 func get_debug_summary() -> Dictionary:
 	var target_position := Vector3.ZERO
-	if _configured and _target_index >= 0 and _target_index < _patrol_positions.size():
+	if _awareness_goal_active:
+		target_position = _awareness_goal_position
+	elif _configured and _target_index >= 0 and _target_index < _patrol_positions.size():
 		target_position = _patrol_positions[_target_index]
 	return {
 		"persistent_id": persistent_id,
@@ -292,6 +342,9 @@ func get_debug_summary() -> Dictionary:
 		"door_distance": _horizontal_distance_to_door(),
 		"target_index": _target_index,
 		"target_position": target_position,
+		"awareness_goal_active": _awareness_goal_active,
+		"awareness_goal_reason": _awareness_goal_reason,
+		"awareness_goal_position": _awareness_goal_position,
 		"door_use_count": _door_use_count,
 		"crossing_block_open_count": _crossing_block_open_count,
 		"patrol_leg_count": _patrol_leg_count,
@@ -314,21 +367,29 @@ func _physics_process(delta: float) -> void:
 
 	var next_position: Vector3 = _navigation_agent.get_next_path_position()
 	_record_current_path()
-	var target_position: Vector3 = _patrol_positions[_target_index]
+	var target_position: Vector3 = (
+		_awareness_goal_position
+		if _awareness_goal_active
+		else _patrol_positions[_target_index]
+	)
 	var horizontal_to_target := Vector3(
 		target_position.x - global_position.x,
 		0.0,
 		target_position.z - global_position.z
 	)
 	if horizontal_to_target.length() <= maxf(_navigation_agent.target_desired_distance, 0.3):
-		_complete_patrol_leg()
+		velocity = Vector3.ZERO
+		if not _awareness_goal_active:
+			_complete_patrol_leg()
 		return
 
 	if _navigation_agent.is_navigation_finished():
+		velocity = Vector3.ZERO
+		if _awareness_goal_active:
+			return
 		var target_id: String = patrol_b_id if _target_index == 1 else patrol_a_id
 		_last_error = "Guard '%s' has no route to patrol target '%s'." % [guard_id, target_id]
 		_configured = false
-		velocity = Vector3.ZERO
 		push_error(_last_error)
 		return
 

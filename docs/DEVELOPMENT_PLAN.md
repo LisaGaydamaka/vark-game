@@ -1304,7 +1304,7 @@ Debug state is observational only and is not save state or gameplay truth.
 **Manual:** none — 5.2 is accepted because it deliberately keeps the already accepted Phase 3 attenuation constants, portal topology, door transmission values, and hearing thresholds unchanged. The new development readout is deterministic inspection rather than subjective stealth tuning. Any later transmission/threshold retuning that changes what the player can predict requires a focused user playtest.
 
 
-## 5.3 Gameplay lighting/exposure `[~]`
+## 5.3 Gameplay lighting/exposure `[x]`
 
 Stabilize the gameplay-light/exposure contract proven by the spike. Add light gem and useful debug readout.
 
@@ -1319,16 +1319,36 @@ The Phase 3 visibility model remains the gameplay authority and keeps its accept
 
 **Done when:** the existing dark/edge/partial/full, occluded, and two-light relationships remain unchanged; a bright decorative-only light contributes zero gameplay exposure and does not appear as a gameplay-light source; disabling or hiding the key gameplay light immediately removes its contribution while the debug summary marks it inactive; restoring the state reproduces the prior exposure; and the reusable light gem in both Exposure Lab and Integrated Slice matches the semantic exposure value and reports source state/visible sample diagnostics.
 
-**Automated:** extends the authoritative Visibility suite and Phase 3 Integration suite. Visibility keeps all existing exposure relationship/occlusion/additive checks, adds decorative-only source exclusion, enable/visible state transitions, active/source count diagnostics, and reusable light-gem agreement. Phase 3 Integration verifies the real slice contains the reusable light gem and that its observed value/debug source matches the exposure owner during the existing guard-vision/crouch-cover proof.
+**Automated:** accepted — exact `test` head `3f51749a6e5cbd878ac3aaa84de21d785ab22bb9` passed Godot 4.7.2 GitHub Actions Test run #261. The Visibility suite passed decorative-only exclusion, gameplay-light enable/visible state changes, source/active diagnostics, and reusable light-gem agreement while retaining the existing dark/edge/partial/full, occlusion, and additive barriers. Phase 3 Integration also remained green, and CI completed successfully.
 
-**Manual:** none — 5.3 intentionally preserves the Phase 3 exposure strengths, ranges, sample positions, occlusion behavior, and guard thresholds. The light-gem refactor/debug detail is deterministic presentation of unchanged semantic truth. A later change that retunes darkness/partial/full readability or final gem presentation must stop for a focused user playtest.
+**Manual:** none — 5.3 is accepted because it intentionally preserves the Phase 3 exposure strengths, ranges, sample positions, occlusion behavior, and guard thresholds. The light-gem refactor/debug detail is deterministic presentation of unchanged semantic truth. A later change that retunes darkness/partial/full readability or final gem presentation must stop for a focused user playtest.
 
 
-## 5.4 NPC perception/awareness `[ ]`
+## 5.4 NPC perception/awareness `[~]`
 
 Implement unaware, mild suspicion, investigation/search, confirmed alert/pursuit, and loss/recovery. Vision/hearing feed evidence without global omniscience.
 
 Meaningful durations/decay use world simulation time. If search/patrol behavior uses randomness, once a choice becomes current gameplay truth it must survive save/restore as that resolved choice rather than being rerolled by restore.
+
+5.4 promotes the Integrated Slice reaction spike into reusable `VarkGuardAwareness` semantics while preserving the existing local hearing/vision sensors:
+
+- semantic awareness states are `unaware`, `suspicious`, `investigating`, `searching`, `alerted`, `recovering`, and `inactive`. The old Phase 3 debug `state` field remains a compatibility-only presentation alias; `awareness_state` and the saved semantic state are authoritative;
+- hearing evidence is strictly local to the guard's existing acoustic listener. Heard gameplay sound increments local evidence; weak heard evidence creates mild suspicion, while sufficiently strong heard evidence creates an investigation target at the resolved sound origin. No global alert or player-position lookup is introduced;
+- vision uses the existing gameplay exposure, range, facing, and physics occlusion checks. Exposure above the mild threshold can create suspicion; confirmed local line-of-sight at the existing 0.28 threshold enters `alerted` and owns a pursuit target at the currently resolved player sight position;
+- confirmed vision loss does not instantly erase knowledge. A short alert-loss grace uses WorldSession gameplay time, then transitions to `searching` at the saved last-seen position. Search expires into `recovering`, then returns to `unaware`;
+- suspicion, investigation, search, alert-loss, and recovery durations are explicit semantic remaining seconds advanced only from `WorldSession.gameplay_time_seconds`. No engine Timer or wall clock owns awareness truth;
+- `VarkGuard` gains one narrow awareness-navigation override seam. Investigation/search/pursuit may temporarily own the NavigationAgent target, while recovery/unaware return ownership to the existing patrol goal. Awareness does not replace patrol, door-use, or navigation architecture;
+- current search behavior is deterministic and uses the resolved evidence/last-seen position directly; 5.4 introduces no random search-point selection. The resolved target and remaining stage duration are persisted in the awareness semantic snapshot and restored before ordinary simulation resumes;
+- actor unconscious/dead state still forces awareness `inactive` and clears the temporary awareness navigation target.
+
+The current implementation does not add guard-to-guard communication, alarm broadcasting, omniscient player tracking, combat decision-making, multiple search waypoints, or randomized search patterns. Those belong to 5.5 and later combat work.
+
+**Done when:** a weak locally heard sound causes suspicion and decays back to unaware; a strong local sound causes investigation then deterministic search at the resolved origin; saving during search restores the same search state, target, and remaining simulation-time duration with no event replay; confirmed local vision creates alert/pursuit; loss of sight preserves alert briefly, then searches the last-seen position; search exhausts into recovery and patrol ownership returns; and existing Phase 3/Phase 4 reaction/save/hostility regressions remain compatible.
+
+**Automated:** implemented through new authoritative `tests/awareness/run_awareness_tests.gd`, added to `tests/run_all_tests.gd`. It launches the real Integrated Slice, shortens only test durations, freezes patrol motion while leaving awareness processing live, exercises weak/strong local hearing, gameplay-time decay, investigation/search navigation ownership, save/quickload of resolved search truth, confirmed visual pursuit, alert-loss grace, last-seen search, recovery, and return to patrol. Existing Application/Integration hostile and restore tests keep their legacy debug assertions through the compatibility view while the new suite asserts authoritative `awareness_state`.
+
+**Manual:** required before accepting any later tuning that changes suspicion/alert/search timing or stealth predictability. This first 5.4 implementation introduces new player-facing guard behavior, so after automated acceptance the user must run one focused Integrated Slice playtest before 5.4 can be marked `[x]`: verify that a loud noise causes investigation/search, clear sight causes pursuit, breaking sight causes a believable short search rather than instant forgetting, and the guard eventually returns to patrol without feeling stuck or omniscient.
+
 
 ## 5.5 NPC communication/local knowledge `[ ]`
 

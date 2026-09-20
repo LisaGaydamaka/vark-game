@@ -27,6 +27,10 @@ const SUITES = [
 		"script": "res://tests/visibility/run_visibility_tests.gd",
 	},
 	{
+		"name": "Awareness",
+		"script": "res://tests/awareness/run_awareness_tests.gd",
+	},
+	{
 		"name": "Speech",
 		"script": "res://tests/speech/run_speech_tests.gd",
 	},

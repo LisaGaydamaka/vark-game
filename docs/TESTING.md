@@ -402,6 +402,19 @@ The established acoustic model remains authored spaces connected by portals. Sam
 The Visibility suite keeps the established dark/edge/partial/full, all-samples-occluded, and two-light-additive barriers. It adds a brighter decorative-only OmniLight3D at a separate marker and proves exposure stays dark with only the two explicit gameplay sources listed. It also disables and hides the key gameplay light independently, proves contribution/active-state removal and recovery, then verifies the reusable light gem exactly matches current semantic exposure. Phase 3 Integration additionally checks the Integrated Slice light gem observes the same crouched exposure used by guard vision.
 
 
+## Phase 5.4 NPC perception/awareness
+
+`gameplay/npc/guard_awareness.gd` is the reusable guard-awareness owner. The Integrated Slice's historical `guard_reaction.gd` path is now a compatibility wrapper so existing authored scene references remain stable. The semantic state machine is unaware → suspicious/investigating → searching → recovering, with confirmed vision entering alerted/pursuit and actor life-state forcing inactive.
+
+All awareness durations are remaining gameplay-simulation seconds advanced from `WorldSession.gameplay_time_seconds`. Weak locally propagated hearing can create suspicion; stronger heard evidence records an investigation target at the acoustic event origin. Confirmed vision uses the existing exposure/range/facing/occlusion contract, updates a local last-seen target, and temporarily owns guard navigation through the new narrow awareness-target seam. Lost confirmed sight starts an alert-loss grace; expiration searches the persisted last-seen position. No random search choice exists yet, so there is nothing to reroll on restore.
+
+The awareness semantic snapshot stores state, evidence counters, last heard/vision diagnostics, resolved last-seen/investigation target, target-present flag, remaining state duration, and remaining alert-loss duration. Restore reapplies the same temporary navigation ownership before play resumes. The old debug `state` key remains only for Phase 3/4 fixture compatibility; new work must read `awareness_state`.
+
+`tests/awareness/run_awareness_tests.gd` is an authoritative top-level suite using the real Integrated Slice. It proves weak suspicion/decay, strong investigation/search, deterministic target preservation, save/quickload of search stage + remaining simulation duration, confirmed visual pursuit, lost-sight grace, last-seen search, recovery, and return of navigation ownership to patrol. The suite uses shortened exported durations only to keep CI fast; production defaults remain longer.
+
+Because 5.4 changes actual guard behavior rather than only ownership/debug structure, automated green CI is not the final acceptance gate. A focused user playtest of noise investigation, visual pursuit, break-contact search, and eventual patrol recovery is required before marking 5.4 complete.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.
