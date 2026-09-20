@@ -1,4 +1,4 @@
-[gd_scene load_steps=41 format=3]
+[gd_scene load_steps=43 format=3]
 
 [ext_resource type="Script" path="res://missions/integrated_slice/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
@@ -18,6 +18,8 @@
 [ext_resource type="Script" path="res://missions/integrated_slice/guard_reaction.gd" id="16_reaction"]
 [ext_resource type="Script" path="res://missions/integrated_slice/footstep_surface.gd" id="17_surface"]
 [ext_resource type="Script" path="res://missions/integrated_slice/footstep_emitter.gd" id="18_footsteps"]
+[ext_resource type="Resource" path="res://gameplay/noise/profiles/stone.tres" id="19_stone_profile"]
+[ext_resource type="Resource" path="res://gameplay/noise/profiles/carpet.tres" id="20_carpet_profile"]
 
 [sub_resource type="Environment" id="Environment_slice"]
 background_mode = 1
@@ -319,8 +321,7 @@ position = Vector3(0, 0.15, 4)
 collision_layer = 0
 collision_mask = 2
 script = ExtResource("17_surface")
-surface_id = &"stone"
-gameplay_sound_strength = 0.52
+surface_profile = ExtResource("19_stone_profile")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="StoneSurface"]
 shape = SubResource("SurfaceShape")
@@ -330,8 +331,7 @@ position = Vector3(0, 0.15, -4)
 collision_layer = 0
 collision_mask = 2
 script = ExtResource("17_surface")
-surface_id = &"carpet"
-gameplay_sound_strength = 0.20
+surface_profile = ExtResource("20_carpet_profile")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CarpetSurface"]
 shape = SubResource("SurfaceShape")

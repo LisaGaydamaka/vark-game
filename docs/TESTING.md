@@ -369,6 +369,17 @@ The project declares an unbound development `attack` InputMap action. `Applicati
 This is not combat implementation. It intentionally adds no player-facing attack binding, animation, weapon/inventory model, health/damage numbers, timing/tuning, block/parry, hit feedback, or combat AI.
 
 
+## Phase 5.1 surface profiles and gameplay noise
+
+`gameplay/noise/surface_profile.gd` defines the reusable authored surface-noise Resource. A valid profile has a non-empty semantic `surface_id` and positive finite base footstep strength. Footstep sound identity is derived as `footstep.<surface_id>` so authoring cannot accidentally disagree about the surface ID and semantic sound kind.
+
+`VarkFootstepSurface` references a profile instead of owning duplicated mission-local ID/strength fields. `VarkPlayerFootstepEmitter` contains the previously proven Integrated Slice footstep behavior: grounded horizontal-distance cadence, current-surface lookup, stance multiplier, and WorldSession `queue_gameplay_sound`. The old Integrated Slice scripts are compatibility wrappers only; stone/carpet data now live in reusable `.tres` profiles.
+
+`tests/noise/run_noise_tests.gd` is an authoritative top-level suite. It validates profile authoring and fail-closed invalid data, reusable surface/profile composition, then launches the real Integrated Slice through Application/WorldSession. It verifies stone and carpet use the authored profile resources, standing footsteps emit the expected semantic kind/base strength and reach the real guard acoustic listener, and crouch changes only emitted strength while retaining carpet identity/kind.
+
+The existing Phase 3 Integration suite continues to protect the accepted cross-system route, but now reads the surface strength from the profile-derived semantic summary. Prop impacts, doors, speech, and hostile-impact sounds remain direct users of the same three-field `gameplay.sound` contract; 5.1 does not change propagation or hearing thresholds.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.

@@ -1220,7 +1220,7 @@ The in-memory committed-slot cache remains an optimization, not persistence trut
 **Manual:** none — 4.6 is accepted from deterministic durability/compatibility coverage. It still introduces no player-facing save/load controls, slot UI, migration UX, or subjective presentation.
 
 
-## 4.7 Crude hostile-interaction compatibility proof `[~]`
+## 4.7 Crude hostile-interaction compatibility proof `[x]`
 
 Exercise one intentionally crude path through the same architecture:
 
@@ -1250,11 +1250,11 @@ There is deliberately no physical attack animation, weapon selection, health/dam
 
 **Done when:** the real Integrated Slice accepts one fresh application-owned attack edge, resolves one center-view guard hit through queued semantic hostility → gameplay sound/perception → existing life-state transition, proves a held attack does not create a second edge, saves the resulting unconscious actor plus resolved reaction evidence, mutates the live actor away from that state, then quickloads a fresh world whose actor/awareness state matches the save with an empty semantic event queue and no replayed consequences.
 
-**Automated:** implemented through new `tests/application/hostile_compatibility_regressions.gd`, wired into the authoritative Application suite. Existing input-boundary regressions are extended so attack follows the same fresh-edge/domain-loss contract as interaction. The hostile regression uses an isolated durable slot, the real Integrated Slice player/camera/guard/acoustic listener, existing actor life-state events, and production quicksave/quickload.
+**Automated:** accepted — exact `test` head `9fe4002b8207bdd51e77a5a3f7aceb9cb2555edf` passed Godot 4.7.2 GitHub Actions Test run #257. Every hostile compatibility assertion passed: fresh attack edge, FIFO hostile→sound→life-state consequences, held-edge expiry, detached hostile save truth, quickload without replay, and stable resumed simulation. CI ended with `ALL APPLICATION TESTS PASSED`, `ALL PROP TESTS PASSED`, `ALL ACTOR TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
 
-**Manual:** none for 4.7 — this is intentionally an architecture compatibility proof, not a player-facing combat-feel milestone. The development attack action has no physical binding and there is no subjective timing/animation/feedback to accept yet.
+**Manual:** none for 4.7 — accepted as an architecture compatibility proof. The development attack action remains physically unbound and there is no subjective combat timing/animation/feedback contract yet.
 
-**Phase gate:** developer quicksave/restore captures detached coherent semantic state/view pose during ordinary/transient play, keeps pending captures bound to their source session, commits saves in correct request order, restores through a simple transactional topology without gameplay side effects, handles global/mission compatibility failures coherently, and proves crude active hostility survives the same architecture without replacement.
+**Phase gate:** passed — developer quicksave/restore captures detached coherent semantic state/view pose during ordinary/transient play, keeps pending captures bound to their source session, commits saves in correct request order, restores through a simple transactional topology without gameplay side effects, handles global/mission compatibility failures coherently, and proves crude active hostility survives the same architecture without replacement.
 
 ---
 
@@ -1262,9 +1262,26 @@ There is deliberately no physical attack animation, weapon selection, health/dam
 
 Goal: turn spike implementations into reliable Vark systems only after their interactions, save semantics, and hostile compatibility are known.
 
-## 5.1 Surface profiles and gameplay noise `[ ]`
+## 5.1 Surface profiles and gameplay noise `[~]`
 
 Generalize the proven semantic gameplay-sound contract only as far as real use requires.
+
+The Phase 3 footstep proof is promoted out of the Integrated Slice into reusable gameplay ownership without broadening the acoustic model:
+
+- `VarkSurfaceProfile` is an authored Resource that owns the stable semantic `surface_id` and base `footstep_strength`. The current sound kind remains derived as `footstep.<surface_id>`; there is no duplicate authored kind field;
+- `VarkFootstepSurface` is a reusable Area3D that references one profile and exposes only profile-derived semantic summary data. Invalid/missing profiles fail closed;
+- `VarkPlayerFootstepEmitter` is the reusable player/world emitter. It preserves the proven distance-based step cadence and stance scaling, resolves the current overlapping reusable footstep surface, and queues the same three-field `gameplay.sound` source fact through WorldSession;
+- the Integrated Slice keeps its old script paths as compatibility wrappers but moves behavior into `gameplay/noise`. Stone and carpet now reference authored reusable profile resources at `gameplay/noise/profiles/stone.tres` and `carpet.tres`;
+- stone remains 0.52 base strength, carpet remains 0.20, and crouch remains a 0.45 multiplier. This hardening item intentionally preserves accepted Phase 3 behavior rather than retuning stealth audibility.
+
+Door use, prop impact, speech, and crude hostile-impact sounds continue using the same semantic `gameplay.sound` contract directly. 5.1 does not introduce material physics, audio playback assets, per-shoe modifiers, sprint-specific tuning, random footstep variation, or propagation changes.
+
+**Done when:** authored surface profiles can be validated independently; the real Integrated Slice consumes reusable profile-driven surfaces/emitter; standing stone emits `footstep.stone` at 0.52, standing carpet emits `footstep.carpet` at 0.20, crouch scales strength without changing surface identity/kind, and the existing guard acoustic listener receives those events through the unchanged gameplay-sound path.
+
+**Automated:** implemented through new authoritative `tests/noise/run_noise_tests.gd`, added to `tests/run_all_tests.gd`. It validates authored profiles, invalid-profile fail-closed behavior, reusable surface/profile composition, real Integrated Slice wiring, stone/carpet standing emissions, acoustic listener delivery, and crouch-strength scaling. The Phase 3 Integration suite is updated only to read profile-derived surface strength instead of the removed mission-local raw field.
+
+**Manual:** none — 5.1 preserves the already user-accepted Phase 3 stone/carpet/crouch behavior and changes ownership/authoring structure rather than sound feel, audibility tuning, or presentation. Any future tuning that changes stealth readability will require a focused user playtest.
+
 
 ## 5.2 Acoustic model `[ ]`
 

@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="VarkSurfaceProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://gameplay/noise/surface_profile.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+surface_id = &"stone"
+footstep_strength = 0.52

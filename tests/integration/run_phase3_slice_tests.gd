@@ -251,12 +251,18 @@ func _assert_integrated_slice() -> void:
 		and int(propagation_summary.get("portal_count", 0)) == 1
 		and int(propagation_summary.get("listener_count", 0)) == 2
 		and int(propagation_summary.get("door_count", 0)) == 1
+		and stone_surface.has_method("get_surface_summary")
+		and carpet_surface.has_method("get_surface_summary")
 		and is_equal_approx(
-			float(stone_surface.get("gameplay_sound_strength")),
+			float((
+				stone_surface.call("get_surface_summary") as Dictionary
+			).get("footstep_strength", 0.0)),
 			0.52
 		)
 		and is_equal_approx(
-			float(carpet_surface.get("gameplay_sound_strength")),
+			float((
+				carpet_surface.call("get_surface_summary") as Dictionary
+			).get("footstep_strength", 0.0)),
 			0.20
 		),
 		"The slice reuses one baked nav route, one door-controlled acoustic portal, two listeners, and distinct loud-stone/quiet-carpet footstep surfaces"
