@@ -323,6 +323,58 @@ func _assert_integrated_surface_noise() -> void:
 		"Development loudness meter tracks the crouched carpet source value without creating independent stealth-noise truth"
 	)
 
+	var cadence_standing_ready: bool = await _request_player_stance(
+		player,
+		PlayerCrouch.Stance.STANDING
+	)
+	player.global_position = Vector3(0.0, 0.0, 4.0)
+	player.velocity = Vector3.ZERO
+	await _settle_overlap_frames(3)
+	var cadence_grounded: bool = bool(player.call("is_grounded"))
+	player.set_physics_process(false)
+	footsteps.step_distance = 0.80
+	footsteps.minimum_move_speed = 0.35
+	footsteps.set_emission_enabled(true)
+	var cadence_start_count: int = int(
+		footsteps.get_debug_summary().get("queued_count", 0)
+	)
+
+	player.velocity = Vector3(1.0, 0.0, 0.0)
+	player.global_position += Vector3(0.22, 0.0, 0.0)
+	await _completed_physics_frame()
+	var first_burst_progress: float = float(
+		footsteps.get_debug_summary().get("distance_since_step", 0.0)
+	)
+	player.velocity = Vector3.ZERO
+	await _completed_physics_frame()
+	var paused_progress: float = float(
+		footsteps.get_debug_summary().get("distance_since_step", 0.0)
+	)
+
+	for _burst: int in 3:
+		player.velocity = Vector3(1.0, 0.0, 0.0)
+		player.global_position += Vector3(0.22, 0.0, 0.0)
+		await _completed_physics_frame()
+		player.velocity = Vector3.ZERO
+		await _completed_physics_frame()
+
+	var cadence_summary: Dictionary = footsteps.get_debug_summary()
+	_assert_true(
+		cadence_standing_ready
+		and cadence_grounded
+		and first_burst_progress > 0.20
+		and is_equal_approx(paused_progress, first_burst_progress)
+		and int(cadence_summary.get("queued_count", 0))
+			== cadence_start_count + 1
+		and float(cadence_summary.get("distance_since_step", -1.0))
+			> 0.0
+		and float(cadence_summary.get("distance_since_step", 1.0))
+			< footsteps.step_distance,
+		"Phase 5.1 grounded sub-step movement bursts retain cadence progress across stationary pauses and eventually emit a footstep instead of exploiting stop-to-reset silence"
+	)
+	footsteps.set_emission_enabled(false)
+	player.velocity = Vector3.ZERO
+
 	_cleanup_application(application)
 
 

@@ -57,7 +57,9 @@ func _physics_process(_delta: float) -> void:
 		_player.velocity.z
 	).length()
 	if horizontal_speed < minimum_move_speed:
-		_distance_since_step = 0.0
+		# Standing still pauses cadence progress instead of forgiving it. This
+		# prevents repeated sub-step movement bursts from resetting footstep
+		# distance and becoming indefinitely silent.
 		return
 
 	_distance_since_step += horizontal_delta.length()
@@ -136,6 +138,7 @@ func get_debug_summary() -> Dictionary:
 		"crouched_strength_scale": crouched_strength_scale,
 		"sprint_strength_scale": sprint_strength_scale,
 		"step_distance": step_distance,
+		"distance_since_step": _distance_since_step,
 	}
 
 
