@@ -92,6 +92,15 @@ func get_height_for_stance(stance: int) -> float:
 	return standing_height
 
 
+func restore_stance(stance: int) -> bool:
+	if stance != Stance.STANDING and stance != Stance.CROUCHED:
+		return false
+	requested_stance = stance
+	var target_height: float = get_height_for_stance(stance)
+	_apply_height(target_height)
+	return is_at_stance(stance)
+
+
 func update(player: CharacterBody3D, delta: float) -> bool:
 	var current_height: float = capsule_shape.height
 	var max_height_change: float = TRANSITION_SPEED * delta

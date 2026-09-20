@@ -216,36 +216,137 @@ func get_input_view_pose() -> Dictionary:
 
 
 func capture_semantic_state() -> Dictionary:
+	var source_stance: StringName = _get_stance_semantic_name()
+	var restore_stance: StringName = _get_requested_restore_stance_name()
+	var source_traversal: StringName = _get_traversal_semantic_name()
+	var restore_policy: StringName = (
+		&"direct"
+		if source_traversal == &"normal"
+		else &"normalize_airborne"
+	)
+	var saved_velocity: Vector3 = (
+		velocity
+		if restore_policy == &"direct"
+		else Vector3.ZERO
+	)
 	return {
 		"transform": global_transform,
-		"velocity": velocity,
+		"velocity": saved_velocity,
+		"source_stance": source_stance,
+		"restore_stance": restore_stance,
+		"source_traversal": source_traversal,
+		"restore_policy": restore_policy,
 	}
 
 
 func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if (
-		snapshot.size() != 2
+		snapshot.size() != 6
 		or typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
 		or typeof(snapshot.get("velocity", null)) != TYPE_VECTOR3
 	):
 		return false
 	var restored_transform: Transform3D = snapshot["transform"]
 	var restored_velocity: Vector3 = snapshot["velocity"]
+	var source_stance: StringName = snapshot.get("source_stance", &"")
+	var restore_stance: StringName = snapshot.get("restore_stance", &"")
+	var source_traversal: StringName = snapshot.get("source_traversal", &"")
+	var restore_policy: StringName = snapshot.get("restore_policy", &"")
 	if (
 		not _is_finite_transform(restored_transform)
 		or not _is_finite_vector(restored_velocity)
+		or not _is_valid_stance_semantic_name(source_stance, true)
+		or not _is_valid_stance_semantic_name(restore_stance, false)
+		or not _is_valid_traversal_semantic_name(source_traversal)
+		or (
+			restore_policy != &"direct"
+			and restore_policy != &"normalize_airborne"
+		)
+		or (
+			restore_policy == &"direct"
+			and source_traversal != &"normal"
+		)
+		or (
+			restore_policy == &"normalize_airborne"
+			and source_traversal == &"normal"
+		)
 	):
 		return false
+	if (
+		restore_policy == &"normalize_airborne"
+		and not restored_velocity.is_zero_approx()
+	):
+		return false
+
 	global_transform = restored_transform
+	if crouch == null:
+		return false
+	var restored_stance_value: int = (
+		PlayerCrouch.Stance.CROUCHED
+		if restore_stance == &"crouched"
+		else PlayerCrouch.Stance.STANDING
+	)
+	if not crouch.restore_stance(restored_stance_value):
+		return false
+
+	if ledge_controller == null:
+		return false
+	if restore_policy == &"normalize_airborne":
+		if not ledge_controller.normalize_after_restore_to_airborne():
+			return false
+		restored_velocity = Vector3.ZERO
+
 	velocity = restored_velocity
+	player_input.current_command = PlayerCommand.new()
+	if locomotion_controller != null:
+		locomotion_controller.air_mantle_intent_active = false
+	if step != null:
+		step.cancel()
 	if velocity_state != null:
 		velocity_state.capture_body_as_controlled(self)
 	return true
 
 
+func validate_restored_semantic_state(snapshot: Dictionary) -> bool:
+	if snapshot.size() != 6:
+		return false
+	if (
+		typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
+		or typeof(snapshot.get("velocity", null)) != TYPE_VECTOR3
+	):
+		return false
+	var expected_transform: Transform3D = snapshot["transform"]
+	var expected_velocity: Vector3 = snapshot["velocity"]
+	var restore_stance: StringName = snapshot.get("restore_stance", &"")
+	var source_traversal: StringName = snapshot.get("source_traversal", &"")
+	var restore_policy: StringName = snapshot.get("restore_policy", &"")
+	if (
+		not global_transform.is_equal_approx(expected_transform)
+		or not velocity.is_equal_approx(expected_velocity)
+		or not _is_valid_stance_semantic_name(restore_stance, false)
+		or not _is_valid_traversal_semantic_name(source_traversal)
+	):
+		return false
+	var current_stance: StringName = _get_stance_semantic_name()
+	var current_traversal: StringName = _get_traversal_semantic_name()
+	if current_stance != restore_stance or current_traversal != &"normal":
+		return false
+	if restore_policy == &"direct":
+		return source_traversal == &"normal"
+	if restore_policy == &"normalize_airborne":
+		return (
+			source_traversal != &"normal"
+			and velocity.is_zero_approx()
+			and ledge_controller != null
+			and ledge_controller.is_restore_reentry_blocked()
+		)
+	return false
+
+
 func reconcile_after_restore() -> bool:
 	if velocity_state != null:
 		velocity_state.capture_body_as_controlled(self)
+	_refresh_world_interaction_availability()
 	return true
 
 
@@ -311,6 +412,59 @@ func get_movement_semantic_state() -> Dictionary:
 		"stance": stance_state,
 		"traversal": traversal_state,
 	}
+
+
+func _get_stance_semantic_name() -> StringName:
+	if crouch == null:
+		return &"uninitialized"
+	if crouch.is_fully_crouched():
+		return &"crouched"
+	if crouch.is_fully_standing():
+		return &"standing"
+	return &"transitioning"
+
+
+func _get_requested_restore_stance_name() -> StringName:
+	if (
+		crouch != null
+		and crouch.get_requested_stance() == PlayerCrouch.Stance.CROUCHED
+	):
+		return &"crouched"
+	return &"standing"
+
+
+func _get_traversal_semantic_name() -> StringName:
+	if ledge_controller == null:
+		return &"normal"
+	match ledge_controller.state:
+		PlayerLedgeController.State.CATCHING:
+			return &"catching"
+		PlayerLedgeController.State.HANGING:
+			return &"hanging"
+		PlayerLedgeController.State.CORNERING:
+			return &"cornering"
+		PlayerLedgeController.State.MANTLING:
+			return &"mantling"
+	return &"normal"
+
+
+func _is_valid_stance_semantic_name(
+	value: StringName,
+	allow_transitioning: bool
+) -> bool:
+	if value == &"standing" or value == &"crouched":
+		return true
+	return allow_transitioning and value == &"transitioning"
+
+
+func _is_valid_traversal_semantic_name(value: StringName) -> bool:
+	return value in [
+		&"normal",
+		&"catching",
+		&"hanging",
+		&"cornering",
+		&"mantling",
+	]
 
 
 func _refresh_world_interaction_availability() -> void:

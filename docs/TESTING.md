@@ -308,6 +308,17 @@ The regression deliberately captures a non-default coherent world: partial door 
 Object existence is explicit even though the current slice has no permanent authored removals or runtime-created persistent entities: both sections must be empty, and unexpected non-empty data fails closed instead of being skipped. `mission_script_state` is likewise explicitly empty because no current save-owning mission script exists. This is coverage of the ordering seam, not an implementation of future tombstones/runtime-spawn persistence. Player traversal restore policy remains Phase 4.3; representative moving door/prop/alert/body transient policies remain Phase 4.4; compatibility/durable filesystem behavior remains Phase 4.6.
 
 
+## Phase 4.3 player transient/traversal restore policy
+
+`tests/application/player_restore_policy_regressions.gd` is wired into the Application suite and uses the existing sprint/jump and ledge-traversal fixtures through the production application/session restore path. Player snapshots now declare source stance/traversal plus their restore policy instead of attempting to serialize live ledge candidates, collider RIDs, mantle/corner route objects, timers, or continuations.
+
+Standing/moving, fully crouched, and ordinary unsupported airborne states restore directly. Crouch restore reconstructs the fresh player's requested stance endpoint immediately so capsule, head, visual geometry, and ledge-detector body geometry agree before gameplay resumes. A mid-transition stance is normalized to its already-requested standing/crouched endpoint.
+
+Catching, hanging, cornering, and mantling are intentionally normalized to ordinary airborne at the captured collision-safe body transform with zero traversal-owned velocity. The fresh player discards all ledge runtime candidates/routes and applies a six-physics-frame traversal re-entry guard; gravity can move the body away before normal hang/mantle acquisition resumes. These states remain save-requestable—the policy is normalization on load, not a save lockout.
+
+WorldSession validation remains exact for every non-player semantic owner. The only policy-aware exception is the player snapshot: `validate_restored_semantic_state()` must prove the restored transform, velocity, stance endpoint, normal traversal state, and (for normalized traversal) active short re-entry guard before the candidate can leave `RESTORING`.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.

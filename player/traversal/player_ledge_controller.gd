@@ -14,6 +14,7 @@ enum State {
 const LOOK_DIRECTION_EPSILON_SQUARED: float = 0.000001
 const LEDGE_LOCAL_MATCH_MAX_WALL_ANGLE_DEGREES: float = 15.0
 const MANTLE_CONTACT_PLANE_TOLERANCE_RADIUS_RATIO: float = 0.25
+const RESTORE_REENTRY_BLOCK_FRAMES: int = 6
 
 
 var body: CharacterBody3D
@@ -41,6 +42,7 @@ var minimum_local_ledge_alignment: float
 
 var state: int = State.NONE
 var active_catch_candidate: PlayerLedgeDetector.LedgeCandidate = null
+var restore_reentry_block_frames: int = 0
 
 
 func _init(
@@ -95,6 +97,24 @@ func _init(
 
 func is_active() -> bool:
 	return state != State.NONE
+
+
+func normalize_after_restore_to_airborne() -> bool:
+	ledge_catch.cancel()
+	ledge_hang.cancel()
+	ledge_corner.cancel()
+	ledge_mantle.cancel()
+	active_catch_candidate = null
+	ledge_detector.clear_candidate()
+	look.exit_ledge_view()
+	state = State.NONE
+	body.velocity = Vector3.ZERO
+	restore_reentry_block_frames = RESTORE_REENTRY_BLOCK_FRAMES
+	return true
+
+
+func is_restore_reentry_blocked() -> bool:
+	return restore_reentry_block_frames > 0
 
 
 func invalidate_collider(collider_rid: RID) -> bool:
@@ -196,9 +216,13 @@ func update(jump_pressed: bool, crouch_pressed: bool, delta: float) -> void:
 
 func update_transition_guards() -> void:
 	traversal_guard.update()
+	if restore_reentry_block_frames > 0:
+		restore_reentry_block_frames -= 1
 
 
 func try_enter_hang_from_normal(delta: float) -> bool:
+	if is_restore_reentry_blocked():
+		return false
 	var candidates: Array[PlayerLedgeDetector.LedgeCandidate] = (
 		ledge_detector.get_candidates()
 	)
@@ -228,6 +252,8 @@ func try_enter_mantle_from_contacts(
 	ground_request: bool,
 	air_request: bool
 ) -> bool:
+	if is_restore_reentry_blocked():
+		return false
 	if collisions.is_empty() or (not ground_request and not air_request):
 		return false
 
@@ -267,6 +293,8 @@ func try_enter_mantle_from_contacts(
 func try_enter_ground_mantle_from_dynamic_candidate(
 	input_direction: Vector3
 ) -> bool:
+	if is_restore_reentry_blocked():
+		return false
 	# The ledge detector performs a real test_move against current world geometry
 	# before locomotion. A dynamic exact-collider ledge can advance before the
 	# player's movement callback, so the post-move collision list may be empty

@@ -274,9 +274,33 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 			return false
 
 	var restored_state: Dictionary = _capture_world_semantic_state()
-	if restored_state.is_empty() or restored_state != world_state:
+	if restored_state.is_empty():
 		return _fail_restore(
-			"Restored semantic world state did not validate against the captured snapshot."
+			"Restored semantic world state could not be recaptured for validation."
+		)
+
+	var captured_player_state: Dictionary = world_state.get("player", {})
+	var restored_player_state: Dictionary = restored_state.get("player", {})
+	if (
+		player == null
+		or not player.has_method("validate_restored_semantic_state")
+		or not bool(player.call(
+			"validate_restored_semantic_state",
+			captured_player_state
+		))
+	):
+		return _fail_restore(
+			"Restored player semantic state does not satisfy its declared restore policy."
+		)
+
+	var comparable_expected: Dictionary = world_state.duplicate(true)
+	# Player traversal policy may intentionally normalize a transient source
+	# state. The player validates that policy above; every other semantic owner
+	# must still recapture exactly.
+	comparable_expected["player"] = restored_player_state.duplicate(true)
+	if restored_state != comparable_expected:
+		return _fail_restore(
+			"Restored non-player semantic world state did not validate against the captured snapshot."
 		)
 
 	_restore_state_applied = true

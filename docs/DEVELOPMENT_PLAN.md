@@ -1049,7 +1049,7 @@ Restore uses the simple sole-world topology already permitted by the foundation 
 **Manual:** none — 4.1 is accepted from deterministic application/session ownership coverage. It deliberately does not expose a user-facing quicksave key, durable filesystem write, broad gameplay semantic restore, or target-platform filesystem behavior; later Phase 4 items own those surfaces.
 
 
-## 4.2 Semantic snapshots, resolved choices, long-running state, and object-existence order `[~]`
+## 4.2 Semantic snapshots, resolved choices, long-running state, and object-existence order `[x]`
 
 Persist meaningful state, not arbitrary live node graphs.
 
@@ -1094,17 +1094,34 @@ Restore now performs the bounded 4.2 order while the candidate is processing-dis
 
 **Done when:** the current Integrated Slice quicksave contains detached semantic state for its player, ordinary door, both props, guard life/current goal, gameplay light, objective/fact state, present mission-run counters, one-shot route state, and guard-awareness state; current unsupported tombstone/runtime-persistent/mission-script sections are explicit and fail closed if unexpectedly populated; a fresh quickload resolves owners by stable identity, applies/reconciles/validates them while non-playing, preserves a resolved guard goal, and reaches PLAYING without restore-time semantic event replay.
 
-**Automated:** implemented through new `tests/application/semantic_snapshot_regressions.gd`, wired into the authoritative Application suite and therefore `tests/run_all_tests.gd`. The regression launches the real Integrated Slice, establishes non-default player/view, partial-door progress, moved settled prop, disabled gameplay light, non-default guard patrol goal, objective/fact/statistic state, consumed one-shot trigger, and real visual-awareness history; captures/inspects the detached ownership sections; mutates the live world after capture; quickloads a fresh instance; and verifies all captured semantic owners reconstruct before play with an empty semantic-event queue and the saved guard goal surviving deferred navigation reconstruction.
+**Automated:** accepted — the 4.2 implementation plus prop-API compatibility fix at exact `test` head `9b36b0eed36809c2b3f6b79d9116a0e063686f17` passed Godot 4.7.2 GitHub Actions Test run #245. `semantic_snapshot_regressions.gd` passed the real Integrated Slice ownership/reconstruction path, the existing carried-Junk reconciliation regression passed with its preserved explicit-holder API, every authoritative suite passed, and CI ended with `ALL TEST SUITES PASSED`.
 
-**Manual:** none — this item exposes no new player-facing save key, durable filesystem behavior, traversal/transient policy, or subjective save/load presentation. Those are owned by later Phase 4 items. 4.2 acceptance is deterministic semantic ownership/order behavior.
+**Manual:** none — 4.2 is accepted from deterministic semantic ownership/order coverage. It exposes no new player-facing save key, durable filesystem behavior, traversal/transient policy, or subjective save/load presentation; those remain owned by later Phase 4 items.
 
-## 4.3 Player transient/traversal restore policy `[ ]`
+## 4.3 Player transient/traversal restore policy `[~]`
 
 Classify representative player states into directly restorable semantic states, reconstructable transient states, or states normalized to a safe semantic equivalent.
 
 Prove standing/moving, crouched, airborne, hanging, and mantle/corner/catch behavior according to the chosen policy.
 
 Ordinary traversal/gameplay states must not gain routine save lockouts merely because direct runtime restoration is difficult.
+
+The bounded 4.3 policy is explicit and intentionally avoids serializing detector candidates, collider RIDs, `await` continuations, mantle route objects, or other traversal-runtime implementation detail:
+
+- ordinary standing/moving with no ledge traversal owner: **direct restore** of body transform, velocity, standing stance, and the separate input-owned view pose;
+- fully crouched: **direct semantic restore** of body transform/velocity plus the requested crouched endpoint, snapping the fresh candidate's live capsule/head/visual geometry to the crouched semantic stance before play resumes;
+- ordinary unsupported airborne with no ledge traversal owner: **direct restore** of body transform and ballistic velocity;
+- a mid-height standing↔crouched transition: normalize only the stance transition to its already-requested endpoint; the body transform/velocity remain the directly restored truth;
+- `catching`, `hanging`, `cornering`, and `mantling`: **normalize to ordinary airborne** at the same collision-safe body transform, zero traversal-owned velocity, preserve the requested stance endpoint and input-owned view orientation, discard live traversal candidates/routes, and suppress fresh mantle/hang acquisition for six physics frames so the discarded transition is not immediately recreated before gravity can separate the body from the ledge.
+
+The player snapshot records both the source semantic state and the declared restore policy. Restore validation is policy-aware only for the player: the player must prove that its restored stance/traversal/pose/velocity satisfy the captured policy, while every non-player 4.2 owner still recaptures exactly. This does not loosen general world-state validation.
+
+**Done when:** ordinary moving, fully crouched, and ordinary airborne states restore directly through the real Application/WorldSession replacement path; exact captures made during catching, hanging, cornering, and mantling remain saveable instead of being rejected; those traversal-runtime states load as ordinary airborne at the same safe pose with zero traversal-owned velocity and do not instantly reacquire the discarded traversal; no save lockout is introduced for these representative player states.
+
+**Automated:** implemented through new `tests/application/player_restore_policy_regressions.gd`, wired into the authoritative Application suite. It launches the existing real sprint/jump and ledge-traversal fixtures through `VarkApplication`, proves direct moving/crouched/airborne restore, captures exact stable-frame player snapshots during catching/hanging/cornering/mantling, verifies a normal quicksave request is still accepted in those traversal states, restores each snapshot through the production replacement path, and verifies normalized traversal remains ordinary airborne during the re-entry guard. Existing movement behavior traces remain unchanged and continue to protect normal controller feel outside restore.
+
+**Manual:** none — 4.3 changes only deterministic save/load reconstruction policy and introduces no player-facing save control or subjective presentation. Existing movement/traversal feel remains guarded by the unchanged Movement suite; target-platform/user-facing save validation remains later Phase 4 work.
+
 
 ## 4.4 Other transient-state save policy `[ ]`
 
