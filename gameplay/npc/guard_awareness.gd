@@ -1,11 +1,12 @@
 extends Node
 
 
-# Godot scans this reusable script before several later custom global classes.
-# Resolve semantic constants by explicit source path, and keep runtime seams on
-# built-in Node types so import/compilation does not depend on class scan order.
-const GuardScript = preload("res://gameplay/npc/vark_guard.gd")
-const WorldSessionScript = preload("res://application/world_session.gd")
+# Keep this reusable script independent of custom global-class scan order.
+# These values are stable semantic contract values owned by the corresponding
+# guard/session APIs; runtime interaction stays on built-in Node seams.
+const GUARD_LIFE_CONSCIOUS: StringName = &"conscious"
+const HOSTILE_IMPACT_SOUND_KIND: StringName = &"combat.hostile_impact"
+const WORLD_SESSION_STATE_PLAYING: int = 4
 
 const STATE_UNAWARE: StringName = &"unaware"
 const STATE_SUSPICIOUS: StringName = &"suspicious"
@@ -93,7 +94,7 @@ func _exit_tree() -> void:
 func _physics_process(_delta: float) -> void:
 	if _guard == null or not is_instance_valid(_guard):
 		return
-	if StringName(_guard.call("get_life_state")) != GuardScript.LIFE_CONSCIOUS:
+	if StringName(_guard.call("get_life_state")) != GUARD_LIFE_CONSCIOUS:
 		if _awareness_state != STATE_INACTIVE:
 			_enter_state(STATE_INACTIVE)
 		_sync_gameplay_clock()
@@ -114,7 +115,7 @@ func sample_vision_now() -> bool:
 		or not is_instance_valid(_exposure)
 	):
 		return false
-	if StringName(_guard.call("get_life_state")) != GuardScript.LIFE_CONSCIOUS:
+	if StringName(_guard.call("get_life_state")) != GUARD_LIFE_CONSCIOUS:
 		_enter_state(STATE_INACTIVE)
 		return false
 
@@ -280,7 +281,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if (
 		session != null
 		and is_instance_valid(session)
-		and int(session.get("state")) == WorldSessionScript.State.PLAYING
+		and int(session.get("state")) == WORLD_SESSION_STATE_PLAYING
 	):
 		return false
 	if snapshot.size() != 18:
@@ -484,7 +485,7 @@ func _enter_state(
 func _apply_navigation_for_state() -> void:
 	if _guard == null or not is_instance_valid(_guard):
 		return
-	if StringName(_guard.call("get_life_state")) != GuardScript.LIFE_CONSCIOUS:
+	if StringName(_guard.call("get_life_state")) != GUARD_LIFE_CONSCIOUS:
 		_guard.call("clear_awareness_navigation_target")
 		return
 	match _awareness_state:
@@ -514,13 +515,13 @@ func _apply_navigation_for_state() -> void:
 
 
 func _on_gameplay_sound_heard(perception: Dictionary) -> void:
-	if _guard == null or StringName(_guard.call("get_life_state")) != GuardScript.LIFE_CONSCIOUS:
+	if _guard == null or StringName(_guard.call("get_life_state")) != GUARD_LIFE_CONSCIOUS:
 		return
 	var kind: StringName = perception.get("kind", &"")
 	var kind_text: String = str(kind)
 	if (
 		kind != &"prop.impact"
-		and kind != GuardScript.CRUDE_HOSTILE_IMPACT_SOUND_KIND
+		and kind != HOSTILE_IMPACT_SOUND_KIND
 		and not kind_text.begins_with("footstep.")
 	):
 		return
