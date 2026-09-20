@@ -152,6 +152,7 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 		navigation_errors.append(
 			"Navigation map did not synchronize the carved region."
 		)
+		push_error(navigation_errors[navigation_errors.size() - 1])
 		return
 	var link_iteration_before: int = NavigationServer3D.map_get_iteration_id(
 		navigation_map
@@ -160,6 +161,7 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 		navigation_errors.append(
 			"Ordinary door could not finalize its navigation link on the baked map."
 		)
+		push_error(navigation_errors[navigation_errors.size() - 1])
 		return
 	if not await _wait_for_navigation_map_iteration(
 		navigation_map,
@@ -169,6 +171,7 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 		navigation_errors.append(
 			"Navigation map did not synchronize the finalized ordinary-door link."
 		)
+		push_error(navigation_errors[navigation_errors.size() - 1])
 		return
 
 	var patrol_points: Dictionary = {}
@@ -226,6 +229,7 @@ func _wait_for_navigation_map_iteration(
 		if iteration != 0 and iteration != previous_iteration:
 			return true
 		await get_tree().physics_frame
+		await get_tree().process_frame
 	return (
 		NavigationServer3D.map_get_iteration_id(navigation_map) != 0
 		and NavigationServer3D.map_get_iteration_id(navigation_map)
