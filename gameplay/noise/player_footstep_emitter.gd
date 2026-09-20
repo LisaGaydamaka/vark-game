@@ -9,6 +9,7 @@ signal gameplay_noise_emitted(summary: Dictionary)
 @export_range(0.2, 4.0, 0.05) var step_distance: float = 1.25
 @export_range(0.0, 5.0, 0.05) var minimum_move_speed: float = 0.35
 @export_range(0.05, 1.0, 0.05) var crouched_strength_scale: float = 0.45
+@export_range(1.0, 2.0, 0.05) var sprint_strength_scale: float = 1.35
 @export var emission_enabled: bool = true
 
 var _player: CharacterBody3D = null
@@ -21,6 +22,7 @@ var _last_sound_kind: StringName = &""
 var _last_base_strength: float = 0.0
 var _last_strength: float = 0.0
 var _last_stance: String = "standing"
+var _last_gait: String = "walking"
 
 
 func _ready() -> void:
@@ -89,13 +91,18 @@ func emit_step_now() -> bool:
 	if kind.is_empty() or base_strength <= 0.0:
 		return false
 
-	var stance: String = _get_player_stance()
-	var stance_scale: float = (
-		clampf(crouched_strength_scale, 0.05, 1.0)
-		if stance == "crouched"
-		else 1.0
-	)
-	var strength: float = base_strength * stance_scale
+	var movement_state: Dictionary = _get_player_movement_state()
+	var stance: String = str(movement_state.get("stance", "standing"))
+	var sprinting: bool = bool(movement_state.get("sprinting", false))
+	var gait: String = "walking"
+	var movement_scale: float = 1.0
+	if stance == "crouched":
+		gait = "crouched"
+		movement_scale = clampf(crouched_strength_scale, 0.05, 1.0)
+	elif sprinting:
+		gait = "sprinting"
+		movement_scale = maxf(sprint_strength_scale, 1.0)
+	var strength: float = base_strength * movement_scale
 	var queued: bool = bool(_world_session.call(
 		"queue_gameplay_sound",
 		int(_world_session.get("session_id")),
@@ -111,6 +118,7 @@ func emit_step_now() -> bool:
 	_last_base_strength = base_strength
 	_last_strength = strength
 	_last_stance = stance
+	_last_gait = gait
 	gameplay_noise_emitted.emit(get_debug_summary())
 	return true
 
@@ -124,22 +132,24 @@ func get_debug_summary() -> Dictionary:
 		"last_base_strength": _last_base_strength,
 		"last_strength": _last_strength,
 		"last_stance": _last_stance,
+		"last_gait": _last_gait,
 		"crouched_strength_scale": crouched_strength_scale,
+		"sprint_strength_scale": sprint_strength_scale,
 		"step_distance": step_distance,
 	}
 
 
-func _get_player_stance() -> String:
+func _get_player_movement_state() -> Dictionary:
 	if (
 		_player == null
 		or not is_instance_valid(_player)
 		or not _player.has_method("get_movement_semantic_state")
 	):
-		return "standing"
-	var movement_state: Dictionary = _player.call(
-		"get_movement_semantic_state"
-	)
-	return str(movement_state.get("stance", "standing"))
+		return {
+			"stance": "standing",
+			"sprinting": false,
+		}
+	return _player.call("get_movement_semantic_state")
 
 
 func _find_current_surface() -> VarkFootstepSurface:

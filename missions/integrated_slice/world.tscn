@@ -484,10 +484,10 @@ text = "EXPOSURE 0.00"
 [node name="NoisePanel" type="PanelContainer" parent="ExposureHUD"]
 script = ExtResource("22_noise_meter")
 emitter_path = NodePath("../../FootstepEmitter")
-offset_left = 446.0
-offset_top = 16.0
-offset_right = 860.0
-offset_bottom = 118.0
+offset_left = 16.0
+offset_top = 130.0
+offset_right = 430.0
+offset_bottom = 232.0
 
 [node name="VBox" type="VBoxContainer" parent="ExposureHUD/NoisePanel"]
 

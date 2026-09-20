@@ -416,12 +416,23 @@ func get_movement_semantic_state() -> Dictionary:
 			PlayerLedgeController.State.MANTLING:
 				traversal_state = "mantling"
 
+	var sprinting_state: bool = (
+		player_input != null
+		and player_input.current_command != null
+		and player_input.current_command.sprint_held
+		and not player_input.current_command.movement_vector.is_zero_approx()
+		and support_state == "grounded"
+		and stance_state == "standing"
+		and traversal_state == "normal"
+	)
+
 	return {
 		"position": global_position,
 		"velocity": velocity,
 		"support": support_state,
 		"stance": stance_state,
 		"traversal": traversal_state,
+		"sprinting": sprinting_state,
 	}
 
 

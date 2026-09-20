@@ -242,6 +242,43 @@ func _assert_integrated_surface_noise() -> void:
 		"Phase 5.1 quiet carpet is a profile-driven semantic surface rather than a hard-coded footstep special case"
 	)
 
+	var sprint_command := PlayerCommand.new()
+	sprint_command.movement_vector = Vector2(0.0, -1.0)
+	sprint_command.sprint_held = true
+	var player_input := player.get("player_input") as PlayerInput
+	var sprint_state_ready: bool = player_input != null
+	if player_input != null:
+		player_input.current_command = sprint_command
+	var sprint_movement: Dictionary = player.call(
+		"get_movement_semantic_state"
+	)
+	guard_listener.clear_perception()
+	var sprint_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var sprint_summary: Dictionary = footsteps.get_debug_summary()
+	var sprint_meter_summary: Dictionary = noise_meter.get_last_summary()
+	_assert_true(
+		sprint_state_ready
+		and bool(sprint_movement.get("sprinting", false))
+		and sprint_queued
+		and sprint_summary.get("last_gait", "") == "sprinting"
+		and is_equal_approx(
+			float(sprint_summary.get("last_strength", 0.0)),
+			0.20 * 1.35
+		)
+		and float(sprint_summary.get("last_strength", 0.0))
+			> float(carpet_summary.get("last_strength", 0.0))
+		and is_equal_approx(
+			noise_meter.get_current_loudness(),
+			0.20 * 1.35
+		)
+		and sprint_meter_summary.get("last_gait", "") == "sprinting"
+		and noise_meter.get_debug_text().contains("sprinting"),
+		"Sprinting uses the locomotion sprint intent to make the same carpet footstep semantically louder than walking and the debug meter reports that truth"
+	)
+
+	if player_input != null:
+		player_input.current_command = PlayerCommand.new()
 	var crouched_ready: bool = await _request_player_stance(
 		player,
 		PlayerCrouch.Stance.CROUCHED
@@ -279,7 +316,10 @@ func _assert_integrated_surface_noise() -> void:
 		)
 		and crouched_meter_summary.get("last_stance", "")
 			== "crouched"
-		and noise_meter.get_debug_text().contains("footstep.carpet"),
+		and crouched_meter_summary.get("last_gait", "")
+			== "crouched"
+		and noise_meter.get_debug_text().contains("footstep.carpet")
+		and noise_meter.get_debug_text().contains("crouched"),
 		"Development loudness meter tracks the crouched carpet source value without creating independent stealth-noise truth"
 	)
 
