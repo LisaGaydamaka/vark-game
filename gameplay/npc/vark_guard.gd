@@ -134,7 +134,6 @@ func set_awareness_navigation_target(
 ) -> bool:
 	if (
 		_life_state != LIFE_CONSCIOUS
-		or not _configured
 		or _navigation_agent == null
 		or reason.is_empty()
 		or not _is_finite_vector(target_position)
@@ -143,7 +142,8 @@ func set_awareness_navigation_target(
 	_awareness_goal_active = true
 	_awareness_goal_reason = reason
 	_awareness_goal_position = target_position
-	_navigation_agent.target_position = target_position
+	if _configured:
+		_navigation_agent.target_position = target_position
 	return true
 
 
@@ -247,7 +247,11 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 func reconcile_after_restore() -> bool:
 	_refresh_life_state_presentation()
 	if _configured and _navigation_agent != null and _patrol_positions.size() == 2:
-		_navigation_agent.target_position = _patrol_positions[_target_index]
+		_navigation_agent.target_position = (
+			_awareness_goal_position
+			if _life_state == LIFE_CONSCIOUS and _awareness_goal_active
+			else _patrol_positions[_target_index]
+		)
 	return true
 
 
@@ -268,9 +272,6 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_crossing_block_open_count = 0
 	_max_observed_path_x = -INF
 	_max_observed_path_point_count = 0
-	_awareness_goal_active = false
-	_awareness_goal_reason = &""
-	_awareness_goal_position = Vector3.ZERO
 
 	var patrol_a := patrol_points.get(patrol_a_id) as Node3D
 	var patrol_b := patrol_points.get(patrol_b_id) as Node3D
@@ -308,7 +309,11 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		_target_index = 1
 	_door = door
 	_configured = true
-	_navigation_agent.target_position = _patrol_positions[_target_index]
+	_navigation_agent.target_position = (
+		_awareness_goal_position
+		if _life_state == LIFE_CONSCIOUS and _awareness_goal_active
+		else _patrol_positions[_target_index]
+	)
 	_restored_goal_id = ""
 	return true
 
