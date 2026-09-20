@@ -1,6 +1,12 @@
 extends Node
 
 
+# Godot scans this reusable script before several later custom global classes.
+# Resolve semantic constants by explicit source path, and keep runtime seams on
+# built-in Node types so import/compilation does not depend on class scan order.
+const GuardScript = preload("res://gameplay/npc/vark_guard.gd")
+const WorldSessionScript = preload("res://application/world_session.gd")
+
 const STATE_UNAWARE: StringName = &"unaware"
 const STATE_SUSPICIOUS: StringName = &"suspicious"
 const STATE_INVESTIGATING: StringName = &"investigating"
@@ -29,11 +35,11 @@ const NAV_PURSUIT: StringName = &"pursuit"
 @export var alert_loss_seconds: float = 1.00
 @export var recovery_seconds: float = 1.25
 
-var _guard: VarkGuard = null
+var _guard: CharacterBody3D = null
 var _player: CharacterBody3D = null
-var _listener: VarkAcousticListener = null
-var _speech: VarkWorldSpeechSpeaker = null
-var _exposure: VarkGameplayExposure = null
+var _listener: Node = null
+var _speech: Node = null
+var _exposure: Node = null
 var _status_label: Label3D = null
 var _world_session: Node = null
 
@@ -58,36 +64,36 @@ var _last_gameplay_time_sample: float = 0.0
 
 
 func _ready() -> void:
-	_guard = get_parent() as VarkGuard
+	_guard = get_parent() as CharacterBody3D
 	_player = get_node_or_null(player_path) as CharacterBody3D
-	_listener = get_node_or_null(listener_path) as VarkAcousticListener
-	_speech = get_node_or_null(speech_path) as VarkWorldSpeechSpeaker
-	_exposure = get_node_or_null(exposure_path) as VarkGameplayExposure
+	_listener = get_node_or_null(listener_path)
+	_speech = get_node_or_null(speech_path)
+	_exposure = get_node_or_null(exposure_path)
 	_status_label = get_node_or_null(status_label_path) as Label3D
 	_world_session = _find_world_session()
 	_last_gameplay_time_sample = _get_gameplay_time()
-	if _listener != null:
-		_listener.gameplay_sound_heard.connect(_on_gameplay_sound_heard)
+	if _listener != null and _listener.has_signal(&"gameplay_sound_heard"):
+		_listener.connect(
+			&"gameplay_sound_heard",
+			Callable(self, "_on_gameplay_sound_heard")
+		)
 	_refresh_label()
 
 
 func _exit_tree() -> void:
+	var heard_callable := Callable(self, "_on_gameplay_sound_heard")
 	if (
 		_listener != null
 		and is_instance_valid(_listener)
-		and _listener.gameplay_sound_heard.is_connected(
-			_on_gameplay_sound_heard
-		)
+		and _listener.is_connected(&"gameplay_sound_heard", heard_callable)
 	):
-		_listener.gameplay_sound_heard.disconnect(
-			_on_gameplay_sound_heard
-		)
+		_listener.disconnect(&"gameplay_sound_heard", heard_callable)
 
 
 func _physics_process(_delta: float) -> void:
 	if _guard == null or not is_instance_valid(_guard):
 		return
-	if _guard.get_life_state() != VarkGuard.LIFE_CONSCIOUS:
+	if StringName(_guard.call("get_life_state")) != GuardScript.LIFE_CONSCIOUS:
 		if _awareness_state != STATE_INACTIVE:
 			_enter_state(STATE_INACTIVE)
 		_sync_gameplay_clock()
@@ -108,11 +114,11 @@ func sample_vision_now() -> bool:
 		or not is_instance_valid(_exposure)
 	):
 		return false
-	if _guard.get_life_state() != VarkGuard.LIFE_CONSCIOUS:
+	if StringName(_guard.call("get_life_state")) != GuardScript.LIFE_CONSCIOUS:
 		_enter_state(STATE_INACTIVE)
 		return false
 
-	var exposure: float = _exposure.get_current_exposure()
+	var exposure: float = float(_exposure.call("get_current_exposure"))
 	_last_vision_exposure = exposure
 	_last_vision_target = _get_player_vision_target()
 	_last_vision_blocked = false
@@ -164,7 +170,8 @@ func sample_vision_now() -> bool:
 			_seen_count += 1
 		_enter_state(STATE_ALERTED, target, true)
 		else:
-			_guard.set_awareness_navigation_target(
+			_guard.call(
+				"set_awareness_navigation_target",
 				NAV_PURSUIT,
 				target
 			)
@@ -238,13 +245,13 @@ func get_debug_summary() -> Dictionary:
 func get_semantic_save_id() -> String:
 	if _guard == null or not is_instance_valid(_guard):
 		return ""
-	return "guard_awareness:%s" % _guard.get_persistent_id()
+	return "guard_awareness:%s" % str(_guard.call("get_persistent_id"))
 
 
 func capture_semantic_state() -> Dictionary:
 	return {
 		"guard_persistent_id": (
-			_guard.get_persistent_id()
+			str(_guard.call("get_persistent_id"))
 			if _guard != null and is_instance_valid(_guard)
 			else ""
 		),
@@ -273,7 +280,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if (
 		session != null
 		and is_instance_valid(session)
-		and int(session.get("state")) == WorldSession.State.PLAYING
+		and int(session.get("state")) == WorldSessionScript.State.PLAYING
 	):
 		return false
 	if snapshot.size() != 18:
@@ -282,7 +289,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		return false
 	if (
 		str(snapshot.get("guard_persistent_id", "")).strip_edges()
-		!= _guard.get_persistent_id()
+		!= str(_guard.call("get_persistent_id"))
 	):
 		return false
 	var restored_state: StringName = snapshot.get("state", &"")
@@ -477,40 +484,43 @@ func _enter_state(
 func _apply_navigation_for_state() -> void:
 	if _guard == null or not is_instance_valid(_guard):
 		return
-	if _guard.get_life_state() != VarkGuard.LIFE_CONSCIOUS:
-		_guard.clear_awareness_navigation_target()
+	if StringName(_guard.call("get_life_state")) != GuardScript.LIFE_CONSCIOUS:
+		_guard.call("clear_awareness_navigation_target")
 		return
 	match _awareness_state:
 		STATE_INVESTIGATING:
 			if _has_investigation_target:
-				_guard.set_awareness_navigation_target(
+				_guard.call(
+					"set_awareness_navigation_target",
 					NAV_INVESTIGATE,
 					_investigation_target
 				)
 		STATE_SEARCHING:
 			if _has_investigation_target:
-				_guard.set_awareness_navigation_target(
+				_guard.call(
+					"set_awareness_navigation_target",
 					NAV_SEARCH,
 					_investigation_target
 				)
 		STATE_ALERTED:
 			if _has_investigation_target:
-				_guard.set_awareness_navigation_target(
+				_guard.call(
+					"set_awareness_navigation_target",
 					NAV_PURSUIT,
 					_investigation_target
 				)
 		_:
-			_guard.clear_awareness_navigation_target()
+			_guard.call("clear_awareness_navigation_target")
 
 
 func _on_gameplay_sound_heard(perception: Dictionary) -> void:
-	if _guard == null or _guard.get_life_state() != VarkGuard.LIFE_CONSCIOUS:
+	if _guard == null or StringName(_guard.call("get_life_state")) != GuardScript.LIFE_CONSCIOUS:
 		return
 	var kind: StringName = perception.get("kind", &"")
 	var kind_text: String = str(kind)
 	if (
 		kind != &"prop.impact"
-		and kind != VarkGuard.CRUDE_HOSTILE_IMPACT_SOUND_KIND
+		and kind != GuardScript.CRUDE_HOSTILE_IMPACT_SOUND_KIND
 		and not kind_text.begins_with("footstep.")
 	):
 		return
@@ -547,7 +557,7 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 			)
 
 	if _speech_reaction_count == 0 and _speech != null:
-		if _speech.speak_line():
+		if bool(_speech.call("speak_line")):
 			_speech_reaction_count += 1
 	_refresh_label()
 
