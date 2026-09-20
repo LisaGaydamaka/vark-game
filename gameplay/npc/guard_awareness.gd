@@ -82,7 +82,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	var heard_callable := Callable(self, "_on_gameplay_sound_heard")
+	var heard_callable: Callable = Callable(self, "_on_gameplay_sound_heard")
 	if (
 		_listener != null
 		and is_instance_valid(_listener)
@@ -94,7 +94,7 @@ func _exit_tree() -> void:
 func _physics_process(_delta: float) -> void:
 	if _guard == null or not is_instance_valid(_guard):
 		return
-	if StringName(_guard.call("get_life_state")) != GUARD_LIFE_CONSCIOUS:
+	if not _guard_is_conscious():
 		if _awareness_state != STATE_INACTIVE:
 			_enter_state(STATE_INACTIVE)
 		_sync_gameplay_clock()
@@ -115,7 +115,7 @@ func sample_vision_now() -> bool:
 		or not is_instance_valid(_exposure)
 	):
 		return false
-	if StringName(_guard.call("get_life_state")) != GUARD_LIFE_CONSCIOUS:
+	if not _guard_is_conscious():
 		_enter_state(STATE_INACTIVE)
 		return false
 
@@ -340,7 +340,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"last_seen_position",
 		"investigation_target",
 	]:
-		if not _is_finite_vector(snapshot[vector_key]):
+		var vector_value: Vector3 = snapshot[vector_key]
+		if not _is_finite_vector(vector_value):
 			return false
 
 	_awareness_state = restored_state
@@ -485,7 +486,7 @@ func _enter_state(
 func _apply_navigation_for_state() -> void:
 	if _guard == null or not is_instance_valid(_guard):
 		return
-	if StringName(_guard.call("get_life_state")) != GUARD_LIFE_CONSCIOUS:
+	if not _guard_is_conscious():
 		_guard.call("clear_awareness_navigation_target")
 		return
 	match _awareness_state:
@@ -515,7 +516,7 @@ func _apply_navigation_for_state() -> void:
 
 
 func _on_gameplay_sound_heard(perception: Dictionary) -> void:
-	if _guard == null or StringName(_guard.call("get_life_state")) != GUARD_LIFE_CONSCIOUS:
+	if _guard == null or not _guard_is_conscious():
 		return
 	var kind: StringName = perception.get("kind", &"")
 	var kind_text: String = str(kind)
@@ -638,9 +639,19 @@ func _find_world_session() -> Node:
 
 func _has_property(object: Object, property_name: StringName) -> bool:
 	for property: Dictionary in object.get_property_list():
-		if StringName(property.get("name", "")) == property_name:
+		if str(property.get("name", "")) == str(property_name):
 			return true
 	return false
+
+
+func _guard_is_conscious() -> bool:
+	if (
+		_guard == null
+		or not is_instance_valid(_guard)
+		or not _guard.has_method("get_life_state")
+	):
+		return false
+	return str(_guard.call("get_life_state")) == str(GUARD_LIFE_CONSCIOUS)
 
 
 func _is_finite_vector(value: Vector3) -> bool:
