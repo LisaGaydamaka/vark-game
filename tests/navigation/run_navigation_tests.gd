@@ -504,6 +504,7 @@ func _assert_open_leaf_nearby_route_ignored() -> void:
 	var open_leaf_center: Vector3 = door_collision.global_position
 	var navigation_map: RID = world.get_world_3d().navigation_map
 	var original_speed: float = guard.movement_speed
+	var navigation_agent := guard.get_node_or_null("NavigationAgent3D") as NavigationAgent3D
 	guard.movement_speed = 0.0
 	guard.set_physics_process(false)
 	var found_leaf_contact_without_crossing: bool = false
@@ -525,10 +526,13 @@ func _assert_open_leaf_nearby_route_ignored() -> void:
 		guard.set_awareness_navigation_target(&"investigate", candidate_target)
 		await physics_frame
 		await process_frame
+		if navigation_agent != null:
+			navigation_agent.get_next_path_position()
 		await physics_frame
 		await process_frame
 		if (
-			bool(guard.call("_current_route_hits_door"))
+			navigation_agent != null
+			and bool(guard.call("_current_route_hits_door"))
 			and not bool(guard.call("_current_route_requires_doorway"))
 		):
 			nearby_start = candidate_start

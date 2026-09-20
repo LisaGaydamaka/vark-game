@@ -305,9 +305,12 @@ func does_navigation_route_cross_passage(
 	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
 	var tangent: Vector3 = frame.get("tangent", Vector3.ZERO)
 	var half_width: float = float(frame.get("half_width", 0.0))
-	var usable_half_width: float = maxf(
-		0.0,
-		half_width - maxf(body_radius, 0.0) + maxf(lateral_margin, 0.0)
+	# route_points are NavigationAgent centerline truth and are already
+	# radius-safe against baked static geometry. Subtracting body_radius here
+	# would erode the opening a second time and reject valid edge-of-opening
+	# routes. Body fit against the moving leaf remains the later physical query.
+	var usable_half_width: float = (
+		half_width + maxf(lateral_margin, 0.0)
 	)
 	if usable_half_width <= 0.0:
 		return false
