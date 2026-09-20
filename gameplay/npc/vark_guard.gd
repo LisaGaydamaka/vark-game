@@ -206,7 +206,8 @@ func resolve_local_search_points(
 	radius: float,
 	desired_count: int,
 	variation_key: int = 0,
-	excluded_points: Array = []
+	excluded_points: Array = [],
+	minimum_separation: float = 0.0
 ) -> Array[Vector3]:
 	var resolved: Array[Vector3] = []
 	if (
@@ -224,6 +225,7 @@ func resolve_local_search_points(
 
 	var clamped_radius: float = maxf(radius, 0.50)
 	var clamped_count: int = clampi(desired_count, 2, 6)
+	var clamped_separation: float = maxf(minimum_separation, 0.0)
 	var start: Vector3 = NavigationServer3D.map_get_closest_point(
 		navigation_map,
 		global_position
@@ -231,7 +233,10 @@ func resolve_local_search_points(
 	var candidates: Array[Dictionary] = []
 	var candidate_ordinal: int = 0
 	var start_angle: float = deg_to_rad(float(posmod(variation_key, 360)))
-	var radial_factors: Array[float] = [0.0, 0.42, 0.68, 1.0]
+	var radial_factors: Array[float] = [0.0, 0.55, 0.80, 1.0]
+	var request_heights: Array[float] = [anchor.y]
+	if absf(anchor.y - global_position.y) >= 0.75:
+		request_heights.append(global_position.y)
 	for radial_factor: float in radial_factors:
 		var direction_count: int = 1 if is_zero_approx(radial_factor) else 8
 		for direction_index: int in direction_count:
@@ -244,66 +249,71 @@ func resolve_local_search_points(
 				offset = Vector3.RIGHT.rotated(Vector3.UP, angle) * (
 					clamped_radius * radial_factor
 				)
-			var requested: Vector3 = anchor + offset
-			var projected: Vector3 = NavigationServer3D.map_get_closest_point(
-				navigation_map,
-				requested
-			)
-			if not _is_finite_vector(projected):
+			for request_height: float in request_heights:
+				var requested: Vector3 = anchor + offset
+				requested.y = request_height
+				var projected: Vector3 = NavigationServer3D.map_get_closest_point(
+					navigation_map,
+					requested
+				)
+				if not _is_finite_vector(projected):
+					candidate_ordinal += 1
+					continue
+				var projection_error := Vector3(
+					projected.x - requested.x,
+					0.0,
+					projected.z - requested.z
+				).length()
+				var anchor_distance := Vector3(
+					projected.x - anchor.x,
+					0.0,
+					projected.z - anchor.z
+				).length()
+				if (
+					projection_error > maxf(0.75, clamped_radius * 0.45)
+					or anchor_distance > clamped_radius + 0.35
+				):
+					candidate_ordinal += 1
+					continue
+				var path: PackedVector3Array = NavigationServer3D.map_get_path(
+					navigation_map,
+					start,
+					projected,
+					true
+				)
+				if path.is_empty():
+					candidate_ordinal += 1
+					continue
+				var endpoint: Vector3 = path[path.size() - 1]
+				if (
+					_horizontal_distance(endpoint, projected) > 0.55
+					or absf(endpoint.y - projected.y) > 0.75
+				):
+					candidate_ordinal += 1
+					continue
+				var duplicate: bool = false
+				for candidate: Dictionary in candidates:
+					var existing: Vector3 = candidate.get("point", Vector3.ZERO)
+					if (
+						_horizontal_distance(existing, projected) < 0.40
+						and absf(existing.y - projected.y) < 0.75
+					):
+						duplicate = true
+						break
+				if duplicate:
+					candidate_ordinal += 1
+					continue
+				candidates.append({
+					"point": projected,
+					"anchor_distance": anchor_distance,
+					"vertical_error": absf(projected.y - anchor.y),
+					"path_length": _path_length(path),
+					"variation": _deterministic_search_variation(
+						variation_key,
+						candidate_ordinal
+					),
+				})
 				candidate_ordinal += 1
-				continue
-			var projection_error := Vector3(
-				projected.x - requested.x,
-				0.0,
-				projected.z - requested.z
-			).length()
-			var anchor_distance := Vector3(
-				projected.x - anchor.x,
-				0.0,
-				projected.z - anchor.z
-			).length()
-			if (
-				projection_error > maxf(0.75, clamped_radius * 0.45)
-				or anchor_distance > clamped_radius + 0.35
-			):
-				candidate_ordinal += 1
-				continue
-			var path: PackedVector3Array = NavigationServer3D.map_get_path(
-				navigation_map,
-				start,
-				projected,
-				true
-			)
-			if path.is_empty():
-				candidate_ordinal += 1
-				continue
-			var endpoint: Vector3 = path[path.size() - 1]
-			if Vector3(
-				endpoint.x - projected.x,
-				0.0,
-				endpoint.z - projected.z
-			).length() > 0.55:
-				candidate_ordinal += 1
-				continue
-			var duplicate: bool = false
-			for candidate: Dictionary in candidates:
-				var existing: Vector3 = candidate.get("point", Vector3.ZERO)
-				if _horizontal_distance(existing, projected) < 0.40:
-					duplicate = true
-					break
-			if duplicate:
-				candidate_ordinal += 1
-				continue
-			candidates.append({
-				"point": projected,
-				"anchor_distance": anchor_distance,
-				"path_length": _path_length(path),
-				"variation": _deterministic_search_variation(
-					variation_key,
-					candidate_ordinal
-				),
-			})
-			candidate_ordinal += 1
 
 	while resolved.size() < clamped_count and not candidates.is_empty():
 		var best_index: int = -1
@@ -311,14 +321,33 @@ func resolve_local_search_points(
 		for index: int in candidates.size():
 			var candidate: Dictionary = candidates[index]
 			var point: Vector3 = candidate.get("point", Vector3.ZERO)
+			var minimum_distance: float = _search_minimum_distance(
+				point,
+				resolved,
+				excluded_points
+			)
+			if (
+				clamped_separation > 0.0
+				and not is_inf(minimum_distance)
+				and minimum_distance < clamped_separation
+			):
+				continue
 			var anchor_distance: float = float(
 				candidate.get("anchor_distance", clamped_radius)
+			)
+			var vertical_error: float = float(
+				candidate.get("vertical_error", 0.0)
 			)
 			var path_length: float = float(
 				candidate.get("path_length", clamped_radius * 2.0)
 			)
 			var evidence_score: float = 1.0 - clampf(
 				anchor_distance / clamped_radius,
+				0.0,
+				1.0
+			)
+			var vertical_score: float = 1.0 - clampf(
+				vertical_error / maxf(clamped_radius, 1.0),
 				0.0,
 				1.0
 			)
@@ -334,9 +363,10 @@ func resolve_local_search_points(
 				clamped_radius
 			)
 			var score: float = (
-				evidence_score * 0.35
-				+ separation_score * 0.30
-				+ path_score * 0.25
+				evidence_score * 0.25
+				+ separation_score * 0.40
+				+ path_score * 0.15
+				+ vertical_score * 0.10
 				+ float(candidate.get("variation", 0.0)) * 0.10
 			)
 			if score > best_score:
@@ -375,7 +405,10 @@ func is_navigation_position_reachable(target_position: Vector3) -> bool:
 	if path.is_empty():
 		return false
 	var endpoint: Vector3 = path[path.size() - 1]
-	return _horizontal_distance(endpoint, target_position) <= 0.55
+	return (
+		_horizontal_distance(endpoint, target_position) <= 0.55
+		and absf(endpoint.y - target_position.y) <= 0.75
+	)
 
 
 func _search_separation_score(
@@ -383,6 +416,25 @@ func _search_separation_score(
 	selected: Array[Vector3],
 	excluded_points: Array,
 	radius: float
+) -> float:
+	var minimum_distance: float = _search_minimum_distance(
+		point,
+		selected,
+		excluded_points
+	)
+	if is_inf(minimum_distance):
+		return 1.0
+	return clampf(
+		minimum_distance / maxf(radius * 0.70, 0.50),
+		0.0,
+		1.0
+	)
+
+
+func _search_minimum_distance(
+	point: Vector3,
+	selected: Array[Vector3],
+	excluded_points: Array
 ) -> float:
 	var minimum_distance: float = INF
 	for existing: Vector3 in selected:
@@ -397,13 +449,7 @@ func _search_separation_score(
 			minimum_distance,
 			_horizontal_distance(point, excluded_value)
 		)
-	if is_inf(minimum_distance):
-		return 1.0
-	return clampf(
-		minimum_distance / maxf(radius * 0.70, 0.50),
-		0.0,
-		1.0
-	)
+	return minimum_distance
 
 
 func _deterministic_search_variation(

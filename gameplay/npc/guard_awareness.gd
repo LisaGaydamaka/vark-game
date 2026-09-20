@@ -34,6 +34,8 @@ const SEARCH_ACTION_DEPARTURE_PAUSE: StringName = &"departure_pause"
 @export var status_label_path: NodePath = NodePath("../ReactionLabel")
 @export var vision_distance: float = 6.0
 @export var vision_facing_dot: float = 0.30
+@export_range(10.0, 85.0, 1.0) var vision_vertical_angle_degrees: float = 55.0
+@export_range(10.0, 89.0, 1.0) var vision_engaged_vertical_angle_degrees: float = 80.0
 @export var vision_suspicion_exposure_threshold: float = 0.12
 @export var vision_confirm_exposure_threshold: float = 0.28
 @export var vision_darkness_confirm_distance: float = 1.50
@@ -43,9 +45,10 @@ const SEARCH_ACTION_DEPARTURE_PAUSE: StringName = &"departure_pause"
 @export var investigation_seconds: float = 2.50
 @export var search_seconds: float = 32.00
 @export_range(2, 6, 1) var search_point_count: int = 4
-@export_range(0.5, 5.0, 0.1) var search_radius: float = 1.80
-@export_range(0.5, 8.0, 0.1) var search_max_radius: float = 4.20
-@export_range(0.1, 3.0, 0.1) var search_radius_expansion: float = 1.00
+@export_range(0.5, 6.0, 0.1) var search_radius: float = 2.80
+@export_range(0.5, 10.0, 0.1) var search_max_radius: float = 6.00
+@export_range(0.1, 3.0, 0.1) var search_radius_expansion: float = 1.40
+@export_range(0.25, 3.0, 0.05) var search_point_min_separation: float = 1.40
 @export_range(0.0, 0.5, 0.01) var search_confidence_decay_per_second: float = 0.08
 @export_range(0.0, 0.5, 0.01) var search_confidence_drop_per_expansion: float = 0.12
 @export_range(0.05, 0.75, 0.05) var search_min_confidence: float = 0.20
@@ -91,6 +94,8 @@ var _last_vision_blocked: bool = false
 var _last_vision_blocker: String = ""
 var _last_vision_distance: float = 0.0
 var _last_vision_facing_dot: float = -1.0
+var _last_vision_vertical_angle_degrees: float = 0.0
+var _last_vision_vertical_limit_degrees: float = 0.0
 var _last_vision_darkness_override: bool = false
 var _last_seen_position: Vector3 = Vector3.ZERO
 var _investigation_target: Vector3 = Vector3.ZERO
@@ -188,6 +193,8 @@ func sample_vision_now() -> bool:
 	_last_vision_blocker = ""
 	_last_vision_distance = 0.0
 	_last_vision_facing_dot = -1.0
+	_last_vision_vertical_angle_degrees = 0.0
+	_last_vision_vertical_limit_degrees = 0.0
 	_last_vision_darkness_override = false
 
 	# Darkness is strong protection, not magical invisibility. Distance, facing,
@@ -202,11 +209,23 @@ func sample_vision_now() -> bool:
 	if distance <= 0.001 or distance > vision_distance:
 		_record_vision_loss()
 		return false
-	var direction: Vector3 = to_player / distance
-	var facing: Vector3 = _guard.global_transform.basis.z.normalized()
-	var facing_dot: float = facing.dot(direction)
+	var horizontal_to_player := Vector3(to_player.x, 0.0, to_player.z)
+	var horizontal_distance: float = horizontal_to_player.length()
+	var facing: Vector3 = _horizontal_facing_direction()
+	var facing_dot: float = 1.0
+	if horizontal_distance > 0.001:
+		facing_dot = facing.dot(horizontal_to_player / horizontal_distance)
 	_last_vision_facing_dot = facing_dot
-	if facing_dot < vision_facing_dot:
+	_last_vision_vertical_angle_degrees = rad_to_deg(atan2(
+		absf(to_player.y),
+		maxf(horizontal_distance, 0.001)
+	))
+	_last_vision_vertical_limit_degrees = _current_vision_vertical_limit_degrees()
+	if (
+		facing_dot < vision_facing_dot
+		or _last_vision_vertical_angle_degrees
+			> _last_vision_vertical_limit_degrees
+	):
 		_record_vision_loss()
 		return false
 
@@ -286,6 +305,8 @@ func reset_reaction() -> void:
 	_last_vision_blocker = ""
 	_last_vision_distance = 0.0
 	_last_vision_facing_dot = -1.0
+	_last_vision_vertical_angle_degrees = 0.0
+	_last_vision_vertical_limit_degrees = 0.0
 	_last_vision_darkness_override = false
 	_last_seen_position = Vector3.ZERO
 	_investigation_target = Vector3.ZERO
@@ -313,6 +334,8 @@ func get_debug_summary() -> Dictionary:
 		"last_vision_blocker": _last_vision_blocker,
 		"last_vision_distance": _last_vision_distance,
 		"last_vision_facing_dot": _last_vision_facing_dot,
+		"last_vision_vertical_angle_degrees": _last_vision_vertical_angle_degrees,
+		"last_vision_vertical_limit_degrees": _last_vision_vertical_limit_degrees,
 		"last_vision_darkness_override": _last_vision_darkness_override,
 		"last_seen_position": _last_seen_position,
 		"investigation_target": _investigation_target,
@@ -345,8 +368,12 @@ func get_debug_summary() -> Dictionary:
 		"search_radius": search_radius,
 		"search_max_radius": search_max_radius,
 		"search_point_count": search_point_count,
+		"search_point_min_separation": search_point_min_separation,
 		"vision_distance": vision_distance,
 		"vision_facing_dot": vision_facing_dot,
+		"vision_vertical_angle_degrees": vision_vertical_angle_degrees,
+		"vision_engaged_vertical_angle_degrees": vision_engaged_vertical_angle_degrees,
+		"current_vision_vertical_limit_degrees": _current_vision_vertical_limit_degrees(),
 		"vision_suspicion_exposure_threshold": (
 			vision_suspicion_exposure_threshold
 		),
@@ -854,7 +881,8 @@ func _resolve_search_stage() -> void:
 			_search_uncertainty_radius,
 			search_point_count,
 			variation_key,
-			_search_visited_positions
+			_search_visited_positions,
+			search_point_min_separation
 		)
 		if typeof(resolved) == TYPE_ARRAY:
 			for point_value: Variant in resolved:
@@ -968,7 +996,7 @@ func _begin_search_move() -> void:
 
 func _begin_search_stop() -> void:
 	_search_scan_active = true
-	_search_scan_base_direction = _horizontal_facing_direction()
+	_search_scan_base_direction = _search_evidence_facing_direction()
 	var minimum_looks: int = mini(search_look_count_min, search_look_count_max)
 	var maximum_looks: int = maxi(search_look_count_min, search_look_count_max)
 	var look_span: int = maximum_looks - minimum_looks + 1
@@ -1042,7 +1070,10 @@ func _start_search_look_turn() -> void:
 		if _search_random_unit(751 + _search_looks_remaining * 29) < 0.5
 		else 1.0
 	)
-	_search_look_target_direction = _search_look_start_direction.rotated(
+	var base_direction: Vector3 = _search_scan_base_direction
+	if base_direction.length_squared() <= 0.000001:
+		base_direction = _search_look_start_direction
+	_search_look_target_direction = base_direction.rotated(
 		Vector3.UP,
 		deg_to_rad(magnitude * sign_value)
 	).normalized()
@@ -1138,6 +1169,19 @@ func _horizontal_facing_direction() -> Vector3:
 	if direction.length_squared() <= 0.000001:
 		return Vector3.FORWARD
 	return direction.normalized()
+
+
+func _search_evidence_facing_direction() -> Vector3:
+	if _guard == null or not is_instance_valid(_guard):
+		return Vector3.FORWARD
+	var toward_anchor := Vector3(
+		_search_anchor.x - _guard.global_position.x,
+		0.0,
+		_search_anchor.z - _guard.global_position.z
+	)
+	if toward_anchor.length_squared() <= 0.000001:
+		return _horizontal_facing_direction()
+	return toward_anchor.normalized()
 
 
 func _search_random_unit(salt: int) -> float:
@@ -1285,6 +1329,24 @@ func _is_valid_awareness_state(state: StringName) -> bool:
 		STATE_RECOVERING,
 		STATE_INACTIVE,
 	]
+
+
+func _current_vision_vertical_limit_degrees() -> float:
+	var base_limit: float = clampf(vision_vertical_angle_degrees, 10.0, 85.0)
+	var engaged_limit: float = clampf(
+		maxf(vision_engaged_vertical_angle_degrees, base_limit),
+		base_limit,
+		89.0
+	)
+	match _awareness_state:
+		STATE_SUSPICIOUS, STATE_RECOVERING:
+			return lerpf(base_limit, engaged_limit, 0.40)
+		STATE_INVESTIGATING:
+			return lerpf(base_limit, engaged_limit, 0.75)
+		STATE_SEARCHING, STATE_ALERTED:
+			return engaged_limit
+		_:
+			return base_limit
 
 
 func _get_player_vision_target() -> Vector3:

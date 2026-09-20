@@ -513,13 +513,24 @@ func _assert_advanced_local_search_behavior() -> void:
 	var light := world.get_node("NorthGameplayLight") as VarkGameplayLight
 	var exposure := world.get_node("GameplayExposure") as VarkGameplayExposure
 
+	var production_search_radius: float = reaction.search_radius
+	var production_search_max_radius: float = reaction.search_max_radius
+	var production_search_separation: float = reaction.search_point_min_separation
+	_assert_true(
+		production_search_radius >= 2.75
+		and production_search_max_radius >= 5.90
+		and production_search_separation >= 1.35,
+		"Phase 5.5 production search defaults cover a wider area with materially separated investigation stops"
+	)
+
 	reaction.hearing_investigate_strength = 0.20
 	reaction.investigation_seconds = 0.06
-	reaction.search_seconds = 2.00
+	reaction.search_seconds = 2.50
 	reaction.search_point_count = 2
-	reaction.search_radius = 0.60
-	reaction.search_max_radius = 1.40
-	reaction.search_radius_expansion = 0.40
+	reaction.search_radius = 1.40
+	reaction.search_max_radius = 2.80
+	reaction.search_radius_expansion = 0.70
+	reaction.search_point_min_separation = 0.70
 	reaction.search_confidence_decay_per_second = 0.20
 	reaction.search_confidence_drop_per_expansion = 0.15
 	reaction.search_min_confidence = 0.20
@@ -567,6 +578,7 @@ func _assert_advanced_local_search_behavior() -> void:
 	var first_summary: Dictionary = reaction.get_debug_summary()
 	var first_points: Array = first_summary.get("search_points", [])
 	var all_reachable: bool = first_points.size() >= 2
+	var minimum_spacing: float = _minimum_pairwise_horizontal_distance(first_points)
 	for point_value: Variant in first_points:
 		if (
 			typeof(point_value) != TYPE_VECTOR3
@@ -579,6 +591,7 @@ func _assert_advanced_local_search_behavior() -> void:
 		and first_search
 		and first_points.size() >= 2
 		and all_reachable
+		and minimum_spacing >= reaction.search_point_min_separation - 0.01
 		and _dict_vector(first_summary, "search_anchor").distance_to(
 			first_origin
 		) <= 0.001
@@ -586,7 +599,7 @@ func _assert_advanced_local_search_behavior() -> void:
 		and int(first_summary.get("search_stage", -1)) == 0
 		and is_equal_approx(
 			float(first_summary.get("search_uncertainty_radius", 0.0)),
-			0.60
+			1.40
 		)
 		and is_equal_approx(
 			float(first_summary.get("search_confidence", 0.0)),
@@ -638,7 +651,7 @@ func _assert_advanced_local_search_behavior() -> void:
 		and float(expanded_summary.get(
 			"search_uncertainty_radius",
 			0.0
-		)) > 0.60
+		)) > 1.40
 		and float(expanded_summary.get("search_confidence", 1.0))
 			< float(after_hidden_move.get("search_confidence", 1.0)),
 		"Phase 5.5 exhausted local evidence expands the bounded uncertainty radius while confidence falls"
@@ -674,7 +687,7 @@ func _assert_advanced_local_search_behavior() -> void:
 		and int(second_summary.get("search_stage", -1)) == 0
 		and is_equal_approx(
 			float(second_summary.get("search_uncertainty_radius", 0.0)),
-			0.60
+			1.40
 		)
 		and float(second_summary.get("search_confidence", 0.0)) >= 0.99
 		and int(second_summary.get("search_seed", 0))
@@ -768,6 +781,107 @@ func _assert_advanced_local_search_behavior() -> void:
 		"Phase 5.5 bounded search returns patrol ownership with decaying residual alertness, temporarily lowers the local re-alert threshold, then fully calms"
 	)
 
+
+	reaction.reset_reaction()
+	guard.set_physics_process(false)
+	guard.velocity = Vector3.ZERO
+	player.set_physics_process(false)
+	player.velocity = Vector3.ZERO
+	guard.global_position = Vector3(0.0, 0.0, -5.60)
+	player.global_position = Vector3(0.0, 2.20, -5.15)
+	guard.look_at(
+		Vector3(
+			player.global_position.x,
+			guard.global_position.y,
+			player.global_position.z
+		),
+		Vector3.UP,
+		true
+	)
+	light.gameplay_enabled = false
+	light.visible = false
+	exposure.sample_now()
+	reaction.vision_suspicion_exposure_threshold = 0.0
+	reaction.vision_confirm_exposure_threshold = 0.0
+	var unaware_elevated_confirmed: bool = reaction.sample_vision_now()
+	var unaware_vertical_summary: Dictionary = reaction.get_debug_summary()
+	var base_vertical_limit: float = float(
+		unaware_vertical_summary.get("current_vision_vertical_limit_degrees", 0.0)
+	)
+
+	reaction.vision_suspicion_exposure_threshold = 1.0
+	reaction.vision_confirm_exposure_threshold = 1.0
+	var elevated_evidence: Vector3 = player.global_position
+	var elevated_sound_queued: bool = bool(session.call(
+		"queue_gameplay_sound",
+		int(session.get("session_id")),
+		&"footstep.stone",
+		elevated_evidence,
+		0.70
+	))
+	await _completed_physics_frame()
+	var reached_elevated_search: bool = await _wait_for_awareness_state(
+		reaction,
+		STATE_SEARCHING,
+		60
+	)
+	var elevated_search_summary: Dictionary = reaction.get_debug_summary()
+	var elevated_search_points: Array = elevated_search_summary.get(
+		"search_points",
+		[]
+	)
+	var elevated_points_reachable: bool = not elevated_search_points.is_empty()
+	for point_value: Variant in elevated_search_points:
+		if (
+			typeof(point_value) != TYPE_VECTOR3
+			or not guard.is_navigation_position_reachable(point_value)
+		):
+			elevated_points_reachable = false
+			break
+	reaction.set_physics_process(false)
+	reaction.vision_suspicion_exposure_threshold = 0.0
+	reaction.vision_confirm_exposure_threshold = 0.0
+	var search_elevated_confirmed: bool = reaction.sample_vision_now()
+	var elevated_alert_summary: Dictionary = reaction.get_debug_summary()
+	_assert_true(
+		not unaware_elevated_confirmed
+		and float(unaware_vertical_summary.get(
+			"last_vision_vertical_angle_degrees",
+			0.0
+		)) > base_vertical_limit
+		and is_equal_approx(
+			float(unaware_vertical_summary.get(
+				"last_vision_vertical_limit_degrees",
+				-1.0
+			)),
+			base_vertical_limit
+		)
+		and elevated_sound_queued
+		and reached_elevated_search
+		and elevated_points_reachable
+		and _dict_vector(elevated_search_summary, "search_anchor").distance_to(
+			elevated_evidence
+		) <= 0.001
+		and float(elevated_search_summary.get(
+			"current_vision_vertical_limit_degrees",
+			0.0
+		)) > base_vertical_limit
+		and search_elevated_confirmed
+		and elevated_alert_summary.get("awareness_state", &"") == STATE_ALERTED
+		and float(elevated_alert_summary.get(
+			"last_vision_vertical_angle_degrees",
+			0.0
+		)) > base_vertical_limit
+		and float(elevated_alert_summary.get(
+			"last_vision_vertical_angle_degrees",
+			90.0
+		)) <= float(elevated_alert_summary.get(
+			"last_vision_vertical_limit_degrees",
+			0.0
+		)),
+		"Phase 5.5 search preserves elevated evidence, stays on reachable navigation, and can reacquire a steeply elevated climbing player without giving calm guards overhead omnivision"
+	)
+
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
@@ -825,6 +939,25 @@ func _wait_for_search_visited(
 		"search_points_visited",
 		0
 	)) >= minimum_visited
+
+
+func _minimum_pairwise_horizontal_distance(points: Array) -> float:
+	if points.size() < 2:
+		return INF
+	var minimum_distance: float = INF
+	for left_index: int in range(points.size() - 1):
+		if typeof(points[left_index]) != TYPE_VECTOR3:
+			return 0.0
+		var left: Vector3 = points[left_index]
+		for right_index: int in range(left_index + 1, points.size()):
+			if typeof(points[right_index]) != TYPE_VECTOR3:
+				return 0.0
+			var right: Vector3 = points[right_index]
+			minimum_distance = minf(
+				minimum_distance,
+				Vector3(left.x - right.x, 0.0, left.z - right.z).length()
+			)
+	return minimum_distance
 
 
 func _vector_arrays_equal(left_value: Variant, right_value: Variant) -> bool:
