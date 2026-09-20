@@ -20,6 +20,25 @@ func _ready() -> void:
 	call_deferred("_rebuild_navigation")
 
 
+func _wait_for_navigation_map_iteration(
+	navigation_map: RID,
+	previous_iteration: int,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var iteration: int = NavigationServer3D.map_get_iteration_id(
+			navigation_map
+		)
+		if iteration != 0 and iteration != previous_iteration:
+			return true
+		await get_tree().physics_frame
+	return (
+		NavigationServer3D.map_get_iteration_id(navigation_map) != 0
+		and NavigationServer3D.map_get_iteration_id(navigation_map)
+			!= previous_iteration
+	)
+
+
 func get_navigation_debug_summary() -> Dictionary:
 	return {
 		"ready": navigation_ready,
@@ -138,17 +157,37 @@ func _rebuild_navigation() -> void:
 		navigation_map,
 		navigation_mesh.cell_size
 	)
+	var region_iteration_before: int = NavigationServer3D.map_get_iteration_id(
+		navigation_map
+	)
 	navigation_region.navigation_mesh = navigation_mesh
 
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	if not await _wait_for_navigation_map_iteration(
+		navigation_map,
+		region_iteration_before,
+		120
+	):
+		navigation_errors.append(
+			"Integrated Slice navigation map did not synchronize the carved region."
+		)
+		return
+	var link_iteration_before: int = NavigationServer3D.map_get_iteration_id(
+		navigation_map
+	)
 	if not ordinary_door.finalize_navigation_traversal(navigation_map):
 		navigation_errors.append(
 			"Integrated Slice ordinary door could not finalize its navigation link on the baked map."
 		)
 		return
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	if not await _wait_for_navigation_map_iteration(
+		navigation_map,
+		link_iteration_before,
+		120
+	):
+		navigation_errors.append(
+			"Integrated Slice navigation map did not synchronize the finalized ordinary-door link."
+		)
+		return
 
 	var patrol_points: Dictionary = {
 		"slice.patrol.a": $PatrolA,

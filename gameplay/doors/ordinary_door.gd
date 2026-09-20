@@ -370,7 +370,11 @@ func contribute_navigation_bake_cut(
 
 func finalize_navigation_traversal(navigation_map: RID) -> bool:
 	_ensure_navigation_link()
-	if _navigation_link == null or not navigation_map.is_valid():
+	if (
+		_navigation_link == null
+		or not navigation_map.is_valid()
+		or NavigationServer3D.map_get_iteration_id(navigation_map) == 0
+	):
 		return false
 
 	# The region must already be synchronized. Snap both authored endpoints to
@@ -404,7 +408,7 @@ func finalize_navigation_traversal(navigation_map: RID) -> bool:
 
 	_navigation_link.set_global_start_position(projected_start)
 	_navigation_link.set_global_end_position(projected_end)
-	NavigationServer3D.link_set_map(_navigation_link.get_rid(), navigation_map)
+	_navigation_link.set_navigation_map(navigation_map)
 	_navigation_link.enabled = true
 	return true
 

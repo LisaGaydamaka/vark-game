@@ -136,20 +136,40 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 	_navigation_mesh = navigation_mesh
 	var navigation_map: RID = get_world_3d().navigation_map
 	NavigationServer3D.map_set_cell_size(navigation_map, navigation_mesh.cell_size)
+	var region_iteration_before: int = NavigationServer3D.map_get_iteration_id(
+		navigation_map
+	)
 	navigation_region.navigation_mesh = navigation_mesh
 
-	# First synchronize the carved region, then snap/bind the door link to the
-	# actual baked polygons, then synchronize the completed graph before any
-	# NavigationAgent receives a semantic target.
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	# NavigationServer synchronization is asynchronous. Never guess a frame
+	# count: wait for the carved region to produce a newer map iteration before
+	# projecting the door link onto it.
+	if not await _wait_for_navigation_map_iteration(
+		navigation_map,
+		region_iteration_before,
+		120
+	):
+		navigation_errors.append(
+			"Navigation map did not synchronize the carved region."
+		)
+		return
+	var link_iteration_before: int = NavigationServer3D.map_get_iteration_id(
+		navigation_map
+	)
 	if not ordinary_door.finalize_navigation_traversal(navigation_map):
 		navigation_errors.append(
 			"Ordinary door could not finalize its navigation link on the baked map."
 		)
 		return
-	await get_tree().physics_frame
-	await get_tree().physics_frame
+	if not await _wait_for_navigation_map_iteration(
+		navigation_map,
+		link_iteration_before,
+		120
+	):
+		navigation_errors.append(
+			"Navigation map did not synchronize the finalized ordinary-door link."
+		)
+		return
 
 	var patrol_points: Dictionary = {}
 	var guards: Array[VarkGuard] = []
@@ -192,6 +212,25 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 	navigation_rebuild_serial += 1
 	navigation_ready = true
 	navigation_rebuilt.emit(navigation_rebuild_serial)
+
+
+func _wait_for_navigation_map_iteration(
+	navigation_map: RID,
+	previous_iteration: int,
+	max_frames: int
+) -> bool:
+	for _frame_index: int in max_frames:
+		var iteration: int = NavigationServer3D.map_get_iteration_id(
+			navigation_map
+		)
+		if iteration != 0 and iteration != previous_iteration:
+			return true
+		await get_tree().physics_frame
+	return (
+		NavigationServer3D.map_get_iteration_id(navigation_map) != 0
+		and NavigationServer3D.map_get_iteration_id(navigation_map)
+			!= previous_iteration
+	)
 
 
 func _apply_authored_player_start() -> void:
