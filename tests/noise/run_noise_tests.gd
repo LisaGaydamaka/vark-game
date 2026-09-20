@@ -48,7 +48,7 @@ func _assert_surface_profile_contract() -> void:
 		and carpet.get_footstep_sound_kind() == &"footstep.carpet"
 		and stone.get_footstep_sound_kind() == &"footstep.stone"
 		and tile.get_footstep_sound_kind() == &"footstep.tile"
-		and is_equal_approx(carpet.get_footstep_strength(), 0.20)
+		and is_equal_approx(carpet.get_footstep_strength(), 0.09)
 		and is_equal_approx(stone.get_footstep_strength(), 0.45)
 		and is_equal_approx(tile.get_footstep_strength(), 0.90)
 		and carpet.get_footstep_strength() < stone.get_footstep_strength()
@@ -289,15 +289,17 @@ func _assert_integrated_surface_noise() -> void:
 		and carpet_summary.get("last_sound_kind", &"") == &"footstep.carpet"
 		and is_equal_approx(
 			float(carpet_summary.get("last_base_strength", 0.0)),
-			0.20
+			0.09
 		)
 		and is_equal_approx(
 			float(carpet_summary.get("last_strength", 0.0)),
-			0.20
+			0.09
 		)
-		and bool(carpet_perception.get("heard", false))
-		and carpet_perception.get("kind", &"") == &"footstep.carpet",
-		"Phase 5.1 quiet carpet is a profile-driven semantic surface rather than a hard-coded footstep special case"
+		and not bool(carpet_perception.get("heard", true))
+		and carpet_perception.get("kind", &"") == &"footstep.carpet"
+		and float(carpet_perception.get("propagated_strength", 1.0))
+			< float(carpet_perception.get("hearing_threshold", 0.0)),
+		"Phase 5.1 normal walking on quiet carpet is emitted semantically but is already below the guard hearing floor at roughly one meter"
 	)
 
 	var sprint_command := PlayerCommand.new()
@@ -314,6 +316,7 @@ func _assert_integrated_surface_noise() -> void:
 	var sprint_queued: bool = footsteps.emit_step_now()
 	await _completed_physics_frame()
 	var sprint_summary: Dictionary = footsteps.get_debug_summary()
+	var sprint_perception: Dictionary = guard_listener.get_last_perception()
 	var sprint_meter_summary: Dictionary = noise_meter.get_last_summary()
 	_assert_true(
 		sprint_state_ready
@@ -322,17 +325,19 @@ func _assert_integrated_surface_noise() -> void:
 		and sprint_summary.get("last_gait", "") == "sprinting"
 		and is_equal_approx(
 			float(sprint_summary.get("last_strength", 0.0)),
-			0.20 * 1.35
+			0.09 * 1.35
 		)
 		and float(sprint_summary.get("last_strength", 0.0))
 			> float(carpet_summary.get("last_strength", 0.0))
+		and bool(sprint_perception.get("heard", false))
+		and sprint_perception.get("kind", &"") == &"footstep.carpet"
 		and is_equal_approx(
 			noise_meter.get_current_loudness(),
-			0.20 * 1.35
+			0.09 * 1.35
 		)
 		and sprint_meter_summary.get("last_gait", "") == "sprinting"
 		and noise_meter.get_debug_text().contains("sprinting"),
-		"Sprinting uses the locomotion sprint intent to make the same carpet footstep semantically louder than walking and the debug meter reports that truth"
+		"Sprinting can push the otherwise near-silent carpet tier back above the local hearing floor while preserving carpet identity and debug-meter truth"
 	)
 
 	if player_input != null:
@@ -354,11 +359,11 @@ func _assert_integrated_surface_noise() -> void:
 		and crouched_summary.get("last_sound_kind", &"") == &"footstep.carpet"
 		and is_equal_approx(
 			float(crouched_summary.get("last_base_strength", 0.0)),
-			0.20
+			0.09
 		)
 		and is_equal_approx(
 			float(crouched_summary.get("last_strength", 0.0)),
-			0.20 * 0.45
+			0.09 * 0.45
 		),
 		"Phase 5.1 stance modifies emitted strength without changing the authored surface identity or semantic sound kind"
 	)
@@ -366,11 +371,11 @@ func _assert_integrated_surface_noise() -> void:
 	_assert_true(
 		is_equal_approx(
 			noise_meter.get_current_loudness(),
-			0.20 * 0.45
+			0.09 * 0.45
 		)
 		and is_equal_approx(
 			float(crouched_meter_summary.get("last_strength", 0.0)),
-			0.20 * 0.45
+			0.09 * 0.45
 		)
 		and crouched_meter_summary.get("last_stance", "")
 			== "crouched"

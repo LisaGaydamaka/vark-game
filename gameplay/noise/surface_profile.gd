@@ -6,7 +6,7 @@ const LOUDNESS_QUIET: int = 0
 const LOUDNESS_NORMAL: int = 1
 const LOUDNESS_LOUD: int = 2
 
-const QUIET_FOOTSTEP_STRENGTH: float = 0.20
+const QUIET_FOOTSTEP_STRENGTH: float = 0.09
 const NORMAL_FOOTSTEP_STRENGTH: float = 0.45
 const LOUD_FOOTSTEP_STRENGTH: float = 0.90
 

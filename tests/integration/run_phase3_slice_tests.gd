@@ -279,7 +279,7 @@ func _assert_integrated_slice() -> void:
 			float((
 				carpet_surface.call("get_surface_summary") as Dictionary
 			).get("footstep_strength", 0.0)),
-			0.20
+			0.09
 		)
 		and (carpet_surface.call("get_surface_summary") as Dictionary).get("loudness_id", &"") == &"quiet"
 		and (stone_surface.call("get_surface_summary") as Dictionary).get("loudness_id", &"") == &"normal"
