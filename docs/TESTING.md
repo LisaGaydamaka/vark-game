@@ -319,6 +319,21 @@ Catching, hanging, cornering, and mantling are intentionally normalized to ordin
 WorldSession validation remains exact for every non-player semantic owner. The only policy-aware exception is the player snapshot: `validate_restored_semantic_state()` must prove the restored transform, velocity, stance endpoint, normal traversal state, and (for normalized traversal) active short re-entry guard before the candidate can leave `RESTORING`.
 
 
+## Phase 4.4 other transient-state save policy
+
+`tests/application/transient_state_restore_regressions.gd` is wired into the Application suite and runs against the real Integrated Slice through production Application/WorldSession capture and replacement.
+
+Door motion is semantic phase + open fraction, not an engine animation/timer. The regression saves a door while opening, stops the source session and allows application frames to pass, then restores the exact saved fraction/gameplay time and proves progress resumes only on later world physics frames. Obstruction blocker identity remains transient and is reacquired by ordinary sweep logic.
+
+Thrown/falling ordinary props restore semantic motion kind, upright transform, and linear velocity. Physics-server direct state, contact/rest bookkeeping, impact callbacks, angular response, and temporary player-collision-ignore state are not serialized; a restored moving prop is reactivated and continues under ordinary rigid-body simulation.
+
+The Integrated Slice guard's current investigation/alert equivalents are `heard_noise` and `saw_player`. The regression reaches `heard_noise` through the real semantic `gameplay.sound` → acoustic propagation → listener path, and reaches `saw_player` through the existing exposure/vision path. Both restore their semantic awareness/counters without replaying the source sound or visual consequence.
+
+Unconscious and dead remain life states of the same registry-addressable guard actor/body. The regression drives the existing queued semantic life-state transition path, moves the non-conscious body, saves/restores it, and verifies life state/body transform survive while navigation remains inactive. There is no separate corpse entity.
+
+The current slice has no other save-owning gameplay duration such as investigation decay, stun, bleedout, or animation callback. Door transition fraction is therefore the representative long-running duration proof: saved semantic progress plus authored duration determines remaining simulation work, and paused/load wall-clock time does not advance it.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.

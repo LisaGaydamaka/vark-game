@@ -1098,7 +1098,7 @@ Restore now performs the bounded 4.2 order while the candidate is processing-dis
 
 **Manual:** none — 4.2 is accepted from deterministic semantic ownership/order coverage. It exposes no new player-facing save key, durable filesystem behavior, traversal/transient policy, or subjective save/load presentation; those remain owned by later Phase 4 items.
 
-## 4.3 Player transient/traversal restore policy `[~]`
+## 4.3 Player transient/traversal restore policy `[x]`
 
 Classify representative player states into directly restorable semantic states, reconstructable transient states, or states normalized to a safe semantic equivalent.
 
@@ -1118,16 +1118,34 @@ The player snapshot records both the source semantic state and the declared rest
 
 **Done when:** ordinary moving, fully crouched, and ordinary airborne states restore directly through the real Application/WorldSession replacement path; exact captures made during catching, hanging, cornering, and mantling remain saveable instead of being rejected; those traversal-runtime states load as ordinary airborne at the same safe pose with zero traversal-owned velocity and do not instantly reacquire the discarded traversal; no save lockout is introduced for these representative player states.
 
-**Automated:** implemented through new `tests/application/player_restore_policy_regressions.gd`, wired into the authoritative Application suite. It launches the existing real sprint/jump and ledge-traversal fixtures through `VarkApplication`, proves direct moving/crouched/airborne restore, captures exact stable-frame player snapshots during catching/hanging/cornering/mantling, verifies a normal quicksave request is still accepted in those traversal states, restores each snapshot through the production replacement path, and verifies normalized traversal remains ordinary airborne during the re-entry guard. Existing movement behavior traces remain unchanged and continue to protect normal controller feel outside restore.
+**Automated:** accepted — exact `test` head `b5172f0bb1af8031bc0aae0b0cf6e625a72ddc38` passed Godot 4.7.2 GitHub Actions Test run #250. `player_restore_policy_regressions.gd` passed direct standing/moving, crouched, and ordinary-airborne restoration plus catching/hanging/cornering/mantling saveability, normalized-airborne reconstruction, and traversal re-entry suppression. The unchanged Movement suite also passed, and CI ended with `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
 
-**Manual:** none — 4.3 changes only deterministic save/load reconstruction policy and introduces no player-facing save control or subjective presentation. Existing movement/traversal feel remains guarded by the unchanged Movement suite; target-platform/user-facing save validation remains later Phase 4 work.
+**Manual:** none — 4.3 is accepted from deterministic save/load reconstruction coverage. It introduces no player-facing save control or subjective presentation; target-platform/user-facing save validation remains later Phase 4 work.
 
 
-## 4.4 Other transient-state save policy `[ ]`
+## 4.4 Other transient-state save policy `[~]`
 
 Explicitly test/define saving during door movement, prop falling/thrown, guard investigating/alert, actor unconscious/dead/body, and any other transient state present in the slice.
 
 Gameplay durations restore from world-simulation semantic progress, not elapsed wall-clock time during pause/load.
+
+The bounded 4.4 policy reuses the semantic owners established in 4.2 rather than serializing physics/nav runtime machinery:
+
+- ordinary door `opening`/`closing`: **direct restore** of semantic phase, normalized `open_fraction`, and the obstruction latch. Blocker object identity is transient physical context and is intentionally discarded; future motion performs fresh physical sweeps. Remaining transition duration is derived from authored `transition_seconds` and saved fraction, so only resumed world-simulation steps advance it;
+- moving ordinary props, including a thrown prop in unsupported fall: **direct restore** of semantic motion kind, upright transform, and linear velocity. Jolt direct-body state, contact/rest counters, pending impact callbacks, angular solver response, and temporary player-collision-ignore bookkeeping are reconstructed/cleared rather than serialized;
+- carried Junk remains the already-proven semantic carried phase from the prop/player ownership seam; restore reconciliation re-adopts the prop through the player rather than serializing a holder pointer;
+- guard investigation/alert equivalents currently present in the slice (`heard_noise` and `saw_player`): **direct restore** of awareness state, counters, and last resolved evidence. The source gameplay sound/vision consequence is not replayed on restore;
+- guard actor `unconscious` and `dead`: **direct restore** on the same persistent actor/body identity, including transform/velocity and life state. Navigation ownership remains structurally present but inactive; there is no separate corpse identity;
+- guard door-use/request/path solver transients are **reconstructed/normalized** from the restored persistent transform, resolved patrol goal, authored door identity, and fresh navigation rebuild rather than persisted as callback/request state.
+
+The current slice has no separate timed investigation/search decay, stun timer, bleedout timer, animation callback, or other gameplay-duration owner beyond door transition progress and world-session gameplay time. New timed gameplay must persist semantic stage/progress/remaining simulation time under the 4.2 rule; elapsed wall-clock/application time during pause/load is never semantic progress.
+
+**Done when:** the real Integrated Slice can capture/restore a partially moving door without wall-clock progress, a physically falling thrown prop with its motion/velocity intact, heard-noise investigation and confirmed visual alert without replaying the source consequence, and unconscious/dead body states on the same persistent guard identity. Each representative transient remains save-requestable, resumes or normalizes according to the policy above, and no engine timer/callback/solver continuation becomes save truth.
+
+**Automated:** implemented through new `tests/application/transient_state_restore_regressions.gd`, wired into the authoritative Application suite. The regression launches the real Integrated Slice and exercises moving-door progress plus stopped-application frames, a descending thrown rigid prop, a real acoustic `gameplay.sound` investigation path, the existing real visual-alert path, and queued semantic conscious→unconscious→dead actor transitions. Every snapshot restores through the production Application/WorldSession replacement path and then checks the selected direct/reconstructed policy before ordinary simulation resumes.
+
+**Manual:** none — 4.4 adds deterministic transient save semantics only. No user-facing save binding, durable file behavior, migration/compatibility UI, or subjective presentation is introduced here.
+
 
 ## 4.5 Snapshot coherence, restore suppression, operation ordering, and failure safety `[ ]`
 
