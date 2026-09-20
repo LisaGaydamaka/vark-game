@@ -129,24 +129,17 @@ func _prove_direct_airborne_restore(
 ) -> void:
 	var application: Node = await _launch_application(tree, FLAT_PATH)
 	var player := application.get("current_player") as CharacterBody3D
+	var support: PlayerSupport = player.get("support")
+	var velocity_state: PlayerVelocityState = player.get("velocity_state")
 
-	# Gameplay input enables with held edge actions blocked until their release is
-	# observed. Establish one neutral released frame before issuing the fresh jump
-	# edge this regression intends to test.
-	Input.action_release("jump")
-	await _completed_physics_frame(tree)
-	var boundary: Node = application.get_node("InputBoundary")
-	Input.action_press("jump")
-	var sampled_fresh_jump: bool = await _sample_fresh_jump_on_next_physics_frame(
-		tree,
-		boundary
-	)
-	var reached_rising_airborne: bool = await _wait_for_rising_airborne(
-		tree,
-		player,
-		8
-	)
-	Input.action_release("jump")
+	# Jump behavior is already proven by the Movement suite. This restore-policy
+	# regression establishes the resulting ordinary semantic condition directly:
+	# unsupported body pose plus positive authoritative ballistic velocity.
+	player.global_position += Vector3.UP * 1.5
+	player.velocity = Vector3(0.8, 4.25, -0.6)
+	support.release_walkable_support(player)
+	velocity_state.capture_body_as_controlled(player)
+
 	var source_movement: Dictionary = player.call(
 		"get_movement_semantic_state"
 	)
@@ -161,8 +154,8 @@ func _prove_direct_airborne_restore(
 	)
 
 	assert_true.call(
-		sampled_fresh_jump
-		and reached_rising_airborne
+		support != null
+		and velocity_state != null
 		and source_movement.get("support", "") == "airborne"
 		and source_movement.get("traversal", "") == "normal"
 		and saved_player.get("restore_policy", &"") == &"direct"
@@ -366,48 +359,6 @@ func _launch_application(
 	if scene_path == FLAT_PATH:
 		await _advance_frames(tree, 3)
 	return application
-
-
-func _sample_fresh_jump_on_next_physics_frame(
-	tree: SceneTree,
-	boundary: Node
-) -> bool:
-	await tree.physics_frame
-	var command: PlayerCommand = boundary.call(
-		"sample_locomotion_command"
-	) as PlayerCommand
-	var sampled_fresh_jump: bool = (
-		command != null
-		and command.jump_pressed
-		and command.jump_held
-	)
-	# physics_frame is emitted before player _physics_process(). The player's
-	# later sample in this same frame receives the boundary's cached command.
-	await tree.process_frame
-	return sampled_fresh_jump
-
-
-func _wait_for_rising_airborne(
-	tree: SceneTree,
-	player: CharacterBody3D,
-	max_frames: int
-) -> bool:
-	for _frame: int in max_frames:
-		await _completed_physics_frame(tree)
-		var state: Dictionary = player.call(
-			"get_movement_semantic_state"
-		)
-		var sampled_velocity: Vector3 = state.get(
-			"velocity",
-			Vector3.ZERO
-		)
-		if (
-			state.get("support", "") == "airborne"
-			and state.get("traversal", "") == "normal"
-			and sampled_velocity.y > 0.0
-		):
-			return true
-	return false
 
 
 func _wait_for_traversal_state(
