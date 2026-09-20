@@ -106,10 +106,7 @@ func interact(interactor: Node) -> void:
 	if _phase == PHASE_CLOSED or _phase == PHASE_CLOSING:
 		request_open(interactor)
 		return
-	_phase = PHASE_CLOSING
-	_motion_blocked = false
-	_motion_blocker = null
-	_queue_use_sound()
+	request_close(interactor)
 
 
 func request_open(_requester: Node = null) -> void:
@@ -124,6 +121,22 @@ func request_open(_requester: Node = null) -> void:
 		_motion_blocker = null
 		return
 	_phase = PHASE_OPENING
+	_motion_blocked = false
+	_motion_blocker = null
+	_queue_use_sound()
+
+
+func request_close(_requester: Node = null) -> void:
+	# AI door maneuvers need the symmetric idempotent desired state. This is
+	# intentionally not the player's toggle seam: retrying CLOSE only releases
+	# a transient obstruction latch and never turns a closing/closed door open.
+	if _phase == PHASE_CLOSED:
+		return
+	if _phase == PHASE_CLOSING:
+		_motion_blocked = false
+		_motion_blocker = null
+		return
+	_phase = PHASE_CLOSING
 	_motion_blocked = false
 	_motion_blocker = null
 	_queue_use_sound()
@@ -233,6 +246,45 @@ func get_navigation_swing_radius() -> float:
 				Vector2(local_corner.x, local_corner.z).length()
 			)
 	return max_radius
+
+
+func get_navigation_passage_center() -> Vector3:
+	if door_collision == null or door_collision.shape == null:
+		return global_position
+	return _collision_transform_at_fraction(0.0).origin
+
+
+func get_navigation_operating_point(
+	reference_position: Vector3,
+	body_radius: float,
+	safety_margin: float = 0.05
+) -> Vector3:
+	# Door operation is side-aware and based on the closed doorway frame, not
+	# the current leaf angle. The point sits in front of the passage center and
+	# outside the full physical swing radius, so closing/reopening cannot sweep
+	# through the requesting body merely because the leaf started fully open.
+	if door_collision == null or door_collision.shape == null:
+		return reference_position
+	var closed_transform: Transform3D = _collision_transform_at_fraction(0.0)
+	var closed_normal: Vector3 = closed_transform.basis.z
+	closed_normal.y = 0.0
+	if closed_normal.length_squared() <= 0.000001:
+		return reference_position
+	closed_normal = closed_normal.normalized()
+	var reference_offset: Vector3 = reference_position - closed_transform.origin
+	reference_offset.y = 0.0
+	var side: float = 1.0 if reference_offset.dot(closed_normal) >= 0.0 else -1.0
+	var clearance: float = (
+		get_navigation_swing_radius()
+		+ maxf(body_radius, 0.0)
+		+ maxf(safety_margin, 0.0)
+	)
+	var result: Vector3 = (
+		closed_transform.origin
+		+ closed_normal * side * clearance
+	)
+	result.y = reference_position.y
+	return result
 
 
 func capture_semantic_state() -> Dictionary:

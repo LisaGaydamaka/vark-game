@@ -26,6 +26,7 @@ func _run_tests() -> void:
 	await _assert_application_patrol_and_door()
 	await _assert_guard_obstructs_player_close()
 	await _assert_guard_reopens_player_closed_route()
+	await _assert_open_leaf_side_block_recovery()
 	await _assert_guard_uses_passable_partial_door()
 	await _assert_blocked_door_recovery()
 	await _assert_reimport_rebuild()
@@ -432,6 +433,157 @@ func _assert_guard_reopens_player_closed_route() -> void:
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
+
+func _assert_open_leaf_side_block_recovery() -> void:
+	var application: Node = ApplicationScene.instantiate()
+	application.set("development_launch_labels", PackedStringArray(["Guard/Nav Lab"]))
+	application.set("development_launch_resource_paths", PackedStringArray([GUARD_NAV_DEFINITION_PATH]))
+	get_root().add_child(application)
+	await process_frame
+
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	var world := application.get("current_world") as Node3D
+	var door: VarkOrdinaryDoor = (
+		world.get_node_or_null("OrdinaryDoor") as VarkOrdinaryDoor
+		if world != null
+		else null
+	)
+	var fixture_opened: bool = false
+	if door != null:
+		fixture_opened = door.apply_semantic_state({
+			"phase": VarkOrdinaryDoor.PHASE_OPEN,
+			"open_fraction": 1.0,
+			"motion_blocked": false,
+		})
+	var ready: bool = await _wait_for_navigation_ready(world, 240)
+	var guard: VarkGuard = _find_guard(world)
+	_assert_true(
+		launched and fixture_opened and ready and world != null and guard != null and door != null,
+		"Open-leaf maneuver fixture launches the real Guard/Nav Lab with a fully open ordinary door"
+	)
+	if not launched or not fixture_opened or not ready or world == null or guard == null or door == null:
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	var door_collision := door.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	var passage_center: Vector3 = door.get_navigation_passage_center()
+	var hinge_to_center: Vector3 = passage_center - door.global_position
+	hinge_to_center.y = 0.0
+	var open_leaf_direction: Vector3 = (
+		door_collision.global_position - door.global_position
+		if door_collision != null
+		else Vector3.ZERO
+	)
+	open_leaf_direction.y = 0.0
+	_assert_true(
+		door_collision != null
+		and hinge_to_center.length_squared() > 0.000001
+		and open_leaf_direction.length_squared() > 0.000001,
+		"Open-leaf maneuver fixture resolves the real hinge, closed passage center, and current leaf direction"
+	)
+	if (
+		door_collision == null
+		or hinge_to_center.length_squared() <= 0.000001
+		or open_leaf_direction.length_squared() <= 0.000001
+	):
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	var doorway_tangent: Vector3 = hinge_to_center.normalized()
+	open_leaf_direction = open_leaf_direction.normalized()
+	var side_reference: Vector3 = door.global_position + open_leaf_direction * 3.0
+	var opposite_reference: Vector3 = door.global_position - open_leaf_direction * 3.0
+	var side_operating: Vector3 = door.get_navigation_operating_point(
+		side_reference,
+		0.28,
+		0.05
+	)
+	var opposite_operating: Vector3 = door.get_navigation_operating_point(
+		opposite_reference,
+		0.28,
+		0.05
+	)
+
+	var original_speed: float = guard.movement_speed
+	guard.movement_speed = 0.0
+	var blocked_start: Vector3 = Vector3.ZERO
+	var blocked_target: Vector3 = Vector3.ZERO
+	var found_blocked_side_route: bool = false
+	for hinge_offset: float in [0.26, 0.30, 0.34]:
+		guard.global_position = side_operating - doorway_tangent * hinge_offset
+		guard.velocity = Vector3.ZERO
+		blocked_target = opposite_operating - doorway_tangent * hinge_offset
+		guard.set_awareness_navigation_target(&"investigate", blocked_target)
+		await physics_frame
+		await process_frame
+		await physics_frame
+		await process_frame
+		if bool(guard.call("_current_route_hits_door")):
+			blocked_start = guard.global_position
+			found_blocked_side_route = true
+			break
+
+	_assert_true(
+		found_blocked_side_route
+		and door.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
+		and not door.is_body_in_navigation_passage(guard),
+		"A fully open leaf can physically block the guard's current side approach before the guard enters the doorway"
+	)
+	if not found_blocked_side_route:
+		_print_guard_timeout_diagnostics("open-leaf side-route fixture", guard, door)
+		application.call("exit_current_world")
+		application.queue_free()
+		await process_frame
+		return
+
+	guard.global_position = blocked_start
+	guard.velocity = Vector3.ZERO
+	guard.set_awareness_navigation_target(&"investigate", blocked_target)
+	guard.movement_speed = original_speed
+	var observed_closing: bool = false
+	var minimum_fraction: float = 1.0
+	var crossed_after_maneuver: bool = false
+	for _frame_index: int in 480:
+		var phase: StringName = door.get_semantic_phase()
+		observed_closing = observed_closing or phase == VarkOrdinaryDoor.PHASE_CLOSING
+		minimum_fraction = minf(minimum_fraction, door.get_open_fraction())
+		var summary: Dictionary = guard.get_debug_summary()
+		if (
+			door.is_body_in_navigation_passage(guard)
+			and str(summary.get("door_traversal_state", "")) == "crossing"
+			and int(summary.get("door_maneuver_count", 0)) == 1
+			and int(summary.get("door_close_request_count", 0)) == 1
+		):
+			crossed_after_maneuver = true
+			break
+		if not str(summary.get("last_error", "")).is_empty():
+			break
+		await physics_frame
+		await process_frame
+
+	var final_summary: Dictionary = guard.get_debug_summary()
+	if not crossed_after_maneuver:
+		_print_guard_timeout_diagnostics("open-leaf close/reopen recovery", guard, door)
+	_assert_true(
+		crossed_after_maneuver
+		and observed_closing
+		and minimum_fraction <= 0.05
+		and int(final_summary.get("door_maneuver_count", 0)) == 1
+		and int(final_summary.get("door_close_request_count", 0)) == 1
+		and int(final_summary.get("door_use_count", 0)) == 1
+		and not bool(final_summary.get("door_close_request_pending", true))
+		and str(final_summary.get("last_error", "")).is_empty(),
+		"An already-open leaf that blocks the current side route makes the guard reposition outside the sweep, close it, reopen it, and cross instead of retrying OPEN forever"
+	)
+
+	application.call("exit_current_world")
+	application.queue_free()
+	await process_frame
+
 
 func _assert_guard_uses_passable_partial_door() -> void:
 	var application: Node = ApplicationScene.instantiate()
