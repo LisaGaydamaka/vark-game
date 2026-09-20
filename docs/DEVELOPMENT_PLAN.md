@@ -1341,24 +1341,47 @@ Meaningful durations/decay use world simulation time. If search/patrol behavior 
 - current search behavior is deterministic and uses the resolved evidence/last-seen position directly; 5.4 introduces no random search-point selection. The resolved target and remaining stage duration are persisted in the awareness semantic snapshot and restored before ordinary simulation resumes;
 - actor unconscious/dead state still forces awareness `inactive` and clears the temporary awareness navigation target.
 
-The current implementation does not add guard-to-guard communication, alarm broadcasting, omniscient player tracking, combat decision-making, multiple search waypoints, or randomized search patterns. Those belong to 5.5 and later combat work.
+The current implementation does not add guard-to-guard communication, alarm broadcasting, omniscient player tracking, combat decision-making, multiple search waypoints, or randomized search patterns. Advanced local search behavior belongs explicitly to 5.5; communication and combat decision-making remain later work.
 
 **Done when:** a weak locally heard sound causes suspicion and decays back to unaware; a strong local sound causes investigation then deterministic search at the resolved origin; saving during search restores the same search state, target, and remaining simulation-time duration with no event replay; ordinary exposed local vision creates alert/pursuit; complete darkness protects the player at normal stealth distances but not when standing point-blank directly in a guard's unobstructed face; loss of sight preserves alert briefly, then searches the last-seen position; search exhausts into recovery and patrol ownership returns; and existing Phase 3/Phase 4 reaction/save/hostility regressions remain compatible.
 
-**Automated:** implemented through new authoritative `tests/awareness/run_awareness_tests.gd`, added to `tests/run_all_tests.gd`. It launches the real Integrated Slice, shortens only test durations, freezes patrol motion while leaving awareness processing live, exercises weak/strong local hearing, gameplay-time decay, investigation/search navigation ownership, save/quickload of resolved search truth, confirmed visual pursuit, alert-loss grace, last-seen search, recovery, and return to patrol. Existing Application/Integration hostile and restore tests keep their legacy debug assertions through the compatibility view while the new suite asserts authoritative `awareness_state`. The 5.4 manual pass also exposed a pre-existing door/nav deadlock during awareness-driven movement and then showed that collision/proximity-based recovery remained structurally unstable. The bounded fix-forward now makes an **explicit ordinary-door navigation link** authoritative instead of inferring door intent while the guard is already moving. Each proof-world navigation bake carves a reserved approach/crossing corridor out of the ordinary navmesh and bridges it with one door-owned `NavigationLink3D`; normal patrol/search/pursuit can only enter that lane by reaching the link. The local traversal task waits for the actual capsule corridor to clear, requests OPEN idempotently only when needed, crosses to the link exit, and then resumes the unchanged semantic patrol/awareness destination. The guard no longer performs the AI close/reposition/reopen hack, and malformed/local traversal failures record diagnostics without setting the whole guard unconfigured. This pulls forward only the narrow door/nav traversal seam required to make 5.4 reliable; general 5.6 door/nav/perception integration remains later work.
+**Automated:** implemented through new authoritative `tests/awareness/run_awareness_tests.gd`, added to `tests/run_all_tests.gd`. It launches the real Integrated Slice, shortens only test durations, freezes patrol motion while leaving awareness processing live, exercises weak/strong local hearing, gameplay-time decay, investigation/search navigation ownership, save/quickload of resolved search truth, confirmed visual pursuit, alert-loss grace, last-seen search, recovery, and return to patrol. Existing Application/Integration hostile and restore tests keep their legacy debug assertions through the compatibility view while the new suite asserts authoritative `awareness_state`. The 5.4 manual pass also exposed a pre-existing door/nav deadlock during awareness-driven movement and then showed that collision/proximity-based recovery remained structurally unstable. The bounded fix-forward now makes an **explicit ordinary-door navigation link** authoritative instead of inferring door intent while the guard is already moving. Each proof-world navigation bake carves a reserved approach/crossing corridor out of the ordinary navmesh and bridges it with one door-owned `NavigationLink3D`; normal patrol/search/pursuit can only enter that lane by reaching the link. The local traversal task waits for the actual capsule corridor to clear, requests OPEN idempotently only when needed, crosses to the link exit, and then resumes the unchanged semantic patrol/awareness destination. The guard no longer performs the AI close/reposition/reopen hack, and malformed/local traversal failures record diagnostics without setting the whole guard unconfigured. This pulls forward only the narrow door/nav traversal seam required to make 5.4 reliable; general 5.7 door/nav/perception integration remains later work.
 
 **Manual:** required before accepting any later tuning that changes suspicion/alert/search timing or stealth predictability. This first 5.4 implementation introduces new player-facing guard behavior, so after automated acceptance the user must run one focused Integrated Slice playtest before 5.4 can be marked `[x]`: verify that a loud noise causes investigation/search; the development footstep loudness meter directly below exposure reports the expected movement relationship (crouch < walk < sprint) as well as louder stone / quieter carpet source values; complete darkness protects the player at ordinary distance but point-blank direct unobstructed face-to-face contact still confirms detection; ordinary clear exposed sight causes pursuit; breaking sight causes a believable short search rather than instant forgetting; and the guard eventually returns to patrol without feeling stuck or omniscient. The rerun must also cover door traversal: moving/searching/pursuing beside an open door on the same side must not touch it; a required closed crossing must open and complete; an already-open crossing (including the former side-leaf case) must use the reserved centered link corridor without closing/reopening the door; a physically passable partial opening must not receive a redundant OPEN; and the guard must resume its original semantic goal without loops or becoming unconfigured.
 
 
-## 5.5 NPC communication/local knowledge `[ ]`
+## 5.5 Advanced search / local investigation `[ ]`
+
+Replace the temporary single-point stationary search with believable local investigation while preserving the 5.4 information model: guards search from what they actually heard/saw, never from hidden current player position.
+
+This is **TARGET** behavior until integrated play proves the final search cadence and spatial pattern. The implementation may use deterministic or randomized point selection, but the player-facing contract is:
+
+- search begins from the resolved heard location or last-seen position already owned by awareness;
+- generate multiple reachable, plausible local search points around that evidence, constrained by navigation and nearby space rather than global player knowledge;
+- move between several search points instead of standing indefinitely at one destination;
+- visibly scan/look around at search stops so the state reads as active investigation rather than idle behavior;
+- ordinary vision/hearing remain live throughout the search, and new local evidence may interrupt/reseed the current search;
+- search expansion remains bounded in radius/time and eventually enters recovery, then returns navigation ownership to patrol;
+- do not query the hidden player's current position, choose cover because the player is actually behind it, or otherwise manufacture omniscient search choices;
+- if randomness is used, once search points/order become resolved gameplay truth they must survive save/restore rather than rerolling on load.
+
+Do not turn this item into room-clearing combat tactics, squad coordination, alarm broadcasting, or combat decision-making. Those remain separate later work.
+
+**Done when:** after losing confirmed sight or investigating a strong sound, the guard searches multiple reachable locations around the resolved evidence, visibly scans at search stops, can reacquire the player from new local vision/hearing, never tracks hidden player movement without evidence, gives up after a bounded search, and resumes patrol. Saving/loading during search restores the same resolved current search plan/progress closely enough that load does not reroll a materially different search.
+
+**Automated:** add deterministic coverage for search-point reachability/bounds, no hidden-player-position dependency, evidence-driven interruption/reseed, bounded completion/recovery, and persistence of any already-resolved search plan/order. Keep subjective route quality, scan cadence, and believability out of hard-coded tests until user acceptance.
+
+**Manual:** required — user/playtester runs the Integrated Slice and verifies that search reads as purposeful rather than idle, explores plausible nearby locations without seeming omniscient, reacts naturally to newly exposed/sounded evidence, and eventually gives up. If randomized patterns are used, repeat several searches to check variety without implausible or obviously player-tracking choices.
+
+## 5.6 NPC communication/local knowledge `[ ]`
 
 Implement explicit information sharing/alarm behavior without automatic global player knowledge.
 
-## 5.6 Door/nav/perception integration `[ ]`
+## 5.7 Door/nav/perception integration `[ ]`
 
 The same ordinary door coherently affects traversal/navigation, sight, acoustics, NPC use, and save/load.
 
-## 5.7 Early stress fixtures `[ ]`
+## 5.8 Early stress fixtures `[ ]`
 
 Measure representative cost for multiple guards/vision, sounds/hearing, gameplay lights/exposure, and nav updates around doors. Record the reference environment.
 
