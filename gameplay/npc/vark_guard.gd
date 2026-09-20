@@ -611,8 +611,23 @@ func _begin_open_leaf_maneuver() -> bool:
 	if not _is_finite_vector(crossing_point):
 		_fail_door_maneuver("ordinary door returned a non-finite crossing point")
 		return false
+	var navigation_map: RID = _navigation_agent.get_navigation_map()
+	operating_point = NavigationServer3D.map_get_closest_point(
+		navigation_map,
+		operating_point
+	)
+	crossing_point = NavigationServer3D.map_get_closest_point(
+		navigation_map,
+		crossing_point
+	)
+	if (
+		not _is_finite_vector(operating_point)
+		or not _is_finite_vector(crossing_point)
+	):
+		_fail_door_maneuver("navigation projection produced a non-finite door point")
+		return false
 	var path: PackedVector3Array = NavigationServer3D.map_get_path(
-		_navigation_agent.get_navigation_map(),
+		navigation_map,
 		global_position,
 		operating_point,
 		false
