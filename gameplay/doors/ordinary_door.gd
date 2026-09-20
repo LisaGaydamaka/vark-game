@@ -405,10 +405,20 @@ func finalize_navigation_traversal(navigation_map: RID) -> bool:
 		or not is_finite(projected_end.z)
 	):
 		return false
+	var frame: Dictionary = get_navigation_doorway_frame()
+	if not bool(frame.get("valid", false)):
+		return false
+	var center: Vector3 = frame.get("center", global_position)
+	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
+	var desired_start_side: float = (desired_start - center).dot(normal)
+	var desired_end_side: float = (desired_end - center).dot(normal)
+	var projected_start_side: float = (projected_start - center).dot(normal)
+	var projected_end_side: float = (projected_end - center).dot(normal)
 	if (
 		projected_start.distance_to(projected_end) <= 0.10
-		or desired_start.distance_to(projected_start) > 0.75
-		or desired_end.distance_to(projected_end) > 0.75
+		or desired_start_side * projected_start_side <= 0.0
+		or desired_end_side * projected_end_side <= 0.0
+		or projected_start_side * projected_end_side >= 0.0
 	):
 		return false
 
