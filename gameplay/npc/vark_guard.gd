@@ -669,9 +669,17 @@ func _process_door_maneuver(delta: float) -> bool:
 				0.0,
 				_door_operating_point.z - global_position.z
 			)
-			if (
+			var reached_operating_point: bool = (
 				to_operating_point.length()
 				<= maxf(_navigation_agent.target_desired_distance, 0.01)
+			)
+			var reached_safe_clearance: bool = (
+				_horizontal_distance_to_door()
+				>= _door_approach_clearance() + 0.02
+			)
+			if reached_operating_point or (
+				_navigation_agent.is_navigation_finished()
+				and reached_safe_clearance
 			):
 				velocity = Vector3.ZERO
 				_door_traversal_state = DoorTraversalState.WAITING_CLOSE
@@ -680,7 +688,9 @@ func _process_door_maneuver(delta: float) -> bool:
 				_retry_door_close_request(delta)
 				return true
 			if _navigation_agent.is_navigation_finished():
-				_fail_door_maneuver("safe door operating point became unreachable")
+				_fail_door_maneuver(
+					"navigation ended before reaching safe door-sweep clearance"
+				)
 				return true
 			var next_position: Vector3 = _navigation_agent.get_next_path_position()
 			var direction := Vector3(
