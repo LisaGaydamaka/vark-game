@@ -670,7 +670,10 @@ func _assert_advanced_local_search_behavior() -> void:
 		and float(recovery_later.get("residual_alert_strength", 1.0))
 			< float(recovery_start.get("residual_alert_strength", 0.0))
 	)
-	var borderline_strength: float = reaction.hearing_investigate_strength * 0.75
+	# Keep the source loud enough to clear the listener's acoustic floor after
+	# distance attenuation, but below the ordinary awareness investigation
+	# threshold so only residual alertness can promote it to investigation.
+	var borderline_strength: float = reaction.hearing_investigate_strength * 0.90
 	var residual_realert_queued: bool = bool(session.call(
 		"queue_gameplay_sound",
 		int(session.get("session_id")),
