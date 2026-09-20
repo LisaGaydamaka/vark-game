@@ -131,7 +131,11 @@ func _prove_direct_airborne_restore(
 	var player := application.get("current_player") as CharacterBody3D
 
 	Input.action_press("jump")
-	await _completed_physics_frame(tree)
+	var reached_rising_airborne: bool = await _wait_for_rising_airborne(
+		tree,
+		player,
+		8
+	)
 	Input.action_release("jump")
 	var source_movement: Dictionary = player.call(
 		"get_movement_semantic_state"
@@ -147,7 +151,8 @@ func _prove_direct_airborne_restore(
 	)
 
 	assert_true.call(
-		source_movement.get("support", "") == "airborne"
+		reached_rising_airborne
+		and source_movement.get("support", "") == "airborne"
 		and source_movement.get("traversal", "") == "normal"
 		and saved_player.get("restore_policy", &"") == &"direct"
 		and saved_velocity.y > 0.0,
@@ -350,6 +355,29 @@ func _launch_application(
 	if scene_path == FLAT_PATH:
 		await _advance_frames(tree, 3)
 	return application
+
+
+func _wait_for_rising_airborne(
+	tree: SceneTree,
+	player: CharacterBody3D,
+	max_frames: int
+) -> bool:
+	for _frame: int in max_frames:
+		await _completed_physics_frame(tree)
+		var state: Dictionary = player.call(
+			"get_movement_semantic_state"
+		)
+		var sampled_velocity: Vector3 = state.get(
+			"velocity",
+			Vector3.ZERO
+		)
+		if (
+			state.get("support", "") == "airborne"
+			and state.get("traversal", "") == "normal"
+			and sampled_velocity.y > 0.0
+		):
+			return true
+	return false
 
 
 func _wait_for_traversal_state(
