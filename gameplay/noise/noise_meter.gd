@@ -91,14 +91,18 @@ func _render() -> void:
 	)
 	var kind: String = str(_last_summary.get("last_sound_kind", &""))
 	var gait: String = str(_last_summary.get("last_gait", "walking"))
+	var loudness_level: String = str(
+		_last_summary.get("last_loudness_id", &"")
+	)
 	_debug_text = (
 		"LOUDNESS %.2f [%s]\n"
-		+ "last %.2f · %s · %s"
+		+ "last %.2f · %s · %s · %s"
 	) % [
 		_current_loudness,
 		bar_text,
 		last_strength,
 		kind if not kind.is_empty() else "none",
+		loudness_level if not loudness_level.is_empty() else "none",
 		gait,
 	]
 	_apply_presentation()

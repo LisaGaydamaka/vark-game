@@ -1262,25 +1262,25 @@ There is deliberately no physical attack animation, weapon selection, health/dam
 
 Goal: turn spike implementations into reliable Vark systems only after their interactions, save semantics, and hostile compatibility are known.
 
-## 5.1 Surface profiles and gameplay noise `[x]`
+## 5.1 Surface profiles and gameplay noise `[~]`
 
 Generalize the proven semantic gameplay-sound contract only as far as real use requires.
 
 The Phase 3 footstep proof is promoted out of the Integrated Slice into reusable gameplay ownership without broadening the acoustic model:
 
-- `VarkSurfaceProfile` is an authored Resource that owns the stable semantic `surface_id` and base `footstep_strength`. The current sound kind remains derived as `footstep.<surface_id>`; there is no duplicate authored kind field;
+- `VarkSurfaceProfile` is an authored Resource that owns the stable semantic `surface_id` plus exactly one of three authored loudness tiers: `quiet`, `normal`, or `loud`. Canonical footstep strengths are derived from the tier (`0.20`, `0.52`, `0.80`) rather than freely authored per surface. The current sound kind remains derived as `footstep.<surface_id>`; there is no duplicate authored kind or strength field;
 - `VarkFootstepSurface` is a reusable Area3D that references one profile and exposes only profile-derived semantic summary data. Invalid/missing profiles fail closed;
 - `VarkPlayerFootstepEmitter` is the reusable player/world emitter. It preserves the proven distance-based step cadence and stance scaling, resolves the current overlapping reusable footstep surface, and queues the same three-field `gameplay.sound` source fact through WorldSession. Grounded cadence progress pauses rather than resets when movement drops below the minimum speed, so repeated short WASD bursts cannot erase accumulated step distance and remain indefinitely silent;
-- the Integrated Slice keeps its old script paths as compatibility wrappers but moves behavior into `gameplay/noise`. Stone and carpet now reference authored reusable profile resources at `gameplay/noise/profiles/stone.tres` and `carpet.tres`;
-- stone remains 0.52 base strength, carpet remains 0.20, and crouch remains a 0.45 multiplier. This hardening item intentionally preserves accepted Phase 3 behavior rather than retuning stealth audibility.
+- the Integrated Slice keeps its old script paths as compatibility wrappers but moves behavior into `gameplay/noise`. Carpet, stone, and tile reference authored reusable profiles at `gameplay/noise/profiles/carpet.tres`, `stone.tres`, and `tile.tres`, and the slice contains non-overlapping labeled floor regions for all three tiers;
+- carpet is `quiet` at 0.20, stone is `normal` at the existing 0.52, tile is `loud` at 0.80, and crouch/sprint remain multiplicative gait modifiers on top of the selected surface tier. This adds the missing loud tier without changing the accepted carpet/stone baseline.
 
 Door use, prop impact, speech, and crude hostile-impact sounds continue using the same semantic `gameplay.sound` contract directly. 5.1 does not introduce material physics, audio playback assets, per-shoe modifiers, sprint-specific tuning, random footstep variation, or propagation changes.
 
-**Done when:** authored surface profiles can be validated independently; the real Integrated Slice consumes reusable profile-driven surfaces/emitter; standing stone emits `footstep.stone` at 0.52, standing carpet emits `footstep.carpet` at 0.20, crouch scales strength without changing surface identity/kind, and the existing guard acoustic listener receives those events through the unchanged gameplay-sound path.
+**Done when:** authored surface profiles can select only `quiet`, `normal`, or `loud`; canonical strength is derived from that tier rather than arbitrary per-surface tuning; the real Integrated Slice exposes carpet/stone/tile examples; standing carpet emits quiet `footstep.carpet` at 0.20, stone emits normal `footstep.stone` at 0.52, tile emits loud `footstep.tile` at 0.80, gait modifiers preserve the tier ordering, and the existing guard acoustic listener receives all three through the unchanged gameplay-sound path.
 
-**Automated:** accepted baseline from exact `test` head `55f5cf0c96c12b5efd8beb3a373f63ad43374897` / Godot 4.7.2 GitHub Actions Test run #259, with later regression coverage also proving grounded sub-step movement bursts preserve cadence progress across stationary pauses and eventually emit once their cumulative distance crosses the normal step threshold. The Gameplay Noise suite continues to cover profile validation, reusable surface/profile composition, real Integrated Slice wiring, stone/carpet semantic emission, stance/gait scaling, and the unchanged gameplay-sound route.
+**Automated:** the authoritative Gameplay Noise suite now checks the closed three-tier profile contract, fail-closed invalid tier authoring, canonical `quiet < normal < loud` strengths, real Integrated Slice carpet/stone/tile wiring, all three semantic sound kinds through the existing listener route, gait scaling, loudness-meter reporting, and the grounded burst-movement cadence regression. The Phase 3 Integration suite also requires all three tiered surfaces in the real slice. Post-push CI must remain green.
 
-**Manual:** none — 5.1 is accepted because it preserves the already user-accepted Phase 3 stone/carpet/crouch behavior and changes ownership/authoring structure rather than sound feel, audibility tuning, or presentation. Any future tuning that changes stealth readability requires a focused user playtest.
+**Manual:** required — user/playtester crosses the labeled carpet, stone, and tile regions at the same standing walking gait and verifies an obvious but usable three-step stealth gradient: carpet quietest, stone clearly middle/normal, tile clearly loudest. Then crouch and sprint on each tier to confirm gait still changes loudness without collapsing the surface ordering. Acceptance should focus on stealth readability rather than the debug meter alone.
 
 
 ## 5.2 Acoustic model `[x]`

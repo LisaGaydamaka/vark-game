@@ -141,6 +141,11 @@ func _assert_integrated_slice() -> void:
 		if world != null
 		else null
 	)
+	var tile_surface: Area3D = (
+		world.get_node_or_null("TileSurface") as Area3D
+		if world != null
+		else null
+	)
 	var crate_a := (
 		world.get_node_or_null("CrateA") as VarkOrdinaryProp
 		if world != null
@@ -215,6 +220,7 @@ func _assert_integrated_slice() -> void:
 		and footsteps != null
 		and stone_surface != null
 		and carpet_surface != null
+		and tile_surface != null
 		and crate_a != null
 		and crate_b != null
 		and gameplay_light != null
@@ -245,6 +251,7 @@ func _assert_integrated_slice() -> void:
 		or footsteps == null
 		or stone_surface == null
 		or carpet_surface == null
+		or tile_surface == null
 		or crate_a == null
 	):
 		application.call("exit_current_world")
@@ -261,6 +268,7 @@ func _assert_integrated_slice() -> void:
 		and int(propagation_summary.get("door_count", 0)) == 1
 		and stone_surface.has_method("get_surface_summary")
 		and carpet_surface.has_method("get_surface_summary")
+		and tile_surface.has_method("get_surface_summary")
 		and is_equal_approx(
 			float((
 				stone_surface.call("get_surface_summary") as Dictionary
@@ -272,8 +280,17 @@ func _assert_integrated_slice() -> void:
 				carpet_surface.call("get_surface_summary") as Dictionary
 			).get("footstep_strength", 0.0)),
 			0.20
+		)
+		and (carpet_surface.call("get_surface_summary") as Dictionary).get("loudness_id", &"") == &"quiet"
+		and (stone_surface.call("get_surface_summary") as Dictionary).get("loudness_id", &"") == &"normal"
+		and (tile_surface.call("get_surface_summary") as Dictionary).get("loudness_id", &"") == &"loud"
+		and is_equal_approx(
+			float((
+				tile_surface.call("get_surface_summary") as Dictionary
+			).get("footstep_strength", 0.0)),
+			0.80
 		),
-		"The slice reuses one baked nav route, one door-controlled acoustic portal, two listeners, and distinct loud-stone/quiet-carpet footstep surfaces"
+		"The slice reuses one baked nav route, one door-controlled acoustic portal, two listeners, and explicit quiet-carpet / normal-stone / loud-tile footstep tiers"
 	)
 
 	var guard_start: Vector3 = guard.global_position

@@ -5,4 +5,4 @@
 [resource]
 script = ExtResource("1_profile")
 surface_id = &"carpet"
-footstep_strength = 0.20
+loudness_level = 0

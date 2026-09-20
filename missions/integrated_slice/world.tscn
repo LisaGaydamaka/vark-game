@@ -1,4 +1,4 @@
-[gd_scene load_steps=45 format=3]
+[gd_scene load_steps=49 format=3]
 
 [ext_resource type="Script" path="res://missions/integrated_slice/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
@@ -20,6 +20,7 @@
 [ext_resource type="Script" path="res://missions/integrated_slice/footstep_emitter.gd" id="18_footsteps"]
 [ext_resource type="Resource" path="res://gameplay/noise/profiles/stone.tres" id="19_stone_profile"]
 [ext_resource type="Resource" path="res://gameplay/noise/profiles/carpet.tres" id="20_carpet_profile"]
+[ext_resource type="Resource" path="res://gameplay/noise/profiles/tile.tres" id="23_tile_profile"]
 [ext_resource type="Script" path="res://gameplay/visibility/light_gem.gd" id="21_light_gem"]
 [ext_resource type="Script" path="res://gameplay/noise/noise_meter.gd" id="22_noise_meter"]
 
@@ -77,6 +78,12 @@ roughness = 0.82
 [sub_resource type="BoxShape3D" id="SurfaceShape"]
 size = Vector3(9.6, 0.45, 7.7)
 
+[sub_resource type="BoxShape3D" id="StoneSurfaceShape"]
+size = Vector3(9.6, 0.45, 5.7)
+
+[sub_resource type="BoxShape3D" id="TileSurfaceShape"]
+size = Vector3(9.6, 0.45, 1.8)
+
 [sub_resource type="BoxShape3D" id="TriggerShape"]
 size = Vector3(1.6, 1.2, 1.6)
 
@@ -90,6 +97,10 @@ albedo_color = Color(0.30, 0.42, 0.58, 1)
 [sub_resource type="StandardMaterial3D" id="CarpetMarkerMaterial"]
 shading_mode = 0
 albedo_color = Color(0.33, 0.18, 0.18, 1)
+
+[sub_resource type="StandardMaterial3D" id="TileMarkerMaterial"]
+shading_mode = 0
+albedo_color = Color(0.62, 0.62, 0.72, 1)
 
 [sub_resource type="StandardMaterial3D" id="ObjectiveMarkerMaterial"]
 shading_mode = 0
@@ -317,14 +328,14 @@ gameplay_light_id = &"light.slice_north"
 gameplay_strength = 1.0
 
 [node name="StoneSurface" type="Area3D" parent="."]
-position = Vector3(0, 0.15, 4)
+position = Vector3(0, 0.15, 2.95)
 collision_layer = 0
 collision_mask = 2
 script = ExtResource("17_surface")
 surface_profile = ExtResource("19_stone_profile")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="StoneSurface"]
-shape = SubResource("SurfaceShape")
+shape = SubResource("StoneSurfaceShape")
 
 [node name="CarpetSurface" type="Area3D" parent="."]
 position = Vector3(0, 0.15, -4)
@@ -336,8 +347,18 @@ surface_profile = ExtResource("20_carpet_profile")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="CarpetSurface"]
 shape = SubResource("SurfaceShape")
 
+[node name="TileSurface" type="Area3D" parent="."]
+position = Vector3(0, 0.15, 6.85)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("17_surface")
+surface_profile = ExtResource("23_tile_profile")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TileSurface"]
+shape = SubResource("TileSurfaceShape")
+
 [node name="StoneMarker" type="Node3D" parent="."]
-position = Vector3(-3.45, 0.02, 4.2)
+position = Vector3(-3.45, 0.02, 2.8)
 
 [node name="Pad" type="MeshInstance3D" parent="StoneMarker"]
 mesh = SubResource("MarkerMesh")
@@ -345,7 +366,7 @@ material_override = SubResource("StoneMarkerMaterial")
 
 [node name="Label" type="Label3D" parent="StoneMarker"]
 position = Vector3(0, 0.35, 0)
-text = "STONE / LOUD STEPS"
+text = "STONE / NORMAL STEPS"
 billboard = 1
 font_size = 19
 outline_size = 6
@@ -361,6 +382,21 @@ material_override = SubResource("CarpetMarkerMaterial")
 [node name="Label" type="Label3D" parent="CarpetMarker"]
 position = Vector3(0, 0.35, 0)
 text = "CARPET / QUIET STEPS"
+billboard = 1
+font_size = 19
+outline_size = 6
+no_depth_test = true
+
+[node name="TileMarker" type="Node3D" parent="."]
+position = Vector3(-3.45, 0.02, 6.75)
+
+[node name="Pad" type="MeshInstance3D" parent="TileMarker"]
+mesh = SubResource("MarkerMesh")
+material_override = SubResource("TileMarkerMaterial")
+
+[node name="Label" type="Label3D" parent="TileMarker"]
+position = Vector3(0, 0.35, 0)
+text = "TILE / LOUD STEPS"
 billboard = 1
 font_size = 19
 outline_size = 6

@@ -18,6 +18,7 @@ var _last_position: Vector3 = Vector3.ZERO
 var _distance_since_step: float = 0.0
 var _queued_count: int = 0
 var _last_surface_id: StringName = &""
+var _last_loudness_id: StringName = &""
 var _last_sound_kind: StringName = &""
 var _last_base_strength: float = 0.0
 var _last_strength: float = 0.0
@@ -88,7 +89,7 @@ func emit_step_now() -> bool:
 	if surface == null or not surface.has_valid_surface_profile():
 		return false
 	var profile: VarkSurfaceProfile = surface.get_surface_profile()
-	var base_strength: float = profile.footstep_strength
+	var base_strength: float = profile.get_footstep_strength()
 	var kind: StringName = profile.get_footstep_sound_kind()
 	if kind.is_empty() or base_strength <= 0.0:
 		return false
@@ -116,6 +117,7 @@ func emit_step_now() -> bool:
 		return false
 	_queued_count += 1
 	_last_surface_id = profile.surface_id
+	_last_loudness_id = profile.get_loudness_id()
 	_last_sound_kind = kind
 	_last_base_strength = base_strength
 	_last_strength = strength
@@ -130,6 +132,7 @@ func get_debug_summary() -> Dictionary:
 		"enabled": emission_enabled,
 		"queued_count": _queued_count,
 		"last_surface_id": _last_surface_id,
+		"last_loudness_id": _last_loudness_id,
 		"last_sound_kind": _last_sound_kind,
 		"last_base_strength": _last_base_strength,
 		"last_strength": _last_strength,

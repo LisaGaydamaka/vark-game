@@ -5,6 +5,7 @@ const ApplicationScene = preload("res://application/Application.tscn")
 const SLICE_PATH: String = "res://missions/integrated_slice/world.tscn"
 const STONE_PROFILE_PATH: String = "res://gameplay/noise/profiles/stone.tres"
 const CARPET_PROFILE_PATH: String = "res://gameplay/noise/profiles/carpet.tres"
+const TILE_PROFILE_PATH: String = "res://gameplay/noise/profiles/tile.tres"
 const NoiseMeter = preload("res://gameplay/noise/noise_meter.gd")
 
 var failures: Array[String] = []
@@ -24,26 +25,43 @@ func _run_tests() -> void:
 func _assert_surface_profile_contract() -> void:
 	var stone := load(STONE_PROFILE_PATH) as VarkSurfaceProfile
 	var carpet := load(CARPET_PROFILE_PATH) as VarkSurfaceProfile
-	var invalid := VarkSurfaceProfile.new()
-	invalid.surface_id = &""
-	invalid.footstep_strength = 0.40
+	var tile := load(TILE_PROFILE_PATH) as VarkSurfaceProfile
+	var missing_id := VarkSurfaceProfile.new()
+	missing_id.surface_id = &""
+	var invalid_level := VarkSurfaceProfile.new()
+	invalid_level.surface_id = &"invalid"
+	invalid_level.loudness_level = 99
 
 	_assert_true(
 		stone != null
 		and carpet != null
+		and tile != null
 		and stone.is_valid_profile()
 		and carpet.is_valid_profile()
-		and stone.surface_id == &"stone"
+		and tile.is_valid_profile()
 		and carpet.surface_id == &"carpet"
-		and stone.get_footstep_sound_kind() == &"footstep.stone"
+		and stone.surface_id == &"stone"
+		and tile.surface_id == &"tile"
+		and carpet.get_loudness_id() == &"quiet"
+		and stone.get_loudness_id() == &"normal"
+		and tile.get_loudness_id() == &"loud"
 		and carpet.get_footstep_sound_kind() == &"footstep.carpet"
-		and stone.footstep_strength > carpet.footstep_strength,
-		"Phase 5.1 authored SurfaceProfiles own stable semantic surface IDs and base footstep strengths"
+		and stone.get_footstep_sound_kind() == &"footstep.stone"
+		and tile.get_footstep_sound_kind() == &"footstep.tile"
+		and is_equal_approx(carpet.get_footstep_strength(), 0.20)
+		and is_equal_approx(stone.get_footstep_strength(), 0.52)
+		and is_equal_approx(tile.get_footstep_strength(), 0.80)
+		and carpet.get_footstep_strength() < stone.get_footstep_strength()
+		and stone.get_footstep_strength() < tile.get_footstep_strength(),
+		"Phase 5.1 SurfaceProfiles enforce exactly quiet/normal/loud footstep tiers with canonical strengths"
 	)
 	_assert_true(
-		not invalid.is_valid_profile()
-		and invalid.get_footstep_sound_kind().is_empty(),
-		"Phase 5.1 invalid surface profiles fail closed instead of manufacturing gameplay-noise identity"
+		not missing_id.is_valid_profile()
+		and missing_id.get_footstep_sound_kind().is_empty()
+		and not invalid_level.is_valid_profile()
+		and invalid_level.get_loudness_id().is_empty()
+		and is_zero_approx(invalid_level.get_footstep_strength()),
+		"Phase 5.1 invalid surface IDs or loudness tiers fail closed instead of manufacturing gameplay-noise truth"
 	)
 
 	var reusable_surface := VarkFootstepSurface.new()
@@ -109,6 +127,11 @@ func _assert_integrated_surface_noise() -> void:
 		if world != null
 		else null
 	)
+	var tile_surface := (
+		world.get_node_or_null("TileSurface") as VarkFootstepSurface
+		if world != null
+		else null
+	)
 	var noise_meter := (
 		world.get_node_or_null("ExposureHUD/NoisePanel") as VarkNoiseMeter
 		if world != null
@@ -132,13 +155,16 @@ func _assert_integrated_surface_noise() -> void:
 		and footsteps != null
 		and stone_surface != null
 		and carpet_surface != null
+		and tile_surface != null
 		and noise_meter != null
 		and noise_meter.get_script() == NoiseMeter
 		and noise_bar != null
 		and stone_surface.get_surface_profile().resource_path
 			== STONE_PROFILE_PATH
 		and carpet_surface.get_surface_profile().resource_path
-			== CARPET_PROFILE_PATH,
+			== CARPET_PROFILE_PATH
+		and tile_surface.get_surface_profile().resource_path
+			== TILE_PROFILE_PATH,
 		"Phase 5.1 the real Integrated Slice consumes reusable gameplay/noise surfaces, emitter, and authored profiles"
 	)
 	if (
@@ -151,6 +177,7 @@ func _assert_integrated_surface_noise() -> void:
 		or footsteps == null
 		or stone_surface == null
 		or carpet_surface == null
+		or tile_surface == null
 		or noise_meter == null
 		or noise_bar == null
 	):
@@ -184,6 +211,7 @@ func _assert_integrated_surface_noise() -> void:
 		standing_ready
 		and stone_queued
 		and stone_summary.get("last_surface_id", &"") == &"stone"
+		and stone_summary.get("last_loudness_id", &"") == &"normal"
 		and stone_summary.get("last_sound_kind", &"") == &"footstep.stone"
 		and is_equal_approx(
 			float(stone_summary.get("last_base_strength", 0.0)),
@@ -213,6 +241,35 @@ func _assert_integrated_surface_noise() -> void:
 		"Integrated Slice development loudness meter observes the actual semantic footstep source strength beside the exposure meter"
 	)
 
+	player.global_position = Vector3(0.0, 0.0, 6.85)
+	player.velocity = Vector3.ZERO
+	guard.global_position = Vector3(0.0, 0.0, 6.10)
+	guard.velocity = Vector3.ZERO
+	await _settle_overlap_frames(3)
+	guard_listener.clear_perception()
+
+	var tile_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var tile_summary: Dictionary = footsteps.get_debug_summary()
+	var tile_perception: Dictionary = guard_listener.get_last_perception()
+	var tile_meter_summary: Dictionary = noise_meter.get_last_summary()
+	_assert_true(
+		tile_queued
+		and tile_summary.get("last_surface_id", &"") == &"tile"
+		and tile_summary.get("last_loudness_id", &"") == &"loud"
+		and tile_summary.get("last_sound_kind", &"") == &"footstep.tile"
+		and is_equal_approx(
+			float(tile_summary.get("last_base_strength", 0.0)),
+			0.80
+		)
+		and bool(tile_perception.get("heard", false))
+		and tile_perception.get("kind", &"") == &"footstep.tile"
+		and is_equal_approx(noise_meter.get_current_loudness(), 0.80)
+		and tile_meter_summary.get("last_loudness_id", &"") == &"loud"
+		and noise_meter.get_debug_text().contains("loud"),
+		"Phase 5.1 tile is the loud surface tier and uses the same semantic sound, acoustic listener, and debug-meter path"
+	)
+
 	player.global_position = Vector3(0.0, 0.0, -4.0)
 	player.velocity = Vector3.ZERO
 	guard.global_position = Vector3(0.0, 0.0, -3.0)
@@ -228,6 +285,7 @@ func _assert_integrated_surface_noise() -> void:
 	_assert_true(
 		carpet_queued
 		and carpet_summary.get("last_surface_id", &"") == &"carpet"
+		and carpet_summary.get("last_loudness_id", &"") == &"quiet"
 		and carpet_summary.get("last_sound_kind", &"") == &"footstep.carpet"
 		and is_equal_approx(
 			float(carpet_summary.get("last_base_strength", 0.0)),

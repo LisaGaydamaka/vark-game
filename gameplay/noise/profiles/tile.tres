@@ -4,5 +4,5 @@
 
 [resource]
 script = ExtResource("1_profile")
-surface_id = &"stone"
-loudness_level = 1
+surface_id = &"tile"
+loudness_level = 2
