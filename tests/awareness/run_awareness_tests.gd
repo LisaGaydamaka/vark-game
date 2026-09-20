@@ -66,7 +66,8 @@ func _assert_guard_awareness_state_machine() -> void:
 	) as VarkGameplayExposure
 
 	_configure_short_durations(reaction)
-	guard.movement_speed = 0.0
+	# Freeze locomotion without erasing the authored base speed; semantic
+	# awareness speed-profile assertions still need a meaningful baseline.
 	guard.velocity = Vector3.ZERO
 	guard.set_physics_process(false)
 	light.gameplay_enabled = false
@@ -249,7 +250,8 @@ func _assert_guard_awareness_state_machine() -> void:
 		"GameplayExposure"
 	) as VarkGameplayExposure
 	_configure_short_durations(reaction)
-	guard.movement_speed = 0.0
+	# Freeze locomotion without erasing the authored base speed; semantic
+	# awareness speed-profile assertions still need a meaningful baseline.
 	guard.velocity = Vector3.ZERO
 	guard.set_physics_process(false)
 
