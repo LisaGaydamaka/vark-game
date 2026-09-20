@@ -997,6 +997,10 @@ func _configure_short_durations(
 	reaction.search_point_count = 3
 	reaction.search_radius = 0.60
 	reaction.search_max_radius = 1.20
+	# This fixture deliberately compresses spatial search to keep CI fast, so
+	# its spacing must scale with that tiny radius instead of inheriting the
+	# much wider 1.40 m production stop-separation target.
+	reaction.search_point_min_separation = 0.25
 	reaction.search_radius_expansion = 0.30
 	reaction.search_confidence_decay_per_second = 0.12
 	reaction.search_confidence_drop_per_expansion = 0.10
