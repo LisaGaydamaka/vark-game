@@ -135,7 +135,12 @@ func _prove_direct_airborne_restore(
 	# edge this regression intends to test.
 	Input.action_release("jump")
 	await _completed_physics_frame(tree)
+	var boundary: Node = application.get_node("InputBoundary")
 	Input.action_press("jump")
+	var sampled_fresh_jump: bool = await _sample_fresh_jump_on_next_physics_frame(
+		tree,
+		boundary
+	)
 	var reached_rising_airborne: bool = await _wait_for_rising_airborne(
 		tree,
 		player,
@@ -156,7 +161,8 @@ func _prove_direct_airborne_restore(
 	)
 
 	assert_true.call(
-		reached_rising_airborne
+		sampled_fresh_jump
+		and reached_rising_airborne
 		and source_movement.get("support", "") == "airborne"
 		and source_movement.get("traversal", "") == "normal"
 		and saved_player.get("restore_policy", &"") == &"direct"
@@ -360,6 +366,25 @@ func _launch_application(
 	if scene_path == FLAT_PATH:
 		await _advance_frames(tree, 3)
 	return application
+
+
+func _sample_fresh_jump_on_next_physics_frame(
+	tree: SceneTree,
+	boundary: Node
+) -> bool:
+	await tree.physics_frame
+	var command: PlayerCommand = boundary.call(
+		"sample_locomotion_command"
+	) as PlayerCommand
+	var sampled_fresh_jump: bool = (
+		command != null
+		and command.jump_pressed
+		and command.jump_held
+	)
+	# physics_frame is emitted before player _physics_process(). The player's
+	# later sample in this same frame receives the boundary's cached command.
+	await tree.process_frame
+	return sampled_fresh_jump
 
 
 func _wait_for_rising_airborne(
