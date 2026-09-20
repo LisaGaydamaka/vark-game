@@ -1,4 +1,4 @@
-[gd_scene load_steps=43 format=3]
+[gd_scene load_steps=44 format=3]
 
 [ext_resource type="Script" path="res://missions/integrated_slice/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
@@ -20,6 +20,7 @@
 [ext_resource type="Script" path="res://missions/integrated_slice/footstep_emitter.gd" id="18_footsteps"]
 [ext_resource type="Resource" path="res://gameplay/noise/profiles/stone.tres" id="19_stone_profile"]
 [ext_resource type="Resource" path="res://gameplay/noise/profiles/carpet.tres" id="20_carpet_profile"]
+[ext_resource type="Script" path="res://gameplay/visibility/light_gem.gd" id="21_light_gem"]
 
 [sub_resource type="Environment" id="Environment_slice"]
 background_mode = 1
@@ -303,8 +304,6 @@ open_transmission = 1.0
 [node name="GameplayExposure" type="Node3D" parent="."]
 script = ExtResource("12_exposure")
 player_path = NodePath("../Player")
-debug_label_path = NodePath("../ExposureHUD/Panel/VBox/Readout")
-debug_bar_path = NodePath("../ExposureHUD/Panel/VBox/ExposureBar")
 
 [node name="NorthGameplayLight" type="OmniLight3D" parent="."]
 position = Vector3(0, 2.6, -2.7)
@@ -460,6 +459,8 @@ no_depth_test = true
 [node name="ExposureHUD" type="CanvasLayer" parent="."]
 
 [node name="Panel" type="PanelContainer" parent="ExposureHUD"]
+script = ExtResource("21_light_gem")
+exposure_path = NodePath("../../GameplayExposure")
 offset_left = 16.0
 offset_top = 16.0
 offset_right = 430.0
@@ -468,7 +469,7 @@ offset_bottom = 118.0
 [node name="VBox" type="VBoxContainer" parent="ExposureHUD/Panel"]
 
 [node name="Title" type="Label" parent="ExposureHUD/Panel/VBox"]
-text = "3.12 LIGHT GEM / EXPOSURE"
+text = "5.3 LIGHT GEM / EXPOSURE"
 
 [node name="ExposureBar" type="ProgressBar" parent="ExposureHUD/Panel/VBox"]
 custom_minimum_size = Vector2(390, 18)

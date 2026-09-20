@@ -48,6 +48,23 @@ func reconcile_after_restore() -> bool:
 	return true
 
 
+func get_gameplay_debug_state() -> Dictionary:
+	return {
+		"light_id": gameplay_light_id,
+		"persistent_id": persistent_id,
+		"gameplay_enabled": gameplay_enabled,
+		"visible": visible,
+		"gameplay_strength": gameplay_strength,
+		"range_meters": maxf(omni_range, 0.0),
+		"active": (
+			gameplay_enabled
+			and visible
+			and is_finite(gameplay_strength)
+			and gameplay_strength > 0.0
+		),
+	}
+
+
 func sample_gameplay_exposure(
 	sample_position: Vector3,
 	space_state: PhysicsDirectSpaceState3D
@@ -60,13 +77,14 @@ func sample_gameplay_exposure(
 		or gameplay_strength <= 0.0
 		or distance >= range_meters
 	):
-		return {
-			"light_id": gameplay_light_id,
+		var inactive_state: Dictionary = get_gameplay_debug_state()
+		inactive_state.merge({
 			"distance": distance,
 			"distance_weight": 0.0,
 			"occluded": false,
 			"contribution": 0.0,
-		}
+		}, true)
+		return inactive_state
 
 	var query := PhysicsRayQueryParameters3D.create(
 		global_position,
@@ -82,8 +100,8 @@ func sample_gameplay_exposure(
 		0.0,
 		1.0
 	)
-	return {
-		"light_id": gameplay_light_id,
+	var state: Dictionary = get_gameplay_debug_state()
+	state.merge({
 		"distance": distance,
 		"distance_weight": distance_weight,
 		"occluded": occluded,
@@ -92,4 +110,5 @@ func sample_gameplay_exposure(
 			if occluded
 			else gameplay_strength * distance_weight
 		),
-	}
+	}, true)
+	return state

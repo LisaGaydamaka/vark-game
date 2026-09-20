@@ -1,8 +1,9 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=16 format=3]
 
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
 [ext_resource type="Script" path="res://gameplay/visibility/gameplay_exposure.gd" id="2_exposure"]
 [ext_resource type="Script" path="res://gameplay/visibility/gameplay_light.gd" id="3_light"]
+[ext_resource type="Script" path="res://gameplay/visibility/light_gem.gd" id="4_gem"]
 
 [sub_resource type="BoxShape3D" id="FloorShape"]
 size = Vector3(18, 0.2, 12)
@@ -68,6 +69,13 @@ shadow_enabled = true
 script = ExtResource("3_light")
 gameplay_light_id = &"fill"
 gameplay_strength = 0.8
+
+[node name="DecorativeOnlyLight" type="OmniLight3D" parent="."]
+position = Vector3(-7, 2.2, -4)
+light_color = Color(0.9, 0.35, 0.25, 1)
+light_energy = 4.5
+omni_range = 3.5
+shadow_enabled = true
 
 [node name="Floor" type="StaticBody3D" parent="."]
 position = Vector3(-1, -0.1, 0)
@@ -154,6 +162,19 @@ text = "TWO LIGHTS"
 billboard = 1
 font_size = 24
 
+[node name="DecorativeMarker" type="Node3D" parent="."]
+position = Vector3(-7, 0.02, -4)
+
+[node name="Pad" type="MeshInstance3D" parent="DecorativeMarker"]
+mesh = SubResource("MarkerMesh")
+material_override = SubResource("MultiMarkerMaterial")
+
+[node name="Label" type="Label3D" parent="DecorativeMarker"]
+position = Vector3(0, 0.35, 0)
+text = "DECORATIVE ONLY"
+billboard = 1
+font_size = 24
+
 [node name="OccludedMarker" type="Node3D" parent="."]
 position = Vector3(-2.5, 0.02, -4)
 
@@ -169,13 +190,15 @@ font_size = 24
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(-7, 2.4, 4)
-text = "3.8 EXPOSURE LAB\nWalk across DARK / EDGE / PARTIAL / FULL / TWO LIGHTS / OCCLUDED\nTop-left debug light gem must agree with what the space looks like\nPrototype tuning is intentionally not final"
+text = "5.3 EXPOSURE LAB\nWalk DARK / EDGE / PARTIAL / FULL / TWO LIGHTS / DECORATIVE ONLY / OCCLUDED\nGameplay exposure uses explicit gameplay lights; decorative visual light is intentionally ignored\nTop-left light gem shows semantic exposure plus source-state diagnostics"
 billboard = 1
 font_size = 22
 
 [node name="ExposureHUD" type="CanvasLayer" parent="."]
 
 [node name="Panel" type="PanelContainer" parent="ExposureHUD"]
+script = ExtResource("4_gem")
+exposure_path = NodePath("../../GameplayExposure")
 offset_left = 16.0
 offset_top = 16.0
 offset_right = 430.0
@@ -184,7 +207,7 @@ offset_bottom = 118.0
 [node name="VBox" type="VBoxContainer" parent="ExposureHUD/Panel"]
 
 [node name="Title" type="Label" parent="ExposureHUD/Panel/VBox"]
-text = "3.8 DEVELOPMENT LIGHT GEM"
+text = "5.3 DEVELOPMENT LIGHT GEM"
 
 [node name="ExposureBar" type="ProgressBar" parent="ExposureHUD/Panel/VBox"]
 custom_minimum_size = Vector2(390, 18)

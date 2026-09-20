@@ -1283,7 +1283,7 @@ Door use, prop impact, speech, and crude hostile-impact sounds continue using th
 **Manual:** none — 5.1 is accepted because it preserves the already user-accepted Phase 3 stone/carpet/crouch behavior and changes ownership/authoring structure rather than sound feel, audibility tuning, or presentation. Any future tuning that changes stealth readability requires a focused user playtest.
 
 
-## 5.2 Acoustic model `[~]`
+## 5.2 Acoustic model `[x]`
 
 Stabilize the propagation architecture chosen by the spike. Doors/openings affect transmission consistently. Add debug visualization/inspection.
 
@@ -1299,14 +1299,30 @@ Debug state is observational only and is not save state or gameplay truth.
 
 **Done when:** malformed topology with a missing door reference fails closed; the Acoustic Lab proves its constant opening portal remains at authored transmission while the door-linked portal reports 0.08 at closed, 0.54 at half-open, and 1.0 at open from the existing ordinary-door openness; and after a semantic sound, debug inspection identifies the exact source kind plus per-listener heard/muted route results, including the direct, door, corner, and disconnected cases.
 
-**Automated:** extends the authoritative Acoustics suite. The existing same-room, disconnected-room, L-corridor, closed/half/open door, footstep, speech, and impact assertions remain. New checks cover missing door references, live portal-debug state, exact door transmission interpolation, constant opening transmission, the last-sound per-listener inspection snapshot, and the Acoustic Lab's visible debug text.
+**Automated:** accepted — exact `test` head `266afe22242199d41c35b5d9075a113ce0c397c1` passed Godot 4.7.2 GitHub Actions Test run #260. The Acoustics suite passed missing-door topology validation, live constant-opening/ordinary-door portal inspection, exact 0.08/0.54/1.00 closed/half/open transmission, and last-sound per-listener route diagnostics. Gameplay Noise and Phase 3 Integration also remained green, and CI ended with `ALL TEST SUITES PASSED`.
 
-**Manual:** none — 5.2 deliberately keeps the already accepted Phase 3 attenuation constants, portal topology, door transmission values, and hearing thresholds unchanged. The new development readout is deterministic inspection rather than subjective stealth tuning. Any later transmission/threshold retuning that changes what the player can predict must receive a focused user playtest.
+**Manual:** none — 5.2 is accepted because it deliberately keeps the already accepted Phase 3 attenuation constants, portal topology, door transmission values, and hearing thresholds unchanged. The new development readout is deterministic inspection rather than subjective stealth tuning. Any later transmission/threshold retuning that changes what the player can predict requires a focused user playtest.
 
 
-## 5.3 Gameplay lighting/exposure `[ ]`
+## 5.3 Gameplay lighting/exposure `[~]`
 
 Stabilize the gameplay-light/exposure contract proven by the spike. Add light gem and useful debug readout.
+
+The Phase 3 visibility model remains the gameplay authority and keeps its accepted tuning:
+
+- only explicit `VarkGameplayLight` nodes are exposure sources. Ordinary/decorative rendered `Light3D` nodes do not enter stealth exposure merely because they are visually bright;
+- each gameplay light owns semantic enable/visible state, stable gameplay-light identity, gameplay strength, range, and occlusion mask. The existing save contract continues to persist `gameplay_enabled` and rendered `visible` state;
+- `VarkGameplayExposure` remains one world-owned semantic sampler. It keeps the existing three vertical real-player body samples, per-sample physics occlusion, linear in-range distance weight, additive light contributions, and final 0–1 clamp. 5.3 does not retune sample positions, source strengths, ranges, occlusion masks, or guard vision thresholds;
+- the exposure owner no longer owns HUD widgets. It exposes detached numeric/source diagnostics and emits a detached `exposure_sampled` observation after each sample. Source summaries distinguish total authored gameplay-light count from currently active gameplay lights and include enabled/visible/strength/range plus visible-sample/contribution data;
+- reusable `VarkLightGem` observes exposure and renders the existing 10-step numeric gem plus useful per-source diagnostics. Exposure Lab and the real Integrated Slice both use this observer, so UI presentation no longer participates in semantic exposure calculation;
+- the Exposure Lab adds a brighter decorative-only OmniLight3D fixture to prove visual rendering and stealth truth are intentionally separate. It also exercises live `gameplay_enabled` and `visible` changes on the real gameplay light and verifies exposure returns to the same accepted value when restored.
+
+**Done when:** the existing dark/edge/partial/full, occluded, and two-light relationships remain unchanged; a bright decorative-only light contributes zero gameplay exposure and does not appear as a gameplay-light source; disabling or hiding the key gameplay light immediately removes its contribution while the debug summary marks it inactive; restoring the state reproduces the prior exposure; and the reusable light gem in both Exposure Lab and Integrated Slice matches the semantic exposure value and reports source state/visible sample diagnostics.
+
+**Automated:** extends the authoritative Visibility suite and Phase 3 Integration suite. Visibility keeps all existing exposure relationship/occlusion/additive checks, adds decorative-only source exclusion, enable/visible state transitions, active/source count diagnostics, and reusable light-gem agreement. Phase 3 Integration verifies the real slice contains the reusable light gem and that its observed value/debug source matches the exposure owner during the existing guard-vision/crouch-cover proof.
+
+**Manual:** none — 5.3 intentionally preserves the Phase 3 exposure strengths, ranges, sample positions, occlusion behavior, and guard thresholds. The light-gem refactor/debug detail is deterministic presentation of unchanged semantic truth. A later change that retunes darkness/partial/full readability or final gem presentation must stop for a focused user playtest.
+
 
 ## 5.4 NPC perception/awareness `[ ]`
 

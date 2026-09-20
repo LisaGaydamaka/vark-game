@@ -391,6 +391,17 @@ The established acoustic model remains authored spaces connected by portals. Sam
 `VarkAcousticDebugInspector` formats that inspection into a development Label3D. The Acoustic Lab includes it alongside the existing listener markers. The authoritative Acoustics suite verifies the readout reflects constant openings, live ordinary-door openness/transmission, and the last impact's door/corner listener routes. Missing door IDs referenced by authored portals are explicitly validated as topology errors.
 
 
+## Phase 5.3 gameplay lighting/exposure and light gem
+
+`VarkGameplayLight` remains the explicit semantic stealth-light source. Its visual OmniLight3D properties can make the world bright, but only nodes carrying the gameplay-light contract participate in exposure. Each sample now also returns detached debug state (enabled, visible, semantic strength/range, active flag) alongside distance/occlusion/contribution.
+
+`VarkGameplayExposure` owns gameplay truth only. It keeps the accepted three vertical player-body sample points, physics-ray occlusion, linear distance weighting, additive source contribution, and 0–1 clamp. It reports `source_count` separately from `active_light_count`, includes per-light state/visible-sample diagnostics, and emits a detached `exposure_sampled` observation. It no longer owns Label/ProgressBar nodes.
+
+`VarkLightGem` is the reusable observer/UI seam. It reads the exposure owner's detached summary, renders the existing ten-segment numeric gem, updates the ProgressBar, and prints source state, contribution, and visible sample counts. Both Exposure Lab and Integrated Slice attach the same light-gem script.
+
+The Visibility suite keeps the established dark/edge/partial/full, all-samples-occluded, and two-light-additive barriers. It adds a brighter decorative-only OmniLight3D at a separate marker and proves exposure stays dark with only the two explicit gameplay sources listed. It also disables and hides the key gameplay light independently, proves contribution/active-state removal and recovery, then verifies the reusable light gem exactly matches current semantic exposure. Phase 3 Integration additionally checks the Integrated Slice light gem observes the same crouched exposure used by guard vision.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.

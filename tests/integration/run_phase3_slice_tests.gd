@@ -74,6 +74,12 @@ func _assert_integrated_slice() -> void:
 		if world != null
 		else null
 	)
+	var light_gem := (
+		world.get_node_or_null("ExposureHUD/Panel")
+			as VarkLightGem
+		if world != null
+		else null
+	)
 	var objective := (
 		world.get_node_or_null("ObjectiveState")
 			as VarkSimpleObjectiveState
@@ -197,6 +203,7 @@ func _assert_integrated_slice() -> void:
 		and door != null
 		and propagation != null
 		and exposure != null
+		and light_gem != null
 		and objective != null
 		and objective_trigger != null
 		and exit_trigger != null
@@ -219,7 +226,7 @@ func _assert_integrated_slice() -> void:
 		and crate_b.get_script() == OrdinaryPropScript
 		and persistent_guard.get("node") == guard
 		and semantic_guard.get("node") == guard,
-		"One playable slice contains the real guard, door, props, acoustics, exposure, typed speech, objective, exit, and stable actor identity; its only rendered shadow light is the gameplay light sampled by exposure"
+		"One playable slice contains the real guard, door, props, acoustics, exposure/light-gem observer, typed speech, objective, exit, and stable actor identity; its only rendered shadow light is the gameplay light sampled by exposure"
 	)
 	if (
 		not ready
@@ -229,6 +236,7 @@ func _assert_integrated_slice() -> void:
 		or door == null
 		or propagation == null
 		or exposure == null
+		or light_gem == null
 		or objective == null
 		or objective_trigger == null
 		or exit_trigger == null
@@ -446,6 +454,13 @@ func _assert_integrated_slice() -> void:
 		and crouched_for_vision
 		and float(standing_lit_summary.get("exposure", 0.0)) > 0.45
 		and float(crouched_lit_summary.get("exposure", 0.0)) > 0.28
+		and is_equal_approx(
+			light_gem.get_gem_value(),
+			float(crouched_lit_summary.get("exposure", -1.0))
+		)
+		and light_gem.get_debug_text().contains(
+			"light.slice_north ON"
+		)
 		and standing_saw_player
 		and standing_vision_summary.get("state", &"") == &"saw_player"
 		and not bool(

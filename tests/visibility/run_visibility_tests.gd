@@ -4,6 +4,7 @@ extends SceneTree
 const ApplicationScene = preload("res://application/Application.tscn")
 const ExposureOwner = preload("res://gameplay/visibility/gameplay_exposure.gd")
 const GameplayLight = preload("res://gameplay/visibility/gameplay_light.gd")
+const LightGem = preload("res://gameplay/visibility/light_gem.gd")
 
 var failures: Array[String] = []
 
@@ -70,6 +71,12 @@ func _assert_exposure_lab() -> void:
 
 	var key_light := world.get_node_or_null("KeyGameplayLight") as VarkGameplayLight
 	var fill_light := world.get_node_or_null("FillGameplayLight") as VarkGameplayLight
+	var decorative_light := world.get_node_or_null(
+		"DecorativeOnlyLight"
+	) as OmniLight3D
+	var light_gem := world.get_node_or_null(
+		"ExposureHUD/Panel"
+	) as VarkLightGem
 	var readout := world.get_node_or_null(
 		"ExposureHUD/Panel/VBox/Readout"
 	) as Label
@@ -79,21 +86,32 @@ func _assert_exposure_lab() -> void:
 	_assert_true(
 		key_light != null
 		and fill_light != null
+		and decorative_light != null
+		and light_gem != null
+		and light_gem.get_script() == LightGem
 		and key_light.get_script() == GameplayLight
 		and fill_light.get_script() == GameplayLight
 		and key_light is OmniLight3D
 		and fill_light is OmniLight3D
 		and key_light.shadow_enabled
 		and fill_light.shadow_enabled
+		and not (decorative_light is VarkGameplayLight)
+		and decorative_light.light_energy > key_light.light_energy
 		and readout != null
 		and bar != null,
-		"Exposure proof uses real shadow-casting OmniLight3D sources and an in-world development light-gem/debug readout"
+		"Phase 5.3 exposure proof separates explicit gameplay lights from a brighter decorative OmniLight3D and uses the reusable light-gem observer"
 	)
 
 	var dark: Dictionary = await _sample_marker(world, player, owner, "DarknessMarker")
 	var edge: Dictionary = await _sample_marker(world, player, owner, "EdgeMarker")
 	var partial: Dictionary = await _sample_marker(world, player, owner, "PartialMarker")
 	var full: Dictionary = await _sample_marker(world, player, owner, "FullMarker")
+	var decorative: Dictionary = await _sample_marker(
+		world,
+		player,
+		owner,
+		"DecorativeMarker"
+	)
 	var occluded: Dictionary = await _sample_marker(world, player, owner, "OccludedMarker")
 	var multi: Dictionary = await _sample_marker(world, player, owner, "MultiMarker")
 
@@ -101,6 +119,9 @@ func _assert_exposure_lab() -> void:
 	var edge_value: float = float(edge.get("exposure", -1.0))
 	var partial_value: float = float(partial.get("exposure", -1.0))
 	var full_value: float = float(full.get("exposure", -1.0))
+	var decorative_value: float = float(
+		decorative.get("exposure", -1.0)
+	)
 	var occluded_value: float = float(occluded.get("exposure", -1.0))
 	var multi_value: float = float(multi.get("exposure", -1.0))
 	_assert_true(
@@ -113,6 +134,98 @@ func _assert_exposure_lab() -> void:
 		and full_value > 0.75
 		and full_value <= 1.0,
 		"One gameplay-light falloff produces deterministic darkness, edge, partial, and full exposure relationships"
+	)
+
+	_assert_true(
+		decorative_value >= 0.0
+		and decorative_value <= 0.02
+		and int(decorative.get("source_count", 0)) == 2
+		and int(decorative.get("active_light_count", 0)) == 2
+		and _light_summary(
+			decorative,
+			&"key"
+		).get("light_id", &"") == &"key"
+		and _light_summary(
+			decorative,
+			&"fill"
+		).get("light_id", &"") == &"fill",
+		"Phase 5.3 a bright decorative-only visual light does not become gameplay exposure truth or a gameplay-light source"
+	)
+
+	var baseline_full: Dictionary = await _sample_marker(
+		world,
+		player,
+		owner,
+		"FullMarker"
+	)
+	key_light.gameplay_enabled = false
+	var disabled_full: Dictionary = await _sample_marker(
+		world,
+		player,
+		owner,
+		"FullMarker"
+	)
+	var disabled_key: Dictionary = _light_summary(
+		disabled_full,
+		&"key"
+	)
+	key_light.gameplay_enabled = true
+	var reenabled_full: Dictionary = await _sample_marker(
+		world,
+		player,
+		owner,
+		"FullMarker"
+	)
+	key_light.visible = false
+	var hidden_full: Dictionary = await _sample_marker(
+		world,
+		player,
+		owner,
+		"FullMarker"
+	)
+	var hidden_key: Dictionary = _light_summary(
+		hidden_full,
+		&"key"
+	)
+	key_light.visible = true
+	var restored_full: Dictionary = await _sample_marker(
+		world,
+		player,
+		owner,
+		"FullMarker"
+	)
+	_assert_true(
+		float(baseline_full.get("exposure", 0.0)) > 0.75
+		and float(disabled_full.get("exposure", 1.0)) <= 0.02
+		and int(disabled_full.get(
+			"active_light_count",
+			-1
+		)) == 1
+		and not bool(disabled_key.get(
+			"gameplay_enabled",
+			true
+		))
+		and not bool(disabled_key.get("active", true))
+		and is_zero_approx(float(disabled_key.get(
+			"contribution",
+			-1.0
+		)))
+		and is_equal_approx(
+			float(reenabled_full.get("exposure", 0.0)),
+			float(baseline_full.get("exposure", -1.0))
+		)
+		and float(hidden_full.get("exposure", 1.0)) <= 0.02
+		and not bool(hidden_key.get("visible", true))
+		and not bool(hidden_key.get("active", true))
+		and is_zero_approx(float(hidden_key.get(
+			"contribution",
+			-1.0
+		)))
+		and is_equal_approx(
+			float(restored_full.get("exposure", 0.0)),
+			float(baseline_full.get("exposure", -1.0))
+		),
+		"Phase 5.3 gameplay-light enable/visibility state immediately controls semantic exposure while restoration returns the same accepted exposure value"
 	)
 
 	var occluded_key: Dictionary = _light_summary(occluded, &"key")
@@ -139,14 +252,43 @@ func _assert_exposure_lab() -> void:
 		"Multiple gameplay lights contribute additively before the exposure result clamps to the 0-1 light-gem range"
 	)
 
+	var live_multi: Dictionary = await _sample_marker(
+		world,
+		player,
+		owner,
+		"MultiMarker"
+	)
+	var live_multi_value: float = float(
+		live_multi.get("exposure", -1.0)
+	)
 	var live_summary: Dictionary = owner.get_exposure_summary()
+	var gem_text: String = light_gem.refresh_now()
 	_assert_true(
-		is_equal_approx(float(live_summary.get("exposure", -1.0)), multi_value)
-		and readout.text.contains("EXPOSURE")
-		and readout.text.contains("key")
-		and readout.text.contains("fill")
-		and absf(float(bar.value) - multi_value) <= float(bar.step) + 0.000001,
-		"World-owned exposure continuously drives the stepped development light-gem/debug HUD with source diagnostics"
+		is_equal_approx(
+			float(live_summary.get("exposure", -1.0)),
+			live_multi_value
+		)
+		and int(live_summary.get("source_count", 0)) == 2
+		and int(live_summary.get("active_light_count", 0)) == 2
+		and is_equal_approx(
+			light_gem.get_gem_value(),
+			live_multi_value
+		)
+		and light_gem.get_filled_segments()
+			== clampi(
+				roundi(live_multi_value * 10.0),
+				0,
+				10
+			)
+		and readout.text == gem_text
+		and gem_text.contains("EXPOSURE")
+		and gem_text.contains("sources 2 active 2")
+		and gem_text.contains("key ON")
+		and gem_text.contains("fill ON")
+		and gem_text.contains("vis")
+		and absf(float(bar.value) - live_multi_value)
+			<= float(bar.step) + 0.000001,
+		"Phase 5.3 reusable light gem observes semantic exposure without owning it and reports numeric value plus per-source state/visibility diagnostics"
 	)
 
 	application.call("exit_current_world")
