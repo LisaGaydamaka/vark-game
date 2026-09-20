@@ -329,15 +329,17 @@ func _assert_integrated_surface_noise() -> void:
 		)
 		and float(sprint_summary.get("last_strength", 0.0))
 			> float(carpet_summary.get("last_strength", 0.0))
-		and bool(sprint_perception.get("heard", false))
+		and not bool(sprint_perception.get("heard", true))
 		and sprint_perception.get("kind", &"") == &"footstep.carpet"
+		and float(sprint_perception.get("propagated_strength", 1.0))
+			< float(sprint_perception.get("hearing_threshold", 0.0))
 		and is_equal_approx(
 			noise_meter.get_current_loudness(),
 			0.09 * 1.35
 		)
 		and sprint_meter_summary.get("last_gait", "") == "sprinting"
 		and noise_meter.get_debug_text().contains("sprinting"),
-		"Sprinting can push the otherwise near-silent carpet tier back above the local hearing floor while preserving carpet identity and debug-meter truth"
+		"Sprinting makes near-silent carpet louder than walking but remains below the real slice guard hearing floor at ordinary test distance"
 	)
 
 	if player_input != null:
