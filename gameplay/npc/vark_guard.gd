@@ -36,6 +36,9 @@ enum DoorTraversalState {
 @export var patrol_b_id: String = ""
 @export var door_id: String = ""
 @export var movement_speed: float = 2.5
+@export_range(0.2, 1.5, 0.05) var investigate_speed_scale: float = 0.90
+@export_range(0.2, 1.5, 0.05) var search_speed_scale: float = 0.60
+@export_range(1.0, 3.0, 0.05) var pursuit_speed_scale: float = 1.65
 @export var door_use_distance: float = 2.0
 
 var _navigation_agent: NavigationAgent3D = null
@@ -65,6 +68,8 @@ var _restored_goal_id: String = ""
 var _awareness_goal_active: bool = false
 var _awareness_goal_position: Vector3 = Vector3.ZERO
 var _awareness_goal_reason: StringName = &""
+var _awareness_motion_scale: float = 1.0
+var _awareness_motion_paused: bool = false
 
 
 func _ready() -> void:
@@ -151,6 +156,8 @@ func set_awareness_navigation_target(
 	_awareness_goal_active = true
 	_awareness_goal_reason = reason
 	_awareness_goal_position = target_position
+	_awareness_motion_scale = _default_awareness_speed_scale(reason)
+	_awareness_motion_paused = false
 	_apply_current_navigation_target()
 	return true
 
@@ -160,6 +167,8 @@ func clear_awareness_navigation_target() -> bool:
 	_awareness_goal_active = false
 	_awareness_goal_reason = &""
 	_awareness_goal_position = Vector3.ZERO
+	_awareness_motion_scale = 1.0
+	_awareness_motion_paused = false
 	_apply_current_navigation_target()
 	return had_goal
 
@@ -169,7 +178,27 @@ func get_awareness_navigation_state() -> Dictionary:
 		"active": _awareness_goal_active,
 		"reason": _awareness_goal_reason,
 		"target_position": _awareness_goal_position,
+		"motion_scale": _awareness_motion_scale,
+		"motion_paused": _awareness_motion_paused,
+		"current_movement_speed": _current_movement_speed(),
 	}
+
+
+func set_awareness_motion_profile(
+	speed_scale: float,
+	paused: bool
+) -> bool:
+	if (
+		_life_state != LIFE_CONSCIOUS
+		or not _awareness_goal_active
+		or not is_finite(speed_scale)
+	):
+		return false
+	_awareness_motion_scale = clampf(speed_scale, 0.10, 3.0)
+	_awareness_motion_paused = paused
+	if paused:
+		velocity = Vector3.ZERO
+	return true
 
 
 func resolve_local_search_points(
@@ -590,6 +619,9 @@ func get_debug_summary() -> Dictionary:
 		"awareness_goal_active": _awareness_goal_active,
 		"awareness_goal_reason": _awareness_goal_reason,
 		"awareness_goal_position": _awareness_goal_position,
+		"awareness_motion_scale": _awareness_motion_scale,
+		"awareness_motion_paused": _awareness_motion_paused,
+		"current_movement_speed": _current_movement_speed(),
 		"door_use_count": _door_use_count,
 		"door_open_request_count": _door_open_request_count,
 		"crossing_block_open_count": _crossing_block_open_count,
@@ -626,6 +658,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if _door_use_active:
 		_process_door_traversal(delta)
+		return
+	if _awareness_goal_active and _awareness_motion_paused:
+		velocity = Vector3.ZERO
 		return
 
 	var next_position: Vector3 = _navigation_agent.get_next_path_position()
@@ -672,7 +707,8 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 	direction = direction.normalized()
-	velocity = Vector3(direction.x * movement_speed, 0.0, direction.z * movement_speed)
+	var current_speed: float = _current_movement_speed()
+	velocity = Vector3(direction.x * current_speed, 0.0, direction.z * current_speed)
 	look_at(global_position + direction, Vector3.UP, true)
 	move_and_slide()
 
@@ -753,7 +789,8 @@ func _process_door_traversal(delta: float) -> void:
 		return
 
 	var direction: Vector3 = to_exit.normalized()
-	velocity = Vector3(direction.x * movement_speed, 0.0, direction.z * movement_speed)
+	var current_speed: float = _current_movement_speed()
+	velocity = Vector3(direction.x * current_speed, 0.0, direction.z * current_speed)
 	look_at(global_position + direction, Vector3.UP, true)
 	move_and_slide()
 
@@ -799,6 +836,26 @@ func _record_door_traversal_failure(reason: String) -> void:
 	# navigation configuration. Keep the semantic goal and let normal routing
 	# retry/replan rather than turning the NPC off.
 	push_warning("Guard '%s' door traversal: %s" % [guard_id, reason])
+
+
+func _default_awareness_speed_scale(reason: StringName) -> float:
+	match reason:
+		&"investigate":
+			return maxf(investigate_speed_scale, 0.10)
+		&"search":
+			return maxf(search_speed_scale, 0.10)
+		&"pursuit":
+			return maxf(pursuit_speed_scale, 0.10)
+	return 1.0
+
+
+func _current_movement_speed() -> float:
+	var scale: float = (
+		_awareness_motion_scale
+		if _awareness_goal_active
+		else 1.0
+	)
+	return maxf(movement_speed, 0.0) * maxf(scale, 0.0)
 
 
 func _apply_current_navigation_target() -> void:

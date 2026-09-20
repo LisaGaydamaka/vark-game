@@ -309,6 +309,16 @@ func _assert_guard_awareness_state_machine() -> void:
 			float(restored_search.get("search_age_seconds", -1.0)),
 			float(saved_awareness.get("search_age_seconds", -2.0))
 		)
+		and restored_search.get("search_action", &"")
+			== saved_awareness.get("search_action", &"")
+		and is_equal_approx(
+			float(restored_search.get("search_action_remaining_seconds", -1.0)),
+			float(saved_awareness.get("search_action_remaining_seconds", -2.0))
+		)
+		and is_equal_approx(
+			float(restored_search.get("search_move_speed_scale", -1.0)),
+			float(saved_awareness.get("search_move_speed_scale", -2.0))
+		)
 		and _vector_arrays_equal(
 			restored_search.get("search_visited_positions", []),
 			saved_awareness.get("search_visited_positions", [])
@@ -398,6 +408,8 @@ func _assert_guard_awareness_state_machine() -> void:
 		and bool(alert_nav.get("active", false))
 		and alert_nav.get("reason", &"")
 			== NAV_PURSUIT
+		and float(alert_nav.get("current_movement_speed", 0.0))
+			> guard.movement_speed
 		and _dict_vector(
 			alert_nav,
 			"target_position"
@@ -510,7 +522,21 @@ func _assert_advanced_local_search_behavior() -> void:
 	reaction.search_confidence_drop_per_expansion = 0.15
 	reaction.search_min_confidence = 0.20
 	reaction.search_arrival_distance = 0.30
-	reaction.search_scan_seconds = 0.08
+	reaction.search_move_speed_scale_min = 0.50
+	reaction.search_move_speed_scale_max = 0.65
+	reaction.search_arrival_pause_min = 0.02
+	reaction.search_arrival_pause_max = 0.04
+	reaction.search_look_turn_min = 0.02
+	reaction.search_look_turn_max = 0.04
+	reaction.search_look_hold_min = 0.03
+	reaction.search_scan_seconds = 0.06
+	reaction.search_between_pause_min = 0.02
+	reaction.search_between_pause_max = 0.04
+	reaction.search_departure_pause_min = 0.02
+	reaction.search_departure_pause_max = 0.04
+	reaction.search_look_count_min = 1
+	reaction.search_look_count_max = 2
+	reaction.search_look_min_degrees = 20.0
 	reaction.search_scan_degrees = 55.0
 	reaction.recovery_seconds = 0.30
 	reaction.recovery_hearing_threshold_scale = 0.60
@@ -563,7 +589,14 @@ func _assert_advanced_local_search_behavior() -> void:
 		and is_equal_approx(
 			float(first_summary.get("search_confidence", 0.0)),
 			1.0
-		),
+		)
+		and first_summary.get("search_action", &"") == &"moving"
+		and float(
+			guard.get_awareness_navigation_state().get(
+				"current_movement_speed",
+				INF
+			)
+		) < guard.movement_speed,
 		"Phase 5.5 real Integrated Slice search resolves reachable candidates from explicit evidence uncertainty without player-position input"
 	)
 
@@ -651,6 +684,24 @@ func _assert_advanced_local_search_behavior() -> void:
 		"Phase 5.5 newly heard local evidence interrupts and reseeds search without global player knowledge"
 	)
 
+	var human_stop_seen: bool = await _wait_for_stationary_search_action(
+		reaction,
+		180
+	)
+	var human_stop_summary: Dictionary = reaction.get_debug_summary()
+	var human_stop_nav: Dictionary = guard.get_awareness_navigation_state()
+	_assert_true(
+		human_stop_seen
+		and human_stop_summary.get("search_action", &"") != &"moving"
+		and float(human_stop_summary.get(
+			"search_action_duration_seconds",
+			0.0
+		)) > 0.0
+		and bool(human_stop_nav.get("motion_paused", false))
+		and int(human_stop_summary.get("search_action_serial", 0)) > 0,
+		"Phase 5.5 search execution deliberately stops for deterministic varied pause/look actions instead of continuously running or sinusoidally spinning"
+	)
+
 	var visited_multiple: bool = await _wait_for_search_visited(
 		reaction,
 		2,
@@ -718,6 +769,24 @@ func _assert_advanced_local_search_behavior() -> void:
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
+
+
+func _wait_for_stationary_search_action(
+	reaction: Node,
+	max_frames: int
+) -> bool:
+	for _frame: int in max_frames:
+		var action: StringName = reaction.get_debug_summary().get(
+			"search_action",
+			&"moving"
+		)
+		if action != &"moving":
+			return true
+		await _completed_physics_frame()
+	return reaction.get_debug_summary().get(
+		"search_action",
+		&"moving"
+	) != &"moving"
 
 
 func _wait_for_search_stage(
@@ -798,7 +867,21 @@ func _configure_short_durations(
 	reaction.search_confidence_drop_per_expansion = 0.10
 	reaction.search_min_confidence = 0.20
 	reaction.search_arrival_distance = 0.30
-	reaction.search_scan_seconds = 0.05
+	reaction.search_move_speed_scale_min = 0.50
+	reaction.search_move_speed_scale_max = 0.65
+	reaction.search_arrival_pause_min = 0.01
+	reaction.search_arrival_pause_max = 0.02
+	reaction.search_look_turn_min = 0.01
+	reaction.search_look_turn_max = 0.02
+	reaction.search_look_hold_min = 0.01
+	reaction.search_scan_seconds = 0.02
+	reaction.search_between_pause_min = 0.01
+	reaction.search_between_pause_max = 0.02
+	reaction.search_departure_pause_min = 0.01
+	reaction.search_departure_pause_max = 0.02
+	reaction.search_look_count_min = 1
+	reaction.search_look_count_max = 2
+	reaction.search_look_min_degrees = 15.0
 	reaction.search_scan_degrees = 45.0
 	reaction.alert_loss_seconds = 0.08
 	reaction.recovery_seconds = 0.12

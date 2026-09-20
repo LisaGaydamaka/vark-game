@@ -20,6 +20,13 @@ const NAV_INVESTIGATE: StringName = &"investigate"
 const NAV_SEARCH: StringName = &"search"
 const NAV_PURSUIT: StringName = &"pursuit"
 
+const SEARCH_ACTION_MOVING: StringName = &"moving"
+const SEARCH_ACTION_ARRIVAL_PAUSE: StringName = &"arrival_pause"
+const SEARCH_ACTION_LOOK_TURN: StringName = &"look_turn"
+const SEARCH_ACTION_LOOK_HOLD: StringName = &"look_hold"
+const SEARCH_ACTION_BETWEEN_PAUSE: StringName = &"between_look_pause"
+const SEARCH_ACTION_DEPARTURE_PAUSE: StringName = &"departure_pause"
+
 @export var player_path: NodePath = NodePath("../../Player")
 @export var listener_path: NodePath = NodePath("../Hearing")
 @export var speech_path: NodePath = NodePath("../Speech")
@@ -34,7 +41,7 @@ const NAV_PURSUIT: StringName = &"pursuit"
 @export var hearing_investigate_strength: float = 0.16
 @export var suspicion_seconds: float = 1.25
 @export var investigation_seconds: float = 2.50
-@export var search_seconds: float = 8.00
+@export var search_seconds: float = 32.00
 @export_range(2, 6, 1) var search_point_count: int = 4
 @export_range(0.5, 5.0, 0.1) var search_radius: float = 1.80
 @export_range(0.5, 8.0, 0.1) var search_max_radius: float = 4.20
@@ -43,8 +50,22 @@ const NAV_PURSUIT: StringName = &"pursuit"
 @export_range(0.0, 0.5, 0.01) var search_confidence_drop_per_expansion: float = 0.12
 @export_range(0.05, 0.75, 0.05) var search_min_confidence: float = 0.20
 @export_range(0.20, 1.0, 0.05) var search_arrival_distance: float = 0.40
-@export_range(0.10, 2.0, 0.05) var search_scan_seconds: float = 0.70
-@export_range(10.0, 90.0, 1.0) var search_scan_degrees: float = 55.0
+@export_range(0.20, 1.0, 0.05) var search_move_speed_scale_min: float = 0.45
+@export_range(0.20, 1.0, 0.05) var search_move_speed_scale_max: float = 0.68
+@export_range(0.05, 3.0, 0.05) var search_arrival_pause_min: float = 0.45
+@export_range(0.05, 3.0, 0.05) var search_arrival_pause_max: float = 1.30
+@export_range(0.05, 2.0, 0.05) var search_look_turn_min: float = 0.25
+@export_range(0.05, 2.0, 0.05) var search_look_turn_max: float = 0.65
+@export_range(0.10, 3.0, 0.05) var search_look_hold_min: float = 0.80
+@export_range(0.10, 3.0, 0.05) var search_scan_seconds: float = 2.20
+@export_range(0.05, 2.0, 0.05) var search_between_pause_min: float = 0.20
+@export_range(0.05, 2.0, 0.05) var search_between_pause_max: float = 0.80
+@export_range(0.05, 3.0, 0.05) var search_departure_pause_min: float = 0.35
+@export_range(0.05, 3.0, 0.05) var search_departure_pause_max: float = 1.10
+@export_range(1, 3, 1) var search_look_count_min: int = 1
+@export_range(1, 4, 1) var search_look_count_max: int = 3
+@export_range(5.0, 60.0, 1.0) var search_look_min_degrees: float = 20.0
+@export_range(10.0, 100.0, 1.0) var search_scan_degrees: float = 70.0
 @export var alert_loss_seconds: float = 1.00
 @export var recovery_seconds: float = 2.00
 @export_range(0.25, 1.0, 0.05) var recovery_hearing_threshold_scale: float = 0.65
@@ -93,6 +114,14 @@ var _search_confidence: float = 0.0
 var _search_age_seconds: float = 0.0
 var _search_visited_positions: Array[Vector3] = []
 var _residual_alert_strength: float = 0.0
+var _search_action: StringName = SEARCH_ACTION_MOVING
+var _search_action_remaining_seconds: float = 0.0
+var _search_action_duration_seconds: float = 0.0
+var _search_action_serial: int = 0
+var _search_looks_remaining: int = 0
+var _search_look_start_direction: Vector3 = Vector3.FORWARD
+var _search_look_target_direction: Vector3 = Vector3.FORWARD
+var _search_move_speed_scale: float = 0.60
 
 
 func _ready() -> void:
@@ -305,6 +334,14 @@ func get_debug_summary() -> Dictionary:
 		"search_age_seconds": _search_age_seconds,
 		"search_visited_positions": _search_visited_positions.duplicate(),
 		"residual_alert_strength": _residual_alert_strength,
+		"search_action": _search_action,
+		"search_action_remaining_seconds": _search_action_remaining_seconds,
+		"search_action_duration_seconds": _search_action_duration_seconds,
+		"search_action_serial": _search_action_serial,
+		"search_looks_remaining": _search_looks_remaining,
+		"search_look_start_direction": _search_look_start_direction,
+		"search_look_target_direction": _search_look_target_direction,
+		"search_move_speed_scale": _search_move_speed_scale,
 		"search_radius": search_radius,
 		"search_max_radius": search_max_radius,
 		"search_point_count": search_point_count,
@@ -367,6 +404,14 @@ func capture_semantic_state() -> Dictionary:
 		"search_age_seconds": _search_age_seconds,
 		"search_visited_positions": _search_visited_positions.duplicate(),
 		"residual_alert_strength": _residual_alert_strength,
+		"search_action": _search_action,
+		"search_action_remaining_seconds": _search_action_remaining_seconds,
+		"search_action_duration_seconds": _search_action_duration_seconds,
+		"search_action_serial": _search_action_serial,
+		"search_looks_remaining": _search_looks_remaining,
+		"search_look_start_direction": _search_look_start_direction,
+		"search_look_target_direction": _search_look_target_direction,
+		"search_move_speed_scale": _search_move_speed_scale,
 	}
 
 
@@ -378,7 +423,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		and int(session.get("state")) == WORLD_SESSION_STATE_PLAYING
 	):
 		return false
-	if snapshot.size() != 32:
+	if snapshot.size() != 40:
 		return false
 	if _guard == null or not is_instance_valid(_guard):
 		return false
@@ -416,6 +461,11 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or typeof(snapshot.get("search_seed", null)) != TYPE_INT
 		or typeof(snapshot.get("search_stage", null)) != TYPE_INT
 		or typeof(snapshot.get("search_visited_positions", null)) != TYPE_ARRAY
+		or typeof(snapshot.get("search_action", null)) != TYPE_STRING_NAME
+		or typeof(snapshot.get("search_action_serial", null)) != TYPE_INT
+		or typeof(snapshot.get("search_looks_remaining", null)) != TYPE_INT
+		or typeof(snapshot.get("search_look_start_direction", null)) != TYPE_VECTOR3
+		or typeof(snapshot.get("search_look_target_direction", null)) != TYPE_VECTOR3
 	):
 		return false
 	for key: String in [
@@ -428,6 +478,9 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"search_confidence",
 		"search_age_seconds",
 		"residual_alert_strength",
+		"search_action_remaining_seconds",
+		"search_action_duration_seconds",
+		"search_move_speed_scale",
 	]:
 		var value: Variant = snapshot.get(key, null)
 		if (
@@ -449,6 +502,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"investigation_target",
 		"search_anchor",
 		"search_scan_base_direction",
+		"search_look_start_direction",
+		"search_look_target_direction",
 	]:
 		var vector_value: Vector3 = snapshot[vector_key]
 		if not _is_finite_vector(vector_value):
@@ -478,6 +533,14 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	var restored_confidence: float = float(snapshot.get("search_confidence", 0.0))
 	var restored_age: float = float(snapshot.get("search_age_seconds", 0.0))
 	var restored_residual: float = float(snapshot.get("residual_alert_strength", 0.0))
+	var restored_action: StringName = snapshot.get("search_action", &"")
+	var restored_action_remaining: float = float(snapshot.get("search_action_remaining_seconds", 0.0))
+	var restored_action_duration: float = float(snapshot.get("search_action_duration_seconds", 0.0))
+	var restored_action_serial: int = int(snapshot.get("search_action_serial", 0))
+	var restored_looks_remaining: int = int(snapshot.get("search_looks_remaining", 0))
+	var restored_look_start: Vector3 = snapshot.get("search_look_start_direction", Vector3.FORWARD)
+	var restored_look_target: Vector3 = snapshot.get("search_look_target_direction", Vector3.FORWARD)
+	var restored_move_scale: float = float(snapshot.get("search_move_speed_scale", 0.0))
 	if (
 		restored_search_index < 0
 		or restored_visited < 0
@@ -515,6 +578,10 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or (
 			restored_state != STATE_RECOVERING
 			and restored_residual > 0.0
+		)
+		or (
+			restored_state != STATE_SEARCHING
+			and restored_action != SEARCH_ACTION_MOVING
 		)
 	):
 		return false
@@ -554,6 +621,14 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	_search_age_seconds = restored_age
 	_search_visited_positions = restored_visited_positions
 	_residual_alert_strength = restored_residual
+	_search_action = restored_action
+	_search_action_remaining_seconds = restored_action_remaining
+	_search_action_duration_seconds = restored_action_duration
+	_search_action_serial = restored_action_serial
+	_search_looks_remaining = restored_looks_remaining
+	_search_look_start_direction = restored_look_start
+	_search_look_target_direction = restored_look_target
+	_search_move_speed_scale = restored_move_scale
 	_last_gameplay_time_sample = _get_gameplay_time()
 	return true
 
@@ -561,8 +636,10 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 func reconcile_after_restore() -> bool:
 	_last_gameplay_time_sample = _get_gameplay_time()
 	_apply_navigation_for_state()
-	if _awareness_state == STATE_SEARCHING and _search_scan_active:
-		_apply_search_scan_pose()
+	if _awareness_state == STATE_SEARCHING:
+		if _search_action != SEARCH_ACTION_MOVING:
+			_set_search_motion_paused(true)
+		_apply_search_action_pose()
 	_refresh_label()
 	return true
 
@@ -714,6 +791,11 @@ func _apply_navigation_for_state() -> void:
 					NAV_SEARCH,
 					_search_points[_search_index]
 				)
+				_guard.call(
+					"set_awareness_motion_profile",
+					_search_move_speed_scale,
+					_search_action != SEARCH_ACTION_MOVING
+				)
 			elif _has_investigation_target:
 				_guard.call(
 					"set_awareness_navigation_target",
@@ -745,6 +827,10 @@ func _begin_search(anchor: Vector3) -> void:
 	_search_uncertainty_radius = maxf(search_radius, 0.50)
 	_search_confidence = 1.0
 	_search_age_seconds = 0.0
+	_search_action_serial = 0
+	_search_looks_remaining = 0
+	_search_look_start_direction = Vector3.FORWARD
+	_search_look_target_direction = Vector3.FORWARD
 	_resolve_search_stage()
 
 
@@ -776,6 +862,7 @@ func _resolve_search_stage() -> void:
 					_search_points.append(point_value)
 	if _search_points.is_empty():
 		_search_points.append(_search_anchor)
+	_begin_search_move()
 
 
 func _try_expand_search() -> bool:
@@ -808,6 +895,14 @@ func _clear_search_plan(reset_visited: bool) -> void:
 	_search_confidence = 0.0
 	_search_age_seconds = 0.0
 	_search_visited_positions.clear()
+	_search_action = SEARCH_ACTION_MOVING
+	_search_action_remaining_seconds = 0.0
+	_search_action_duration_seconds = 0.0
+	_search_action_serial = 0
+	_search_looks_remaining = 0
+	_search_look_start_direction = Vector3.FORWARD
+	_search_look_target_direction = Vector3.FORWARD
+	_search_move_speed_scale = maxf(search_move_speed_scale_max, 0.10)
 	if reset_visited:
 		_search_points_visited = 0
 
@@ -826,26 +921,17 @@ func _advance_search_behavior(elapsed: float) -> void:
 		_search_confidence
 			- elapsed * maxf(search_confidence_decay_per_second, 0.0)
 	)
-	if _search_scan_active:
-		_search_scan_remaining_seconds = maxf(
+
+	if _search_action != SEARCH_ACTION_MOVING:
+		_search_action_remaining_seconds = maxf(
 			0.0,
-			_search_scan_remaining_seconds - elapsed
+			_search_action_remaining_seconds - elapsed
 		)
-		_apply_search_scan_pose()
-		if _search_scan_remaining_seconds > 0.0:
+		_search_scan_remaining_seconds = _search_action_remaining_seconds
+		_apply_search_action_pose()
+		if _search_action_remaining_seconds > 0.0:
 			return
-		_search_scan_active = false
-		var completed_point: Vector3 = _search_points[_search_index]
-		_search_visited_positions.append(completed_point)
-		_search_points_visited = _search_visited_positions.size()
-		_search_index += 1
-		if _search_index >= _search_points.size():
-			if _try_expand_search():
-				_apply_navigation_for_state()
-				return
-			_enter_state(STATE_RECOVERING)
-			return
-		_apply_navigation_for_state()
+		_advance_search_stop_action()
 		return
 
 	var current_point: Vector3 = _search_points[_search_index]
@@ -856,15 +942,214 @@ func _advance_search_behavior(elapsed: float) -> void:
 	).length()
 	if horizontal_distance > maxf(search_arrival_distance, 0.20):
 		return
+	_begin_search_stop()
+
+
+func _begin_search_move() -> void:
+	_search_action = SEARCH_ACTION_MOVING
+	_search_action_remaining_seconds = 0.0
+	_search_action_duration_seconds = 0.0
+	_search_scan_active = false
+	_search_scan_remaining_seconds = 0.0
+	_search_looks_remaining = 0
+	var low: float = minf(search_move_speed_scale_min, search_move_speed_scale_max)
+	var high: float = maxf(search_move_speed_scale_min, search_move_speed_scale_max)
+	var confidence_scale: float = lerpf(
+		low,
+		high,
+		clampf(_search_confidence, 0.0, 1.0)
+	)
+	var jitter: float = (
+		_search_random_unit(101 + _search_stage * 17 + _search_index * 31) - 0.5
+	) * 0.10
+	_search_move_speed_scale = clampf(confidence_scale + jitter, low, high)
+	_set_search_motion_paused(false)
+
+
+func _begin_search_stop() -> void:
 	_search_scan_active = true
-	_search_scan_remaining_seconds = maxf(search_scan_seconds, 0.10)
-	_search_scan_base_direction = _guard.global_transform.basis.z
-	_search_scan_base_direction.y = 0.0
-	if _search_scan_base_direction.length_squared() <= 0.000001:
-		_search_scan_base_direction = Vector3.FORWARD
+	_search_scan_base_direction = _horizontal_facing_direction()
+	var minimum_looks: int = mini(search_look_count_min, search_look_count_max)
+	var maximum_looks: int = maxi(search_look_count_min, search_look_count_max)
+	var look_span: int = maximum_looks - minimum_looks + 1
+	_search_looks_remaining = minimum_looks + int(floor(
+		_search_random_unit(211 + _search_index * 19) * float(look_span)
+	))
+	_search_looks_remaining = clampi(
+		_search_looks_remaining,
+		minimum_looks,
+		maximum_looks
+	)
+	_set_search_motion_paused(true)
+	_start_search_timed_action(
+		SEARCH_ACTION_ARRIVAL_PAUSE,
+		search_arrival_pause_min,
+		search_arrival_pause_max,
+		301
+	)
+
+
+func _advance_search_stop_action() -> void:
+	match _search_action:
+		SEARCH_ACTION_ARRIVAL_PAUSE:
+			_start_search_look_turn()
+		SEARCH_ACTION_LOOK_TURN:
+			_start_search_timed_action(
+				SEARCH_ACTION_LOOK_HOLD,
+				search_look_hold_min,
+				search_scan_seconds,
+				401
+			)
+		SEARCH_ACTION_LOOK_HOLD:
+			_search_looks_remaining = maxi(0, _search_looks_remaining - 1)
+			if _search_looks_remaining > 0:
+				_start_search_timed_action(
+					SEARCH_ACTION_BETWEEN_PAUSE,
+					search_between_pause_min,
+					search_between_pause_max,
+					501
+				)
+			else:
+				_start_search_timed_action(
+					SEARCH_ACTION_DEPARTURE_PAUSE,
+					search_departure_pause_min,
+					search_departure_pause_max,
+					601
+				)
+		SEARCH_ACTION_BETWEEN_PAUSE:
+			_start_search_look_turn()
+		SEARCH_ACTION_DEPARTURE_PAUSE:
+			_complete_search_point()
+
+
+func _start_search_look_turn() -> void:
+	_search_look_start_direction = _horizontal_facing_direction()
+	var minimum_degrees: float = minf(
+		search_look_min_degrees,
+		search_scan_degrees
+	)
+	var maximum_degrees: float = maxf(
+		search_look_min_degrees,
+		search_scan_degrees
+	)
+	var magnitude: float = lerpf(
+		minimum_degrees,
+		maximum_degrees,
+		_search_random_unit(701 + _search_looks_remaining * 13)
+	)
+	var sign_value: float = (
+		-1.0
+		if _search_random_unit(751 + _search_looks_remaining * 29) < 0.5
+		else 1.0
+	)
+	_search_look_target_direction = _search_look_start_direction.rotated(
+		Vector3.UP,
+		deg_to_rad(magnitude * sign_value)
+	).normalized()
+	_start_search_timed_action(
+		SEARCH_ACTION_LOOK_TURN,
+		search_look_turn_min,
+		search_look_turn_max,
+		801
+	)
+
+
+func _start_search_timed_action(
+	action: StringName,
+	minimum_seconds: float,
+	maximum_seconds: float,
+	salt: int
+) -> void:
+	var low: float = maxf(minf(minimum_seconds, maximum_seconds), 0.01)
+	var high: float = maxf(maxf(minimum_seconds, maximum_seconds), low)
+	_search_action = action
+	_search_action_duration_seconds = lerpf(
+		low,
+		high,
+		_search_random_unit(salt)
+	)
+	_search_action_remaining_seconds = _search_action_duration_seconds
+	_search_scan_remaining_seconds = _search_action_remaining_seconds
+	_search_action_serial += 1
+
+
+func _complete_search_point() -> void:
+	var completed_point: Vector3 = _search_points[_search_index]
+	_search_visited_positions.append(completed_point)
+	_search_points_visited = _search_visited_positions.size()
+	_search_index += 1
+	if _search_index >= _search_points.size():
+		if _try_expand_search():
+			_apply_navigation_for_state()
+			return
+		_enter_state(STATE_RECOVERING)
+		return
+	_begin_search_move()
+	_apply_navigation_for_state()
+
+
+func _set_search_motion_paused(paused: bool) -> void:
+	if (
+		_guard == null
+		or not is_instance_valid(_guard)
+		or not _guard.has_method("set_awareness_motion_profile")
+	):
+		return
+	_guard.call(
+		"set_awareness_motion_profile",
+		_search_move_speed_scale,
+		paused
+	)
+
+
+func _apply_search_action_pose() -> void:
+	if (
+		_guard == null
+		or not is_instance_valid(_guard)
+		or _search_action == SEARCH_ACTION_MOVING
+	):
+		return
+	var direction: Vector3 = _horizontal_facing_direction()
+	if _search_action == SEARCH_ACTION_LOOK_TURN:
+		var duration: float = maxf(_search_action_duration_seconds, 0.01)
+		var progress: float = clampf(
+			1.0 - (_search_action_remaining_seconds / duration),
+			0.0,
+			1.0
+		)
+		direction = _search_look_start_direction.slerp(
+			_search_look_target_direction,
+			progress
+		).normalized()
+	elif _search_action == SEARCH_ACTION_LOOK_HOLD:
+		direction = _search_look_target_direction
 	else:
-		_search_scan_base_direction = _search_scan_base_direction.normalized()
-	_apply_search_scan_pose()
+		return
+	var look_target: Vector3 = _guard.global_position + direction
+	look_target.y = _guard.global_position.y
+	_guard.look_at(look_target, Vector3.UP, true)
+
+
+func _horizontal_facing_direction() -> Vector3:
+	if _guard == null or not is_instance_valid(_guard):
+		return Vector3.FORWARD
+	var direction: Vector3 = _guard.global_transform.basis.z
+	direction.y = 0.0
+	if direction.length_squared() <= 0.000001:
+		return Vector3.FORWARD
+	return direction.normalized()
+
+
+func _search_random_unit(salt: int) -> float:
+	var mixed: int = posmod(
+		_search_seed * 48271
+		+ (_search_stage + 1) * 69621
+		+ (_search_index + 1) * 31337
+		+ (_search_action_serial + 1) * 12289
+		+ salt * 7919,
+		2147483647
+	)
+	return float(mixed % 10000) / 9999.0
 
 
 func _derive_search_seed(anchor: Vector3) -> int:
@@ -892,30 +1177,6 @@ func _stable_text_hash(text: String) -> int:
 			2147483647
 		)
 	return value
-
-
-func _apply_search_scan_pose() -> void:
-	if (
-		_guard == null
-		or not is_instance_valid(_guard)
-		or not _search_scan_active
-	):
-		return
-	var duration: float = maxf(search_scan_seconds, 0.10)
-	var progress: float = clampf(
-		1.0 - (_search_scan_remaining_seconds / duration),
-		0.0,
-		1.0
-	)
-	var sweep_radians: float = deg_to_rad(search_scan_degrees)
-	var angle: float = sin(progress * TAU) * sweep_radians
-	var direction: Vector3 = _search_scan_base_direction.rotated(
-		Vector3.UP,
-		angle
-	)
-	var look_target: Vector3 = _guard.global_position + direction
-	look_target.y = _guard.global_position.y
-	_guard.look_at(look_target, Vector3.UP, true)
 
 
 func _on_gameplay_sound_heard(perception: Dictionary) -> void:
@@ -1001,6 +1262,17 @@ func _legacy_debug_state() -> StringName:
 		STATE_INACTIVE:
 			return &"inactive"
 	return &"calm"
+
+
+func _is_valid_search_action(action: StringName) -> bool:
+	return action in [
+		SEARCH_ACTION_MOVING,
+		SEARCH_ACTION_ARRIVAL_PAUSE,
+		SEARCH_ACTION_LOOK_TURN,
+		SEARCH_ACTION_LOOK_HOLD,
+		SEARCH_ACTION_BETWEEN_PAUSE,
+		SEARCH_ACTION_DEPARTURE_PAUSE,
+	]
 
 
 func _is_valid_awareness_state(state: StringName) -> bool:
@@ -1108,8 +1380,9 @@ func _refresh_label() -> void:
 			)
 		STATE_SEARCHING:
 			_status_label.text = (
-				"SEARCHING\nr %.1f · confidence %.0f%%\n%.1fs"
+				"SEARCHING · %s\nr %.1f · confidence %.0f%%\n%.1fs"
 				% [
+					str(_search_action),
 					_search_uncertainty_radius,
 					_search_confidence * 100.0,
 					_state_remaining_seconds,
