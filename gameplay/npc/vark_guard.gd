@@ -8,6 +8,7 @@ const DOOR_BODY_IN_PASSAGE_METHOD: StringName = &"is_body_in_navigation_passage"
 const DOOR_BLOCKED_BY_METHOD: StringName = &"is_motion_blocked_by"
 const DOOR_SWING_RADIUS_METHOD: StringName = &"get_navigation_swing_radius"
 const DOOR_OPERATING_POINT_METHOD: StringName = &"get_navigation_operating_point"
+const DOOR_PASSAGE_CENTER_METHOD: StringName = &"get_navigation_passage_center"
 const DOOR_PHASE_METHOD: StringName = &"get_semantic_phase"
 const DOOR_PHASE_CLOSED: StringName = &"closed"
 const DOOR_PHASE_OPEN: StringName = &"open"
@@ -59,6 +60,8 @@ var _crossing_block_open_count: int = 0
 var _door_maneuver_count: int = 0
 var _door_close_request_count: int = 0
 var _door_operating_point: Vector3 = Vector3.ZERO
+var _door_crossing_point: Vector3 = Vector3.ZERO
+var _door_maneuver_crossing_active: bool = false
 var _patrol_leg_count: int = 0
 var _patrol_cycle_count: int = 0
 var _max_observed_path_x: float = -INF
@@ -274,6 +277,8 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_door_maneuver_count = 0
 	_door_close_request_count = 0
 	_door_operating_point = Vector3.ZERO
+	_door_crossing_point = Vector3.ZERO
+	_door_maneuver_crossing_active = false
 	_max_observed_path_x = -INF
 	_max_observed_path_point_count = 0
 
@@ -297,6 +302,7 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		or not door.has_method(DOOR_BLOCKED_BY_METHOD)
 		or not door.has_method(DOOR_SWING_RADIUS_METHOD)
 		or not door.has_method(DOOR_OPERATING_POINT_METHOD)
+		or not door.has_method(DOOR_PASSAGE_CENTER_METHOD)
 		or not door.has_method(DOOR_PHASE_METHOD)
 	):
 		_last_error = "Guard '%s' received a door without the ordinary navigation seam." % guard_id
@@ -359,6 +365,8 @@ func get_debug_summary() -> Dictionary:
 		"door_maneuver_count": _door_maneuver_count,
 		"door_close_request_count": _door_close_request_count,
 		"door_operating_point": _door_operating_point,
+		"door_crossing_point": _door_crossing_point,
+		"door_maneuver_crossing_active": _door_maneuver_crossing_active,
 		"patrol_leg_count": _patrol_leg_count,
 		"patrol_cycle_count": _patrol_cycle_count,
 		"global_position": global_position,
@@ -382,9 +390,13 @@ func _physics_process(delta: float) -> void:
 	var next_position: Vector3 = _navigation_agent.get_next_path_position()
 	_record_current_path()
 	var target_position: Vector3 = (
-		_awareness_goal_position
-		if _awareness_goal_active
-		else _patrol_positions[_target_index]
+		_door_crossing_point
+		if _door_maneuver_crossing_active
+		else (
+			_awareness_goal_position
+			if _awareness_goal_active
+			else _patrol_positions[_target_index]
+		)
 	)
 	var horizontal_to_target := Vector3(
 		target_position.x - global_position.x,
@@ -468,6 +480,10 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 		_door_request_pending = false
 		_door_close_request_pending = false
 		_door_retry_remaining = 0.0
+		if _door_maneuver_crossing_active:
+			_door_maneuver_crossing_active = false
+			_door_crossing_point = Vector3.ZERO
+			_apply_current_navigation_target()
 		_door_operating_point = Vector3.ZERO
 		return false
 
@@ -494,6 +510,7 @@ func _wait_for_door_if_needed(delta: float, planned_motion: Vector3) -> bool:
 	if (
 		_door_route_blocked
 		and _door_phase() == DOOR_PHASE_OPEN
+		and not _door_maneuver_crossing_active
 	):
 		_begin_open_leaf_maneuver()
 		return true
@@ -564,6 +581,28 @@ func _begin_open_leaf_maneuver() -> bool:
 	if not _is_finite_vector(operating_point):
 		_fail_door_maneuver("ordinary door returned a non-finite operating point")
 		return false
+	var passage_value: Variant = _door.call(DOOR_PASSAGE_CENTER_METHOD)
+	if typeof(passage_value) != TYPE_VECTOR3:
+		_fail_door_maneuver("ordinary door returned no valid passage center")
+		return false
+	var passage_center: Vector3 = passage_value
+	var opposite_reference: Vector3 = (
+		passage_center + (passage_center - operating_point)
+	)
+	opposite_reference.y = global_position.y
+	var crossing_value: Variant = _door.call(
+		DOOR_OPERATING_POINT_METHOD,
+		opposite_reference,
+		_navigation_agent.radius,
+		maxf(safe_margin, 0.05)
+	)
+	if typeof(crossing_value) != TYPE_VECTOR3:
+		_fail_door_maneuver("ordinary door returned no opposite crossing point")
+		return false
+	var crossing_point: Vector3 = crossing_value
+	if not _is_finite_vector(crossing_point):
+		_fail_door_maneuver("ordinary door returned a non-finite crossing point")
+		return false
 	var path: PackedVector3Array = NavigationServer3D.map_get_path(
 		_navigation_agent.get_navigation_map(),
 		global_position,
@@ -575,6 +614,8 @@ func _begin_open_leaf_maneuver() -> bool:
 		return false
 
 	_door_operating_point = operating_point
+	_door_crossing_point = crossing_point
+	_door_maneuver_crossing_active = false
 	_door_traversal_state = DoorTraversalState.REPOSITIONING_FOR_CLOSE
 	_door_request_pending = false
 	_door_close_request_pending = false
@@ -634,6 +675,7 @@ func _process_door_maneuver(delta: float) -> bool:
 			if _door_phase() == DOOR_PHASE_CLOSED:
 				_door_close_request_pending = false
 				_door_traversal_state = DoorTraversalState.REOPENING
+				_door_maneuver_crossing_active = true
 				_door_retry_remaining = 0.0
 				_apply_current_navigation_target()
 				_retry_door_open_request(delta)
@@ -667,6 +709,9 @@ func _apply_current_navigation_target() -> void:
 	):
 		_navigation_agent.target_position = _door_operating_point
 		return
+	if _door_maneuver_crossing_active:
+		_navigation_agent.target_position = _door_crossing_point
+		return
 	_navigation_agent.target_position = (
 		_awareness_goal_position
 		if _life_state == LIFE_CONSCIOUS and _awareness_goal_active
@@ -685,6 +730,8 @@ func _fail_door_maneuver(reason: String) -> void:
 	_door_request_pending = false
 	_door_close_request_pending = false
 	_door_retry_remaining = 0.0
+	_door_maneuver_crossing_active = false
+	_door_crossing_point = Vector3.ZERO
 	_last_error = "Guard '%s' cannot operate door '%s': %s." % [
 		guard_id,
 		door_id,
