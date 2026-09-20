@@ -282,7 +282,10 @@ func _assert_guard_awareness_state_machine() -> void:
 	guard.velocity = Vector3.ZERO
 	guard.look_at(player.global_position, Vector3.UP, true)
 	await _settle_frames(2)
-	var dark_exposure: float = exposure.sample_now()
+	var dark_exposure_summary: Dictionary = exposure.sample_now()
+	var dark_exposure: float = float(
+		dark_exposure_summary.get("exposure", 1.0)
+	)
 	var dark_close_confirmed: bool = reaction.sample_vision_now()
 	var dark_close_summary: Dictionary = reaction.get_debug_summary()
 	_assert_true(
