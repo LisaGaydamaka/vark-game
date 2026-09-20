@@ -169,7 +169,7 @@ func sample_vision_now() -> bool:
 	):
 		if _awareness_state != STATE_ALERTED:
 			_seen_count += 1
-		_enter_state(STATE_ALERTED, target, true)
+			_enter_state(STATE_ALERTED, target, true)
 		else:
 			_guard.call(
 				"set_awareness_navigation_target",
