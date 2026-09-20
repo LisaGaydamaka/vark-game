@@ -175,7 +175,7 @@ func _prove_stable_boundary_coherence_and_restore_suppression(
 			true
 		))
 		and not bool(saved_trigger.get("armed", true))
-		and saved_reaction.get("state", &"") == &"heard_noise"
+		and saved_reaction.get("state", &"") == &"investigating"
 		and int(saved_reaction.get("heard_count", 0)) >= 1
 		and saved_door.get("phase", &"")
 			== VarkOrdinaryDoor.PHASE_OPENING
