@@ -77,7 +77,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		int(session.get("session_id")),
 		&"footstep.test",
 		guard.global_position,
-		0.15
+		0.18
 	))
 	await _completed_physics_frame()
 	var weak_summary: Dictionary = reaction.get_debug_summary()
@@ -89,7 +89,18 @@ func _assert_guard_awareness_state_machine() -> void:
 		and weak_summary.get("state", &"") == &"heard_noise"
 		and int(weak_summary.get("heard_count", 0)) == 1
 		and not bool(weak_nav.get("active", true)),
-		"Phase 5.4 weak local hearing evidence creates mild suspicion without manufacturing an investigation route"
+		(
+			"Phase 5.4 weak local hearing evidence creates mild suspicion without manufacturing an investigation route "
+			+ "(summary=%s nav=%s perception=%s)"
+			% [
+				str(weak_summary),
+				str(weak_nav),
+				str(
+					(world.get_node("Guard/Hearing") as VarkAcousticListener)
+					.get_last_perception()
+				),
+			]
+		)
 	)
 
 	var returned_unaware: bool = await _wait_for_awareness_state(
