@@ -4,6 +4,7 @@ extends Node
 
 const PLAYER_GROUP: StringName = &"vark_player"
 const MISSION_DEFINITION_SCRIPT = preload("res://missions/mission_definition.gd")
+const SaveFormat = preload("res://application/save_format.gd")
 const MissionContentValidator = preload("res://missions/mission_content_validator.gd")
 const WorldEntityRegistry = preload(
 	"res://missions/persistence/world_entity_registry.gd"
@@ -85,6 +86,14 @@ func capture_save_envelope() -> Dictionary:
 		return {}
 
 	return {
+		"save_format_version": SaveFormat.CURRENT_VERSION,
+		"mission_id": SaveFormat.mission_id_for(
+			mission_definition,
+			world_scene.resource_path
+		),
+		"mission_content_revision": SaveFormat.mission_revision_for(
+			mission_definition
+		),
 		"source_session_id": session_id,
 		"stable_boundary_serial": _stable_gameplay_boundary_serial,
 		"gameplay_time_seconds": gameplay_time_seconds,
@@ -123,6 +132,38 @@ func begin_restore_from_envelope(envelope: Dictionary) -> bool:
 		!= expected_definition_path
 	):
 		return _fail_restore("WorldSession restore MissionDefinition path does not match the candidate.")
+
+	var expected_mission_id: StringName = SaveFormat.mission_id_for(
+		mission_definition,
+		world_scene.resource_path
+	)
+	var expected_content_revision: int = SaveFormat.mission_revision_for(
+		mission_definition
+	)
+	if int(envelope.get("save_format_version", 0)) != SaveFormat.CURRENT_VERSION:
+		return _fail_restore(
+			"Unsupported save format version %d; expected %d. No migration is available."
+			% [
+				int(envelope.get("save_format_version", 0)),
+				SaveFormat.CURRENT_VERSION,
+			]
+		)
+	if envelope.get("mission_id", &"") != expected_mission_id:
+		return _fail_restore(
+			"Save mission_id '%s' does not match candidate mission '%s'."
+			% [
+				str(envelope.get("mission_id", &"")),
+				str(expected_mission_id),
+			]
+		)
+	if int(envelope.get("mission_content_revision", 0)) != expected_content_revision:
+		return _fail_restore(
+			"Save mission content revision %d does not match candidate revision %d."
+			% [
+				int(envelope.get("mission_content_revision", 0)),
+				expected_content_revision,
+			]
+		)
 
 	var gameplay_time_value: Variant = envelope.get(
 		"gameplay_time_seconds",

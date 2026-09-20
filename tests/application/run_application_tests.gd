@@ -39,6 +39,9 @@ const TransientStateRestoreRegressions = preload(
 const SnapshotCoherenceRegressions = preload(
 	"res://tests/application/snapshot_coherence_regressions.gd"
 )
+const SaveCompatibilityRegressions = preload(
+	"res://tests/application/save_compatibility_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -427,6 +430,14 @@ func _run_tests() -> void:
 		SnapshotCoherenceRegressions.new()
 	)
 	await snapshot_coherence_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var save_compatibility_regressions: RefCounted = (
+		SaveCompatibilityRegressions.new()
+	)
+	await save_compatibility_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)

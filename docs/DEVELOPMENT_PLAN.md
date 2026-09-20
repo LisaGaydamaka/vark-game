@@ -1147,7 +1147,7 @@ The current slice has no separate timed investigation/search decay, stun timer, 
 **Manual:** none — 4.4 is accepted from deterministic transient save/load coverage. No user-facing save binding, durable file behavior, migration/compatibility UI, or subjective presentation is introduced here.
 
 
-## 4.5 Snapshot coherence, restore suppression, operation ordering, and failure safety `[~]`
+## 4.5 Snapshot coherence, restore suppression, operation ordering, and failure safety `[x]`
 
 Regression coverage proves:
 
@@ -1176,12 +1176,12 @@ The current slice has no collected-loot tombstone or alarm/rule subsystem yet. R
 
 **Done when:** one regression demonstrates a multi-system queued consequence boundary captured coherently with immediate input-owned view pose; restore reproduces that boundary with zero queued gameplay events and no duplicated one-shot/stat/awareness effects; transition/exit source binding and direct top-level exclusion are proven; invalid restore paths leave either the original source authoritative or a coherent menu/no-world recovery state; and the existing save-coordinator ordering regressions remain green.
 
-**Automated:** implemented through new `tests/application/snapshot_coherence_regressions.gd`, wired into the authoritative Application suite, plus the existing `save_coordinator_regressions.gd` newest-request/source-binding checks and the existing application top-level-operation guard coverage.
+**Automated:** accepted — exact `test` head `416e82409a3494daeeb3427c69bcf8528427f525` passed Godot 4.7.2 GitHub Actions Test run #254. The formerly flaky 4.4 visual-alert fixture was stabilized, every 4.5 coherence/suppression/source-binding/operation-exclusion/failure-recovery assertion passed, and CI ended with `ALL APPLICATION TESTS PASSED`, `ALL PROP TESTS PASSED`, `ALL ACTOR TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
 
-**Manual:** none — 4.5 proves deterministic ownership, suppression, ordering, and failure-state behavior only. Durable filesystem failure/atomic replacement and compatibility/revision UX are owned by 4.6.
+**Manual:** none — 4.5 is accepted from deterministic ownership, suppression, ordering, and failure-state coverage. Durable filesystem behavior and compatibility/revision ownership remain 4.6.
 
 
-## 4.6 Save compatibility, content revision ownership, and durable write `[ ]`
+## 4.6 Save compatibility, content revision ownership, and durable write `[~]`
 
 Record separately:
 
@@ -1202,6 +1202,23 @@ Do not bump merely because compatible art/geometry/text/tuning changed.
 Provide clear unsupported-format/revision errors. Do not build migrations before a real migration is needed.
 
 Durable writes use temporary/new files and only replace the previous valid save after successful completion/validation.
+
+The bounded 4.6 implementation introduces one global `SaveFormat.CURRENT_VERSION` and records `save_format_version`, `mission_id`, and `mission_content_revision` as separate fields in every WorldSession save envelope.
+
+For authored missions, `MissionDefinition.mission_id` and `MissionDefinition.mission_content_revision` are the compatibility authority. Restore prevalidation reloads the installed MissionDefinition, confirms it still owns the saved world scene, and rejects mismatched mission identity or content revision before destructive replacement. The current development-only raw-scene launch path has no MissionDefinition by design; those fixtures receive an explicit synthetic `dev_scene:<world_scene_path>` identity and revision 1 so existing focused save regressions continue to exercise persistence without inventing authored mission metadata.
+
+`save_format_version` is global schema/meaning ownership, not a content revision. This item supports only the current version; unsupported global versions and mission revisions fail closed with explicit "No migration is available" errors. No migration framework is introduced.
+
+Committed quicksaves are durable under `user://vark/saves/<slot>.varksave`. The coordinator serializes only the already-detached snapshot Variant with object decoding disabled. A durable commit writes `<slot>.varksave.new`, closes/flushes it, reopens and validates the complete snapshot (including installed compatibility) and exact round-trip value, then performs one same-filesystem rename over the previous slot. The prior valid slot is not replaced until the new file has validated. A leftover `.new` file is never treated as committed truth; if a valid final slot exists it is discarded, while a valid temp may be promoted only when no final exists.
+
+The in-memory committed-slot cache remains an optimization, not persistence truth. A fresh Application/SaveCoordinator with an empty cache can discover the durable slot and quickload it through the same ordinary restore path. Loading an incompatible/corrupt durable file leaves a clear coordinator/application save error instead of silently migrating or interpreting it.
+
+**Done when:** a real MissionDefinition-backed Playground save records all three compatibility fields; format, mission-id, and content-revision mismatches are rejected before replacing the current world with clear errors; a committed quicksave produces one validated durable slot without a committed temp artifact; a later valid save replaces that slot only after temp validation; and a completely fresh Application instance can quickload the latest durable snapshot from disk while ignoring an uncommitted stale temp.
+
+**Automated:** implemented through new `tests/application/save_compatibility_regressions.gd`, wired into the authoritative Application suite. It uses an isolated `user://vark_tests/phase46` directory, saves the authored Playground MissionDefinition, exercises unsupported format/revision/mission errors, replaces the slot with a newer generation, leaves a fake interrupted temp beside the valid final, destroys the entire Application instance, then proves a fresh Application quickloads the latest durable mission snapshot and removes the uncommitted temp. Existing raw-scene save/restore regressions remain authoritative for the development-fixture fallback identity.
+
+**Manual:** none — this item introduces durable developer quicksave storage and deterministic compatibility errors but still no player-facing save/load controls, slot UI, migration UX, or subjective presentation. Platform-specific/user-facing save experience remains later product work.
+
 
 ## 4.7 Crude hostile-interaction compatibility proof `[ ]`
 

@@ -127,6 +127,10 @@ func get_latest_quicksave_snapshot() -> Dictionary:
 	return save_coordinator.get_latest_committed_snapshot()
 
 
+func get_last_save_error() -> String:
+	return save_coordinator.get_last_error()
+
+
 func quickload_latest() -> bool:
 	var snapshot: Dictionary = get_latest_quicksave_snapshot()
 	if snapshot.is_empty():

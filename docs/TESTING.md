@@ -345,6 +345,17 @@ Source-session binding is exercised across mission transition and exit in additi
 Failure safety covers both sides of the sole-world topology. A malformed snapshot rejected by coordinator validation leaves the current PLAYING source session and input domains untouched. A structurally valid but semantically invalid player snapshot is allowed to enter replacement, must fail closed during RESTORING, discard the candidate, and leave the application in one coherent menu/no-world state with input disabled and no active top-level operation. The same application must then be able to launch a fresh world successfully.
 
 
+## Phase 4.6 compatibility metadata and durable quicksave
+
+`application/save_format.gd` owns the current global save-format version. Every WorldSession save envelope records that version separately from `mission_id` and `mission_content_revision`. MissionDefinition-backed worlds take mission identity/revision directly from the authored definition; raw scene development fixtures use the explicit `dev_scene:<world_scene_path>` compatibility identity with revision 1 and remain non-mission development targets.
+
+SaveCoordinator validation performs installed-content compatibility checks before Application replacement. Unsupported global versions, changed mission IDs, and changed MissionDefinition revisions fail closed with explicit no-migration errors. WorldSession repeats the same compatibility check against the actual non-playing restore candidate before applying semantic world state.
+
+Committed quicksaves are binary detached-Variant files under `user://vark/saves`. Object serialization/deserialization is disabled. Commit writes a `.new` file, flushes/closes it, rereads and validates the complete snapshot plus exact value round trip, and only then promotes it over the existing final slot with one same-filesystem rename. A final slot is therefore the commit point. A stale temp beside an existing final is discarded; a valid temp can only recover into an absent final.
+
+`tests/application/save_compatibility_regressions.gd` uses an isolated test directory and the real authored Playground MissionDefinition. It proves the three compatibility fields, pre-destructive version/mission/revision rejection and error text, validated durable replacement, no leftover committed temp, and durable quickload after destroying the entire source Application. The fresh coordinator must select the valid final snapshot rather than an uncommitted temp artifact and restore the expected player/mission state through the ordinary Application/WorldSession path.
+
+
 ## Gameplay input boundary and view pose
 
 The production application path binds the current real player to one persistent application-owned input boundary before the session enters ordinary play. That boundary owns gameplay/look permission and supplies locomotion with at most one `PlayerCommand` snapshot per physics frame. Standalone `Player.tscn` movement fixtures retain direct sampling only as a focused non-application fallback so the pre-existing real-player behavior traces remain usable; that fallback is not the production ownership path.

@@ -2,8 +2,15 @@ class_name VarkSaveCoordinator
 extends Node
 
 
+const SaveFormat = preload("res://application/save_format.gd")
+const MISSION_DEFINITION_SCRIPT = preload("res://missions/mission_definition.gd")
 const DEFAULT_SLOT: StringName = &"quicksave"
 const CAPTURE_PHYSICS_PRIORITY: int = 1100
+const DEFAULT_DURABLE_SAVE_DIRECTORY: String = "user://vark/saves"
+const DURABLE_SAVE_EXTENSION: String = ".varksave"
+const DURABLE_TEMP_SUFFIX: String = ".new"
+
+@export var durable_save_directory: String = DEFAULT_DURABLE_SAVE_DIRECTORY
 
 var application: Node = null
 
@@ -29,9 +36,12 @@ func request_save(slot: StringName = DEFAULT_SLOT) -> int:
 	if application == null or not is_instance_valid(application):
 		_last_error = "Save coordinator has no valid application owner."
 		return 0
-	if str(slot).strip_edges().is_empty():
-		_last_error = "Save slot must not be empty."
+	if not _is_safe_slot_name(slot):
+		_last_error = "Save slot must be non-empty and may not contain path traversal characters."
 		return 0
+
+	_load_durable_slot_if_needed(slot)
+	_last_error = ""
 
 	var session := application.get("current_session") as Node
 	if session == null or not is_instance_valid(session):
@@ -118,6 +128,7 @@ func get_request_snapshot(generation: int) -> Dictionary:
 func get_latest_committed_generation(
 	slot: StringName = DEFAULT_SLOT
 ) -> int:
+	_load_durable_slot_if_needed(slot)
 	var committed: Dictionary = _committed_slots.get(slot, {})
 	return int(committed.get("generation", 0))
 
@@ -125,9 +136,21 @@ func get_latest_committed_generation(
 func get_latest_committed_snapshot(
 	slot: StringName = DEFAULT_SLOT
 ) -> Dictionary:
+	_load_durable_slot_if_needed(slot)
 	var committed: Dictionary = _committed_slots.get(slot, {})
 	var snapshot: Dictionary = committed.get("snapshot", {})
 	return snapshot.duplicate(true)
+
+
+func get_durable_save_path(
+	slot: StringName = DEFAULT_SLOT
+) -> String:
+	if not _is_safe_slot_name(slot):
+		return ""
+	var root: String = durable_save_directory.strip_edges().trim_suffix("/")
+	if root.is_empty():
+		return ""
+	return root.path_join(str(slot) + DURABLE_SAVE_EXTENSION)
 
 
 func get_last_error() -> String:
@@ -135,22 +158,48 @@ func get_last_error() -> String:
 
 
 func validate_snapshot(snapshot: Dictionary) -> bool:
+	_last_error = ""
 	if snapshot.is_empty() or not _is_detached_value(snapshot):
-		return false
+		return _fail_validation(
+			"Save snapshot must be non-empty detached value data."
+		)
 	if (
 		typeof(snapshot.get("generation", null)) != TYPE_INT
 		or int(snapshot.get("generation", 0)) <= 0
-		or typeof(snapshot.get("slot", null)) != TYPE_STRING_NAME
-		or str(snapshot.get("slot", &"")).strip_edges().is_empty()
+	):
+		return _fail_validation(
+			"Save snapshot generation must be a positive integer."
+		)
+	if (
+		typeof(snapshot.get("slot", null)) != TYPE_STRING_NAME
+		or not _is_safe_slot_name(snapshot.get("slot", &""))
+	):
+		return _fail_validation(
+			"Save snapshot slot is missing or unsafe."
+		)
+
+	var session_snapshot: Variant = snapshot.get("session", null)
+	if typeof(session_snapshot) != TYPE_DICTIONARY:
+		return _fail_validation(
+			"Save snapshot is missing its session envelope."
+		)
+	if not _is_valid_session_envelope(session_snapshot as Dictionary):
+		return false
+	if not _validate_installed_compatibility(
+		session_snapshot as Dictionary
 	):
 		return false
 
-	var session_snapshot: Dictionary = snapshot.get("session", {})
-	if not _is_valid_session_envelope(session_snapshot):
-		return false
-
-	var view_pose: Dictionary = snapshot.get("player_view_pose", {})
-	return _is_valid_view_pose(view_pose)
+	var view_pose: Variant = snapshot.get("player_view_pose", null)
+	if typeof(view_pose) != TYPE_DICTIONARY:
+		return _fail_validation(
+			"Save snapshot is missing its player view pose."
+		)
+	if not _is_valid_view_pose(view_pose as Dictionary):
+		return _fail_validation(
+			"Save snapshot player view pose is malformed."
+		)
+	return true
 
 
 func _physics_process(_delta: float) -> void:
@@ -257,7 +306,16 @@ func _commit_captured_generation(generation: int) -> void:
 	var snapshot: Dictionary = request.get("snapshot", {})
 	if not validate_snapshot(snapshot):
 		request["status"] = &"failed"
-		request["error"] = "Captured snapshot became invalid before commit."
+		request["error"] = (
+			"Captured snapshot became invalid before commit: %s"
+			% _last_error
+		)
+		_requests[generation] = request
+		return
+
+	if not _write_durable_snapshot(slot, snapshot):
+		request["status"] = &"failed"
+		request["error"] = _last_error
 		_requests[generation] = request
 		return
 
@@ -282,7 +340,20 @@ func _cancel_request(generation: int, reason: String) -> void:
 
 func _is_valid_session_envelope(envelope: Dictionary) -> bool:
 	if envelope.is_empty() or not _is_detached_value(envelope):
-		return false
+		return _fail_validation(
+			"Save session envelope must be detached value data."
+		)
+	if (
+		typeof(envelope.get("save_format_version", null)) != TYPE_INT
+		or int(envelope.get("save_format_version", 0)) <= 0
+		or typeof(envelope.get("mission_id", null)) != TYPE_STRING_NAME
+		or str(envelope.get("mission_id", &"")).strip_edges().is_empty()
+		or typeof(envelope.get("mission_content_revision", null)) != TYPE_INT
+		or int(envelope.get("mission_content_revision", 0)) <= 0
+	):
+		return _fail_validation(
+			"Save session envelope is missing valid compatibility metadata."
+		)
 	if (
 		typeof(envelope.get("source_session_id", null)) != TYPE_INT
 		or int(envelope.get("source_session_id", 0)) <= 0
@@ -292,7 +363,9 @@ func _is_valid_session_envelope(envelope: Dictionary) -> bool:
 		or str(envelope.get("world_scene_path", "")).is_empty()
 		or typeof(envelope.get("mission_definition_path", null)) != TYPE_STRING
 	):
-		return false
+		return _fail_validation(
+			"Save session envelope is missing required world identity fields."
+		)
 	var gameplay_time_value: Variant = envelope.get(
 		"gameplay_time_seconds",
 		null
@@ -301,15 +374,314 @@ func _is_valid_session_envelope(envelope: Dictionary) -> bool:
 		typeof(gameplay_time_value) != TYPE_FLOAT
 		and typeof(gameplay_time_value) != TYPE_INT
 	):
-		return false
+		return _fail_validation(
+			"Save session gameplay time is not numeric."
+		)
 	var gameplay_time: float = float(gameplay_time_value)
 	if not is_finite(gameplay_time) or gameplay_time < 0.0:
-		return false
+		return _fail_validation(
+			"Save session gameplay time is invalid."
+		)
 	var world_state: Variant = envelope.get("world_state", null)
-	return (
-		typeof(world_state) == TYPE_DICTIONARY
-		and _is_valid_world_state_structure(world_state as Dictionary)
+	if typeof(world_state) != TYPE_DICTIONARY:
+		return _fail_validation(
+			"Save session envelope has no semantic world state."
+		)
+	if not _is_valid_world_state_structure(world_state as Dictionary):
+		return _fail_validation(
+			"Save semantic world state is malformed or unsupported."
+		)
+	return true
+
+
+func _validate_installed_compatibility(
+	envelope: Dictionary
+) -> bool:
+	var saved_format: int = int(
+		envelope.get("save_format_version", 0)
 	)
+	if saved_format != SaveFormat.CURRENT_VERSION:
+		return _fail_validation(
+			"Unsupported save format version %d; expected %d. No migration is available."
+			% [saved_format, SaveFormat.CURRENT_VERSION]
+		)
+
+	var world_scene_path: String = str(
+		envelope.get("world_scene_path", "")
+	)
+	if (
+		world_scene_path.is_empty()
+		or not ResourceLoader.exists(world_scene_path)
+	):
+		return _fail_validation(
+			"Saved world scene is unavailable: %s"
+			% world_scene_path
+		)
+
+	var definition_path: String = str(
+		envelope.get("mission_definition_path", "")
+	)
+	var expected_mission_id: StringName
+	var expected_revision: int
+	if definition_path.is_empty():
+		expected_mission_id = SaveFormat.mission_id_for(
+			null,
+			world_scene_path
+		)
+		expected_revision = SaveFormat.mission_revision_for(null)
+	else:
+		if not ResourceLoader.exists(definition_path):
+			return _fail_validation(
+				"Saved MissionDefinition is unavailable: %s"
+				% definition_path
+			)
+		var definition: Resource = ResourceLoader.load(
+			definition_path
+		)
+		if (
+			definition == null
+			or definition.get_script()
+				!= MISSION_DEFINITION_SCRIPT
+		):
+			return _fail_validation(
+				"Saved MissionDefinition is not loadable: %s"
+				% definition_path
+			)
+		var definition_errors: PackedStringArray = definition.call(
+			"get_load_errors"
+		)
+		if not definition_errors.is_empty():
+			return _fail_validation(
+				"Saved MissionDefinition is invalid: %s"
+				% "; ".join(definition_errors)
+			)
+		var definition_world := definition.get(
+			"world_scene"
+		) as PackedScene
+		if (
+			definition_world == null
+			or definition_world.resource_path
+				!= world_scene_path
+		):
+			return _fail_validation(
+				"Saved MissionDefinition no longer owns world scene '%s'."
+				% world_scene_path
+			)
+		expected_mission_id = SaveFormat.mission_id_for(
+			definition,
+			world_scene_path
+		)
+		expected_revision = SaveFormat.mission_revision_for(
+			definition
+		)
+
+	var saved_mission_id: StringName = envelope.get(
+		"mission_id",
+		&""
+	)
+	if saved_mission_id != expected_mission_id:
+		return _fail_validation(
+			"Unsupported save mission_id '%s'; installed content expects '%s'."
+			% [
+				str(saved_mission_id),
+				str(expected_mission_id),
+			]
+		)
+	var saved_revision: int = int(
+		envelope.get("mission_content_revision", 0)
+	)
+	if saved_revision != expected_revision:
+		return _fail_validation(
+			"Unsupported mission content revision %d for '%s'; installed revision is %d. No migration is available."
+			% [
+				saved_revision,
+				str(expected_mission_id),
+				expected_revision,
+			]
+		)
+	return true
+
+
+func _load_durable_slot_if_needed(slot: StringName) -> void:
+	if _committed_slots.has(slot) or not _is_safe_slot_name(slot):
+		return
+	_recover_interrupted_durable_write(slot)
+	var snapshot: Dictionary = _read_durable_snapshot_file(
+		get_durable_save_path(slot)
+	)
+	if snapshot.is_empty():
+		return
+	var generation: int = int(snapshot.get("generation", 0))
+	_committed_slots[slot] = {
+		"generation": generation,
+		"snapshot": snapshot.duplicate(true),
+	}
+	_next_generation = maxi(_next_generation, generation + 1)
+
+
+func _write_durable_snapshot(
+	slot: StringName,
+	snapshot: Dictionary
+) -> bool:
+	var final_path: String = get_durable_save_path(slot)
+	if final_path.is_empty():
+		return _fail_validation(
+			"Durable save path is invalid."
+		)
+	if not _ensure_durable_save_directory():
+		return false
+
+	_recover_interrupted_durable_write(slot)
+	var temp_path: String = final_path + DURABLE_TEMP_SUFFIX
+	_remove_file_if_exists(temp_path)
+
+	var file := FileAccess.open(temp_path, FileAccess.WRITE)
+	if file == null:
+		return _fail_validation(
+			"Could not open temporary save file '%s' for writing (error %d)."
+			% [temp_path, FileAccess.get_open_error()]
+		)
+	var stored: bool = file.store_var(snapshot, false)
+	file.flush()
+	file.close()
+	if not stored:
+		_remove_file_if_exists(temp_path)
+		return _fail_validation(
+			"Temporary save file could not serialize the detached snapshot; previous durable save was preserved."
+		)
+
+	var verified_temp: Dictionary = _read_durable_snapshot_file(
+		temp_path
+	)
+	if verified_temp.is_empty() or verified_temp != snapshot:
+		_remove_file_if_exists(temp_path)
+		return _fail_validation(
+			"Temporary save file failed round-trip validation; previous durable save was preserved."
+		)
+
+	# Godot's same-filesystem rename overwrites the destination. Promotion is
+	# therefore one replacement operation performed only after the new file has
+	# round-trip validated; a promotion error leaves the previous slot untouched.
+	var promote_error: Error = DirAccess.rename_absolute(
+		ProjectSettings.globalize_path(temp_path),
+		ProjectSettings.globalize_path(final_path)
+	)
+	if promote_error != OK:
+		_remove_file_if_exists(temp_path)
+		return _fail_validation(
+			"Could not atomically promote validated temporary save into place (error %d); previous durable save was preserved."
+			% promote_error
+		)
+
+	var verified_final: Dictionary = _read_durable_snapshot_file(
+		final_path
+	)
+	if verified_final.is_empty() or verified_final != snapshot:
+		return _fail_validation(
+			"Promoted durable save failed validation."
+		)
+
+	_last_error = ""
+	return true
+
+
+func _recover_interrupted_durable_write(
+	slot: StringName
+) -> void:
+	var final_path: String = get_durable_save_path(slot)
+	if final_path.is_empty():
+		return
+	var temp_path: String = final_path + DURABLE_TEMP_SUFFIX
+	var final_exists: bool = FileAccess.file_exists(final_path)
+	if final_exists:
+		_remove_file_if_exists(temp_path)
+		return
+	if FileAccess.file_exists(temp_path):
+		var recovered: Dictionary = _read_durable_snapshot_file(
+			temp_path
+		)
+		if not recovered.is_empty():
+			DirAccess.rename_absolute(
+				ProjectSettings.globalize_path(temp_path),
+				ProjectSettings.globalize_path(final_path)
+			)
+		else:
+			_remove_file_if_exists(temp_path)
+
+
+func _read_durable_snapshot_file(path: String) -> Dictionary:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return {}
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		_fail_validation(
+			"Could not open durable save file '%s' (error %d)."
+			% [path, FileAccess.get_open_error()]
+		)
+		return {}
+	var value: Variant = file.get_var(false)
+	file.close()
+	if typeof(value) != TYPE_DICTIONARY:
+		_fail_validation(
+			"Durable save file '%s' does not contain a snapshot dictionary."
+			% path
+		)
+		return {}
+	var snapshot: Dictionary = value
+	if not validate_snapshot(snapshot):
+		var validation_error: String = _last_error
+		_last_error = (
+			"Durable save file '%s' is incompatible or corrupt: %s"
+			% [path, validation_error]
+		)
+		return {}
+	return snapshot.duplicate(true)
+
+
+func _ensure_durable_save_directory() -> bool:
+	var root: String = durable_save_directory.strip_edges().trim_suffix("/")
+	if root.is_empty():
+		return _fail_validation(
+			"Durable save directory must not be empty."
+		)
+	var absolute_root: String = ProjectSettings.globalize_path(
+		root
+	)
+	if DirAccess.dir_exists_absolute(absolute_root):
+		return true
+	var error: Error = DirAccess.make_dir_recursive_absolute(
+		absolute_root
+	)
+	if error != OK:
+		return _fail_validation(
+			"Could not create durable save directory '%s' (error %d)."
+			% [root, error]
+		)
+	return true
+
+
+func _remove_file_if_exists(path: String) -> void:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return
+	DirAccess.remove_absolute(
+		ProjectSettings.globalize_path(path)
+	)
+
+
+func _is_safe_slot_name(slot: StringName) -> bool:
+	var value: String = str(slot).strip_edges()
+	return (
+		not value.is_empty()
+		and not value.contains("/")
+		and not value.contains("\\")
+		and not value.contains(":")
+		and not value.contains("..")
+	)
+
+
+func _fail_validation(message: String) -> bool:
+	_last_error = message
+	return false
 
 
 func _is_valid_world_state_structure(world_state: Dictionary) -> bool:
