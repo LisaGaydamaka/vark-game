@@ -88,6 +88,11 @@ func _assert_integrated_surface_noise() -> void:
 		if world != null
 		else null
 	)
+	var reaction: Node = (
+		world.get_node_or_null("Guard/Reaction")
+		if world != null
+		else null
+	)
 	var footsteps := (
 		world.get_node_or_null("FootstepEmitter") as VarkPlayerFootstepEmitter
 		if world != null
@@ -110,6 +115,7 @@ func _assert_integrated_surface_noise() -> void:
 		and player != null
 		and guard != null
 		and guard_listener != null
+		and reaction != null
 		and footsteps != null
 		and stone_surface != null
 		and carpet_surface != null
@@ -125,6 +131,7 @@ func _assert_integrated_surface_noise() -> void:
 		or player == null
 		or guard == null
 		or guard_listener == null
+		or reaction == null
 		or footsteps == null
 		or stone_surface == null
 		or carpet_surface == null
@@ -146,11 +153,14 @@ func _assert_integrated_surface_noise() -> void:
 	guard.velocity = Vector3.ZERO
 	await _settle_overlap_frames(3)
 	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
 
 	var stone_queued: bool = footsteps.emit_step_now()
 	await _completed_physics_frame()
 	var stone_summary: Dictionary = footsteps.get_debug_summary()
-	var stone_perception: Dictionary = guard_listener.get_last_perception()
+	var stone_reaction: Dictionary = reaction.call(
+		"get_debug_summary"
+	)
 
 	_assert_true(
 		standing_ready
@@ -165,9 +175,10 @@ func _assert_integrated_surface_noise() -> void:
 			float(stone_summary.get("last_strength", 0.0)),
 			0.52
 		)
-		and bool(stone_perception.get("heard", false))
-		and stone_perception.get("kind", &"") == &"footstep.stone",
-		"Phase 5.1 standing stone footsteps derive identity/strength from SurfaceProfile and enter the existing gameplay.sound perception path"
+		and int(stone_reaction.get("heard_count", 0)) == 1
+		and stone_reaction.get("last_heard_kind", &"")
+			== &"footstep.stone",
+		"Phase 5.1 standing stone footsteps derive identity/strength from SurfaceProfile and resolve through the existing gameplay.sound acoustic reaction path"
 	)
 
 	player.global_position = Vector3(0.0, 0.0, -4.0)
