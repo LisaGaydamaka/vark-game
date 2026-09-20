@@ -2,7 +2,16 @@ extends SceneTree
 
 
 const ApplicationScene = preload("res://application/Application.tscn")
-const GuardAwarenessScript = preload("res://gameplay/npc/guard_awareness.gd")
+const AWARENESS_SCRIPT_PATH: String = "res://gameplay/npc/guard_awareness.gd"
+const STATE_UNAWARE: StringName = &"unaware"
+const STATE_SUSPICIOUS: StringName = &"suspicious"
+const STATE_INVESTIGATING: StringName = &"investigating"
+const STATE_SEARCHING: StringName = &"searching"
+const STATE_ALERTED: StringName = &"alerted"
+const STATE_RECOVERING: StringName = &"recovering"
+const NAV_INVESTIGATE: StringName = &"investigate"
+const NAV_SEARCH: StringName = &"search"
+const NAV_PURSUIT: StringName = &"pursuit"
 const SLICE_PATH: String = "res://missions/integrated_slice/world.tscn"
 const TEST_SAVE_DIRECTORY: String = "user://vark_tests/phase54"
 
@@ -15,9 +24,25 @@ func _initialize() -> void:
 
 func _run_tests() -> void:
 	_cleanup_test_storage()
+	if not _assert_awareness_script_compiles():
+		_print_summary()
+		quit(1)
+		return
 	await _assert_guard_awareness_state_machine()
 	_print_summary()
 	quit(1 if not failures.is_empty() else 0)
+
+
+func _assert_awareness_script_compiles() -> bool:
+	var source: String = FileAccess.get_file_as_string(AWARENESS_SCRIPT_PATH)
+	var script := GDScript.new()
+	script.source_code = source
+	var error: Error = script.reload()
+	_assert_true(
+		error == OK,
+		"Phase 5.4 reusable guard-awareness source compiles independently"
+	)
+	return error == OK
 
 
 func _assert_guard_awareness_state_machine() -> void:
@@ -60,7 +85,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		weak_queued
 		and weak_summary.get("awareness_state", &"")
-			== GuardAwarenessScript.STATE_SUSPICIOUS
+			== STATE_SUSPICIOUS
 		and weak_summary.get("state", &"") == &"heard_noise"
 		and int(weak_summary.get("heard_count", 0)) == 1
 		and not bool(weak_nav.get("active", true)),
@@ -69,7 +94,7 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var returned_unaware: bool = await _wait_for_awareness_state(
 		reaction,
-		GuardAwarenessScript.STATE_UNAWARE,
+		STATE_UNAWARE,
 		30
 	)
 	_assert_true(
@@ -99,10 +124,10 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		strong_queued
 		and investigate_summary.get("awareness_state", &"")
-			== GuardAwarenessScript.STATE_INVESTIGATING
+			== STATE_INVESTIGATING
 		and bool(investigate_nav.get("active", false))
 		and investigate_nav.get("reason", &"")
-			== GuardAwarenessScript.NAV_INVESTIGATE
+			== NAV_INVESTIGATE
 		and _dict_vector(
 			investigate_nav,
 			"target_position"
@@ -112,7 +137,7 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var reached_search: bool = await _wait_for_awareness_state(
 		reaction,
-		GuardAwarenessScript.STATE_SEARCHING,
+		STATE_SEARCHING,
 		30
 	)
 	var search_summary: Dictionary = reaction.get_debug_summary()
@@ -125,7 +150,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		reached_search
 		and bool(search_nav.get("active", false))
 		and search_nav.get("reason", &"")
-			== GuardAwarenessScript.NAV_SEARCH
+			== NAV_SEARCH
 		and resolved_search_target.distance_to(
 			strong_origin
 		) <= 0.001,
@@ -155,7 +180,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		committed
 		and saved_awareness.get("state", &"")
-			== GuardAwarenessScript.STATE_SEARCHING
+			== STATE_SEARCHING
 		and bool(saved_awareness.get(
 			"has_investigation_target",
 			false
@@ -173,7 +198,7 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var mutated_to_unaware: bool = await _wait_for_awareness_state(
 		reaction,
-		GuardAwarenessScript.STATE_UNAWARE,
+		STATE_UNAWARE,
 		60
 	)
 	var loaded: bool = bool(
@@ -201,7 +226,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		mutated_to_unaware
 		and loaded
 		and restored_search.get("awareness_state", &"")
-			== GuardAwarenessScript.STATE_SEARCHING
+			== STATE_SEARCHING
 		and _dict_vector(
 			restored_search,
 			"investigation_target"
@@ -218,7 +243,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		)
 		and bool(restored_nav.get("active", false))
 		and restored_nav.get("reason", &"")
-			== GuardAwarenessScript.NAV_SEARCH
+			== NAV_SEARCH
 		and int(session.call(
 			"get_pending_semantic_event_count"
 		)) == 0,
@@ -245,12 +270,12 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		confirmed
 		and alert_summary.get("awareness_state", &"")
-			== GuardAwarenessScript.STATE_ALERTED
+			== STATE_ALERTED
 		and alert_summary.get("state", &"") == &"saw_player"
 		and int(alert_summary.get("seen_count", 0)) >= 1
 		and bool(alert_nav.get("active", false))
 		and alert_nav.get("reason", &"")
-			== GuardAwarenessScript.NAV_PURSUIT
+			== NAV_PURSUIT
 		and _dict_vector(
 			alert_nav,
 			"target_position"
@@ -266,7 +291,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	_assert_true(
 		lost_now
 		and loss_summary.get("awareness_state", &"")
-			== GuardAwarenessScript.STATE_ALERTED
+			== STATE_ALERTED
 		and bool(loss_summary.get(
 			"has_alert_loss_timer",
 			false
@@ -281,7 +306,7 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var lost_to_search: bool = await _wait_for_awareness_state(
 		reaction,
-		GuardAwarenessScript.STATE_SEARCHING,
+		STATE_SEARCHING,
 		30
 	)
 	var lost_search_nav: Dictionary = guard.get_awareness_navigation_state()
@@ -289,7 +314,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		lost_to_search
 		and bool(lost_search_nav.get("active", false))
 		and lost_search_nav.get("reason", &"")
-			== GuardAwarenessScript.NAV_SEARCH
+			== NAV_SEARCH
 		and _dict_vector(
 			lost_search_nav,
 			"target_position"
@@ -299,13 +324,13 @@ func _assert_guard_awareness_state_machine() -> void:
 
 	var recovering: bool = await _wait_for_awareness_state(
 		reaction,
-		GuardAwarenessScript.STATE_RECOVERING,
+		STATE_RECOVERING,
 		40
 	)
 	var recovery_nav: Dictionary = guard.get_awareness_navigation_state()
 	var final_unaware: bool = await _wait_for_awareness_state(
 		reaction,
-		GuardAwarenessScript.STATE_UNAWARE,
+		STATE_UNAWARE,
 		40
 	)
 	_assert_true(
