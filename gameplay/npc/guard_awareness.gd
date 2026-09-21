@@ -61,6 +61,8 @@ const PURSUIT_CHECKING_LAST_KNOWN: StringName = &"checking_last_known"
 @export var investigation_seconds: float = 2.50
 @export_range(0.05, 5.0, 0.05) var investigation_stare_min: float = 1.50
 @export_range(0.05, 5.0, 0.05) var investigation_stare_max: float = 3.50
+@export_range(1, 4, 1) var observation_stare_repeat_limit: int = 2
+@export_range(0.5, 15.0, 0.25) var observation_stare_reset_seconds: float = 6.00
 @export var search_seconds: float = 32.00
 @export_range(2, 6, 1) var search_point_count: int = 4
 @export_range(0.5, 6.0, 0.1) var search_radius: float = 2.80
@@ -163,6 +165,8 @@ var _investigation_stare_remaining_seconds: float = 0.0
 var _investigation_stare_duration_seconds: float = 0.0
 var _investigation_stare_target: Vector3 = Vector3.ZERO
 var _investigation_stare_serial: int = 0
+var _observation_stare_chain_count: int = 0
+var _observation_stare_reset_remaining_seconds: float = 0.0
 
 
 func _ready() -> void:
@@ -337,6 +341,8 @@ func reset_reaction() -> void:
 	_clear_search_plan(true)
 	_clear_pursuit_state()
 	_clear_investigation_stare(true)
+	_observation_stare_chain_count = 0
+	_observation_stare_reset_remaining_seconds = 0.0
 	_search_reseed_count = 0
 	_refresh_label()
 
@@ -404,6 +410,10 @@ func get_debug_summary() -> Dictionary:
 		"investigation_stare_duration_seconds": _investigation_stare_duration_seconds,
 		"investigation_stare_target": _investigation_stare_target,
 		"investigation_stare_serial": _investigation_stare_serial,
+		"observation_stare_chain_count": _observation_stare_chain_count,
+		"observation_stare_reset_remaining_seconds": _observation_stare_reset_remaining_seconds,
+		"observation_stare_repeat_limit": observation_stare_repeat_limit,
+		"observation_stare_reset_seconds": observation_stare_reset_seconds,
 		"search_radius": search_radius,
 		"search_max_radius": search_max_radius,
 		"search_point_count": search_point_count,
@@ -515,6 +525,8 @@ func capture_semantic_state() -> Dictionary:
 		"investigation_stare_duration_seconds": _investigation_stare_duration_seconds,
 		"investigation_stare_target": _investigation_stare_target,
 		"investigation_stare_serial": _investigation_stare_serial,
+		"observation_stare_chain_count": _observation_stare_chain_count,
+		"observation_stare_reset_remaining_seconds": _observation_stare_reset_remaining_seconds,
 	}
 
 
@@ -526,7 +538,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		and int(session.get("state")) == WORLD_SESSION_STATE_PLAYING
 	):
 		return false
-	if snapshot.size() != 53:
+	if snapshot.size() != 55:
 		return false
 	if _guard == null or not is_instance_valid(_guard):
 		return false
@@ -542,6 +554,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"heard_count",
 		"seen_count",
 		"speech_reaction_count",
+		"observation_stare_chain_count",
 	]:
 		if typeof(snapshot.get(key, null)) != TYPE_INT or int(snapshot[key]) < 0:
 			return false
@@ -597,6 +610,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		"visual_suspicion",
 		"investigation_stare_remaining_seconds",
 		"investigation_stare_duration_seconds",
+		"observation_stare_reset_remaining_seconds",
 	]:
 		var value: Variant = snapshot.get(key, null)
 		if (
@@ -674,6 +688,10 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	var restored_stare_duration: float = float(snapshot.get("investigation_stare_duration_seconds", 0.0))
 	var restored_stare_target: Vector3 = snapshot.get("investigation_stare_target", Vector3.ZERO)
 	var restored_stare_serial: int = int(snapshot.get("investigation_stare_serial", 0))
+	var restored_stare_chain_count: int = int(snapshot.get("observation_stare_chain_count", 0))
+	var restored_stare_reset_remaining: float = float(
+		snapshot.get("observation_stare_reset_remaining_seconds", 0.0)
+	)
 	if (
 		restored_search_index < 0
 		or restored_visited < 0
@@ -694,6 +712,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or restored_stare_duration < 0.0
 		or restored_stare_remaining > restored_stare_duration + 0.001
 		or restored_stare_serial < 0
+		or restored_stare_chain_count < 0
+		or restored_stare_reset_remaining < 0.0
 		or restored_visited != restored_visited_positions.size()
 		or (
 			restored_search_points.is_empty()
@@ -809,6 +829,8 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	_investigation_stare_duration_seconds = restored_stare_duration
 	_investigation_stare_target = restored_stare_target
 	_investigation_stare_serial = restored_stare_serial
+	_observation_stare_chain_count = restored_stare_chain_count
+	_observation_stare_reset_remaining_seconds = restored_stare_reset_remaining
 	_last_gameplay_time_sample = _get_gameplay_time()
 	return true
 
@@ -856,6 +878,13 @@ func _advance_gameplay_timers() -> float:
 			0.0,
 			_alert_loss_remaining_seconds - elapsed
 		)
+	if _observation_stare_reset_remaining_seconds > 0.0:
+		_observation_stare_reset_remaining_seconds = maxf(
+			0.0,
+			_observation_stare_reset_remaining_seconds - elapsed
+		)
+		if _observation_stare_reset_remaining_seconds <= 0.0:
+			_observation_stare_chain_count = 0
 	if _awareness_state == STATE_RECOVERING:
 		_residual_alert_strength = clampf(
 			_state_remaining_seconds / maxf(recovery_seconds, 0.01),
@@ -1136,7 +1165,22 @@ func _decay_visual_suspicion(elapsed_seconds: float) -> void:
 func _begin_investigation_stare(
 	target: Vector3,
 	promote_to_investigation: bool = true
-) -> void:
+) -> bool:
+	var repeat_limit: int = maxi(observation_stare_repeat_limit, 1)
+	if (
+		_observation_stare_reset_remaining_seconds <= 0.0
+		and _observation_stare_chain_count > 0
+	):
+		_observation_stare_chain_count = 0
+
+	if _observation_stare_chain_count >= repeat_limit:
+		_observation_stare_reset_remaining_seconds = maxf(
+			observation_stare_reset_seconds,
+			0.0
+		)
+		_commit_evidence_without_stare(target, promote_to_investigation)
+		return false
+
 	if promote_to_investigation:
 		_enter_state(STATE_INVESTIGATING, target, true)
 	elif _awareness_state != STATE_SUSPICIOUS:
@@ -1145,6 +1189,11 @@ func _begin_investigation_stare(
 		_investigation_target = target
 		_has_investigation_target = true
 
+	_observation_stare_chain_count += 1
+	_observation_stare_reset_remaining_seconds = maxf(
+		observation_stare_reset_seconds,
+		0.0
+	)
 	_investigation_stare_serial += 1
 	_investigation_stare_target = target
 	var low: float = maxf(
@@ -1171,6 +1220,30 @@ func _begin_investigation_stare(
 	_investigation_stare_active = true
 	_set_investigation_stare_motion_paused(true)
 	_apply_investigation_stare_pose()
+	return true
+
+
+func _commit_evidence_without_stare(
+	target: Vector3,
+	promote_to_investigation: bool
+) -> void:
+	if _investigation_stare_active:
+		_clear_investigation_stare(false)
+	if promote_to_investigation:
+		_enter_state(STATE_INVESTIGATING, target, true)
+		return
+	if _awareness_state != STATE_SUSPICIOUS:
+		_enter_state(STATE_SUSPICIOUS, target, true)
+	else:
+		_investigation_target = target
+		_has_investigation_target = true
+	var flat_target := Vector3(
+		target.x,
+		_guard.global_position.y,
+		target.z
+	)
+	if flat_target.distance_squared_to(_guard.global_position) > 0.001:
+		_guard.look_at(flat_target, Vector3.UP, true)
 
 
 func _advance_investigation_stare(elapsed_seconds: float) -> void:

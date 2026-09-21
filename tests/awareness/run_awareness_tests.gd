@@ -97,8 +97,10 @@ func _assert_guard_awareness_state_machine() -> void:
 		and is_equal_approx(reaction.engaged_hearing_investigate_threshold_scale, 0.80)
 		and is_equal_approx(reaction.engaged_footstep_investigate_source_floor_scale, 0.80)
 		and is_equal_approx(reaction.engaged_vision_exposure_threshold_scale, 0.75)
-		and is_equal_approx(reaction.engaged_visual_suspicion_rate_scale, 1.50),
-		"Phase 5.4 production attention tuning uses a longer 1.50-3.50 second observation hold and explicit investigation/search evidence-salience scales"
+		and is_equal_approx(reaction.engaged_visual_suspicion_rate_scale, 1.50)
+		and reaction.observation_stare_repeat_limit == 2
+		and is_equal_approx(reaction.observation_stare_reset_seconds, 6.00),
+		"Phase 5.4 production attention tuning uses a longer 1.50-3.50 second observation hold, explicit evidence-salience scales, and at most two repeated stare freezes per active cue chain"
 	)
 
 	_configure_short_durations(reaction)
@@ -284,6 +286,53 @@ func _assert_guard_awareness_state_machine() -> void:
 		repeated_stare_finished,
 		"Phase 5.4 investigation movement resumes only after the restarted observation hold finishes"
 	)
+
+	var third_strong_origin: Vector3 = strong_origin + Vector3(-0.20, 0.0, 0.25)
+	var third_strong_queued: bool = bool(session.call(
+		"queue_gameplay_sound",
+		int(session.get("session_id")),
+		&"prop.impact",
+		third_strong_origin,
+		0.60
+	))
+	await _completed_physics_frame()
+	var third_strong_summary: Dictionary = reaction.get_debug_summary()
+	var third_strong_nav: Dictionary = guard.get_awareness_navigation_state()
+	_assert_true(
+		third_strong_queued
+		and third_strong_summary.get("awareness_state", &"") == STATE_INVESTIGATING
+		and not bool(third_strong_summary.get("investigation_stare_active", true))
+		and int(third_strong_summary.get("observation_stare_chain_count", 0))
+			== reaction.observation_stare_repeat_limit
+		and float(third_strong_summary.get(
+			"observation_stare_reset_remaining_seconds",
+			0.0
+		)) > 0.0
+		and not bool(third_strong_nav.get("motion_paused", true))
+		and _dict_vector(third_strong_nav, "target_position").distance_to(
+			third_strong_origin
+		) <= 0.001,
+		"Phase 5.4 a third rapid investigation-worthy cue cannot restart an endless stare chain and instead commits immediately to investigating the newest local evidence"
+	)
+
+	await _settle_frames(10)
+	var reset_strong_origin: Vector3 = strong_origin + Vector3(0.20, 0.0, -0.20)
+	var reset_strong_queued: bool = bool(session.call(
+		"queue_gameplay_sound",
+		int(session.get("session_id")),
+		&"prop.impact",
+		reset_strong_origin,
+		0.60
+	))
+	await _completed_physics_frame()
+	var reset_stare_summary: Dictionary = reaction.get_debug_summary()
+	_assert_true(
+		reset_strong_queued
+		and bool(reset_stare_summary.get("investigation_stare_active", false))
+		and int(reset_stare_summary.get("observation_stare_chain_count", 0)) == 1,
+		"Phase 5.4 the bounded stare allowance replenishes after a quiet gameplay-time interval"
+	)
+	await _wait_for_investigation_stare(reaction, false, 30)
 
 	var reached_search: bool = await _wait_for_awareness_state(
 		reaction,
@@ -1404,6 +1453,8 @@ func _configure_short_durations(
 	reaction.investigation_seconds = 0.10
 	reaction.investigation_stare_min = 0.20
 	reaction.investigation_stare_max = 0.24
+	reaction.observation_stare_repeat_limit = 2
+	reaction.observation_stare_reset_seconds = 0.12
 	reaction.vision_suspicion_rate_min = 0.30
 	reaction.vision_suspicion_rate_max = 2.50
 	reaction.vision_suspicion_decay_per_second = 0.80

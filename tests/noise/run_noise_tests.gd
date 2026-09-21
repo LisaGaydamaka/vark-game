@@ -472,12 +472,33 @@ func _assert_integrated_surface_noise() -> void:
 	var stone_run_queued: bool = footsteps.emit_step_now()
 	await _completed_physics_frame()
 	var stone_run_reaction: Dictionary = reaction.call("get_debug_summary")
+	var stone_run_strength: float = float(
+		footsteps.get_debug_summary().get("last_strength", 0.0)
+	)
 	_assert_true(
 		player_input != null
 		and stone_run_queued
 		and stone_run_reaction.get("awareness_state", &"")
 			== &"investigating",
 		"Stone run is strong enough to trigger investigation when heard at close range"
+	)
+
+	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
+	var stone_landing_queued: bool = footsteps.emit_landing_now()
+	await _completed_physics_frame()
+	var stone_landing_summary: Dictionary = footsteps.get_debug_summary()
+	var stone_landing_reaction: Dictionary = reaction.call("get_debug_summary")
+	_assert_true(
+		stone_landing_queued
+		and stone_landing_summary.get("last_surface_id", &"") == &"stone"
+		and stone_landing_summary.get("last_gait", "") == "landing"
+		and is_equal_approx(
+			float(stone_landing_summary.get("last_strength", 0.0)),
+			stone_run_strength
+		)
+		and stone_landing_reaction.get("awareness_state", &"") == &"investigating",
+		"Landing after airborne movement uses exactly the running loudness multiplier for the corresponding surface"
 	)
 
 	# Tile is deliberately loud: even sneak clears the fixed source floor, so
@@ -551,6 +572,54 @@ func _assert_integrated_surface_noise() -> void:
 	reaction.set_physics_process(true)
 	if player_input != null:
 		player_input.current_command = PlayerCommand.new()
+
+	# Exercise the emitter's real airborne -> grounded transition rather than
+	# only its explicit landing helper. Freeze player physics so the support
+	# contact can be controlled deterministically for one transition.
+	var landing_transition_start_count: int = int(
+		footsteps.get_debug_summary().get("queued_count", 0)
+	)
+	player.set_physics_process(false)
+	footsteps.set_physics_process(false)
+	footsteps.set_emission_enabled(true)
+	player.global_position = Vector3(0.0, 0.0, 4.0)
+	await _settle_overlap_frames(2)
+	var player_support := player.get("support") as PlayerSupport
+	var automatic_landing_ready: bool = player_support != null
+	if player_support != null:
+		player_support.current_contact.clear(player.global_position)
+	footsteps._physics_process(0.0)
+	var armed_airborne: bool = bool(
+		footsteps.get_debug_summary().get("landing_armed", false)
+	)
+	if player_support != null:
+		player_support.current_contact.set_contact(
+			0.0,
+			player.global_position,
+			Vector3.UP,
+			true,
+			RID(),
+			PlayerSupportContact.Source.FOOTPRINT
+		)
+	footsteps._physics_process(0.0)
+	await _completed_physics_frame()
+	var automatic_landing_summary: Dictionary = footsteps.get_debug_summary()
+	_assert_true(
+		automatic_landing_ready
+		and armed_airborne
+		and int(automatic_landing_summary.get("queued_count", 0))
+			== landing_transition_start_count + 1
+		and automatic_landing_summary.get("last_gait", "") == "landing"
+		and is_equal_approx(
+			float(automatic_landing_summary.get("last_strength", 0.0)),
+			0.45 * footsteps.sprint_strength_scale
+		),
+		"Phase 5.1 a real normal-airborne to grounded transition automatically emits one running-strength landing sound on the current surface"
+	)
+	footsteps.set_emission_enabled(false)
+	footsteps.set_physics_process(true)
+	player.set_physics_process(true)
+	await _settle_overlap_frames(2)
 
 	var cadence_standing_ready: bool = await _request_player_stance(
 		player,

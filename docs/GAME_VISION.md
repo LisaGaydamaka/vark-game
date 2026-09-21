@@ -186,7 +186,9 @@ Player movement noise depends on both movement and surface.
 
 As a general relationship:
 
-> crouched careful movement < normal movement < sprinting / hard landings
+> crouched careful movement < normal movement < sprinting = landing after a jump or fall
+
+A landing after normal airborne movement uses the running loudness for the surface it lands on. The landing is one contact sound rather than an extra footstep layered on the same frame.
 
 Different materials create meaningfully different footsteps. Soft surfaces are safer. Hard, resonant, or loose surfaces are more dangerous.
 
@@ -259,7 +261,7 @@ The NPC moves toward a relevant location, looks around, searches nearby space, a
 
 While actively investigating or searching, the NPC is deliberately more attentive because prior evidence has established that something may be wrong. The same genuinely local sight or sound can therefore build suspicion faster or cross an investigation threshold that a calm guard would dismiss. This heightened attention changes evidence interpretation only: it does not extend acoustic/vision reach, bypass occlusion, or reveal the hidden current player position.
 
-A newly noticed suspicious local cue makes a non-alert guard stop immediately, orient toward the evidence, and hold an observation/listening stare before deciding whether to move. Confirmed pursuit and its immediate lost-contact/last-known check remain focused on the chase instead of stopping for every distraction.
+A newly noticed suspicious local cue makes a non-alert guard stop immediately, orient toward the evidence, and hold an observation/listening stare before deciding whether to move. This reaction is bounded: repeated cues in one short active chain cannot restart full stares forever. After a small number of repeated holds, stronger evidence makes the guard commit to investigation immediately while weaker evidence may still be noticed without freezing patrol; a quiet interval replenishes the observation allowance. Confirmed pursuit and its immediate lost-contact/last-known check remain focused on the chase instead of stopping for every distraction.
 
 Search behavior must be spatially related to the evidence. The NPC does not magically know the player's current position.
 
