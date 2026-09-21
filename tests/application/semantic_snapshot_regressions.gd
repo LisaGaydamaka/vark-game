@@ -101,7 +101,7 @@ func run(
 		tree,
 		guard,
 		0,
-		480
+		960
 	)
 	assert_true.call(
 		goal_resolved
