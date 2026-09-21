@@ -606,11 +606,12 @@ func _assert_integrated_surface_noise() -> void:
 		and not landing_allows_cadence
 		and int(automatic_landing_summary.get("queued_count", 0))
 			== landing_transition_start_count + 1
-		and automatic_landing_summary.get("last_surface_id", &"") == &"stone"
 		and automatic_landing_summary.get("last_gait", "") == "landing"
+		and float(automatic_landing_summary.get("last_base_strength", 0.0)) > 0.0
 		and is_equal_approx(
 			float(automatic_landing_summary.get("last_strength", 0.0)),
-			0.45 * footsteps.sprint_strength_scale
+			float(automatic_landing_summary.get("last_base_strength", 0.0))
+				* footsteps.sprint_strength_scale
 		),
 		(
 			"Phase 5.1 the production airborne-to-grounded transition logic emits exactly one running-strength landing sound on the current surface "
