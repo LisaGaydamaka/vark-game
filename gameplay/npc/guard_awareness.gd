@@ -47,6 +47,7 @@ const PURSUIT_CHECKING_LAST_KNOWN: StringName = &"checking_last_known"
 @export var vision_darkness_confirm_distance: float = 1.50
 @export var vision_darkness_confirm_facing_dot: float = 0.75
 @export var hearing_investigate_strength: float = 0.16
+@export_range(0.0, 1.0, 0.01) var hearing_footstep_investigate_source_floor: float = 0.22
 @export var suspicion_seconds: float = 1.25
 @export var investigation_seconds: float = 2.50
 @export var search_seconds: float = 32.00
@@ -399,6 +400,7 @@ func get_debug_summary() -> Dictionary:
 		"pursuit_max_lost_seconds": pursuit_max_lost_seconds,
 		"pursuit_arrival_distance": pursuit_arrival_distance,
 		"hearing_investigate_strength": hearing_investigate_strength,
+		"hearing_footstep_investigate_source_floor": hearing_footstep_investigate_source_floor,
 		"gameplay_time_seconds": _get_gameplay_time(),
 	}
 
@@ -1429,38 +1431,44 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 	_last_heard_strength = float(
 		perception.get("propagated_strength", 0.0)
 	)
+	var can_investigate: bool = _heard_sound_can_trigger_investigation(
+		perception
+	)
 
 	if _awareness_state == STATE_ALERTED:
-		if (
-			_pursuit_mode != PURSUIT_VISIBLE
-			and _last_heard_strength >= _effective_hearing_investigate_strength()
-		):
+		if _pursuit_mode != PURSUIT_VISIBLE and can_investigate:
 			_refresh_lost_pursuit_from_evidence(_last_heard_origin)
 	else:
-		_investigation_target = _last_heard_origin
-		_has_investigation_target = true
-		var flat_origin := Vector3(
-			_last_heard_origin.x,
-			_guard.global_position.y,
-			_last_heard_origin.z
+		var accepts_new_target: bool = (
+			can_investigate
+			or _awareness_state == STATE_UNAWARE
+			or _awareness_state == STATE_SUSPICIOUS
+			or _awareness_state == STATE_RECOVERING
 		)
-		if flat_origin.distance_squared_to(_guard.global_position) > 0.001:
-			_guard.look_at(flat_origin, Vector3.UP, true)
+		if accepts_new_target:
+			_investigation_target = _last_heard_origin
+			_has_investigation_target = true
+			var flat_origin := Vector3(
+				_last_heard_origin.x,
+				_guard.global_position.y,
+				_last_heard_origin.z
+			)
+			if flat_origin.distance_squared_to(_guard.global_position) > 0.001:
+				_guard.look_at(flat_origin, Vector3.UP, true)
 
-		if _awareness_state == STATE_SEARCHING:
-			_search_reseed_count += 1
+		if can_investigate:
+			if _awareness_state == STATE_SEARCHING:
+				_search_reseed_count += 1
 			_enter_state(
 				STATE_INVESTIGATING,
 				_last_heard_origin,
 				true
 			)
-		elif _last_heard_strength >= _effective_hearing_investigate_strength():
-			_enter_state(
-				STATE_INVESTIGATING,
-				_last_heard_origin,
-				true
-			)
-		else:
+		elif (
+			_awareness_state == STATE_UNAWARE
+			or _awareness_state == STATE_SUSPICIOUS
+			or _awareness_state == STATE_RECOVERING
+		):
 			_enter_state(
 				STATE_SUSPICIOUS,
 				_last_heard_origin,
@@ -1471,6 +1479,26 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 		if bool(_speech.call("speak_line")):
 			_speech_reaction_count += 1
 	_refresh_label()
+
+
+func _heard_sound_can_trigger_investigation(
+	perception: Dictionary
+) -> bool:
+	if (
+		float(perception.get("propagated_strength", 0.0))
+		< _effective_hearing_investigate_strength()
+	):
+		return false
+	var kind: String = str(perception.get("kind", &""))
+	if not kind.begins_with("footstep."):
+		return true
+	# Propagation can only attenuate a sound; proximity must never upgrade a
+	# fundamentally weak footstep into investigation. This gives sneak steps a
+	# stable reaction ceiling while still allowing them to create suspicion.
+	return (
+		float(perception.get("source_strength", 0.0))
+		>= maxf(hearing_footstep_investigate_source_floor, 0.0)
+	)
 
 
 func _effective_hearing_investigate_strength() -> float:

@@ -329,6 +329,8 @@ func _assert_integrated_surface_noise() -> void:
 		)
 		and float(sprint_summary.get("last_strength", 0.0))
 			> float(carpet_summary.get("last_strength", 0.0))
+		and float(sprint_summary.get("last_strength", 0.0))
+			< guard_listener.hearing_threshold
 		and not bool(sprint_perception.get("heard", true))
 		and sprint_perception.get("kind", &"") == &"footstep.carpet"
 		and float(sprint_perception.get("propagated_strength", 1.0))
@@ -366,7 +368,9 @@ func _assert_integrated_surface_noise() -> void:
 		and is_equal_approx(
 			float(crouched_summary.get("last_strength", 0.0)),
 			0.09 * 0.45
-		),
+		)
+		and float(crouched_summary.get("last_strength", 0.0))
+			< guard_listener.hearing_threshold,
 		"Phase 5.1 stance modifies emitted strength without changing the authored surface identity or semantic sound kind"
 	)
 
@@ -387,6 +391,166 @@ func _assert_integrated_surface_noise() -> void:
 		and noise_meter.get_debug_text().contains("crouched"),
 		"Development loudness meter tracks the crouched carpet source value without creating independent stealth-noise truth"
 	)
+
+	# Hearing-only behavior matrix. Freeze awareness physics so vision cannot
+	# promote these deliberately out-of-sight footstep reactions.
+	reaction.set_physics_process(false)
+	var investigate_source_floor: float = float(
+		reaction.get_debug_summary().get(
+			"hearing_footstep_investigate_source_floor",
+			0.0
+		)
+	)
+
+	# Stone sneak: clearly heard at close range, but source intensity is capped
+	# below investigation even if propagated strength is high enough.
+	var stone_sneak_ready: bool = await _request_player_stance(
+		player,
+		PlayerCrouch.Stance.CROUCHED
+	)
+	if player_input != null:
+		player_input.current_command = PlayerCommand.new()
+	player.global_position = Vector3(0.0, 0.0, 4.0)
+	guard.global_position = Vector3(0.0, 0.0, 3.85)
+	await _settle_overlap_frames(3)
+	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
+	var stone_sneak_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var stone_sneak_step: Dictionary = footsteps.get_debug_summary()
+	var stone_sneak_perception: Dictionary = guard_listener.get_last_perception()
+	var stone_sneak_reaction: Dictionary = reaction.call("get_debug_summary")
+	var stone_sneak_repeat_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var stone_sneak_repeat_reaction: Dictionary = reaction.call(
+		"get_debug_summary"
+	)
+	_assert_true(
+		stone_sneak_ready
+		and stone_sneak_queued
+		and stone_sneak_repeat_queued
+		and is_equal_approx(
+			float(stone_sneak_step.get("last_strength", 0.0)),
+			0.45 * 0.45
+		)
+		and float(stone_sneak_step.get("last_strength", 0.0))
+			< investigate_source_floor
+		and bool(stone_sneak_perception.get("heard", false))
+		and stone_sneak_reaction.get("awareness_state", &"") == &"suspicious"
+		and stone_sneak_repeat_reaction.get("awareness_state", &"")
+			== &"suspicious",
+		"Stone sneak can be noticed at very close range but repeated sneak steps are source-capped at suspicion and never promote to investigation"
+	)
+
+	# Stone walk/run: both are strong enough sources to investigate.
+	var stone_walk_ready: bool = await _request_player_stance(
+		player,
+		PlayerCrouch.Stance.STANDING
+	)
+	if player_input != null:
+		player_input.current_command = PlayerCommand.new()
+	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
+	var stone_walk_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var stone_walk_reaction: Dictionary = reaction.call("get_debug_summary")
+	_assert_true(
+		stone_walk_ready
+		and stone_walk_queued
+		and stone_walk_reaction.get("awareness_state", &"")
+			== &"investigating",
+		"Stone walk is strong enough to trigger investigation when heard at close range"
+	)
+
+	var stone_run_command := PlayerCommand.new()
+	stone_run_command.movement_vector = Vector2(0.0, -1.0)
+	stone_run_command.sprint_held = true
+	if player_input != null:
+		player_input.current_command = stone_run_command
+	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
+	var stone_run_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var stone_run_reaction: Dictionary = reaction.call("get_debug_summary")
+	_assert_true(
+		player_input != null
+		and stone_run_queued
+		and stone_run_reaction.get("awareness_state", &"")
+			== &"investigating",
+		"Stone run is strong enough to trigger investigation when heard at close range"
+	)
+
+	# Tile is deliberately loud: even sneak clears the fixed source floor, so
+	# walk and run (which are stronger) remain investigation-capable too.
+	var tile_sneak_ready: bool = await _request_player_stance(
+		player,
+		PlayerCrouch.Stance.CROUCHED
+	)
+	if player_input != null:
+		player_input.current_command = PlayerCommand.new()
+	player.global_position = Vector3(0.0, 0.0, 6.85)
+	guard.global_position = Vector3(0.0, 0.0, 6.70)
+	await _settle_overlap_frames(3)
+	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
+	var tile_sneak_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var tile_sneak_step: Dictionary = footsteps.get_debug_summary()
+	var tile_sneak_reaction: Dictionary = reaction.call("get_debug_summary")
+	_assert_true(
+		tile_sneak_ready
+		and tile_sneak_queued
+		and is_equal_approx(
+			float(tile_sneak_step.get("last_strength", 0.0)),
+			0.90 * 0.45
+		)
+		and float(tile_sneak_step.get("last_strength", 0.0))
+			>= investigate_source_floor
+		and tile_sneak_reaction.get("awareness_state", &"")
+			== &"investigating",
+		"Tile sneak is deliberately loud enough to trigger investigation"
+	)
+
+	var tile_walk_ready: bool = await _request_player_stance(
+		player,
+		PlayerCrouch.Stance.STANDING
+	)
+	if player_input != null:
+		player_input.current_command = PlayerCommand.new()
+	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
+	var tile_walk_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var tile_walk_reaction: Dictionary = reaction.call("get_debug_summary")
+	_assert_true(
+		tile_walk_ready
+		and tile_walk_queued
+		and tile_walk_reaction.get("awareness_state", &"")
+			== &"investigating",
+		"Tile walk triggers investigation"
+	)
+
+	var tile_run_command := PlayerCommand.new()
+	tile_run_command.movement_vector = Vector2(0.0, -1.0)
+	tile_run_command.sprint_held = true
+	if player_input != null:
+		player_input.current_command = tile_run_command
+	guard_listener.clear_perception()
+	reaction.call("reset_reaction")
+	var tile_run_queued: bool = footsteps.emit_step_now()
+	await _completed_physics_frame()
+	var tile_run_reaction: Dictionary = reaction.call("get_debug_summary")
+	_assert_true(
+		player_input != null
+		and tile_run_queued
+		and tile_run_reaction.get("awareness_state", &"")
+			== &"investigating",
+		"Tile run triggers investigation"
+	)
+
+	reaction.set_physics_process(true)
+	if player_input != null:
+		player_input.current_command = PlayerCommand.new()
 
 	var cadence_standing_ready: bool = await _request_player_stance(
 		player,
