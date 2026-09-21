@@ -248,7 +248,7 @@ guard_id = "guard.slice"
 patrol_a_id = "slice.patrol.a"
 patrol_b_id = "slice.patrol.b"
 door_id = "door.slice"
-movement_speed = 1.6
+movement_speed = 1.2
 door_use_distance = 2.0
 
 [node name="Hearing" type="Node3D" parent="Guard"]
