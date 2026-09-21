@@ -226,6 +226,8 @@ func _assert_vertical_stealth_lab() -> void:
 			floor_shape = floor_collision.shape as BoxShape3D
 		objective = world.get_node_or_null("ObjectiveTrigger") as Area3D
 	var surface_colors_distinct: bool = false
+	var surface_partition_exact: bool = false
+	var elevated_surface_materials_match: bool = false
 	if world != null:
 		var stone_band := world.get_node_or_null(
 			"Geometry/StoneFloorBand"
@@ -240,6 +242,9 @@ func _assert_vertical_stealth_lab() -> void:
 			var stone_material := stone_band.material_override as StandardMaterial3D
 			var carpet_material := carpet_band.material_override as StandardMaterial3D
 			var tile_material := tile_band.material_override as StandardMaterial3D
+			var stone_mesh := stone_band.mesh as BoxMesh
+			var carpet_mesh := carpet_band.mesh as BoxMesh
+			var tile_mesh := tile_band.mesh as BoxMesh
 			surface_colors_distinct = (
 				stone_material != null
 				and carpet_material != null
@@ -247,6 +252,32 @@ func _assert_vertical_stealth_lab() -> void:
 				and stone_material.albedo_color != carpet_material.albedo_color
 				and stone_material.albedo_color != tile_material.albedo_color
 				and carpet_material.albedo_color != tile_material.albedo_color
+			)
+			surface_partition_exact = (
+				stone_mesh != null
+				and carpet_mesh != null
+				and tile_mesh != null
+				and is_equal_approx(stone_mesh.size.x, 8.0)
+				and is_equal_approx(carpet_mesh.size.x, 8.0)
+				and is_equal_approx(tile_mesh.size.x, 8.0)
+				and is_equal_approx(stone_mesh.size.z, 28.0)
+				and is_equal_approx(carpet_mesh.size.z, 28.0)
+				and is_equal_approx(tile_mesh.size.z, 28.0)
+				and is_equal_approx(stone_band.position.x, -8.0)
+				and is_equal_approx(carpet_band.position.x, 0.0)
+				and is_equal_approx(tile_band.position.x, 8.0)
+			)
+			var climb_mesh := world.get_node_or_null(
+				"Geometry/UpperCatwalk/MeshInstance3D"
+			) as MeshInstance3D
+			var east_ledge_mesh := world.get_node_or_null(
+				"Geometry/EastLedge/MeshInstance3D"
+			) as MeshInstance3D
+			elevated_surface_materials_match = (
+				climb_mesh != null
+				and east_ledge_mesh != null
+				and climb_mesh.material_override == stone_material
+				and east_ledge_mesh.material_override == tile_material
 			)
 	var climb_nodes_present: bool = (
 		world != null
@@ -279,6 +310,8 @@ func _assert_vertical_stealth_lab() -> void:
 		and objective.global_position.y >= 4.5
 		and gameplay_light_count >= 6
 		and surface_colors_distinct
+		and surface_partition_exact
+		and elevated_surface_materials_match
 		and guard != null
 		and bool(guard_summary.get("configured", false))
 		and patrol_a != null
@@ -289,7 +322,7 @@ func _assert_vertical_stealth_lab() -> void:
 		and authored_waits.size() == 2
 		and is_equal_approx(float(authored_waits[0]), 2.5)
 		and is_equal_approx(float(authored_waits[1]), 4.0),
-		"Vertical Stealth Lab is a larger real stealth fixture with a 24x28 floor, distinct stone/carpet/tile floor colors, climbable multi-level route, elevated objective, six gameplay lights, long guard patrol, and authored endpoint waits"
+		"Vertical Stealth Lab uses three contiguous 8x28 stone/carpet/tile regions with no neutral separator strips, matching elevated walkable materials, climbable multi-level geometry, six gameplay lights, a long guard patrol, and authored endpoint waits"
 	)
 	await _cleanup_application(application)
 

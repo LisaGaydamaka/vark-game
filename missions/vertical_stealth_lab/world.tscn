@@ -43,7 +43,7 @@ albedo_color = Color(0.13, 0.13, 0.15, 1)
 roughness = 0.9
 
 [sub_resource type="BoxMesh" id="SurfaceBandMesh"]
-size = Vector3(7.8, 0.025, 27.5)
+size = Vector3(8, 0.025, 28)
 
 [sub_resource type="StandardMaterial3D" id="StoneFloorMaterial"]
 albedo_color = Color(0.24, 0.34, 0.46, 1)
@@ -92,13 +92,13 @@ albedo_color = Color(0.20, 0.21, 0.24, 1)
 roughness = 0.82
 
 [sub_resource type="BoxShape3D" id="SurfaceShape"]
-size = Vector3(7.8, 10, 27.5)
+size = Vector3(8, 10, 28)
 
 [sub_resource type="BoxShape3D" id="StoneSurfaceShape"]
-size = Vector3(7.8, 10, 27.5)
+size = Vector3(8, 10, 28)
 
 [sub_resource type="BoxShape3D" id="TileSurfaceShape"]
-size = Vector3(7.8, 10, 27.5)
+size = Vector3(8, 10, 28)
 
 
 [sub_resource type="BoxShape3D" id="ClimbStep1Shape"]
@@ -278,7 +278,7 @@ shape = SubResource("CoverShape")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/NorthCover"]
 mesh = SubResource("CoverMesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("CarpetFloorMaterial")
 
 [node name="CrouchCover" type="StaticBody3D" parent="Geometry"]
 position = Vector3(2, 0.56, 5)
@@ -288,7 +288,7 @@ shape = SubResource("CrouchCoverShape")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/CrouchCover"]
 mesh = SubResource("CrouchCoverMesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("CarpetFloorMaterial")
 
 [node name="Label" type="Label3D" parent="Geometry/CrouchCover"]
 position = Vector3(0, 0.92, 0)
@@ -300,12 +300,12 @@ no_depth_test = true
 
 
 [node name="ClimbStep1" type="StaticBody3D" parent="Geometry"]
-position = Vector3(-4.5, 0.4, 6)
+position = Vector3(-5.5, 0.4, 6)
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/ClimbStep1"]
 shape = SubResource("ClimbStep1Shape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ClimbStep1"]
 mesh = SubResource("ClimbStep1Mesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("StoneFloorMaterial")
 
 [node name="ClimbStep2" type="StaticBody3D" parent="Geometry"]
 position = Vector3(-5.8, 0.8, 3.8)
@@ -313,7 +313,7 @@ position = Vector3(-5.8, 0.8, 3.8)
 shape = SubResource("ClimbStep2Shape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ClimbStep2"]
 mesh = SubResource("ClimbStep2Mesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("StoneFloorMaterial")
 
 [node name="ClimbStep3" type="StaticBody3D" parent="Geometry"]
 position = Vector3(-6.8, 1.2, 1.4)
@@ -321,7 +321,7 @@ position = Vector3(-6.8, 1.2, 1.4)
 shape = SubResource("ClimbStep3Shape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ClimbStep3"]
 mesh = SubResource("ClimbStep3Mesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("StoneFloorMaterial")
 
 [node name="ClimbStep4" type="StaticBody3D" parent="Geometry"]
 position = Vector3(-7.5, 1.6, -1)
@@ -329,7 +329,7 @@ position = Vector3(-7.5, 1.6, -1)
 shape = SubResource("ClimbStep4Shape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ClimbStep4"]
 mesh = SubResource("ClimbStep4Mesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("StoneFloorMaterial")
 
 [node name="UpperCatwalk" type="StaticBody3D" parent="Geometry"]
 position = Vector3(-7.5, 3, -5)
@@ -337,7 +337,7 @@ position = Vector3(-7.5, 3, -5)
 shape = SubResource("CatwalkShape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/UpperCatwalk"]
 mesh = SubResource("CatwalkMesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("StoneFloorMaterial")
 
 [node name="ObjectiveTower" type="StaticBody3D" parent="Geometry"]
 position = Vector3(-7.5, 2.1, -10.5)
@@ -345,15 +345,15 @@ position = Vector3(-7.5, 2.1, -10.5)
 shape = SubResource("TowerShape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ObjectiveTower"]
 mesh = SubResource("TowerMesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("StoneFloorMaterial")
 
 [node name="EastLedge" type="StaticBody3D" parent="Geometry"]
-position = Vector3(5, 1, 2)
+position = Vector3(6.5, 1, 2)
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/EastLedge"]
 shape = SubResource("EastLedgeShape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/EastLedge"]
 mesh = SubResource("EastLedgeMesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("TileFloorMaterial")
 
 [node name="OrdinaryDoor" parent="." instance=ExtResource("3_door")]
 position = Vector3(-0.65, 0, 0)
