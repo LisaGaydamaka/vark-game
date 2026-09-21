@@ -51,23 +51,7 @@ func _physics_process(_delta: float) -> void:
 		return
 
 	var movement_state: Dictionary = _get_player_movement_state()
-	var grounded: bool = str(
-		movement_state.get("support", "airborne")
-	) == "grounded"
-	if not grounded:
-		# Normal airborne locomotion covers both a jump and an unsupported fall.
-		# Traversal-owned hanging/mantling does not arm a delayed landing sound.
-		if str(movement_state.get("traversal", "normal")) == "normal":
-			_landing_armed = true
-		_distance_since_step = 0.0
-		return
-
-	if _landing_armed:
-		# Landing replaces a same-frame cadence footstep so one contact produces
-		# one semantic movement sound.
-		_landing_armed = false
-		_distance_since_step = 0.0
-		emit_landing_now()
+	if not _advance_landing_transition(movement_state):
 		return
 
 	var horizontal_speed := Vector3(
@@ -86,6 +70,28 @@ func _physics_process(_delta: float) -> void:
 		if not emit_step_now():
 			break
 		_distance_since_step -= step_distance
+
+
+func _advance_landing_transition(movement_state: Dictionary) -> bool:
+	var grounded: bool = str(
+		movement_state.get("support", "airborne")
+	) == "grounded"
+	if not grounded:
+		# Normal airborne locomotion covers both a jump and an unsupported fall.
+		# Traversal-owned hanging/mantling does not arm a delayed landing sound.
+		if str(movement_state.get("traversal", "normal")) == "normal":
+			_landing_armed = true
+		_distance_since_step = 0.0
+		return false
+
+	if _landing_armed:
+		# Landing replaces a same-frame cadence footstep so one contact produces
+		# one semantic movement sound.
+		_landing_armed = false
+		_distance_since_step = 0.0
+		emit_landing_now()
+		return false
+	return true
 
 
 func set_emission_enabled(enabled: bool) -> void:

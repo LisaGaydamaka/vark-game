@@ -573,55 +573,55 @@ func _assert_integrated_surface_noise() -> void:
 	if player_input != null:
 		player_input.current_command = PlayerCommand.new()
 
-	# Exercise the emitter's real airborne -> grounded transition rather than
-	# only its explicit landing helper. Freeze player physics so the support
-	# contact can be controlled deterministically for one transition.
+	# Exercise the same transition helper called by the emitter's real physics
+	# process, but drive the semantic support states deterministically so this
+	# regression does not depend on mutating PlayerSupport internals.
 	var landing_transition_start_count: int = int(
 		footsteps.get_debug_summary().get("queued_count", 0)
 	)
-	player.set_physics_process(false)
 	footsteps.set_physics_process(false)
 	footsteps.set_emission_enabled(true)
 	player.global_position = Vector3(0.0, 0.0, 4.0)
 	await _settle_overlap_frames(2)
-	var player_support := player.get("support") as PlayerSupport
-	var automatic_landing_ready: bool = player_support != null
-	if player_support != null:
-		player_support.current_contact.clear(player.global_position)
-	footsteps._physics_process(0.0)
+	var airborne_allows_cadence: bool = bool(
+		footsteps._advance_landing_transition({
+			"support": "airborne",
+			"traversal": "normal",
+		})
+	)
 	var armed_airborne: bool = bool(
 		footsteps.get_debug_summary().get("landing_armed", false)
 	)
-	if player_support != null:
-		player_support.current_contact.set_contact(
-			0.0,
-			player.global_position,
-			Vector3.UP,
-			true,
-			RID(),
-			PlayerSupportContact.Source.FOOTPRINT
-		)
-	footsteps._physics_process(0.0)
+	var landing_allows_cadence: bool = bool(
+		footsteps._advance_landing_transition({
+			"support": "grounded",
+			"traversal": "normal",
+		})
+	)
 	await _completed_physics_frame()
 	var automatic_landing_summary: Dictionary = footsteps.get_debug_summary()
 	_assert_true(
-		automatic_landing_ready
+		not airborne_allows_cadence
 		and armed_airborne
+		and not landing_allows_cadence
 		and int(automatic_landing_summary.get("queued_count", 0))
 			== landing_transition_start_count + 1
+		and automatic_landing_summary.get("last_surface_id", &"") == &"stone"
 		and automatic_landing_summary.get("last_gait", "") == "landing"
 		and is_equal_approx(
 			float(automatic_landing_summary.get("last_strength", 0.0)),
 			0.45 * footsteps.sprint_strength_scale
 		),
-		"Phase 5.1 a real normal-airborne to grounded transition automatically emits one running-strength landing sound on the current surface"
+		(
+			"Phase 5.1 the production airborne-to-grounded transition logic emits exactly one running-strength landing sound on the current surface "
+			+ "(summary=%s)" % str(automatic_landing_summary)
+		)
 	)
 	footsteps.set_emission_enabled(false)
 	footsteps.set_physics_process(true)
-	player.set_physics_process(true)
 	await _settle_overlap_frames(2)
 
-	var cadence_standing_ready: bool = await _request_player_stance(
+	var cadence_standing_ready: bool = await _request_player_stance(	var cadence_standing_ready: bool = await _request_player_stance(
 		player,
 		PlayerCrouch.Stance.STANDING
 	)

@@ -406,7 +406,7 @@ The Visibility suite keeps the established dark/edge/partial/full, all-samples-o
 
 ## Phase 5.1 gameplay noise
 
-`VarkPlayerFootstepEmitter` now treats a normal airborne → grounded transition as one semantic landing sound on the current `VarkSurfaceProfile`. Landing uses exactly the same surface-relative multiplier as sprint/running (currently 1.35× base), records `last_gait = "landing"`, and replaces rather than stacks with a same-frame cadence footstep. The Gameplay Noise suite proves direct landing strength equals running on stone and drives the real guard reaction, then deterministically controls the real player's support contact to prove the emitter automatically arms while normally airborne and emits exactly once on grounded transition. Traversal-owned hanging/mantling does not arm a delayed landing sound.
+`VarkPlayerFootstepEmitter` now treats a normal airborne → grounded transition as one semantic landing sound on the current `VarkSurfaceProfile`. Landing uses exactly the same surface-relative multiplier as sprint/running (currently 1.35× base), records `last_gait = "landing"`, and replaces rather than stacks with a same-frame cadence footstep. The Gameplay Noise suite proves direct landing strength equals running on stone and drives the real guard reaction, then deterministically drives the same semantic airborne/grounded transition helper used by the emitter's physics process to prove it arms while normally airborne and emits exactly once on grounded transition. Traversal-owned hanging/mantling does not arm a delayed landing sound.
 
 ## Phase 5.4 NPC perception/awareness
 

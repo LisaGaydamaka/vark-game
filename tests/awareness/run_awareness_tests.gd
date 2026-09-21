@@ -315,8 +315,8 @@ func _assert_guard_awareness_state_machine() -> void:
 		"Phase 5.4 a third rapid investigation-worthy cue cannot restart an endless stare chain and instead commits immediately to investigating the newest local evidence"
 	)
 
-	await _settle_frames(10)
-	var reset_strong_origin: Vector3 = strong_origin + Vector3(0.20, 0.0, -0.20)
+	await _settle_frames(40)
+	var reset_strong_origin: Vector3 = strong_origin
 	var reset_strong_queued: bool = bool(session.call(
 		"queue_gameplay_sound",
 		int(session.get("session_id")),
@@ -1454,7 +1454,7 @@ func _configure_short_durations(
 	reaction.investigation_stare_min = 0.20
 	reaction.investigation_stare_max = 0.24
 	reaction.observation_stare_repeat_limit = 2
-	reaction.observation_stare_reset_seconds = 0.12
+	reaction.observation_stare_reset_seconds = 0.60
 	reaction.vision_suspicion_rate_min = 0.30
 	reaction.vision_suspicion_rate_max = 2.50
 	reaction.vision_suspicion_decay_per_second = 0.80
