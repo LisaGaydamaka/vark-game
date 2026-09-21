@@ -455,6 +455,37 @@ persistent_id = "vertical.light.tower"
 gameplay_light_id = &"light.vertical_tower"
 gameplay_strength = 1.0
 
+
+[node name="CenterGameplayLight" type="OmniLight3D" parent="."]
+position = Vector3(0, 3.8, 0)
+omni_range = 8.5
+light_energy = 2.4
+shadow_enabled = true
+script = ExtResource("13_light")
+persistent_id = "vertical.light.center"
+gameplay_light_id = &"light.vertical_center"
+gameplay_strength = 0.80
+
+[node name="WestClimbGameplayLight" type="OmniLight3D" parent="."]
+position = Vector3(-6.5, 4.5, 3)
+omni_range = 7.0
+light_energy = 2.5
+shadow_enabled = true
+script = ExtResource("13_light")
+persistent_id = "vertical.light.west_climb"
+gameplay_light_id = &"light.vertical_west_climb"
+gameplay_strength = 0.85
+
+[node name="EastPatrolGameplayLight" type="OmniLight3D" parent="."]
+position = Vector3(7, 3.8, -4.5)
+omni_range = 7.5
+light_energy = 2.35
+shadow_enabled = true
+script = ExtResource("13_light")
+persistent_id = "vertical.light.east_patrol"
+gameplay_light_id = &"light.vertical_east_patrol"
+gameplay_strength = 0.80
+
 [node name="StoneSurface" type="Area3D" parent="."]
 position = Vector3(-8, 4.5, 0)
 collision_layer = 0

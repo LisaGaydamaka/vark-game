@@ -237,6 +237,11 @@ func _assert_vertical_stealth_lab() -> void:
 	)
 	var guard_summary: Dictionary = guard.get_debug_summary() if guard != null else {}
 	var authored_waits: Array = guard_summary.get("patrol_wait_seconds", [])
+	var gameplay_light_count: int = 0
+	if world != null:
+		for node: Node in world.find_children("*", "", true, false):
+			if node is VarkGameplayLight:
+				gameplay_light_count += 1
 	_assert_true(
 		menu_wired
 		and launched
@@ -249,6 +254,7 @@ func _assert_vertical_stealth_lab() -> void:
 		and climb_nodes_present
 		and objective != null
 		and objective.global_position.y >= 4.5
+		and gameplay_light_count >= 6
 		and guard != null
 		and bool(guard_summary.get("configured", false))
 		and patrol_a != null
@@ -259,7 +265,7 @@ func _assert_vertical_stealth_lab() -> void:
 		and authored_waits.size() == 2
 		and is_equal_approx(float(authored_waits[0]), 2.5)
 		and is_equal_approx(float(authored_waits[1]), 4.0),
-		"Vertical Stealth Lab is a larger real stealth fixture with a 24x28 floor, climbable multi-level route, elevated objective, long guard patrol, and authored endpoint waits"
+		"Vertical Stealth Lab is a larger real stealth fixture with a 24x28 floor, climbable multi-level route, elevated objective, six gameplay lights, long guard patrol, and authored endpoint waits"
 	)
 	await _cleanup_application(application)
 
