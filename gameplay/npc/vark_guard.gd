@@ -35,10 +35,10 @@ enum DoorTraversalState {
 @export var patrol_a_id: String = ""
 @export var patrol_b_id: String = ""
 @export var door_id: String = ""
-@export var movement_speed: float = 1.6
-@export_range(0.2, 1.5, 0.05) var investigate_speed_scale: float = 0.45
-@export_range(0.2, 1.5, 0.05) var search_speed_scale: float = 0.45
-@export_range(1.0, 3.0, 0.05) var pursuit_speed_scale: float = 1.65
+@export var movement_speed: float = 1.2
+@export_range(0.2, 1.5, 0.05) var investigate_speed_scale: float = 0.60
+@export_range(0.2, 1.5, 0.05) var search_speed_scale: float = 0.60
+@export_range(1.0, 3.0, 0.05) var pursuit_speed_scale: float = 2.20
 @export var door_use_distance: float = 2.0
 
 var _navigation_agent: NavigationAgent3D = null

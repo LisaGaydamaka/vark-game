@@ -86,10 +86,15 @@ func _assert_guard_awareness_state_machine() -> void:
 		and guard_walk_speed < player_sneak_speed
 		and guard_investigate_speed < guard_walk_speed
 		and guard_run_speed > guard_walk_speed
-		and is_equal_approx(guard_walk_speed, 1.60)
+		and is_equal_approx(guard_walk_speed, 1.20)
 		and is_equal_approx(guard_investigate_speed, 0.72)
 		and is_equal_approx(guard_run_speed, 2.64),
-		"Guard locomotion exposes exactly walking 1.60 < player sneak 2.00, investigating/search 0.72, and running/pursuit 2.64 semantic speeds"
+		"Guard locomotion exposes exactly walking 1.20 < player sneak 2.00, investigating/search 0.72, and running/pursuit 2.64 semantic speeds"
+	)
+	_assert_true(
+		is_equal_approx(reaction.investigation_stare_min, 0.80)
+		and is_equal_approx(reaction.investigation_stare_max, 2.00),
+		"Phase 5.4 production investigation stare deliberately holds for a longer varied 0.80-2.00 second observation window"
 	)
 
 	_configure_short_durations(reaction)
