@@ -1149,7 +1149,7 @@ func _assert_advanced_local_search_behavior() -> void:
 		"queue_gameplay_sound",
 		int(session.get("session_id")),
 		&"prop.impact",
-		guard.global_position + Vector3(0.25, 0.0, 0.15),
+		guard.global_position,
 		borderline_strength
 	))
 	await _completed_physics_frame()
