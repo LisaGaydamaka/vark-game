@@ -151,6 +151,7 @@ func _assert_integrated_surface_noise() -> void:
 		and player != null
 		and guard != null
 		and guard_listener != null
+		and is_equal_approx(guard_listener.hearing_threshold, 0.16)
 		and reaction != null
 		and footsteps != null
 		and stone_surface != null
@@ -165,7 +166,7 @@ func _assert_integrated_surface_noise() -> void:
 			== CARPET_PROFILE_PATH
 		and tile_surface.get_surface_profile().resource_path
 			== TILE_PROFILE_PATH,
-		"Phase 5.1 the real Integrated Slice consumes reusable gameplay/noise surfaces, emitter, and authored profiles"
+		"Phase 5.1 the real Integrated Slice consumes reusable gameplay/noise surfaces, emitter, authored profiles, and the tuned 0.16 guard hearing floor"
 	)
 	if (
 		not launched

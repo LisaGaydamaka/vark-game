@@ -435,7 +435,7 @@ door_use_distance = 2.0
 position = Vector3(0, 1.25, 0)
 script = ExtResource("9_listener")
 listener_id = &"listener.vertical_guard"
-hearing_threshold = 0.14
+hearing_threshold = 0.16
 
 [node name="Speech" type="Node3D" parent="Guard"]
 script = ExtResource("10_speech")
