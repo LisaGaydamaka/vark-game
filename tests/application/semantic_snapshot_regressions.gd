@@ -155,10 +155,17 @@ func run(
 		await tree.physics_frame
 		await tree.process_frame
 	exposure.sample_now()
-	var saw_player: bool = bool(reaction.call("sample_vision_now"))
 	var reaction_seen: Dictionary = reaction.call("get_debug_summary")
+	var saw_player: bool = false
+	for _sample: int in 20:
+		reaction.call("sample_vision_now", 0.10)
+		reaction_seen = reaction.call("get_debug_summary")
+		if int(reaction_seen.get("seen_count", 0)) >= 1:
+			saw_player = true
+			break
 	assert_true.call(
 		saw_player
+		and reaction_seen.get("awareness_state", &"") == &"alerted"
 		and int(reaction_seen.get("seen_count", 0)) >= 1,
 		"Guard awareness history becomes non-default through the real vision path"
 	)

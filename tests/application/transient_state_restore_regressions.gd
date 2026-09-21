@@ -328,10 +328,14 @@ func _prove_guard_awareness_and_body_restore(
 	guard.look_at(player.global_position, Vector3.UP, true)
 	await _advance_frames(tree, 2)
 	exposure.sample_now()
-	var saw_player: bool = bool(reaction.call("sample_vision_now"))
-	var alert_summary: Dictionary = reaction.call(
-		"get_debug_summary"
-	)
+	var alert_summary: Dictionary = reaction.call("get_debug_summary")
+	var saw_player: bool = false
+	for _sample: int in 20:
+		reaction.call("sample_vision_now", 0.10)
+		alert_summary = reaction.call("get_debug_summary")
+		if alert_summary.get("awareness_state", &"") == &"alerted":
+			saw_player = true
+			break
 	var alert_snapshot: Dictionary = _capture_snapshot(
 		application,
 		4404

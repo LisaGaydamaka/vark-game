@@ -479,12 +479,15 @@ func _assert_integrated_slice() -> void:
 			"light.slice_north ON"
 		)
 		and standing_saw_player
-		and standing_vision_summary.get("state", &"") == &"saw_player"
+		and float(standing_vision_summary.get("visual_suspicion", 0.0)) > 0.0
+		and standing_vision_summary.get("awareness_state", &"") != &"alerted"
 		and not bool(
 			standing_vision_summary.get("last_vision_blocked", true)
 		)
 		and not crouched_saw_player
-		and crouched_vision_summary.get("state", &"") != &"saw_player"
+		and float(crouched_vision_summary.get("visual_suspicion", 0.0))
+			<= float(standing_vision_summary.get("visual_suspicion", 0.0))
+		and crouched_vision_summary.get("awareness_state", &"") != &"alerted"
 		and bool(crouched_vision_summary.get("last_vision_blocked", false))
 		and crouched_vision_summary.get("last_vision_blocker", "")
 			== "CrouchCover"
@@ -499,11 +502,13 @@ func _assert_integrated_slice() -> void:
 				"standing_exposure": standing_lit_summary.get("exposure", 0.0),
 				"crouched_exposure": crouched_lit_summary.get("exposure", 0.0),
 				"standing_seen": standing_saw_player,
-				"standing_state": standing_vision_summary.get("state", &""),
+				"standing_state": standing_vision_summary.get("awareness_state", &""),
+				"standing_suspicion": standing_vision_summary.get("visual_suspicion", 0.0),
 				"standing_blocked": standing_vision_summary.get("last_vision_blocked", true),
 				"standing_blocker": standing_vision_summary.get("last_vision_blocker", ""),
 				"crouched_seen": crouched_saw_player,
-				"crouched_state": crouched_vision_summary.get("state", &""),
+				"crouched_state": crouched_vision_summary.get("awareness_state", &""),
+				"crouched_suspicion": crouched_vision_summary.get("visual_suspicion", 0.0),
 				"crouched_blocked": crouched_vision_summary.get("last_vision_blocked", false),
 				"crouched_blocker": crouched_vision_summary.get("last_vision_blocker", ""),
 				"standing_target": standing_target,

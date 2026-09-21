@@ -764,6 +764,10 @@ func _assert_advanced_local_search_behavior() -> void:
 
 	reaction.hearing_investigate_strength = 0.20
 	reaction.investigation_seconds = 0.06
+	# This fixture compresses the new source-facing observation hold along with
+	# its existing compressed investigation/search timings.
+	reaction.investigation_stare_min = 0.01
+	reaction.investigation_stare_max = 0.02
 	reaction.search_seconds = 2.50
 	reaction.search_point_count = 2
 	reaction.search_radius = 1.40

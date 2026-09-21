@@ -1,6 +1,6 @@
 # Vark repository workflow
 
-This file is the operating contract for AI-assisted work in this repository. The intended user workflow is deliberately simple: the user selects a roadmap item, authorizes one repository patch, the agent performs the complete bounded implementation/verification/documentation cycle, and the user only performs the focused manual/playtest validation that cannot be replaced by automation.
+This file is the operating contract for AI-assisted work in this repository. The intended user workflow is deliberately simple: the user selects a roadmap item, authorizes one bounded repository work loop, the agent performs the complete implementation/verification/documentation cycle (including any fix-forward commits needed by CI within that loop), and the user only performs the focused manual/playtest validation that cannot be replaced by automation.
 
 ## Sources of truth
 
@@ -46,7 +46,7 @@ The user should not need to separately ask for tests, documentation maintenance,
 
 The user normally owns only subjective/manual validation. The agent owns machine-verifiable validation whenever its environment or configured CI can perform it.
 
-The exact phrase `upload to gh` authorizes the one coherent repository mutation described by the current request. Without that phrase, repository work is read-only both remotely and in a local workspace; running read-only checks may create ignored/generated ephemeral tool state, but the agent must not intentionally change tracked/authored repository state.
+The exact phrase `upload to gh` authorizes the bounded repository work needed to complete the current request. That authorization may cover multiple direct-to-`test` commits when post-push CI or verification exposes a correction needed to reach the same requested final state. It does not authorize unrelated scope. Without that phrase, repository work is read-only both remotely and in a local workspace; running read-only checks may create ignored/generated ephemeral tool state, but the agent must not intentionally change tracked/authored repository state.
 
 If the requested item has no repository change left and only manual/human validation remains, do not manufacture a no-op commit merely because the request contains `upload to gh`. Give the required validation handoff instead. In that case no repository patch was uploaded, so the write authorization is not consumed by an empty change.
 
@@ -268,15 +268,15 @@ When a roadmap item materially changes renderer/rendering-device configuration, 
 
 If the agent cannot execute that Windows check, do not claim Ubuntu CI proves it. Provide the user a focused Windows validation step.
 
-### 14. Upload one coherent integration patch
+### 14. Upload bounded integration work
 
 GitHub writes follow the authorization rules below.
 
-Prefer one atomic commit for the requested roadmap-step patch, especially when code/tests/docs depend on one another. If Git tooling supports a single tree/commit operation, use it rather than intentionally exposing `test` to a sequence of half-applied file states.
+Prefer one atomic initial commit for the requested roadmap-step patch, especially when code/tests/docs depend on one another. If Git tooling supports a single tree/commit operation, use it rather than intentionally exposing `test` to a sequence of half-applied file states. If post-push CI or exact verification exposes a defect, use additional narrow fix-forward commits under the same current authorization until the requested bounded work is green or the current response must end.
 
 If available tooling cannot make the whole patch atomic, order writes so intermediate states are as safe/buildable as possible and verify the final pre-write-to-post-write diff carefully. Do not create helper branches to work around the direct-write policy.
 
-One authorization describes one intended coherent **final repository patch**, not one low-level API call. If tooling fails after an unavoidable partial write but before the intended coherent patch has been fully uploaded/verified, the same authorization may be used only to complete or restore the repository to that already-defined final patch; do not add new scope. Once the coherent patch has reached `test` and its final repository diff/head has been verified, the authorization is consumed. Post-push CI observation does not preserve permission for a second corrective patch.
+One authorization describes one bounded **requested final repository state**, not one low-level API call or one commit. Within the same response, the agent may make as many narrow fix-forward commits as reasonably needed to satisfy that state after CI/verification feedback. Do not add unrelated scope. The authorization ends when the requested work is green and the final head/diff is verified, or when the current response ends because the remaining failure cannot be safely resolved within available capacity. A later response then requires a fresh `upload to gh`.
 
 Use a concise commit message that identifies the roadmap item when applicable, for example `Implement 0.6 traversal regressions` or `Fix 1.3 gameplay input boundary`.
 
@@ -292,19 +292,17 @@ After the write:
 
 A commit reaching `test` is not acceptance. Do not report the step as accepted while relevant CI is failing or pending. If relevant CI cannot be retrieved/verified, report it as unverified and keep any CI-dependent roadmap item `[~]`.
 
-### 16. Handle CI failure without consuming extra scope
+### 16. Handle CI failure inside the authorized work loop
 
 If relevant CI fails:
 
 - diagnose the actual failure, including relevant job logs when available;
 - keep the roadmap item `[~]` (or `[ ]` if implementation never became substantial);
 - do not hand a known-broken integration to the user for normal playtest acceptance;
-- do not make another GitHub write using the already-consumed authorization;
-- explain the correction needed.
+- if the failure belongs to the currently authorized request, make a narrow fix-forward commit and rerun verification/CI under the same authorization;
+- repeat until green or until the current response must end because the remaining failure cannot be resolved safely within available capacity.
 
-Corrections on `test` are fix-forward by default. Never force-reset, rewind, or rewrite `test` to hide a failed integration. A normal revert commit is allowed only when it is the safest explicit correction and still requires a fresh authorized patch.
-
-A corrective GitHub patch requires a new user message containing the exact authorization phrase `upload to gh`.
+Corrections on `test` are fix-forward by default. Never force-reset, rewind, or rewrite `test` to hide a failed integration. A normal revert commit is allowed when it is the safest explicit correction within the same authorized scope. If the response ends while CI remains red/unverified, a later corrective response requires a fresh user message containing the exact phrase `upload to gh`.
 
 ### 17. Hand off only the focused manual validation that remains
 
@@ -340,7 +338,7 @@ If the user reports a failure:
 - classify whether it was introduced by the current step or blocks that step's acceptance versus being an unrelated pre-existing issue;
 - if it is caused by/blocks the current step, correct it as part of that step on the next authorized patch and add/update a deterministic regression when objectively reproducible/testable;
 - if it is unrelated and does not block the current step, report it separately rather than silently expanding the correction patch;
-- make corrections only after a new `upload to gh` authorization;
+- make corrections only when the current request contains an active `upload to gh` authorization; that authorization may cover repeated same-scope fix-forward commits during the current response;
 - repeat automated validation and focused manual handoff.
 
 ### 19. TARGET/OPEN work may require more than one user loop
@@ -413,7 +411,7 @@ Repository mutation requires the exact phrase `upload to gh` in the user's **cur
 
 All development reads and authorized writes use the existing `test` branch as authoritative. Never write to `main` or another branch and never create helper branches. Do not trust an omitted-ref/default-branch read for development state when the repository default is not `test`.
 
-One `upload to gh` authorization covers one coherent requested final patch. It is consumed once that coherent patch has reached `test` and the final head/diff has been verified. A failed low-level write before that coherent state may be completed only to the already-defined intended final patch. A completed patch that later fails CI requires a fresh authorization for correction.
+One `upload to gh` authorization covers the bounded requested final state for the current response. It may span multiple same-scope commits when CI/verification requires fix-forward correction. It ends after green verification/final handoff or when the current response ends with unresolved work. Any later response that needs another repository mutation requires a fresh authorization.
 
 If there is no repository change to upload—such as a manual-only acceptance step—do not create a no-op commit and do not claim the authorization was consumed by a nonexistent patch.
 
@@ -431,7 +429,7 @@ The expected steady-state interaction is:
 
 ```text
 User: do step X.Y, upload to gh
-Agent: preflight test → implement complete bounded item → tests/docs → automated validation → upload one coherent patch → verify exact diff/CI → focused manual handoff
+Agent: preflight test → implement complete bounded item → tests/docs → upload → verify exact diff/CI → fix-forward/retest as needed → focused manual handoff
 User: works
 Agent: records pending acceptance; no repository write without new authorization
 User: do step X.Z, upload to gh
