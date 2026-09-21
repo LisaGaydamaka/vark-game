@@ -175,6 +175,10 @@ func _assert_guard_awareness_state_machine() -> void:
 		),
 		"Phase 5.4 suspicion decays by WorldSession gameplay time and returns to unaware patrol ownership"
 	)
+	# The weak-cue proof above intentionally consumed one observation slot.
+	# Reset the fixture before the independent rapid-strong-cue chain so the
+	# limiter assertion starts from a clean semantic episode.
+	reaction.reset_reaction()
 
 	var strong_origin: Vector3 = (
 		guard.global_position + Vector3(0.35, 0.0, 0.15)

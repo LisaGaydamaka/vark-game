@@ -621,7 +621,7 @@ func _assert_integrated_surface_noise() -> void:
 	footsteps.set_physics_process(true)
 	await _settle_overlap_frames(2)
 
-	var cadence_standing_ready: bool = await _request_player_stance(	var cadence_standing_ready: bool = await _request_player_stance(
+	var cadence_standing_ready: bool = await _request_player_stance(
 		player,
 		PlayerCrouch.Stance.STANDING
 	)
