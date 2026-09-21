@@ -1,4 +1,4 @@
-[gd_scene load_steps=68 format=3]
+[gd_scene load_steps=73 format=3]
 
 [ext_resource type="Script" path="res://missions/integrated_slice/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
@@ -62,6 +62,21 @@ size = Vector3(11.3, 3, 0.3)
 
 [sub_resource type="BoxMesh" id="DividerMesh"]
 size = Vector3(11.3, 3, 0.3)
+
+[sub_resource type="BoxMesh" id="DividerStonePartMesh"]
+size = Vector3(8, 3, 0.3)
+
+[sub_resource type="BoxMesh" id="DividerCarpetPartMesh"]
+size = Vector3(3.3, 3, 0.3)
+
+[sub_resource type="BoxMesh" id="EndStonePartMesh"]
+size = Vector3(8.15, 5, 0.3)
+
+[sub_resource type="BoxMesh" id="EndCarpetPartMesh"]
+size = Vector3(8, 5, 0.3)
+
+[sub_resource type="BoxMesh" id="EndTilePartMesh"]
+size = Vector3(8.15, 5, 0.3)
 
 [sub_resource type="BoxShape3D" id="SideWallShape"]
 size = Vector3(0.3, 5, 28.3)
@@ -191,10 +206,6 @@ position = Vector3(0, -0.1, 0)
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/Floor"]
 shape = SubResource("FloorShape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/Floor"]
-mesh = SubResource("FloorMesh")
-material_override = SubResource("FloorMaterial")
-
 [node name="StoneFloorBand" type="MeshInstance3D" parent="Geometry"]
 position = Vector3(-8, 0.0125, 0)
 mesh = SubResource("SurfaceBandMesh")
@@ -216,9 +227,15 @@ position = Vector3(-6.35, 1.5, 0)
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/DividerLeft"]
 shape = SubResource("DividerShape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/DividerLeft"]
-mesh = SubResource("DividerMesh")
-material_override = SubResource("WallMaterial")
+[node name="StoneMesh" type="MeshInstance3D" parent="Geometry/DividerLeft"]
+position = Vector3(-1.65, 0, 0)
+mesh = SubResource("DividerStonePartMesh")
+material_override = SubResource("StoneFloorMaterial")
+
+[node name="CarpetMesh" type="MeshInstance3D" parent="Geometry/DividerLeft"]
+position = Vector3(4, 0, 0)
+mesh = SubResource("DividerCarpetPartMesh")
+material_override = SubResource("CarpetFloorMaterial")
 
 [node name="DividerRight" type="StaticBody3D" parent="Geometry"]
 position = Vector3(6.35, 1.5, 0)
@@ -226,9 +243,15 @@ position = Vector3(6.35, 1.5, 0)
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/DividerRight"]
 shape = SubResource("DividerShape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/DividerRight"]
-mesh = SubResource("DividerMesh")
-material_override = SubResource("WallMaterial")
+[node name="CarpetMesh" type="MeshInstance3D" parent="Geometry/DividerRight"]
+position = Vector3(-4, 0, 0)
+mesh = SubResource("DividerCarpetPartMesh")
+material_override = SubResource("CarpetFloorMaterial")
+
+[node name="TileMesh" type="MeshInstance3D" parent="Geometry/DividerRight"]
+position = Vector3(1.65, 0, 0)
+mesh = SubResource("DividerStonePartMesh")
+material_override = SubResource("TileFloorMaterial")
 
 [node name="WestWall" type="StaticBody3D" parent="Geometry"]
 position = Vector3(-12.15, 2.5, 0)
@@ -238,7 +261,7 @@ shape = SubResource("SideWallShape")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/WestWall"]
 mesh = SubResource("SideWallMesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("StoneFloorMaterial")
 
 [node name="EastWall" type="StaticBody3D" parent="Geometry"]
 position = Vector3(12.15, 2.5, 0)
@@ -248,7 +271,7 @@ shape = SubResource("SideWallShape")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/EastWall"]
 mesh = SubResource("SideWallMesh")
-material_override = SubResource("WallMaterial")
+material_override = SubResource("TileFloorMaterial")
 
 [node name="NorthWall" type="StaticBody3D" parent="Geometry"]
 position = Vector3(0, 2.5, -14.15)
@@ -256,9 +279,19 @@ position = Vector3(0, 2.5, -14.15)
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/NorthWall"]
 shape = SubResource("EndWallShape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/NorthWall"]
-mesh = SubResource("EndWallMesh")
-material_override = SubResource("WallMaterial")
+[node name="StoneMesh" type="MeshInstance3D" parent="Geometry/NorthWall"]
+position = Vector3(-8.075, 0, 0)
+mesh = SubResource("EndStonePartMesh")
+material_override = SubResource("StoneFloorMaterial")
+
+[node name="CarpetMesh" type="MeshInstance3D" parent="Geometry/NorthWall"]
+mesh = SubResource("EndCarpetPartMesh")
+material_override = SubResource("CarpetFloorMaterial")
+
+[node name="TileMesh" type="MeshInstance3D" parent="Geometry/NorthWall"]
+position = Vector3(8.075, 0, 0)
+mesh = SubResource("EndTilePartMesh")
+material_override = SubResource("TileFloorMaterial")
 
 [node name="SouthWall" type="StaticBody3D" parent="Geometry"]
 position = Vector3(0, 2.5, 14.15)
@@ -266,9 +299,19 @@ position = Vector3(0, 2.5, 14.15)
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/SouthWall"]
 shape = SubResource("EndWallShape")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/SouthWall"]
-mesh = SubResource("EndWallMesh")
-material_override = SubResource("WallMaterial")
+[node name="StoneMesh" type="MeshInstance3D" parent="Geometry/SouthWall"]
+position = Vector3(-8.075, 0, 0)
+mesh = SubResource("EndStonePartMesh")
+material_override = SubResource("StoneFloorMaterial")
+
+[node name="CarpetMesh" type="MeshInstance3D" parent="Geometry/SouthWall"]
+mesh = SubResource("EndCarpetPartMesh")
+material_override = SubResource("CarpetFloorMaterial")
+
+[node name="TileMesh" type="MeshInstance3D" parent="Geometry/SouthWall"]
+position = Vector3(8.075, 0, 0)
+mesh = SubResource("EndTilePartMesh")
+material_override = SubResource("TileFloorMaterial")
 
 [node name="NorthCover" type="StaticBody3D" parent="Geometry"]
 position = Vector3(-2.5, 1.35, -7)

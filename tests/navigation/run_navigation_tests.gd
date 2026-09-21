@@ -228,6 +228,7 @@ func _assert_vertical_stealth_lab() -> void:
 	var surface_colors_distinct: bool = false
 	var surface_partition_exact: bool = false
 	var elevated_surface_materials_match: bool = false
+	var all_geometry_uses_surface_materials: bool = false
 	if world != null:
 		var stone_band := world.get_node_or_null(
 			"Geometry/StoneFloorBand"
@@ -279,6 +280,25 @@ func _assert_vertical_stealth_lab() -> void:
 				and climb_mesh.material_override == stone_material
 				and east_ledge_mesh.material_override == tile_material
 			)
+			all_geometry_uses_surface_materials = true
+			var geometry := world.get_node_or_null("Geometry")
+			if geometry != null:
+				for candidate: Node in geometry.find_children(
+					"*",
+					"MeshInstance3D",
+					true,
+					false
+				):
+					var geometry_mesh := candidate as MeshInstance3D
+					if geometry_mesh == null:
+						continue
+					if geometry_mesh.material_override not in [
+						stone_material,
+						carpet_material,
+						tile_material,
+					]:
+						all_geometry_uses_surface_materials = false
+						break
 	var climb_nodes_present: bool = (
 		world != null
 		and world.get_node_or_null("Geometry/ClimbStep1") != null
@@ -312,6 +332,7 @@ func _assert_vertical_stealth_lab() -> void:
 		and surface_colors_distinct
 		and surface_partition_exact
 		and elevated_surface_materials_match
+		and all_geometry_uses_surface_materials
 		and guard != null
 		and bool(guard_summary.get("configured", false))
 		and patrol_a != null
@@ -322,7 +343,7 @@ func _assert_vertical_stealth_lab() -> void:
 		and authored_waits.size() == 2
 		and is_equal_approx(float(authored_waits[0]), 2.5)
 		and is_equal_approx(float(authored_waits[1]), 4.0),
-		"Vertical Stealth Lab uses three contiguous 8x28 stone/carpet/tile regions with no neutral separator strips, matching elevated walkable materials, climbable multi-level geometry, six gameplay lights, a long guard patrol, and authored endpoint waits"
+		"Vertical Stealth Lab renders every geometry plane with stone/carpet/tile materials only: three contiguous 8x28 floor regions, region-matched walls/dividers/elevated geometry, no neutral gray planes or separator strips, six gameplay lights, a long guard patrol, and authored endpoint waits"
 	)
 	await _cleanup_application(application)
 
