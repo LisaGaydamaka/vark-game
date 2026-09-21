@@ -1948,7 +1948,15 @@ func _current_vision_vertical_limit_degrees() -> float:
 		STATE_SUSPICIOUS, STATE_RECOVERING:
 			return lerpf(base_limit, engaged_limit, 0.40)
 		STATE_INVESTIGATING:
-			return lerpf(base_limit, engaged_limit, 0.75)
+			# A source-facing observation hold must not lose the same vertical
+			# evidence merely because SEARCHING just transitioned to INVESTIGATING.
+			# After the stare ends, ordinary investigation travel returns to the
+			# narrower intermediate attention field.
+			return (
+				engaged_limit
+				if _investigation_stare_active
+				else lerpf(base_limit, engaged_limit, 0.75)
+			)
 		STATE_SEARCHING, STATE_ALERTED:
 			return engaged_limit
 		_:
