@@ -1,4 +1,4 @@
-[gd_scene load_steps=64 format=3]
+[gd_scene load_steps=68 format=3]
 
 [ext_resource type="Script" path="res://missions/integrated_slice/world.gd" id="1_world"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
@@ -41,6 +41,21 @@ size = Vector3(24, 0.2, 28)
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
 albedo_color = Color(0.13, 0.13, 0.15, 1)
 roughness = 0.9
+
+[sub_resource type="BoxMesh" id="SurfaceBandMesh"]
+size = Vector3(7.8, 0.025, 27.5)
+
+[sub_resource type="StandardMaterial3D" id="StoneFloorMaterial"]
+albedo_color = Color(0.24, 0.34, 0.46, 1)
+roughness = 0.88
+
+[sub_resource type="StandardMaterial3D" id="CarpetFloorMaterial"]
+albedo_color = Color(0.42, 0.16, 0.18, 1)
+roughness = 1.0
+
+[sub_resource type="StandardMaterial3D" id="TileFloorMaterial"]
+albedo_color = Color(0.58, 0.62, 0.68, 1)
+roughness = 0.42
 
 [sub_resource type="BoxShape3D" id="DividerShape"]
 size = Vector3(11.3, 3, 0.3)
@@ -179,6 +194,21 @@ shape = SubResource("FloorShape")
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/Floor"]
 mesh = SubResource("FloorMesh")
 material_override = SubResource("FloorMaterial")
+
+[node name="StoneFloorBand" type="MeshInstance3D" parent="Geometry"]
+position = Vector3(-8, 0.0125, 0)
+mesh = SubResource("SurfaceBandMesh")
+material_override = SubResource("StoneFloorMaterial")
+
+[node name="CarpetFloorBand" type="MeshInstance3D" parent="Geometry"]
+position = Vector3(0, 0.0125, 0)
+mesh = SubResource("SurfaceBandMesh")
+material_override = SubResource("CarpetFloorMaterial")
+
+[node name="TileFloorBand" type="MeshInstance3D" parent="Geometry"]
+position = Vector3(8, 0.0125, 0)
+mesh = SubResource("SurfaceBandMesh")
+material_override = SubResource("TileFloorMaterial")
 
 [node name="DividerLeft" type="StaticBody3D" parent="Geometry"]
 position = Vector3(-6.35, 1.5, 0)

@@ -225,6 +225,29 @@ func _assert_vertical_stealth_lab() -> void:
 		if floor_collision != null:
 			floor_shape = floor_collision.shape as BoxShape3D
 		objective = world.get_node_or_null("ObjectiveTrigger") as Area3D
+	var surface_colors_distinct: bool = false
+	if world != null:
+		var stone_band := world.get_node_or_null(
+			"Geometry/StoneFloorBand"
+		) as MeshInstance3D
+		var carpet_band := world.get_node_or_null(
+			"Geometry/CarpetFloorBand"
+		) as MeshInstance3D
+		var tile_band := world.get_node_or_null(
+			"Geometry/TileFloorBand"
+		) as MeshInstance3D
+		if stone_band != null and carpet_band != null and tile_band != null:
+			var stone_material := stone_band.material_override as StandardMaterial3D
+			var carpet_material := carpet_band.material_override as StandardMaterial3D
+			var tile_material := tile_band.material_override as StandardMaterial3D
+			surface_colors_distinct = (
+				stone_material != null
+				and carpet_material != null
+				and tile_material != null
+				and stone_material.albedo_color != carpet_material.albedo_color
+				and stone_material.albedo_color != tile_material.albedo_color
+				and carpet_material.albedo_color != tile_material.albedo_color
+			)
 	var climb_nodes_present: bool = (
 		world != null
 		and world.get_node_or_null("Geometry/ClimbStep1") != null
@@ -255,6 +278,7 @@ func _assert_vertical_stealth_lab() -> void:
 		and objective != null
 		and objective.global_position.y >= 4.5
 		and gameplay_light_count >= 6
+		and surface_colors_distinct
 		and guard != null
 		and bool(guard_summary.get("configured", false))
 		and patrol_a != null
@@ -265,7 +289,7 @@ func _assert_vertical_stealth_lab() -> void:
 		and authored_waits.size() == 2
 		and is_equal_approx(float(authored_waits[0]), 2.5)
 		and is_equal_approx(float(authored_waits[1]), 4.0),
-		"Vertical Stealth Lab is a larger real stealth fixture with a 24x28 floor, climbable multi-level route, elevated objective, six gameplay lights, long guard patrol, and authored endpoint waits"
+		"Vertical Stealth Lab is a larger real stealth fixture with a 24x28 floor, distinct stone/carpet/tile floor colors, climbable multi-level route, elevated objective, six gameplay lights, long guard patrol, and authored endpoint waits"
 	)
 	await _cleanup_application(application)
 
