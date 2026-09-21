@@ -889,6 +889,7 @@ func _assert_advanced_local_search_behavior() -> void:
 	var session := application.get("current_session") as Node
 	var player := application.get("current_player") as CharacterBody3D
 	var guard := world.get_node("Guard") as VarkGuard
+	var guard_listener := world.get_node("Guard/Hearing") as VarkAcousticListener
 	var reaction := world.get_node("Guard/Reaction") as Node
 	var light := world.get_node("NorthGameplayLight") as VarkGameplayLight
 	var exposure := world.get_node("GameplayExposure") as VarkGameplayExposure
@@ -1149,7 +1150,7 @@ func _assert_advanced_local_search_behavior() -> void:
 		"queue_gameplay_sound",
 		int(session.get("session_id")),
 		&"prop.impact",
-		guard.global_position,
+		guard_listener.global_position,
 		borderline_strength
 	))
 	await _completed_physics_frame()
