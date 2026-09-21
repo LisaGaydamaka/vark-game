@@ -337,13 +337,13 @@ gameplay_sound_strength = 0.65
 [node name="PatrolA" type="Node3D" parent="."]
 position = Vector3(7, 0, 10)
 script = ExtResource("24_patrol")
-patrol_id = "vertical.patrol.a"
+patrol_id = "slice.patrol.a"
 wait_seconds = 2.5
 
 [node name="PatrolB" type="Node3D" parent="."]
 position = Vector3(7, 0, -10)
 script = ExtResource("24_patrol")
-patrol_id = "vertical.patrol.b"
+patrol_id = "slice.patrol.b"
 wait_seconds = 4.0
 
 [node name="Guard" type="CharacterBody3D" parent="."]
@@ -352,8 +352,8 @@ script = ExtResource("5_guard")
 persistent_id = "vertical.guard"
 content_id = "guard.vertical"
 guard_id = "guard.vertical"
-patrol_a_id = "vertical.patrol.a"
-patrol_b_id = "vertical.patrol.b"
+patrol_a_id = "slice.patrol.a"
+patrol_b_id = "slice.patrol.b"
 door_id = "door.vertical"
 movement_speed = 1.2
 door_use_distance = 2.0

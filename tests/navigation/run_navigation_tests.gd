@@ -216,8 +216,8 @@ func _assert_vertical_stealth_lab() -> void:
 	var world := application.get("current_world") as Node3D
 	var ready: bool = await _wait_for_navigation_ready(world, 480)
 	var guard: VarkGuard = _find_guard(world)
-	var patrol_a: VarkPatrolPoint = _find_patrol_point(world, "vertical.patrol.a")
-	var patrol_b: VarkPatrolPoint = _find_patrol_point(world, "vertical.patrol.b")
+	var patrol_a: VarkPatrolPoint = _find_patrol_point(world, "slice.patrol.a")
+	var patrol_b: VarkPatrolPoint = _find_patrol_point(world, "slice.patrol.b")
 	var floor_shape: BoxShape3D = null
 	var objective: Area3D = null
 	if world != null:
