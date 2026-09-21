@@ -12,6 +12,7 @@ const GUARD_NAV_DEFINITION_PATH: String = "res://missions/guard_nav_lab/mission.
 const GUARD_NAV_SOURCE_PATH: String = "res://missions/guard_nav_lab/mission.map"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
 const TEMP_REIMPORT_MAP_PATH: String = "user://vark_guard_nav_reimport.map"
+const VERTICAL_STEALTH_LAB_PATH: String = "res://missions/vertical_stealth_lab/world.tscn"
 
 var failures: Array[String] = []
 
@@ -24,6 +25,8 @@ func _run_tests() -> void:
 	_assert_authoring_schema()
 	_assert_guard_nav_doorway_fit()
 	await _assert_explicit_link_patrol()
+	await _assert_patrol_point_wait()
+	await _assert_vertical_stealth_lab()
 	await _assert_open_door_crossing_is_passive()
 	await _assert_same_side_goal_ignores_open_door()
 	await _assert_player_close_during_crossing()
@@ -61,6 +64,7 @@ func _assert_authoring_schema() -> void:
 		and guard_class.class_properties.has("patrol_b_id")
 		and guard_class.class_properties.has("door_id")
 		and patrol_class.class_properties.has("patrol_id")
+		and patrol_class.class_properties.has("wait_seconds")
 		and exported_fgd.contains("vark_guard")
 		and exported_fgd.contains("vark_patrol_point"),
 		"TrenchBroom exports the real primitive guard and patrol-point authoring entities"
@@ -144,6 +148,120 @@ func _assert_explicit_link_patrol() -> void:
 		"The guard completes both patrol directions through explicit door traversals and resumes its semantic patrol goal"
 	)
 	_cleanup_application(application)
+
+
+func _assert_patrol_point_wait() -> void:
+	var fixture: Dictionary = await _launch_guard_nav()
+	var application: Node = fixture.get("application")
+	var world: Node3D = fixture.get("world")
+	var guard: VarkGuard = fixture.get("guard")
+	var door: VarkOrdinaryDoor = fixture.get("door")
+	var patrol_a: VarkPatrolPoint = _find_patrol_point(world, "patrol.a")
+	var patrol_b: VarkPatrolPoint = _find_patrol_point(world, "patrol.b")
+	if (
+		not bool(fixture.get("ready", false))
+		or guard == null
+		or door == null
+		or patrol_a == null
+		or patrol_b == null
+	):
+		_assert_true(false, "Patrol-wait fixture launches the real authored guard route")
+		await _cleanup_application(application)
+		return
+
+	patrol_b.wait_seconds = 0.20
+	var reconfigured: bool = guard.configure_patrol(
+		{patrol_a.patrol_id: patrol_a, patrol_b.patrol_id: patrol_b},
+		door
+	)
+	guard.global_position = patrol_b.global_position
+	guard.velocity = Vector3.ZERO
+	await physics_frame
+	await process_frame
+	var waiting: Dictionary = guard.get_debug_summary()
+	var wait_snapshot: Dictionary = guard.capture_semantic_state()
+	var held_position: Vector3 = guard.global_position
+	guard.call("_advance_patrol_wait", 0.05)
+	var still_waiting: Dictionary = guard.get_debug_summary()
+	guard.call("_advance_patrol_wait", 0.25)
+	var resumed: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		reconfigured
+		and bool(waiting.get("patrol_wait_active", false))
+		and float(waiting.get("patrol_wait_remaining_seconds", 0.0)) > 0.0
+		and bool(wait_snapshot.get("patrol_wait_active", false))
+		and float(wait_snapshot.get("patrol_wait_remaining_seconds", 0.0)) > 0.0
+		and bool(still_waiting.get("patrol_wait_active", false))
+		and guard.global_position.distance_to(held_position) <= 0.001
+		and not bool(resumed.get("patrol_wait_active", true))
+		and int(resumed.get("target_index", -1)) == 0,
+		"Authored patrol-point dwell stops the real guard, persists remaining wait as semantic state, then advances to the next route endpoint"
+	)
+	await _cleanup_application(application)
+
+
+func _assert_vertical_stealth_lab() -> void:
+	var application: Node = ApplicationScene.instantiate()
+	var default_labels: PackedStringArray = application.get("development_launch_labels")
+	var default_paths: PackedStringArray = application.get("development_launch_resource_paths")
+	var menu_wired: bool = (
+		default_labels.has("Vertical Stealth Lab")
+		and default_paths.has(VERTICAL_STEALTH_LAB_PATH)
+	)
+	application.set("development_launch_labels", PackedStringArray(["Vertical Stealth Lab"]))
+	application.set("development_launch_resource_paths", PackedStringArray([VERTICAL_STEALTH_LAB_PATH]))
+	get_root().add_child(application)
+	await process_frame
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	var world := application.get("current_world") as Node3D
+	var ready: bool = await _wait_for_navigation_ready(world, 480)
+	var guard: VarkGuard = _find_guard(world)
+	var patrol_a: VarkPatrolPoint = _find_patrol_point(world, "vertical.patrol.a")
+	var patrol_b: VarkPatrolPoint = _find_patrol_point(world, "vertical.patrol.b")
+	var floor_shape: BoxShape3D = null
+	var objective: Area3D = null
+	if world != null:
+		var floor_collision := world.get_node_or_null("Geometry/Floor/CollisionShape3D") as CollisionShape3D
+		if floor_collision != null:
+			floor_shape = floor_collision.shape as BoxShape3D
+		objective = world.get_node_or_null("ObjectiveTrigger") as Area3D
+	var climb_nodes_present: bool = (
+		world != null
+		and world.get_node_or_null("Geometry/ClimbStep1") != null
+		and world.get_node_or_null("Geometry/ClimbStep2") != null
+		and world.get_node_or_null("Geometry/ClimbStep3") != null
+		and world.get_node_or_null("Geometry/ClimbStep4") != null
+		and world.get_node_or_null("Geometry/UpperCatwalk") != null
+		and world.get_node_or_null("Geometry/ObjectiveTower") != null
+		and world.get_node_or_null("Geometry/EastLedge") != null
+	)
+	var guard_summary: Dictionary = guard.get_debug_summary() if guard != null else {}
+	var authored_waits: Array = guard_summary.get("patrol_wait_seconds", [])
+	_assert_true(
+		menu_wired
+		and launched
+		and ready
+		and world != null
+		and world.name == &"VerticalStealthLab"
+		and floor_shape != null
+		and floor_shape.size.x >= 24.0
+		and floor_shape.size.z >= 28.0
+		and climb_nodes_present
+		and objective != null
+		and objective.global_position.y >= 4.5
+		and guard != null
+		and bool(guard_summary.get("configured", false))
+		and patrol_a != null
+		and patrol_b != null
+		and is_equal_approx(patrol_a.wait_seconds, 2.5)
+		and is_equal_approx(patrol_b.wait_seconds, 4.0)
+		and patrol_a.global_position.distance_to(patrol_b.global_position) >= 20.0
+		and authored_waits.size() == 2
+		and is_equal_approx(float(authored_waits[0]), 2.5)
+		and is_equal_approx(float(authored_waits[1]), 4.0),
+		"Vertical Stealth Lab is a larger real stealth fixture with a 24x28 floor, climbable multi-level route, elevated objective, long guard patrol, and authored endpoint waits"
+	)
+	await _cleanup_application(application)
 
 
 func _assert_open_door_crossing_is_passive() -> void:

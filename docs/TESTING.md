@@ -408,6 +408,15 @@ The Visibility suite keeps the established dark/edge/partial/full, all-samples-o
 
 `VarkPlayerFootstepEmitter` now treats a normal airborne → grounded transition as one semantic landing sound on the current `VarkSurfaceProfile`. Landing uses exactly the same surface-relative multiplier as sprint/running (currently 1.35× base), records `last_gait = "landing"`, and replaces rather than stacks with a same-frame cadence footstep. The Gameplay Noise suite proves direct landing strength equals running on stone and drives the real guard reaction, then deterministically drives the same semantic airborne/grounded transition helper used by the emitter's physics process to prove it arms while normally airborne and emits exactly once on grounded transition. Traversal-owned hanging/mantling does not arm a delayed landing sound.
 
+## Vertical Stealth Lab
+
+Development Launch → **Vertical Stealth Lab** loads `missions/vertical_stealth_lab/world.tscn`, a larger manual stealth fixture built from the same real player, guard-awareness, acoustics, exposure, surface-noise, ordinary-door, prop, objective, and runtime navigation seams as the Integrated Slice. Its floor is 24×28 m, the west side provides four ascending climb blocks into an upper catwalk and 4.2 m objective tower, the east side adds a separate raised ledge, and the three surface volumes extend vertically so elevated movement/landings still resolve carpet/stone/tile gameplay-noise semantics. The guard patrol endpoints are 20 m apart and use authored 2.5 s / 4.0 s dwell times.
+
+`VarkPatrolPoint.wait_seconds` is optional and defaults to zero, so existing authored routes remain continuous. `VarkGuard` stops at a dwell point in ordinary patrol, stores active/remaining dwell in its semantic snapshot, and advances to the next endpoint when the dwell expires. Awareness navigation interrupts an active patrol dwell instead of leaving the guard frozen away from the route. Six-field pre-dwell guard snapshots remain accepted and normalize to no active wait.
+
+The Navigation suite exports the new patrol-point property, exercises a real guard arrival/dwell/advance cycle with semantic snapshot coverage, and launches the Vertical Stealth Lab through Application/WorldSession. It requires the larger floor, multi-level geometry, elevated objective, configured guard, long route, endpoint waits, and real Development Launch wiring before the manual fixture is considered available.
+
+
 ## Phase 5.4 NPC perception/awareness
 
 `gameplay/npc/guard_awareness.gd` is the reusable guard-awareness owner. The Integrated Slice's historical `guard_reaction.gd` path is now a compatibility wrapper so existing authored scene references remain stable. The semantic state machine is unaware → suspicious/investigating → searching → recovering, with confirmed vision entering alerted/pursuit and actor life-state forcing inactive.

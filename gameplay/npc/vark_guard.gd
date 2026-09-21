@@ -45,6 +45,9 @@ var _navigation_agent: NavigationAgent3D = null
 var _world_session: Node = null
 var _life_state: StringName = LIFE_CONSCIOUS
 var _patrol_positions: Array[Vector3] = []
+var _patrol_wait_seconds: Array[float] = []
+var _patrol_wait_active: bool = false
+var _patrol_wait_remaining_seconds: float = 0.0
 var _target_index: int = 1
 var _door: Node = null
 var _configured: bool = false
@@ -65,6 +68,8 @@ var _max_observed_path_x: float = -INF
 var _max_observed_path_point_count: int = 0
 var _last_error: String = ""
 var _restored_goal_id: String = ""
+var _restored_patrol_wait_active: bool = false
+var _restored_patrol_wait_remaining_seconds: float = 0.0
 var _awareness_goal_active: bool = false
 var _awareness_goal_position: Vector3 = Vector3.ZERO
 var _awareness_goal_reason: StringName = &""
@@ -154,6 +159,8 @@ func set_awareness_navigation_target(
 		or not _is_finite_vector(target_position)
 	):
 		return false
+	if _patrol_wait_active:
+		_finish_patrol_wait()
 	_awareness_goal_active = true
 	_awareness_goal_reason = reason
 	_awareness_goal_position = target_position
@@ -621,6 +628,8 @@ func capture_semantic_state() -> Dictionary:
 		"transform": global_transform,
 		"velocity": velocity,
 		"goal_id": _current_goal_id(),
+		"patrol_wait_active": _patrol_wait_active,
+		"patrol_wait_remaining_seconds": _patrol_wait_remaining_seconds,
 	}
 
 
@@ -631,7 +640,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		and int(_world_session.get("state")) == WorldSession.State.PLAYING
 	):
 		return false
-	if snapshot.size() != 6:
+	if snapshot.size() != 6 and snapshot.size() != 8:
 		return false
 	if str(snapshot.get("persistent_id", "")).strip_edges() != persistent_id:
 		return false
@@ -639,6 +648,10 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		return false
 	var restored_state: StringName = snapshot.get("life_state", &"")
 	var restored_goal_id: String = str(snapshot.get("goal_id", "")).strip_edges()
+	var restored_wait_active: bool = bool(snapshot.get("patrol_wait_active", false))
+	var restored_wait_remaining: float = float(
+		snapshot.get("patrol_wait_remaining_seconds", 0.0)
+	)
 	if (
 		not _is_valid_life_state(restored_state)
 		or (
@@ -647,6 +660,19 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		)
 		or typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
 		or typeof(snapshot.get("velocity", null)) != TYPE_VECTOR3
+		or (
+			snapshot.size() == 8
+			and typeof(snapshot.get("patrol_wait_active", null)) != TYPE_BOOL
+		)
+		or (
+			snapshot.size() == 8
+			and (
+				typeof(snapshot.get("patrol_wait_remaining_seconds", null))
+					!= TYPE_FLOAT
+				and typeof(snapshot.get("patrol_wait_remaining_seconds", null))
+					!= TYPE_INT
+			)
+		)
 	):
 		return false
 	var restored_transform: Transform3D = snapshot["transform"]
@@ -654,17 +680,21 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if (
 		not _is_finite_transform(restored_transform)
 		or not _is_finite_vector(restored_velocity)
+		or not is_finite(restored_wait_remaining)
+		or restored_wait_remaining < 0.0
+		or (restored_wait_active and restored_wait_remaining <= 0.0)
 	):
 		return false
 
 	global_transform = restored_transform
 	velocity = restored_velocity
 	_restored_goal_id = restored_goal_id
+	_restored_patrol_wait_active = restored_wait_active
+	_restored_patrol_wait_remaining_seconds = restored_wait_remaining
 	_target_index = 0 if restored_goal_id == patrol_a_id else 1
 	_apply_life_state(restored_state)
 	if _configured and _navigation_agent != null and _patrol_positions.size() == 2:
-		_apply_current_navigation_target()
-		_restored_goal_id = ""
+		_apply_restored_patrol_state()
 	return true
 
 
@@ -679,6 +709,9 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_configured = false
 	_awareness_observation_paused = false
 	_patrol_positions.clear()
+	_patrol_wait_seconds.clear()
+	_patrol_wait_active = false
+	_patrol_wait_remaining_seconds = 0.0
 	_door = null
 	_door_traversal_state = DoorTraversalState.IDLE
 	_door_use_active = false
@@ -729,6 +762,10 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		return false
 
 	_patrol_positions = [patrol_a.global_position, patrol_b.global_position]
+	_patrol_wait_seconds = [
+		_resolve_patrol_wait_seconds(patrol_a),
+		_resolve_patrol_wait_seconds(patrol_b),
+	]
 	if _restored_goal_id == patrol_a_id:
 		_target_index = 0
 	elif _restored_goal_id == patrol_b_id:
@@ -737,8 +774,10 @@ func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 		_target_index = 1
 	_door = door
 	_configured = true
-	_apply_current_navigation_target()
-	_restored_goal_id = ""
+	if not _restored_goal_id.is_empty():
+		_apply_restored_patrol_state()
+	else:
+		_apply_current_navigation_target()
 	return true
 
 
@@ -760,6 +799,9 @@ func get_debug_summary() -> Dictionary:
 		"configured": _configured,
 		"patrol_a_id": patrol_a_id,
 		"patrol_b_id": patrol_b_id,
+		"patrol_wait_seconds": _patrol_wait_seconds.duplicate(),
+		"patrol_wait_active": _patrol_wait_active,
+		"patrol_wait_remaining_seconds": _patrol_wait_remaining_seconds,
 		"door_id": door_id,
 		"door_use_distance": door_use_distance,
 		"door_traversal_state": _door_traversal_state_name(),
@@ -831,6 +873,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if _door_use_active:
 		_process_door_traversal(delta)
+		return
+	if not _awareness_goal_active and _patrol_wait_active:
+		_advance_patrol_wait(delta)
 		return
 	if _awareness_goal_active and _awareness_motion_paused:
 		velocity = Vector3.ZERO
@@ -1084,12 +1129,54 @@ func _complete_patrol_leg() -> void:
 	_door_use_active = false
 	_door_request_pending = false
 	_door_retry_remaining = 0.0
+	var dwell_seconds: float = 0.0
+	if _target_index >= 0 and _target_index < _patrol_wait_seconds.size():
+		dwell_seconds = maxf(_patrol_wait_seconds[_target_index], 0.0)
+	if dwell_seconds > 0.0:
+		_patrol_wait_active = true
+		_patrol_wait_remaining_seconds = dwell_seconds
+		return
+	_finish_patrol_wait()
+
+
+func _advance_patrol_wait(delta: float) -> void:
+	velocity = Vector3.ZERO
+	_patrol_wait_remaining_seconds = maxf(
+		0.0,
+		_patrol_wait_remaining_seconds - maxf(delta, 0.0)
+	)
+	if _patrol_wait_remaining_seconds <= 0.0:
+		_finish_patrol_wait()
+
+
+func _finish_patrol_wait() -> void:
+	_patrol_wait_active = false
+	_patrol_wait_remaining_seconds = 0.0
 	if _target_index == 1:
 		_target_index = 0
 	else:
 		_target_index = 1
 		_patrol_cycle_count += 1
 	_apply_current_navigation_target()
+
+
+func _resolve_patrol_wait_seconds(patrol_point: Node3D) -> float:
+	if patrol_point is VarkPatrolPoint:
+		return maxf((patrol_point as VarkPatrolPoint).wait_seconds, 0.0)
+	return 0.0
+
+
+func _apply_restored_patrol_state() -> void:
+	_patrol_wait_active = _restored_patrol_wait_active
+	_patrol_wait_remaining_seconds = (
+		_restored_patrol_wait_remaining_seconds
+		if _patrol_wait_active
+		else 0.0
+	)
+	_apply_current_navigation_target()
+	_restored_goal_id = ""
+	_restored_patrol_wait_active = false
+	_restored_patrol_wait_remaining_seconds = 0.0
 
 
 func _record_current_path() -> void:
@@ -1180,6 +1267,8 @@ func _apply_life_state(target_state: StringName) -> void:
 		_door_request_pending = false
 		_door_retry_remaining = 0.0
 		_door_traversal_state = DoorTraversalState.IDLE
+		_patrol_wait_active = false
+		_patrol_wait_remaining_seconds = 0.0
 		_door_link_entry = Vector3.ZERO
 		_door_link_exit = Vector3.ZERO
 	_refresh_life_state_presentation()

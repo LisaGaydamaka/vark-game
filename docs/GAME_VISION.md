@@ -239,7 +239,7 @@ The exact hidden numeric values are implementation/tuning details.
 
 ## Unaware
 
-The NPC follows ordinary authored behavior: patrol, stand guard, sit, sleep, operate something, or another mission-defined routine.
+The NPC follows ordinary authored behavior: patrol, stand guard, sit, sleep, operate something, or another mission-defined routine. Patrol routes may include authored dwell points where the guard deliberately stops and watches/listens before continuing.
 
 ## Mild suspicion
 

@@ -1,0 +1,679 @@
+[gd_scene load_steps=64 format=3]
+
+[ext_resource type="Script" path="res://missions/integrated_slice/world.gd" id="1_world"]
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
+[ext_resource type="PackedScene" path="res://gameplay/doors/OrdinaryDoor.tscn" id="3_door"]
+[ext_resource type="PackedScene" path="res://gameplay/props/OrdinaryProp.tscn" id="4_prop"]
+[ext_resource type="Script" path="res://gameplay/npc/vark_guard.gd" id="5_guard"]
+[ext_resource type="Script" path="res://gameplay/npc/vark_patrol_point.gd" id="24_patrol"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_propagation.gd" id="6_propagation"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_space.gd" id="7_space"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_portal.gd" id="8_portal"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_listener.gd" id="9_listener"]
+[ext_resource type="Script" path="res://gameplay/speech/world_speech_speaker.gd" id="10_speech"]
+[ext_resource type="Resource" path="res://gameplay/speech/lines/integrated_heard_noise_line.tres" id="11_line"]
+[ext_resource type="Script" path="res://gameplay/visibility/gameplay_exposure.gd" id="12_exposure"]
+[ext_resource type="Script" path="res://gameplay/visibility/gameplay_light.gd" id="13_light"]
+[ext_resource type="Script" path="res://gameplay/objectives/simple_objective_state.gd" id="14_objective"]
+[ext_resource type="Script" path="res://gameplay/objectives/semantic_route_trigger.gd" id="15_trigger"]
+[ext_resource type="Script" path="res://missions/integrated_slice/guard_reaction.gd" id="16_reaction"]
+[ext_resource type="Script" path="res://missions/integrated_slice/footstep_surface.gd" id="17_surface"]
+[ext_resource type="Script" path="res://missions/integrated_slice/footstep_emitter.gd" id="18_footsteps"]
+[ext_resource type="Resource" path="res://gameplay/noise/profiles/stone.tres" id="19_stone_profile"]
+[ext_resource type="Resource" path="res://gameplay/noise/profiles/carpet.tres" id="20_carpet_profile"]
+[ext_resource type="Resource" path="res://gameplay/noise/profiles/tile.tres" id="23_tile_profile"]
+[ext_resource type="Script" path="res://gameplay/visibility/light_gem.gd" id="21_light_gem"]
+[ext_resource type="Script" path="res://gameplay/noise/noise_meter.gd" id="22_noise_meter"]
+
+[sub_resource type="Environment" id="Environment_slice"]
+background_mode = 1
+background_color = Color(0.025, 0.025, 0.035, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.18, 0.19, 0.24, 1)
+ambient_light_energy = 0.28
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(24, 0.2, 28)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(24, 0.2, 28)
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.13, 0.13, 0.15, 1)
+roughness = 0.9
+
+[sub_resource type="BoxShape3D" id="DividerShape"]
+size = Vector3(11.3, 3, 0.3)
+
+[sub_resource type="BoxMesh" id="DividerMesh"]
+size = Vector3(11.3, 3, 0.3)
+
+[sub_resource type="BoxShape3D" id="SideWallShape"]
+size = Vector3(0.3, 5, 28.3)
+
+[sub_resource type="BoxMesh" id="SideWallMesh"]
+size = Vector3(0.3, 5, 28.3)
+
+[sub_resource type="BoxShape3D" id="EndWallShape"]
+size = Vector3(24.3, 5, 0.3)
+
+[sub_resource type="BoxMesh" id="EndWallMesh"]
+size = Vector3(24.3, 5, 0.3)
+
+[sub_resource type="BoxShape3D" id="CoverShape"]
+size = Vector3(0.3, 2.7, 4)
+
+[sub_resource type="BoxMesh" id="CoverMesh"]
+size = Vector3(0.3, 2.7, 4)
+
+[sub_resource type="BoxShape3D" id="CrouchCoverShape"]
+size = Vector3(2.4, 1.12, 0.35)
+
+[sub_resource type="BoxMesh" id="CrouchCoverMesh"]
+size = Vector3(2.4, 1.12, 0.35)
+
+[sub_resource type="StandardMaterial3D" id="WallMaterial"]
+albedo_color = Color(0.20, 0.21, 0.24, 1)
+roughness = 0.82
+
+[sub_resource type="BoxShape3D" id="SurfaceShape"]
+size = Vector3(7.8, 10, 27.5)
+
+[sub_resource type="BoxShape3D" id="StoneSurfaceShape"]
+size = Vector3(7.8, 10, 27.5)
+
+[sub_resource type="BoxShape3D" id="TileSurfaceShape"]
+size = Vector3(7.8, 10, 27.5)
+
+
+[sub_resource type="BoxShape3D" id="ClimbStep1Shape"]
+size = Vector3(3, 0.8, 3)
+
+[sub_resource type="BoxMesh" id="ClimbStep1Mesh"]
+size = Vector3(3, 0.8, 3)
+
+[sub_resource type="BoxShape3D" id="ClimbStep2Shape"]
+size = Vector3(3, 1.6, 3)
+
+[sub_resource type="BoxMesh" id="ClimbStep2Mesh"]
+size = Vector3(3, 1.6, 3)
+
+[sub_resource type="BoxShape3D" id="ClimbStep3Shape"]
+size = Vector3(3, 2.4, 3)
+
+[sub_resource type="BoxMesh" id="ClimbStep3Mesh"]
+size = Vector3(3, 2.4, 3)
+
+[sub_resource type="BoxShape3D" id="ClimbStep4Shape"]
+size = Vector3(3.4, 3.2, 3.4)
+
+[sub_resource type="BoxMesh" id="ClimbStep4Mesh"]
+size = Vector3(3.4, 3.2, 3.4)
+
+[sub_resource type="BoxShape3D" id="CatwalkShape"]
+size = Vector3(3.4, 0.4, 8)
+
+[sub_resource type="BoxMesh" id="CatwalkMesh"]
+size = Vector3(3.4, 0.4, 8)
+
+[sub_resource type="BoxShape3D" id="TowerShape"]
+size = Vector3(3.4, 4.2, 3.4)
+
+[sub_resource type="BoxMesh" id="TowerMesh"]
+size = Vector3(3.4, 4.2, 3.4)
+
+[sub_resource type="BoxShape3D" id="EastLedgeShape"]
+size = Vector3(5, 2, 4)
+
+[sub_resource type="BoxMesh" id="EastLedgeMesh"]
+size = Vector3(5, 2, 4)
+
+[sub_resource type="BoxShape3D" id="TriggerShape"]
+size = Vector3(1.6, 1.2, 1.6)
+
+[sub_resource type="BoxMesh" id="MarkerMesh"]
+size = Vector3(1.6, 0.04, 1.6)
+
+[sub_resource type="StandardMaterial3D" id="StoneMarkerMaterial"]
+shading_mode = 0
+albedo_color = Color(0.30, 0.42, 0.58, 1)
+
+[sub_resource type="StandardMaterial3D" id="CarpetMarkerMaterial"]
+shading_mode = 0
+albedo_color = Color(0.33, 0.18, 0.18, 1)
+
+[sub_resource type="StandardMaterial3D" id="TileMarkerMaterial"]
+shading_mode = 0
+albedo_color = Color(0.62, 0.62, 0.72, 1)
+
+[sub_resource type="StandardMaterial3D" id="ObjectiveMarkerMaterial"]
+shading_mode = 0
+albedo_color = Color(0.72, 0.58, 0.12, 1)
+
+[sub_resource type="StandardMaterial3D" id="ExitMarkerMaterial"]
+shading_mode = 0
+albedo_color = Color(0.12, 0.62, 0.34, 1)
+
+[node name="VerticalStealthLab" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_slice")
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector3(-8, 0, 11)
+
+[node name="SpeechListener" type="Node3D" parent="Player"]
+script = ExtResource("9_listener")
+listener_id = &"listener.vertical_player"
+hearing_threshold = 0.18
+
+[node name="Geometry" type="Node3D" parent="."]
+
+[node name="Floor" type="StaticBody3D" parent="Geometry"]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/Floor"]
+mesh = SubResource("FloorMesh")
+material_override = SubResource("FloorMaterial")
+
+[node name="DividerLeft" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-6.35, 1.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/DividerLeft"]
+shape = SubResource("DividerShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/DividerLeft"]
+mesh = SubResource("DividerMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="DividerRight" type="StaticBody3D" parent="Geometry"]
+position = Vector3(6.35, 1.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/DividerRight"]
+shape = SubResource("DividerShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/DividerRight"]
+mesh = SubResource("DividerMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="WestWall" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-12.15, 2.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/WestWall"]
+shape = SubResource("SideWallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/WestWall"]
+mesh = SubResource("SideWallMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="EastWall" type="StaticBody3D" parent="Geometry"]
+position = Vector3(12.15, 2.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/EastWall"]
+shape = SubResource("SideWallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/EastWall"]
+mesh = SubResource("SideWallMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="NorthWall" type="StaticBody3D" parent="Geometry"]
+position = Vector3(0, 2.5, -14.15)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/NorthWall"]
+shape = SubResource("EndWallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/NorthWall"]
+mesh = SubResource("EndWallMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="SouthWall" type="StaticBody3D" parent="Geometry"]
+position = Vector3(0, 2.5, 14.15)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/SouthWall"]
+shape = SubResource("EndWallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/SouthWall"]
+mesh = SubResource("EndWallMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="NorthCover" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-2.5, 1.35, -7)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/NorthCover"]
+shape = SubResource("CoverShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/NorthCover"]
+mesh = SubResource("CoverMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="CrouchCover" type="StaticBody3D" parent="Geometry"]
+position = Vector3(2, 0.56, 5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/CrouchCover"]
+shape = SubResource("CrouchCoverShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/CrouchCover"]
+mesh = SubResource("CrouchCoverMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="Label" type="Label3D" parent="Geometry/CrouchCover"]
+position = Vector3(0, 0.92, 0)
+text = "CROUCH COVER"
+billboard = 1
+font_size = 17
+outline_size = 6
+no_depth_test = true
+
+
+[node name="ClimbStep1" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-4.5, 0.4, 6)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/ClimbStep1"]
+shape = SubResource("ClimbStep1Shape")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ClimbStep1"]
+mesh = SubResource("ClimbStep1Mesh")
+material_override = SubResource("WallMaterial")
+
+[node name="ClimbStep2" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-5.8, 0.8, 3.8)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/ClimbStep2"]
+shape = SubResource("ClimbStep2Shape")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ClimbStep2"]
+mesh = SubResource("ClimbStep2Mesh")
+material_override = SubResource("WallMaterial")
+
+[node name="ClimbStep3" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-6.8, 1.2, 1.4)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/ClimbStep3"]
+shape = SubResource("ClimbStep3Shape")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ClimbStep3"]
+mesh = SubResource("ClimbStep3Mesh")
+material_override = SubResource("WallMaterial")
+
+[node name="ClimbStep4" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-7.5, 1.6, -1)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/ClimbStep4"]
+shape = SubResource("ClimbStep4Shape")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ClimbStep4"]
+mesh = SubResource("ClimbStep4Mesh")
+material_override = SubResource("WallMaterial")
+
+[node name="UpperCatwalk" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-7.5, 3, -5)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/UpperCatwalk"]
+shape = SubResource("CatwalkShape")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/UpperCatwalk"]
+mesh = SubResource("CatwalkMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="ObjectiveTower" type="StaticBody3D" parent="Geometry"]
+position = Vector3(-7.5, 2.1, -10.5)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/ObjectiveTower"]
+shape = SubResource("TowerShape")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/ObjectiveTower"]
+mesh = SubResource("TowerMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="EastLedge" type="StaticBody3D" parent="Geometry"]
+position = Vector3(5, 1, 2)
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Geometry/EastLedge"]
+shape = SubResource("EastLedgeShape")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Geometry/EastLedge"]
+mesh = SubResource("EastLedgeMesh")
+material_override = SubResource("WallMaterial")
+
+[node name="OrdinaryDoor" parent="." instance=ExtResource("3_door")]
+position = Vector3(-0.65, 0, 0)
+persistent_id = "vertical.door"
+door_id = &"door.vertical"
+transition_seconds = 0.7
+gameplay_sound_strength = 0.65
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+
+[node name="PatrolA" type="Node3D" parent="."]
+position = Vector3(7, 0, 10)
+script = ExtResource("24_patrol")
+patrol_id = "vertical.patrol.a"
+wait_seconds = 2.5
+
+[node name="PatrolB" type="Node3D" parent="."]
+position = Vector3(7, 0, -10)
+script = ExtResource("24_patrol")
+patrol_id = "vertical.patrol.b"
+wait_seconds = 4.0
+
+[node name="Guard" type="CharacterBody3D" parent="."]
+position = Vector3(7, 0, 10)
+script = ExtResource("5_guard")
+persistent_id = "vertical.guard"
+content_id = "guard.vertical"
+guard_id = "guard.vertical"
+patrol_a_id = "vertical.patrol.a"
+patrol_b_id = "vertical.patrol.b"
+door_id = "door.vertical"
+movement_speed = 1.2
+door_use_distance = 2.0
+
+[node name="Hearing" type="Node3D" parent="Guard"]
+position = Vector3(0, 1.25, 0)
+script = ExtResource("9_listener")
+listener_id = &"listener.vertical_guard"
+hearing_threshold = 0.14
+
+[node name="Speech" type="Node3D" parent="Guard"]
+script = ExtResource("10_speech")
+speech_line = ExtResource("11_line")
+propagation_path = NodePath("../../AcousticPropagation")
+listener_path = NodePath("../../Player/SpeechListener")
+label_path = NodePath("SpeechLabel")
+auto_repeat_seconds = 0.0
+
+[node name="SpeechLabel" type="Label3D" parent="Guard/Speech"]
+position = Vector3(0, 2.2, 0)
+visible = false
+billboard = 1
+font_size = 30
+outline_size = 8
+no_depth_test = true
+
+[node name="ReactionLabel" type="Label3D" parent="Guard"]
+position = Vector3(0, 2.85, 0)
+text = "CALM"
+billboard = 1
+font_size = 19
+outline_size = 7
+no_depth_test = true
+
+[node name="Reaction" type="Node" parent="Guard"]
+script = ExtResource("16_reaction")
+
+[node name="AcousticPropagation" type="Node" parent="."]
+script = ExtResource("6_propagation")
+
+[node name="SouthSpace" type="Area3D" parent="."]
+position = Vector3(0, 3.5, 7)
+script = ExtResource("7_space")
+space_id = "space.vertical.south"
+half_extent_x = 11.8
+half_extent_y = 4.5
+half_extent_z = 7.0
+
+[node name="NorthSpace" type="Area3D" parent="."]
+position = Vector3(0, 3.5, -7)
+script = ExtResource("7_space")
+space_id = "space.vertical.north"
+half_extent_x = 11.8
+half_extent_y = 4.5
+half_extent_z = 7.0
+
+[node name="DoorPortal" type="Node3D" parent="."]
+position = Vector3(0, 1, 0)
+script = ExtResource("8_portal")
+portal_id = "portal.vertical.door"
+space_a_id = "space.vertical.south"
+space_b_id = "space.vertical.north"
+door_id = "door.vertical"
+closed_transmission = 0.08
+open_transmission = 1.0
+
+[node name="GameplayExposure" type="Node3D" parent="."]
+script = ExtResource("12_exposure")
+player_path = NodePath("../Player")
+
+[node name="NorthGameplayLight" type="OmniLight3D" parent="."]
+position = Vector3(-6.5, 4.8, -8)
+omni_range = 8.0
+light_energy = 2.6
+shadow_enabled = true
+script = ExtResource("13_light")
+persistent_id = "vertical.light.north"
+gameplay_light_id = &"light.vertical_north"
+gameplay_strength = 1.0
+
+
+[node name="SouthGameplayLight" type="OmniLight3D" parent="."]
+position = Vector3(5.5, 3.8, 8)
+omni_range = 7.0
+light_energy = 2.2
+shadow_enabled = true
+script = ExtResource("13_light")
+persistent_id = "vertical.light.south"
+gameplay_light_id = &"light.vertical_south"
+gameplay_strength = 0.85
+
+[node name="TowerGameplayLight" type="OmniLight3D" parent="."]
+position = Vector3(-7.5, 6, -11)
+omni_range = 5.5
+light_energy = 2.8
+shadow_enabled = true
+script = ExtResource("13_light")
+persistent_id = "vertical.light.tower"
+gameplay_light_id = &"light.vertical_tower"
+gameplay_strength = 1.0
+
+[node name="StoneSurface" type="Area3D" parent="."]
+position = Vector3(-8, 4.5, 0)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("17_surface")
+surface_profile = ExtResource("19_stone_profile")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StoneSurface"]
+shape = SubResource("StoneSurfaceShape")
+
+[node name="CarpetSurface" type="Area3D" parent="."]
+position = Vector3(0, 4.5, 0)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("17_surface")
+surface_profile = ExtResource("20_carpet_profile")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="CarpetSurface"]
+shape = SubResource("SurfaceShape")
+
+[node name="TileSurface" type="Area3D" parent="."]
+position = Vector3(8, 4.5, 0)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("17_surface")
+surface_profile = ExtResource("23_tile_profile")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TileSurface"]
+shape = SubResource("TileSurfaceShape")
+
+[node name="StoneMarker" type="Node3D" parent="."]
+position = Vector3(-8, 0.02, 11)
+
+[node name="Pad" type="MeshInstance3D" parent="StoneMarker"]
+mesh = SubResource("MarkerMesh")
+material_override = SubResource("StoneMarkerMaterial")
+
+[node name="Label" type="Label3D" parent="StoneMarker"]
+position = Vector3(0, 0.35, 0)
+text = "STONE / NORMAL STEPS"
+billboard = 1
+font_size = 19
+outline_size = 6
+no_depth_test = true
+
+[node name="CarpetMarker" type="Node3D" parent="."]
+position = Vector3(0, 0.02, 11)
+
+[node name="Pad" type="MeshInstance3D" parent="CarpetMarker"]
+mesh = SubResource("MarkerMesh")
+material_override = SubResource("CarpetMarkerMaterial")
+
+[node name="Label" type="Label3D" parent="CarpetMarker"]
+position = Vector3(0, 0.35, 0)
+text = "CARPET / QUIET STEPS"
+billboard = 1
+font_size = 19
+outline_size = 6
+no_depth_test = true
+
+[node name="TileMarker" type="Node3D" parent="."]
+position = Vector3(8, 0.02, 11)
+
+[node name="Pad" type="MeshInstance3D" parent="TileMarker"]
+mesh = SubResource("MarkerMesh")
+material_override = SubResource("TileMarkerMaterial")
+
+[node name="Label" type="Label3D" parent="TileMarker"]
+position = Vector3(0, 0.35, 0)
+text = "TILE / LOUD STEPS"
+billboard = 1
+font_size = 19
+outline_size = 6
+no_depth_test = true
+
+[node name="FootstepEmitter" type="Node" parent="."]
+script = ExtResource("18_footsteps")
+player_path = NodePath("../Player")
+step_distance = 1.25
+minimum_move_speed = 0.35
+crouched_strength_scale = 0.45
+
+[node name="CrateA" parent="." instance=ExtResource("4_prop")]
+position = Vector3(-2.5, 0.3, 8.5)
+persistent_id = "vertical.prop.a"
+prop_id = &"prop.vertical.a"
+
+[node name="CrateB" parent="." instance=ExtResource("4_prop")]
+position = Vector3(-1.5, 0.3, 8.5)
+persistent_id = "vertical.prop.b"
+prop_id = &"prop.vertical.b"
+
+
+[node name="CrateC" parent="." instance=ExtResource("4_prop")]
+position = Vector3(3.5, 0.3, -7.5)
+persistent_id = "vertical.prop.c"
+prop_id = &"prop.vertical.c"
+
+[node name="CrateD" parent="." instance=ExtResource("4_prop")]
+position = Vector3(4.5, 0.3, -7.5)
+persistent_id = "vertical.prop.d"
+prop_id = &"prop.vertical.d"
+
+[node name="ObjectiveState" type="Node" parent="."]
+script = ExtResource("14_objective")
+objective_id = &"objective.vertical"
+exit_id = &"exit.vertical"
+objective_text = "Climb to the upper objective, evade the guard, and return to EXIT."
+status_label_path = NodePath("../ObjectiveStatus")
+
+[node name="ObjectiveTrigger" type="Area3D" parent="."]
+position = Vector3(-7.5, 4.75, -10.5)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("15_trigger")
+event_name = &"objective.complete_requested"
+payload_key = &"objective_id"
+payload_id = &"objective.vertical"
+one_shot_on_queue = true
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ObjectiveTrigger"]
+shape = SubResource("TriggerShape")
+
+[node name="Pad" type="MeshInstance3D" parent="ObjectiveTrigger"]
+position = Vector3(0, -0.48, 0)
+mesh = SubResource("MarkerMesh")
+material_override = SubResource("ObjectiveMarkerMaterial")
+
+[node name="Label" type="Label3D" parent="ObjectiveTrigger"]
+position = Vector3(0, 1.25, 0)
+text = "OBJECTIVE"
+billboard = 1
+font_size = 26
+outline_size = 8
+no_depth_test = true
+
+[node name="ExitTrigger" type="Area3D" parent="."]
+position = Vector3(-8, 0.5, 12)
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("15_trigger")
+event_name = &"mission.exit_requested"
+payload_key = &"exit_id"
+payload_id = &"exit.vertical"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ExitTrigger"]
+shape = SubResource("TriggerShape")
+
+[node name="Pad" type="MeshInstance3D" parent="ExitTrigger"]
+position = Vector3(0, -0.48, 0)
+mesh = SubResource("MarkerMesh")
+material_override = SubResource("ExitMarkerMaterial")
+
+[node name="Label" type="Label3D" parent="ExitTrigger"]
+position = Vector3(0, 1.25, 0)
+text = "EXIT"
+billboard = 1
+font_size = 26
+outline_size = 8
+no_depth_test = true
+
+[node name="ObjectiveStatus" type="Label3D" parent="."]
+position = Vector3(-8.5, 2.4, 11.8)
+text = "OBJECTIVE ACTIVE"
+billboard = 1
+font_size = 19
+outline_size = 7
+no_depth_test = true
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(-3.5, 4.3, 11.8)
+text = "VERTICAL STEALTH LAB\nClimb the west-side steps/catwalk to the tower OBJECTIVE, then return to EXIT.\nThe guard patrols the long east route and waits at both endpoints.\nUse height, cover, darkness, carpet/stone/tile, landings, and distractions to test stealth."
+billboard = 1
+font_size = 18
+outline_size = 7
+no_depth_test = true
+
+[node name="ExposureHUD" type="CanvasLayer" parent="."]
+
+[node name="Panel" type="PanelContainer" parent="ExposureHUD"]
+script = ExtResource("21_light_gem")
+exposure_path = NodePath("../../GameplayExposure")
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 430.0
+offset_bottom = 118.0
+
+[node name="VBox" type="VBoxContainer" parent="ExposureHUD/Panel"]
+
+[node name="Title" type="Label" parent="ExposureHUD/Panel/VBox"]
+text = "5.3 LIGHT GEM / EXPOSURE"
+
+[node name="ExposureBar" type="ProgressBar" parent="ExposureHUD/Panel/VBox"]
+custom_minimum_size = Vector2(390, 18)
+max_value = 1.0
+step = 0.01
+show_percentage = false
+
+[node name="Readout" type="Label" parent="ExposureHUD/Panel/VBox"]
+text = "EXPOSURE 0.00"
+
+[node name="NoisePanel" type="PanelContainer" parent="ExposureHUD"]
+script = ExtResource("22_noise_meter")
+emitter_path = NodePath("../../FootstepEmitter")
+offset_left = 16.0
+offset_top = 130.0
+offset_right = 430.0
+offset_bottom = 232.0
+
+[node name="VBox" type="VBoxContainer" parent="ExposureHUD/NoisePanel"]
+
+[node name="Title" type="Label" parent="ExposureHUD/NoisePanel/VBox"]
+text = "DEBUG FOOTSTEP LOUDNESS"
+
+[node name="LoudnessBar" type="ProgressBar" parent="ExposureHUD/NoisePanel/VBox"]
+custom_minimum_size = Vector2(390, 18)
+max_value = 1.0
+step = 0.01
+show_percentage = false
+
+[node name="Readout" type="Label" parent="ExposureHUD/NoisePanel/VBox"]
+text = "LOUDNESS 0.00"

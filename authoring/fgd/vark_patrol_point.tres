@@ -8,10 +8,12 @@ script = ExtResource("1_point")
 classname = "vark_patrol_point"
 description = "Primitive 3.7 authored patrol marker. Give it a unique patrol_id and place it on navigable imported geometry."
 class_properties = Dictionary[String, Variant]({
-"patrol_id": ""
+"patrol_id": "",
+"wait_seconds": 0.0
 })
 class_property_descriptions = Dictionary[String, Variant]({
-"patrol_id": "Required authored patrol-point ID referenced by vark_guard."
+"patrol_id": "Required authored patrol-point ID referenced by vark_guard.",
+"wait_seconds": "Optional gameplay-time dwell in seconds when a guard reaches this patrol point. Zero preserves continuous patrol."
 })
 auto_apply_to_matching_node_properties = true
 node_class = "Node3D"
