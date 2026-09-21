@@ -188,7 +188,7 @@ As a general relationship:
 
 > crouched careful movement < normal movement < sprinting = landing after a jump or fall
 
-A landing after normal airborne movement uses the running loudness for the surface it lands on. The landing is one contact sound rather than an extra footstep layered on the same frame.
+A landing after normal airborne movement uses the running loudness for the surface it lands on. The landing is one contact sound rather than an extra footstep layered on the same frame. A successful mantle/climb-up is different: it ends with one ordinary contact step, using crouched/sneaking strength when the mantle finishes crouched and walking strength when it finishes standing. If a mantle is cancelled into real airborne movement, the eventual fall landing keeps the running-strength rule.
 
 Different materials create meaningfully different footsteps. Soft surfaces are safer. Hard, resonant, or loose surfaces are more dangerous.
 

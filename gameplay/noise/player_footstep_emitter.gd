@@ -25,6 +25,7 @@ var _last_strength: float = 0.0
 var _last_stance: String = "standing"
 var _last_gait: String = "walking"
 var _landing_armed: bool = false
+var _mantle_contact_pending: bool = false
 
 
 func _ready() -> void:
@@ -33,6 +34,7 @@ func _ready() -> void:
 	if _player != null:
 		_last_position = _player.global_position
 	_landing_armed = false
+	_mantle_contact_pending = false
 
 
 func _physics_process(_delta: float) -> void:
@@ -48,6 +50,7 @@ func _physics_process(_delta: float) -> void:
 	if not emission_enabled:
 		_distance_since_step = 0.0
 		_landing_armed = false
+		_mantle_contact_pending = false
 		return
 
 	var movement_state: Dictionary = _get_player_movement_state()
@@ -76,12 +79,41 @@ func _advance_landing_transition(movement_state: Dictionary) -> bool:
 	var grounded: bool = str(
 		movement_state.get("support", "airborne")
 	) == "grounded"
+	var traversal: String = str(
+		movement_state.get("traversal", "normal")
+	)
+
+	if traversal == "mantling":
+		# Mantle motion is traversal-owned, not a run/fall. Suppress cadence and
+		# remember that a successful grounded handoff owes exactly one ordinary
+		# stance-scaled contact step.
+		_mantle_contact_pending = true
+		_landing_armed = false
+		_distance_since_step = 0.0
+		return false
+
 	if not grounded:
-		# Normal airborne locomotion covers both a jump and an unsupported fall.
-		# Traversal-owned hanging/mantling does not arm a delayed landing sound.
-		if str(movement_state.get("traversal", "normal")) == "normal":
+		# Leaving mantle ownership while still airborne means the mantle was
+		# cancelled/released. From here onward the eventual impact is an ordinary
+		# jump/fall landing and therefore keeps the running-strength rule.
+		if _mantle_contact_pending:
+			_mantle_contact_pending = false
+		if traversal == "normal":
 			_landing_armed = true
 		_distance_since_step = 0.0
+		return false
+
+	if traversal != "normal":
+		# Catching/hanging/cornering never generate distance cadence or a delayed
+		# landing by themselves.
+		_distance_since_step = 0.0
+		return false
+
+	if _mantle_contact_pending:
+		_mantle_contact_pending = false
+		_landing_armed = false
+		_distance_since_step = 0.0
+		emit_mantle_step_now(movement_state)
 		return false
 
 	if _landing_armed:
@@ -98,6 +130,7 @@ func set_emission_enabled(enabled: bool) -> void:
 	emission_enabled = enabled
 	_distance_since_step = 0.0
 	_landing_armed = false
+	_mantle_contact_pending = false
 	if _player != null and is_instance_valid(_player):
 		_last_position = _player.global_position
 
@@ -123,6 +156,26 @@ func emit_landing_now() -> bool:
 	return _emit_current_surface_noise(
 		"landing",
 		maxf(sprint_strength_scale, 1.0),
+		stance
+	)
+
+
+func emit_mantle_step_now(
+	movement_state: Dictionary = {}
+) -> bool:
+	var resolved_state: Dictionary = movement_state
+	if resolved_state.is_empty():
+		resolved_state = _get_player_movement_state()
+	var stance: String = str(resolved_state.get("stance", "standing"))
+	if stance == "crouched":
+		return _emit_current_surface_noise(
+			"crouched",
+			clampf(crouched_strength_scale, 0.05, 1.0),
+			stance
+		)
+	return _emit_current_surface_noise(
+		"walking",
+		1.0,
 		stance
 	)
 
@@ -182,6 +235,7 @@ func get_debug_summary() -> Dictionary:
 		"last_stance": _last_stance,
 		"last_gait": _last_gait,
 		"landing_armed": _landing_armed,
+		"mantle_contact_pending": _mantle_contact_pending,
 		"crouched_strength_scale": crouched_strength_scale,
 		"sprint_strength_scale": sprint_strength_scale,
 		"step_distance": step_distance,

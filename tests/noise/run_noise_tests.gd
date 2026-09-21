@@ -618,6 +618,120 @@ func _assert_integrated_surface_noise() -> void:
 			+ "(summary=%s)" % str(automatic_landing_summary)
 		)
 	)
+
+	var mantle_walk_start_count: int = int(
+		automatic_landing_summary.get("queued_count", 0)
+	)
+	var mantle_walk_active_allows: bool = bool(
+		footsteps._advance_landing_transition({
+			"support": "grounded",
+			"traversal": "mantling",
+			"stance": "standing",
+		})
+	)
+	var mantle_walk_pending: bool = bool(
+		footsteps.get_debug_summary().get("mantle_contact_pending", false)
+	)
+	var mantle_walk_complete_allows: bool = bool(
+		footsteps._advance_landing_transition({
+			"support": "grounded",
+			"traversal": "normal",
+			"stance": "standing",
+		})
+	)
+	await _completed_physics_frame()
+	var mantle_walk_summary: Dictionary = footsteps.get_debug_summary()
+	_assert_true(
+		not mantle_walk_active_allows
+		and mantle_walk_pending
+		and not mantle_walk_complete_allows
+		and int(mantle_walk_summary.get("queued_count", 0))
+			== mantle_walk_start_count + 1
+		and mantle_walk_summary.get("last_gait", "") == "walking"
+		and is_equal_approx(
+			float(mantle_walk_summary.get("last_strength", 0.0)),
+			float(mantle_walk_summary.get("last_base_strength", 0.0))
+		),
+		(
+			"Phase 5.1 standing mantle completion emits one walking-strength step instead of a running-strength landing "
+			+ "(summary=%s)" % str(mantle_walk_summary)
+		)
+	)
+
+	var mantle_crouch_start_count: int = int(
+		mantle_walk_summary.get("queued_count", 0)
+	)
+	footsteps._advance_landing_transition({
+		"support": "grounded",
+		"traversal": "mantling",
+		"stance": "crouched",
+	})
+	var mantle_crouch_complete_allows: bool = bool(
+		footsteps._advance_landing_transition({
+			"support": "grounded",
+			"traversal": "normal",
+			"stance": "crouched",
+		})
+	)
+	await _completed_physics_frame()
+	var mantle_crouch_summary: Dictionary = footsteps.get_debug_summary()
+	_assert_true(
+		not mantle_crouch_complete_allows
+		and int(mantle_crouch_summary.get("queued_count", 0))
+			== mantle_crouch_start_count + 1
+		and mantle_crouch_summary.get("last_gait", "") == "crouched"
+		and is_equal_approx(
+			float(mantle_crouch_summary.get("last_strength", 0.0)),
+			float(mantle_crouch_summary.get("last_base_strength", 0.0))
+				* footsteps.crouched_strength_scale
+		),
+		(
+			"Phase 5.1 crouched mantle completion emits one crouched/sneaking-strength step "
+			+ "(summary=%s)" % str(mantle_crouch_summary)
+		)
+	)
+
+	var cancelled_mantle_start_count: int = int(
+		mantle_crouch_summary.get("queued_count", 0)
+	)
+	footsteps._advance_landing_transition({
+		"support": "grounded",
+		"traversal": "mantling",
+		"stance": "standing",
+	})
+	var cancelled_to_air_allows: bool = bool(
+		footsteps._advance_landing_transition({
+			"support": "airborne",
+			"traversal": "normal",
+			"stance": "standing",
+		})
+	)
+	var cancelled_air_summary: Dictionary = footsteps.get_debug_summary()
+	var cancelled_landing_allows: bool = bool(
+		footsteps._advance_landing_transition({
+			"support": "grounded",
+			"traversal": "normal",
+			"stance": "standing",
+		})
+	)
+	await _completed_physics_frame()
+	var cancelled_landing_summary: Dictionary = footsteps.get_debug_summary()
+	_assert_true(
+		not cancelled_to_air_allows
+		and not bool(cancelled_air_summary.get("mantle_contact_pending", true))
+		and bool(cancelled_air_summary.get("landing_armed", false))
+		and not cancelled_landing_allows
+		and int(cancelled_landing_summary.get("queued_count", 0))
+			== cancelled_mantle_start_count + 1
+		and cancelled_landing_summary.get("last_gait", "") == "landing"
+		and is_equal_approx(
+			float(cancelled_landing_summary.get("last_strength", 0.0)),
+			float(cancelled_landing_summary.get("last_base_strength", 0.0))
+				* footsteps.sprint_strength_scale
+		),
+		"Phase 5.1 a cancelled mantle that releases to air keeps the ordinary hard fall-landing rule"
+	)
+
 	footsteps.set_emission_enabled(false)
 	footsteps.set_physics_process(true)
 	await _settle_overlap_frames(2)
