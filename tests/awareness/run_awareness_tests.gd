@@ -68,6 +68,30 @@ func _assert_guard_awareness_state_machine() -> void:
 		"GameplayExposure"
 	) as VarkGameplayExposure
 
+	var stance_settings: Resource = player.get("stance_settings") as Resource
+	var player_sneak_speed: float = (
+		float(stance_settings.get("crouch_speed"))
+		if stance_settings != null
+		else 0.0
+	)
+	var guard_walk_speed: float = guard.movement_speed
+	var guard_investigate_speed: float = (
+		guard.movement_speed * guard.investigate_speed_scale
+	)
+	var guard_run_speed: float = (
+		guard.movement_speed * guard.pursuit_speed_scale
+	)
+	_assert_true(
+		player_sneak_speed > 0.0
+		and guard_walk_speed < player_sneak_speed
+		and guard_investigate_speed < guard_walk_speed
+		and guard_run_speed > guard_walk_speed
+		and is_equal_approx(guard_walk_speed, 1.60)
+		and is_equal_approx(guard_investigate_speed, 0.72)
+		and is_equal_approx(guard_run_speed, 2.64),
+		"Guard locomotion exposes exactly walking 1.60 < player sneak 2.00, investigating/search 0.72, and running/pursuit 2.64 semantic speeds"
+	)
+
 	_configure_short_durations(reaction)
 	# Freeze locomotion without erasing the authored base speed; semantic
 	# awareness speed-profile assertions still need a meaningful baseline.
@@ -141,14 +165,66 @@ func _assert_guard_awareness_state_machine() -> void:
 		strong_queued
 		and investigate_summary.get("awareness_state", &"")
 			== STATE_INVESTIGATING
+		and bool(investigate_summary.get("investigation_stare_active", false))
+		and float(investigate_summary.get(
+			"investigation_stare_remaining_seconds",
+			0.0
+		)) > 0.0
 		and bool(investigate_nav.get("active", false))
-		and investigate_nav.get("reason", &"")
-			== NAV_INVESTIGATE
+		and investigate_nav.get("reason", &"") == NAV_INVESTIGATE
+		and investigate_nav.get("movement_mode", &"") == &"investigating"
+		and bool(investigate_nav.get("motion_paused", false))
+		and is_equal_approx(
+			float(investigate_nav.get("current_movement_speed", -1.0)),
+			guard.movement_speed * guard.investigate_speed_scale
+		)
 		and _dict_vector(
 			investigate_nav,
 			"target_position"
+		).distance_to(strong_origin) <= 0.001
+		and _dict_vector(
+			investigate_summary,
+			"investigation_stare_target"
 		).distance_to(strong_origin) <= 0.001,
-		"Phase 5.4 strong heard evidence becomes an explicit investigation target owned by the local guard"
+		"Phase 5.4 investigation-worthy hearing makes an unaware guard stop, face the source, and hold a resolved stare before moving"
+	)
+
+	var stare_snapshot: Dictionary = reaction.call("capture_semantic_state")
+	_assert_true(
+		bool(stare_snapshot.get("investigation_stare_active", false))
+		and float(stare_snapshot.get(
+			"investigation_stare_duration_seconds",
+			0.0
+		)) >= reaction.investigation_stare_min
+		and float(stare_snapshot.get(
+			"investigation_stare_duration_seconds",
+			0.0
+		)) <= reaction.investigation_stare_max
+		and float(stare_snapshot.get(
+			"investigation_stare_remaining_seconds",
+			0.0
+		)) > 0.0
+		and int(stare_snapshot.get("investigation_stare_serial", 0)) > 0,
+		"Phase 5.4 the current randomized pre-investigation stare is resolved semantic save truth rather than an unsaved presentation timer"
+	)
+
+	var stare_finished: bool = await _wait_for_investigation_stare(
+		reaction,
+		false,
+		30
+	)
+	var investigate_after_stare: Dictionary = reaction.get_debug_summary()
+	var investigate_after_stare_nav: Dictionary = (
+		guard.get_awareness_navigation_state()
+	)
+	_assert_true(
+		stare_finished
+		and investigate_after_stare.get("awareness_state", &"")
+			== STATE_INVESTIGATING
+		and not bool(investigate_after_stare_nav.get("motion_paused", true))
+		and investigate_after_stare_nav.get("movement_mode", &"")
+			== &"investigating",
+		"Phase 5.4 investigation navigation begins only after the resolved stare completes"
 	)
 
 	var reached_search: bool = await _wait_for_awareness_state(
@@ -347,6 +423,7 @@ func _assert_guard_awareness_state_machine() -> void:
 	)
 
 	reaction.reset_reaction()
+	reaction.set_physics_process(false)
 	light.gameplay_enabled = false
 	light.visible = false
 	player.global_position = Vector3(0.0, 0.0, -4.2)
@@ -359,32 +436,36 @@ func _assert_guard_awareness_state_machine() -> void:
 	var dark_exposure: float = float(
 		dark_exposure_summary.get("exposure", 1.0)
 	)
-	var dark_close_confirmed: bool = reaction.sample_vision_now()
-	var dark_close_summary: Dictionary = reaction.get_debug_summary()
+	var dark_close_visible: bool = reaction.sample_vision_now(0.10)
+	var dark_close_initial: Dictionary = reaction.get_debug_summary()
+	var dark_rate: float = float(
+		dark_close_initial.get("last_visual_suspicion_rate", 0.0)
+	)
 	_assert_true(
 		dark_exposure <= 0.02
-		and dark_close_confirmed
-		and dark_close_summary.get("awareness_state", &"")
-			== STATE_ALERTED
-		and bool(dark_close_summary.get(
+		and dark_close_visible
+		and dark_close_initial.get("awareness_state", &"")
+			== STATE_SUSPICIOUS
+		and float(dark_close_initial.get("visual_suspicion", 0.0)) > 0.0
+		and float(dark_close_initial.get("visual_suspicion", 1.0))
+			< reaction.vision_investigate_suspicion
+		and bool(dark_close_initial.get(
 			"last_vision_darkness_override",
 			false
 		))
-		and float(dark_close_summary.get(
-			"last_vision_distance",
-			INF
-		)) <= float(dark_close_summary.get(
-			"vision_darkness_confirm_distance",
-			0.0
-		))
-		and float(dark_close_summary.get(
-			"last_vision_facing_dot",
-			-1.0
-		)) >= float(dark_close_summary.get(
-			"vision_darkness_confirm_facing_dot",
-			1.0
-		)),
-		"Phase 5.4 complete darkness remains protective at range but cannot make a point-blank directly-facing player magically invisible"
+		and dark_rate > 0.0,
+		"Phase 5.4 even point-blank darkness builds visual suspicion over time instead of instantly confirming the player"
+	)
+
+	var dark_eventually_alerted: bool = false
+	for _sample: int in 30:
+		reaction.sample_vision_now(0.10)
+		if reaction.get_debug_summary().get("awareness_state", &"") == STATE_ALERTED:
+			dark_eventually_alerted = true
+			break
+	_assert_true(
+		dark_eventually_alerted,
+		"Phase 5.4 sustained point-blank direct-facing sight can still accumulate enough suspicion to confirm through darkness"
 	)
 
 	reaction.reset_reaction()
@@ -397,7 +478,33 @@ func _assert_guard_awareness_state_machine() -> void:
 	guard.look_at(player.global_position, Vector3.UP, true)
 	await _settle_frames(2)
 	exposure.sample_now()
-	var confirmed: bool = reaction.sample_vision_now()
+	var bright_visible: bool = reaction.sample_vision_now(0.10)
+	var bright_initial: Dictionary = reaction.get_debug_summary()
+	var bright_rate: float = float(
+		bright_initial.get("last_visual_suspicion_rate", 0.0)
+	)
+	_assert_true(
+		bright_visible
+		and bright_initial.get("awareness_state", &"") != STATE_ALERTED
+		and float(bright_initial.get("visual_suspicion", 0.0)) > 0.0
+		and bright_rate > dark_rate,
+		"Phase 5.4 visual suspicion accumulation is continuous and rises faster at higher gameplay exposure"
+	)
+
+	var visual_stare_seen: bool = bool(
+		bright_initial.get("investigation_stare_active", false)
+	)
+	var confirmed: bool = false
+	for _sample: int in 30:
+		reaction.sample_vision_now(0.05)
+		var current_visual: Dictionary = reaction.get_debug_summary()
+		visual_stare_seen = (
+			visual_stare_seen
+			or bool(current_visual.get("investigation_stare_active", false))
+		)
+		if current_visual.get("awareness_state", &"") == STATE_ALERTED:
+			confirmed = true
+			break
 	var alert_summary: Dictionary = reaction.get_debug_summary()
 	var alert_nav: Dictionary = guard.get_awareness_navigation_state()
 	var last_seen: Vector3 = alert_summary.get(
@@ -406,15 +513,17 @@ func _assert_guard_awareness_state_machine() -> void:
 	)
 	_assert_true(
 		confirmed
-		and alert_summary.get("awareness_state", &"")
-			== STATE_ALERTED
+		and visual_stare_seen
+		and alert_summary.get("awareness_state", &"") == STATE_ALERTED
 		and alert_summary.get("state", &"") == &"saw_player"
 		and int(alert_summary.get("seen_count", 0)) >= 1
 		and bool(alert_nav.get("active", false))
-		and alert_nav.get("reason", &"")
-			== NAV_PURSUIT
-		and float(alert_nav.get("current_movement_speed", 0.0))
-			> guard.movement_speed
+		and alert_nav.get("reason", &"") == NAV_PURSUIT
+		and alert_nav.get("movement_mode", &"") == &"running"
+		and is_equal_approx(
+			float(alert_nav.get("current_movement_speed", 0.0)),
+			guard.movement_speed * guard.pursuit_speed_scale
+		)
 		and alert_summary.get("pursuit_mode", &"") == PURSUIT_VISIBLE
 		and bool(alert_summary.get("has_pursuit_goal", false))
 		and guard.is_navigation_position_reachable(
@@ -427,8 +536,9 @@ func _assert_guard_awareness_state_machine() -> void:
 			alert_summary,
 			"pursuit_goal_position"
 		)) <= 0.001,
-		"Phase 5.4 confirmed local vision enters alert/pursuit and continuously owns a last-seen navigation target"
+		"Phase 5.4 exposed sight passes through suspicion/investigation observation before confirmed running pursuit"
 	)
+	reaction.set_physics_process(true)
 
 	var pursuit_generation: int = int(application.call("request_quicksave"))
 	var pursuit_committed: bool = await _wait_for_save_status(
@@ -683,6 +793,9 @@ func _assert_advanced_local_search_behavior() -> void:
 	reaction.recovery_seconds = 0.30
 	reaction.recovery_hearing_threshold_scale = 0.60
 	guard.movement_speed = 5.0
+	guard.investigate_speed_scale = 0.45
+	guard.search_speed_scale = 0.45
+	guard.pursuit_speed_scale = 1.65
 	light.gameplay_enabled = false
 	light.visible = false
 	player.global_position = Vector3(-4.0, 0.0, 6.0)
@@ -735,13 +848,16 @@ func _assert_advanced_local_search_behavior() -> void:
 			1.0
 		)
 		and first_summary.get("search_action", &"") == &"moving"
-		and float(
-			guard.get_awareness_navigation_state().get(
+		and guard.get_awareness_navigation_state().get("movement_mode", &"")
+			== &"investigating"
+		and is_equal_approx(
+			float(guard.get_awareness_navigation_state().get(
 				"current_movement_speed",
-				INF
-			)
-		) < guard.movement_speed,
-		"Phase 5.5 real Integrated Slice search resolves reachable candidates from explicit evidence uncertainty without player-position input"
+				-1.0
+			)),
+			guard.movement_speed * guard.investigate_speed_scale
+		),
+		"Phase 5.5 search uses the fixed investigating speed while resolving reachable evidence-driven candidates without player-position input"
 	)
 
 	var plan_before_hidden_move: Array = (
@@ -795,9 +911,13 @@ func _assert_advanced_local_search_behavior() -> void:
 	))
 	await _completed_physics_frame()
 	var reseed_summary: Dictionary = reaction.get_debug_summary()
+	var reseed_nav: Dictionary = guard.get_awareness_navigation_state()
 	var reseed_investigating: bool = (
 		reseed_summary.get("awareness_state", &"") == STATE_INVESTIGATING
 		and int(reseed_summary.get("search_reseed_count", 0)) >= 1
+		and bool(reseed_summary.get("investigation_stare_active", false))
+		and bool(reseed_nav.get("motion_paused", false))
+		and reseed_nav.get("movement_mode", &"") == &"investigating"
 	)
 	var second_search: bool = await _wait_for_awareness_state(
 		reaction,
@@ -825,7 +945,7 @@ func _assert_advanced_local_search_behavior() -> void:
 			plan_before_hidden_move,
 			second_summary.get("search_points", [])
 		),
-		"Phase 5.5 newly heard local evidence interrupts and reseeds search without global player knowledge"
+		"Phase 5.5 investigation-worthy evidence interrupts search, stops/turns/stares first, then reseeds without global player knowledge"
 	)
 
 	var human_stop_seen: bool = await _wait_for_stationary_search_action(
@@ -973,7 +1093,13 @@ func _assert_advanced_local_search_behavior() -> void:
 	reaction.set_physics_process(false)
 	reaction.vision_suspicion_exposure_threshold = 0.0
 	reaction.vision_confirm_exposure_threshold = 0.0
-	var search_elevated_confirmed: bool = reaction.sample_vision_now()
+	var search_elevated_visible: bool = reaction.sample_vision_now(0.10)
+	var search_elevated_confirmed: bool = false
+	for _sample: int in 40:
+		if reaction.get_debug_summary().get("awareness_state", &"") == STATE_ALERTED:
+			search_elevated_confirmed = true
+			break
+		reaction.sample_vision_now(0.10)
 	var elevated_alert_summary: Dictionary = reaction.get_debug_summary()
 	var elevated_pursuit_goal: Vector3 = _dict_vector(
 		elevated_alert_summary,
@@ -1022,7 +1148,8 @@ func _assert_advanced_local_search_behavior() -> void:
 		)
 	)
 	_assert_true(
-		search_elevated_confirmed
+		search_elevated_visible
+		and search_elevated_confirmed
 		and elevated_alert_summary.get("awareness_state", &"") == STATE_ALERTED
 		and guard.is_navigation_position_reachable(elevated_pursuit_goal)
 		and absf(elevated_pursuit_goal.y - player.global_position.y) > 0.50
@@ -1167,6 +1294,13 @@ func _configure_short_durations(
 	reaction.hearing_investigate_strength = 0.20
 	reaction.suspicion_seconds = 0.08
 	reaction.investigation_seconds = 0.10
+	reaction.investigation_stare_min = 0.20
+	reaction.investigation_stare_max = 0.24
+	reaction.vision_suspicion_rate_min = 0.30
+	reaction.vision_suspicion_rate_max = 2.50
+	reaction.vision_suspicion_decay_per_second = 0.80
+	reaction.vision_investigate_suspicion = 0.35
+	reaction.vision_alert_suspicion = 1.0
 	reaction.search_seconds = 0.60
 	reaction.search_point_count = 3
 	reaction.search_radius = 0.60
@@ -1245,6 +1379,24 @@ func _wait_for_pursuit_mode(
 			return true
 		await _completed_physics_frame()
 	return reaction.get_debug_summary().get("pursuit_mode", &"") == expected
+
+
+func _wait_for_investigation_stare(
+	reaction: Node,
+	expected_active: bool,
+	max_frames: int
+) -> bool:
+	for _frame: int in max_frames:
+		if bool(reaction.get_debug_summary().get(
+			"investigation_stare_active",
+			false
+		)) == expected_active:
+			return true
+		await _completed_physics_frame()
+	return bool(reaction.get_debug_summary().get(
+		"investigation_stare_active",
+		false
+	)) == expected_active
 
 
 func _wait_for_awareness_state(

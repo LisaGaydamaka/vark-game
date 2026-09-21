@@ -35,9 +35,9 @@ enum DoorTraversalState {
 @export var patrol_a_id: String = ""
 @export var patrol_b_id: String = ""
 @export var door_id: String = ""
-@export var movement_speed: float = 2.5
-@export_range(0.2, 1.5, 0.05) var investigate_speed_scale: float = 0.90
-@export_range(0.2, 1.5, 0.05) var search_speed_scale: float = 0.60
+@export var movement_speed: float = 1.6
+@export_range(0.2, 1.5, 0.05) var investigate_speed_scale: float = 0.45
+@export_range(0.2, 1.5, 0.05) var search_speed_scale: float = 0.45
 @export_range(1.0, 3.0, 0.05) var pursuit_speed_scale: float = 1.65
 @export var door_use_distance: float = 2.0
 
@@ -180,6 +180,7 @@ func get_awareness_navigation_state() -> Dictionary:
 		"target_position": _awareness_goal_position,
 		"motion_scale": _awareness_motion_scale,
 		"motion_paused": _awareness_motion_paused,
+		"movement_mode": _current_movement_mode(),
 		"current_movement_speed": _current_movement_speed(),
 	}
 
@@ -194,7 +195,14 @@ func set_awareness_motion_profile(
 		or not is_finite(speed_scale)
 	):
 		return false
-	_awareness_motion_scale = clampf(speed_scale, 0.10, 3.0)
+	var semantic_scale: float = _default_awareness_speed_scale(
+		_awareness_goal_reason
+	)
+	_awareness_motion_scale = (
+		semantic_scale
+		if _awareness_goal_reason in [&"investigate", &"search", &"pursuit"]
+		else clampf(speed_scale, 0.10, 3.0)
+	)
 	_awareness_motion_paused = paused
 	if paused:
 		velocity = Vector3.ZERO
@@ -988,10 +996,21 @@ func _default_awareness_speed_scale(reason: StringName) -> float:
 		&"investigate":
 			return maxf(investigate_speed_scale, 0.10)
 		&"search":
-			return maxf(search_speed_scale, 0.10)
+			return maxf(investigate_speed_scale, 0.10)
 		&"pursuit":
 			return maxf(pursuit_speed_scale, 0.10)
 	return 1.0
+
+
+func _current_movement_mode() -> StringName:
+	if not _awareness_goal_active:
+		return &"walking"
+	match _awareness_goal_reason:
+		&"pursuit":
+			return &"running"
+		&"investigate", &"search":
+			return &"investigating"
+	return &"walking"
 
 
 func _current_movement_speed() -> float:
