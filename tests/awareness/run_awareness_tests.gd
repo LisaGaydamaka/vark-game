@@ -1097,6 +1097,11 @@ func _assert_advanced_local_search_behavior() -> void:
 	reaction.set_physics_process(false)
 	reaction.vision_suspicion_exposure_threshold = 0.0
 	reaction.vision_confirm_exposure_threshold = 0.0
+	# This proof isolates engaged vertical geometry/reachability. Detection
+	# timing is covered earlier, so accelerate both ends of the suspicion rate
+	# instead of spending seconds of synthetic samples at zero exposure.
+	reaction.vision_suspicion_rate_min = 5.0
+	reaction.vision_suspicion_rate_max = 5.0
 	var search_elevated_visible: bool = reaction.sample_vision_now(0.10)
 	var search_elevated_confirmed: bool = false
 	for _sample: int in 40:
