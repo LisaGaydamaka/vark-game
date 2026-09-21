@@ -53,10 +53,14 @@ const PURSUIT_CHECKING_LAST_KNOWN: StringName = &"checking_last_known"
 @export var vision_darkness_confirm_facing_dot: float = 0.75
 @export var hearing_investigate_strength: float = 0.16
 @export_range(0.0, 1.0, 0.01) var hearing_footstep_investigate_source_floor: float = 0.22
+@export_range(0.25, 1.0, 0.05) var engaged_hearing_investigate_threshold_scale: float = 0.80
+@export_range(0.25, 1.0, 0.05) var engaged_footstep_investigate_source_floor_scale: float = 0.80
+@export_range(0.25, 1.0, 0.05) var engaged_vision_exposure_threshold_scale: float = 0.75
+@export_range(1.0, 3.0, 0.05) var engaged_visual_suspicion_rate_scale: float = 1.50
 @export var suspicion_seconds: float = 1.25
 @export var investigation_seconds: float = 2.50
-@export_range(0.05, 3.0, 0.05) var investigation_stare_min: float = 0.80
-@export_range(0.05, 3.0, 0.05) var investigation_stare_max: float = 2.00
+@export_range(0.05, 5.0, 0.05) var investigation_stare_min: float = 1.50
+@export_range(0.05, 5.0, 0.05) var investigation_stare_max: float = 3.50
 @export var search_seconds: float = 32.00
 @export_range(2, 6, 1) var search_point_count: int = 4
 @export_range(0.5, 6.0, 0.1) var search_radius: float = 2.80
@@ -223,6 +227,9 @@ func sample_vision_now(elapsed_seconds: float = 1.0 / 60.0) -> bool:
 		return false
 
 	var exposure: float = float(_exposure.call("get_current_exposure"))
+	var suspicion_exposure_threshold: float = (
+		_effective_vision_suspicion_exposure_threshold()
+	)
 	_last_vision_exposure = exposure
 	_last_vision_target = _get_player_vision_target()
 	_last_vision_blocked = false
@@ -259,7 +266,7 @@ func sample_vision_now(elapsed_seconds: float = 1.0 / 60.0) -> bool:
 		return false
 
 	_last_vision_darkness_override = (
-		exposure < vision_suspicion_exposure_threshold
+		exposure < suspicion_exposure_threshold
 		and _last_vision_distance <= maxf(vision_darkness_confirm_distance, 0.0)
 		and _last_vision_facing_dot >= vision_darkness_confirm_facing_dot
 	)
@@ -286,7 +293,7 @@ func sample_vision_now(elapsed_seconds: float = 1.0 / 60.0) -> bool:
 		return true
 
 	if (
-		exposure < vision_suspicion_exposure_threshold
+		exposure < suspicion_exposure_threshold
 		and not _last_vision_darkness_override
 	):
 		_last_visual_suspicion_rate = 0.0
@@ -430,6 +437,15 @@ func get_debug_summary() -> Dictionary:
 		"pursuit_arrival_distance": pursuit_arrival_distance,
 		"hearing_investigate_strength": hearing_investigate_strength,
 		"hearing_footstep_investigate_source_floor": hearing_footstep_investigate_source_floor,
+		"heightened_attention": _uses_heightened_attention(),
+		"effective_hearing_investigate_strength": _effective_hearing_investigate_strength(),
+		"effective_footstep_investigate_source_floor": _effective_footstep_investigate_source_floor(),
+		"effective_vision_suspicion_exposure_threshold": _effective_vision_suspicion_exposure_threshold(),
+		"visual_suspicion_rate_scale": _current_visual_suspicion_rate_scale(),
+		"engaged_hearing_investigate_threshold_scale": engaged_hearing_investigate_threshold_scale,
+		"engaged_footstep_investigate_source_floor_scale": engaged_footstep_investigate_source_floor_scale,
+		"engaged_vision_exposure_threshold_scale": engaged_vision_exposure_threshold_scale,
+		"engaged_visual_suspicion_rate_scale": engaged_visual_suspicion_rate_scale,
 		"gameplay_time_seconds": _get_gameplay_time(),
 	}
 
@@ -725,7 +741,10 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or (
 			restored_stare_active
 			and (
-				restored_state != STATE_INVESTIGATING
+				(
+					restored_state != STATE_SUSPICIOUS
+					and restored_state != STATE_INVESTIGATING
+				)
 				or restored_stare_remaining <= 0.0
 				or restored_stare_duration <= 0.0
 			)
@@ -913,7 +932,10 @@ func _enter_state(
 	var previous_state: StringName = _awareness_state
 	if previous_state == STATE_SEARCHING and new_state != STATE_SEARCHING:
 		_clear_search_plan(false)
-	if new_state != STATE_INVESTIGATING and _investigation_stare_active:
+	if (
+		not (new_state in [STATE_SUSPICIOUS, STATE_INVESTIGATING])
+		and _investigation_stare_active
+	):
 		_clear_investigation_stare(false)
 	_awareness_state = new_state
 	_has_alert_loss_timer = false
@@ -1021,7 +1043,7 @@ func _advance_visual_suspicion(
 	observed_position: Vector3
 ) -> void:
 	var low_exposure: float = clampf(
-		vision_suspicion_exposure_threshold,
+		_effective_vision_suspicion_exposure_threshold(),
 		0.0,
 		0.99
 	)
@@ -1042,7 +1064,7 @@ func _advance_visual_suspicion(
 		minimum_rate,
 		maximum_rate,
 		normalized_exposure
-	)
+	) * _current_visual_suspicion_rate_scale()
 	_visual_suspicion = clampf(
 		_visual_suspicion + _last_visual_suspicion_rate * elapsed_seconds,
 		0.0,
@@ -1111,8 +1133,18 @@ func _decay_visual_suspicion(elapsed_seconds: float) -> void:
 	)
 
 
-func _begin_investigation_stare(target: Vector3) -> void:
-	_enter_state(STATE_INVESTIGATING, target, true)
+func _begin_investigation_stare(
+	target: Vector3,
+	promote_to_investigation: bool = true
+) -> void:
+	if promote_to_investigation:
+		_enter_state(STATE_INVESTIGATING, target, true)
+	elif _awareness_state != STATE_SUSPICIOUS:
+		_enter_state(STATE_SUSPICIOUS, target, true)
+	else:
+		_investigation_target = target
+		_has_investigation_target = true
+
 	_investigation_stare_serial += 1
 	_investigation_stare_target = target
 	var low: float = maxf(
@@ -1131,6 +1163,11 @@ func _begin_investigation_stare(target: Vector3) -> void:
 	_investigation_stare_remaining_seconds = (
 		_investigation_stare_duration_seconds
 	)
+	if not promote_to_investigation:
+		_state_remaining_seconds = maxf(
+			_state_remaining_seconds,
+			_investigation_stare_duration_seconds
+		)
 	_investigation_stare_active = true
 	_set_investigation_stare_motion_paused(true)
 	_apply_investigation_stare_pose()
@@ -1139,7 +1176,7 @@ func _begin_investigation_stare(target: Vector3) -> void:
 func _advance_investigation_stare(elapsed_seconds: float) -> void:
 	if not _investigation_stare_active:
 		return
-	if _awareness_state != STATE_INVESTIGATING:
+	if not (_awareness_state in [STATE_SUSPICIOUS, STATE_INVESTIGATING]):
 		_clear_investigation_stare(false)
 		return
 	_investigation_stare_remaining_seconds = maxf(
@@ -1151,25 +1188,19 @@ func _advance_investigation_stare(elapsed_seconds: float) -> void:
 		return
 	_investigation_stare_active = false
 	_investigation_stare_remaining_seconds = 0.0
-	_apply_navigation_for_state()
+	_set_investigation_stare_motion_paused(false)
+	if _awareness_state == STATE_INVESTIGATING:
+		_apply_navigation_for_state()
 
 
 func _set_investigation_stare_motion_paused(paused: bool) -> void:
 	if (
 		_guard == null
 		or not is_instance_valid(_guard)
-		or not _guard.has_method("set_awareness_motion_profile")
-		or not _guard.has_method("get_awareness_navigation_state")
+		or not _guard.has_method("set_awareness_observation_paused")
 	):
 		return
-	var navigation_state: Dictionary = _guard.call(
-		"get_awareness_navigation_state"
-	)
-	_guard.call(
-		"set_awareness_motion_profile",
-		float(navigation_state.get("motion_scale", 1.0)),
-		paused
-	)
+	_guard.call("set_awareness_observation_paused", paused)
 
 
 func _apply_investigation_stare_pose() -> void:
@@ -1189,10 +1220,13 @@ func _apply_investigation_stare_pose() -> void:
 
 
 func _clear_investigation_stare(reset_serial: bool) -> void:
+	var was_active: bool = _investigation_stare_active
 	_investigation_stare_active = false
 	_investigation_stare_remaining_seconds = 0.0
 	_investigation_stare_duration_seconds = 0.0
 	_investigation_stare_target = Vector3.ZERO
+	if was_active:
+		_set_investigation_stare_motion_paused(false)
 	if reset_serial:
 		_investigation_stare_serial = 0
 
@@ -1729,43 +1763,30 @@ func _on_gameplay_sound_heard(perception: Dictionary) -> void:
 			if _awareness_state in [
 				STATE_UNAWARE,
 				STATE_SUSPICIOUS,
+				STATE_INVESTIGATING,
 				STATE_SEARCHING,
 				STATE_RECOVERING,
 			]:
 				if _awareness_state == STATE_SEARCHING:
 					_search_reseed_count += 1
+				# Heard evidence is discrete. Every new investigation-worthy cue
+				# outside confirmed pursuit restarts the source-facing observation
+				# hold before navigation is allowed to continue.
 				_begin_investigation_stare(_last_heard_origin)
-			elif _awareness_state == STATE_INVESTIGATING:
-				_investigation_target = _last_heard_origin
-				_has_investigation_target = true
-				_state_remaining_seconds = maxf(
-					_state_remaining_seconds,
-					maxf(investigation_seconds, 0.0)
-				)
-				_apply_navigation_for_state()
-				if _investigation_stare_active:
-					_investigation_stare_target = _last_heard_origin
-					_set_investigation_stare_motion_paused(true)
-					_apply_investigation_stare_pose()
 		elif _awareness_state in [
 			STATE_UNAWARE,
 			STATE_SUSPICIOUS,
 			STATE_RECOVERING,
 		]:
-			_investigation_target = _last_heard_origin
-			_has_investigation_target = true
-			var flat_origin := Vector3(
-				_last_heard_origin.x,
-				_guard.global_position.y,
-				_last_heard_origin.z
-			)
-			if flat_origin.distance_squared_to(_guard.global_position) > 0.001:
-				_guard.look_at(flat_origin, Vector3.UP, true)
+			# A locally heard but sub-investigation cue still gets an immediate
+			# stop/orient/listen reaction. It does not manufacture a route to the
+			# source and returns to ordinary patrol if no stronger evidence arrives.
 			_enter_state(
 				STATE_SUSPICIOUS,
 				_last_heard_origin,
 				true
 			)
+			_begin_investigation_stare(_last_heard_origin, false)
 
 	if _speech_reaction_count == 0 and _speech != null:
 		if bool(_speech.call("speak_line")):
@@ -1789,12 +1810,18 @@ func _heard_sound_can_trigger_investigation(
 	# stable reaction ceiling while still allowing them to create suspicion.
 	return (
 		float(perception.get("source_strength", 0.0))
-		>= maxf(hearing_footstep_investigate_source_floor, 0.0)
+		>= _effective_footstep_investigate_source_floor()
 	)
 
 
 func _effective_hearing_investigate_strength() -> float:
 	var threshold: float = hearing_investigate_strength
+	if _uses_heightened_attention():
+		threshold *= clampf(
+			engaged_hearing_investigate_threshold_scale,
+			0.25,
+			1.0
+		)
 	if _awareness_state != STATE_RECOVERING:
 		return threshold
 	var scale: float = lerpf(
@@ -1803,6 +1830,49 @@ func _effective_hearing_investigate_strength() -> float:
 		clampf(_residual_alert_strength, 0.0, 1.0)
 	)
 	return threshold * scale
+
+
+func _effective_footstep_investigate_source_floor() -> float:
+	var source_floor: float = maxf(
+		hearing_footstep_investigate_source_floor,
+		0.0
+	)
+	if _uses_heightened_attention():
+		source_floor *= clampf(
+			engaged_footstep_investigate_source_floor_scale,
+			0.25,
+			1.0
+		)
+	return source_floor
+
+
+func _effective_vision_suspicion_exposure_threshold() -> float:
+	var threshold: float = clampf(
+		vision_suspicion_exposure_threshold,
+		0.0,
+		1.0
+	)
+	if _uses_heightened_attention():
+		threshold *= clampf(
+			engaged_vision_exposure_threshold_scale,
+			0.25,
+			1.0
+		)
+	return threshold
+
+
+func _current_visual_suspicion_rate_scale() -> float:
+	if not _uses_heightened_attention():
+		return 1.0
+	return clampf(
+		engaged_visual_suspicion_rate_scale,
+		1.0,
+		3.0
+	)
+
+
+func _uses_heightened_attention() -> bool:
+	return _awareness_state in [STATE_INVESTIGATING, STATE_SEARCHING]
 
 
 func _legacy_debug_state() -> StringName:
@@ -1944,19 +2014,15 @@ func _current_vision_vertical_limit_degrees() -> float:
 		base_limit,
 		89.0
 	)
+	if _investigation_stare_active:
+		# A source-facing observation hold must keep enough vertical attention
+		# to continue looking at the evidence that caused the hold.
+		return engaged_limit
 	match _awareness_state:
 		STATE_SUSPICIOUS, STATE_RECOVERING:
 			return lerpf(base_limit, engaged_limit, 0.40)
 		STATE_INVESTIGATING:
-			# A source-facing observation hold must not lose the same vertical
-			# evidence merely because SEARCHING just transitioned to INVESTIGATING.
-			# After the stare ends, ordinary investigation travel returns to the
-			# narrower intermediate attention field.
-			return (
-				engaged_limit
-				if _investigation_stare_active
-				else lerpf(base_limit, engaged_limit, 0.75)
-			)
+			return lerpf(base_limit, engaged_limit, 0.75)
 		STATE_SEARCHING, STATE_ALERTED:
 			return engaged_limit
 		_:

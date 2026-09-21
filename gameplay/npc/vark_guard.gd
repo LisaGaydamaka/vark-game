@@ -70,6 +70,7 @@ var _awareness_goal_position: Vector3 = Vector3.ZERO
 var _awareness_goal_reason: StringName = &""
 var _awareness_motion_scale: float = 1.0
 var _awareness_motion_paused: bool = false
+var _awareness_observation_paused: bool = false
 
 
 func _ready() -> void:
@@ -179,7 +180,10 @@ func get_awareness_navigation_state() -> Dictionary:
 		"reason": _awareness_goal_reason,
 		"target_position": _awareness_goal_position,
 		"motion_scale": _awareness_motion_scale,
-		"motion_paused": _awareness_motion_paused,
+		"motion_paused": (
+			_awareness_motion_paused or _awareness_observation_paused
+		),
+		"observation_paused": _awareness_observation_paused,
 		"movement_mode": _current_movement_mode(),
 		"current_movement_speed": _current_movement_speed(),
 	}
@@ -204,6 +208,15 @@ func set_awareness_motion_profile(
 		else clampf(speed_scale, 0.10, 3.0)
 	)
 	_awareness_motion_paused = paused
+	if paused:
+		velocity = Vector3.ZERO
+	return true
+
+
+func set_awareness_observation_paused(paused: bool) -> bool:
+	if _life_state != LIFE_CONSCIOUS:
+		return false
+	_awareness_observation_paused = paused
 	if paused:
 		velocity = Vector3.ZERO
 	return true
@@ -664,6 +677,7 @@ func reconcile_after_restore() -> bool:
 func configure_patrol(patrol_points: Dictionary, door: Node) -> bool:
 	_last_error = ""
 	_configured = false
+	_awareness_observation_paused = false
 	_patrol_positions.clear()
 	_door = null
 	_door_traversal_state = DoorTraversalState.IDLE
@@ -773,7 +787,10 @@ func get_debug_summary() -> Dictionary:
 		"awareness_goal_reason": _awareness_goal_reason,
 		"awareness_goal_position": _awareness_goal_position,
 		"awareness_motion_scale": _awareness_motion_scale,
-		"awareness_motion_paused": _awareness_motion_paused,
+		"awareness_motion_paused": (
+			_awareness_motion_paused or _awareness_observation_paused
+		),
+		"awareness_observation_paused": _awareness_observation_paused,
 		"current_movement_speed": _current_movement_speed(),
 		"door_use_count": _door_use_count,
 		"door_open_request_count": _door_open_request_count,
@@ -807,6 +824,9 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3.ZERO
 		return
 	if not _configured or _navigation_agent == null:
+		velocity = Vector3.ZERO
+		return
+	if _awareness_observation_paused:
 		velocity = Vector3.ZERO
 		return
 	if _door_use_active:
@@ -1155,6 +1175,7 @@ func _apply_life_state(target_state: StringName) -> void:
 	_life_state = target_state
 	if _life_state != LIFE_CONSCIOUS:
 		velocity = Vector3.ZERO
+		_awareness_observation_paused = false
 		_door_use_active = false
 		_door_request_pending = false
 		_door_retry_remaining = 0.0

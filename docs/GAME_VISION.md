@@ -257,6 +257,10 @@ Stronger or repeated evidence causes the NPC to stop normal behavior and investi
 
 The NPC moves toward a relevant location, looks around, searches nearby space, and attempts to determine what caused the disturbance.
 
+While actively investigating or searching, the NPC is deliberately more attentive because prior evidence has established that something may be wrong. The same genuinely local sight or sound can therefore build suspicion faster or cross an investigation threshold that a calm guard would dismiss. This heightened attention changes evidence interpretation only: it does not extend acoustic/vision reach, bypass occlusion, or reveal the hidden current player position.
+
+A newly noticed suspicious local cue makes a non-alert guard stop immediately, orient toward the evidence, and hold an observation/listening stare before deciding whether to move. Confirmed pursuit and its immediate lost-contact/last-known check remain focused on the chase instead of stopping for every distraction.
+
 Search behavior must be spatially related to the evidence. The NPC does not magically know the player's current position.
 
 A search can eventually end if no further evidence is found.

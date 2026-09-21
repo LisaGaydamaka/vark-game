@@ -92,9 +92,13 @@ func _assert_guard_awareness_state_machine() -> void:
 		"Guard locomotion exposes exactly walking 1.20 < player sneak 2.00, investigating/search 0.72, and running/pursuit 2.64 semantic speeds"
 	)
 	_assert_true(
-		is_equal_approx(reaction.investigation_stare_min, 0.80)
-		and is_equal_approx(reaction.investigation_stare_max, 2.00),
-		"Phase 5.4 production investigation stare deliberately holds for a longer varied 0.80-2.00 second observation window"
+		is_equal_approx(reaction.investigation_stare_min, 1.50)
+		and is_equal_approx(reaction.investigation_stare_max, 3.50)
+		and is_equal_approx(reaction.engaged_hearing_investigate_threshold_scale, 0.80)
+		and is_equal_approx(reaction.engaged_footstep_investigate_source_floor_scale, 0.80)
+		and is_equal_approx(reaction.engaged_vision_exposure_threshold_scale, 0.75)
+		and is_equal_approx(reaction.engaged_visual_suspicion_rate_scale, 1.50),
+		"Phase 5.4 production attention tuning uses a longer 1.50-3.50 second observation hold and explicit investigation/search evidence-salience scales"
 	)
 
 	_configure_short_durations(reaction)
@@ -106,12 +110,15 @@ func _assert_guard_awareness_state_machine() -> void:
 	light.visible = false
 	exposure.sample_now()
 
+	var weak_origin: Vector3 = (
+		guard.global_position + Vector3(-0.15, 0.0, 0.05)
+	)
 	var weak_queued: bool = bool(session.call(
 		"queue_gameplay_sound",
 		int(session.get("session_id")),
 		&"footstep.test",
-		guard.global_position,
-		0.18
+		weak_origin,
+		0.20
 	))
 	await _completed_physics_frame()
 	var weak_summary: Dictionary = reaction.get_debug_summary()
@@ -122,9 +129,15 @@ func _assert_guard_awareness_state_machine() -> void:
 			== STATE_SUSPICIOUS
 		and weak_summary.get("state", &"") == &"heard_noise"
 		and int(weak_summary.get("heard_count", 0)) == 1
-		and not bool(weak_nav.get("active", true)),
+		and bool(weak_summary.get("investigation_stare_active", false))
+		and _dict_vector(weak_summary, "investigation_stare_target").distance_to(
+			weak_origin
+		) <= 0.001
+		and not bool(weak_nav.get("active", true))
+		and bool(weak_nav.get("motion_paused", false))
+		and bool(weak_nav.get("observation_paused", false)),
 		(
-			"Phase 5.4 weak local hearing evidence creates mild suspicion without manufacturing an investigation route "
+			"Phase 5.4 weak local hearing evidence immediately stops/orients for a suspicious observation hold without manufacturing an investigation route "
 			+ "(summary=%s nav=%s perception=%s)"
 			% [
 				str(weak_summary),
@@ -135,6 +148,14 @@ func _assert_guard_awareness_state_machine() -> void:
 				),
 			]
 		)
+	)
+
+	var weak_snapshot: Dictionary = reaction.call("capture_semantic_state")
+	_assert_true(
+		weak_snapshot.get("state", &"") == STATE_SUSPICIOUS
+		and bool(weak_snapshot.get("investigation_stare_active", false))
+		and float(weak_snapshot.get("investigation_stare_remaining_seconds", 0.0)) > 0.0,
+		"Phase 5.4 a suspicious source-facing hold is semantic save truth and can outlive the frame that heard the cue"
 	)
 
 	var returned_unaware: bool = await _wait_for_awareness_state(
@@ -230,6 +251,38 @@ func _assert_guard_awareness_state_machine() -> void:
 		and investigate_after_stare_nav.get("movement_mode", &"")
 			== &"investigating",
 		"Phase 5.4 investigation navigation begins only after the resolved stare completes"
+	)
+
+	var repeated_strong_queued: bool = bool(session.call(
+		"queue_gameplay_sound",
+		int(session.get("session_id")),
+		&"prop.impact",
+		strong_origin,
+		0.60
+	))
+	await _completed_physics_frame()
+	var repeated_stare: Dictionary = reaction.get_debug_summary()
+	var repeated_stare_nav: Dictionary = guard.get_awareness_navigation_state()
+	_assert_true(
+		repeated_strong_queued
+		and repeated_stare.get("awareness_state", &"") == STATE_INVESTIGATING
+		and bool(repeated_stare.get("investigation_stare_active", false))
+		and int(repeated_stare.get("investigation_stare_serial", 0))
+			> int(stare_snapshot.get("investigation_stare_serial", 0))
+		and bool(repeated_stare_nav.get("motion_paused", false))
+		and _dict_vector(repeated_stare, "investigation_stare_target").distance_to(
+			strong_origin
+		) <= 0.001,
+		"Phase 5.4 every new investigation-worthy heard cue while already investigating immediately restarts the stop-turn-stare gate"
+	)
+	var repeated_stare_finished: bool = await _wait_for_investigation_stare(
+		reaction,
+		false,
+		30
+	)
+	_assert_true(
+		repeated_stare_finished,
+		"Phase 5.4 investigation movement resumes only after the restarted observation hold finishes"
 	)
 
 	var reached_search: bool = await _wait_for_awareness_state(
@@ -499,6 +552,35 @@ func _assert_guard_awareness_state_machine() -> void:
 	var visual_stare_seen: bool = bool(
 		bright_initial.get("investigation_stare_active", false)
 	)
+	for _sample: int in 20:
+		if visual_stare_seen:
+			break
+		reaction.sample_vision_now(0.05)
+		visual_stare_seen = bool(
+			reaction.get_debug_summary().get("investigation_stare_active", false)
+		)
+	var visual_stare_before_loss: Dictionary = reaction.get_debug_summary()
+	var suspicion_before_loss: float = float(
+		visual_stare_before_loss.get("visual_suspicion", 0.0)
+	)
+	light.gameplay_enabled = false
+	light.visible = false
+	exposure.sample_now()
+	var lost_during_stare: bool = not reaction.sample_vision_now(0.15)
+	var visual_stare_after_loss: Dictionary = reaction.get_debug_summary()
+	_assert_true(
+		visual_stare_seen
+		and lost_during_stare
+		and bool(visual_stare_after_loss.get("investigation_stare_active", false))
+		and float(visual_stare_after_loss.get("visual_suspicion", 1.0))
+			< suspicion_before_loss,
+		"Phase 5.4 visual suspicion is allowed to decay while the guard remains inside its source-facing observation hold"
+	)
+
+	reaction.reset_reaction()
+	light.gameplay_enabled = true
+	light.visible = true
+	exposure.sample_now()
 	var confirmed: bool = false
 	for _sample: int in 30:
 		reaction.sample_vision_now(0.05)
@@ -586,6 +668,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		) <= 0.001
 		and visible_distraction_queued
 		and after_visible_distraction.get("pursuit_mode", &"") == PURSUIT_VISIBLE
+		and not bool(after_visible_distraction.get("investigation_stare_active", false))
 		and _dict_vector(
 			after_visible_distraction,
 			"investigation_target"
@@ -910,13 +993,14 @@ func _assert_advanced_local_search_behavior() -> void:
 			< float(after_hidden_move.get("search_confidence", 1.0)),
 		"Phase 5.5 exhausted local evidence expands the bounded uncertainty radius while confidence falls"
 	)
-	var second_origin: Vector3 = guard.global_position + Vector3(-0.35, 0.0, 0.40)
+	var second_origin: Vector3 = guard.global_position + Vector3(-0.05, 0.0, 0.05)
+	var search_attention_before_reseed: Dictionary = reaction.get_debug_summary()
 	var reseed_queued: bool = bool(session.call(
 		"queue_gameplay_sound",
 		int(session.get("session_id")),
 		&"footstep.stone",
 		second_origin,
-		0.70
+		0.2025
 	))
 	await _completed_physics_frame()
 	var reseed_summary: Dictionary = reaction.get_debug_summary()
@@ -936,6 +1020,16 @@ func _assert_advanced_local_search_behavior() -> void:
 	var second_summary: Dictionary = reaction.get_debug_summary()
 	_assert_true(
 		visited_first
+		and bool(search_attention_before_reseed.get("heightened_attention", false))
+		and float(search_attention_before_reseed.get(
+			"effective_hearing_investigate_strength",
+			1.0
+		)) < reaction.hearing_investigate_strength
+		and float(search_attention_before_reseed.get(
+			"effective_footstep_investigate_source_floor",
+			1.0
+		)) < 0.2025
+		and reaction.hearing_footstep_investigate_source_floor > 0.2025
 		and reseed_queued
 		and reseed_investigating
 		and second_search
@@ -954,7 +1048,7 @@ func _assert_advanced_local_search_behavior() -> void:
 			plan_before_hidden_move,
 			second_summary.get("search_points", [])
 		),
-		"Phase 5.5 investigation-worthy evidence interrupts search, stops/turns/stares first, then reseeds without global player knowledge"
+		"Phase 5.5 heightened search attention promotes a very close stone-sneak-strength cue that calm guards cap at suspicion, then stops/turns/stares before reseeding without global player knowledge"
 	)
 
 	var human_stop_seen: bool = await _wait_for_stationary_search_action(
