@@ -48,6 +48,10 @@ func _assert_same_door_integration() -> void:
 		world.get_node_or_null("AcousticPropagation") as VarkAcousticPropagation
 		if world != null else null
 	)
+	var north_space := (
+		world.get_node_or_null("NorthSpace") as VarkAcousticSpace
+		if world != null else null
+	)
 	var reaction: Node = (
 		world.get_node_or_null("Guard/Reaction")
 		if world != null else null
@@ -62,6 +66,7 @@ func _assert_same_door_integration() -> void:
 		and guard != null
 		and door != null
 		and propagation != null
+		and north_space != null
 		and reaction != null,
 		"5.7 real Integrated Slice launches the one ordinary door with guard navigation, perception, acoustics, and save ownership"
 	)
@@ -73,6 +78,7 @@ func _assert_same_door_integration() -> void:
 		or guard == null
 		or door == null
 		or propagation == null
+		or north_space == null
 		or reaction == null
 	):
 		await _cleanup(application)
@@ -200,6 +206,59 @@ func _assert_same_door_integration() -> void:
 		and float(open_route.get("propagated_strength", 0.0))
 			> float(closed_route.get("propagated_strength", 0.0)) * 2.0,
 		"5.7 one CLOSED/OPEN semantic door state coherently closes/opens nav passage, blocks/clears real guard LOS, and muffles/opens the same acoustic portal"
+	)
+
+	var door_collision := door.get_node("CollisionShape3D") as CollisionShape3D
+	var open_leaf_positions: Dictionary = _positions_across_leaf(
+		door_collision,
+		0.32
+	)
+	guard.global_position = open_leaf_positions.get("guard", Vector3.ZERO)
+	player.global_position = open_leaf_positions.get("player", Vector3.ZERO)
+	guard.look_at(player.global_position, Vector3.UP, true)
+	reaction.call("reset_reaction")
+	reaction.call("sample_vision_now")
+	var open_leaf_summary: Dictionary = reaction.call("get_debug_summary")
+	_assert_true(
+		north_space.contains_world_point(guard.global_position)
+		and north_space.contains_world_point(player.global_position)
+		and bool(open_leaf_summary.get("last_vision_blocked", false))
+		and open_leaf_summary.get("last_vision_blocker", "") == "OrdinaryDoor",
+		"5.7 fully OPEN clears the doorway opening but the rotated leaf still blocks guard LOS when the player hides behind it in the same room"
+	)
+
+	var partial_applied: bool = door.apply_semantic_state({
+		"phase": VarkOrdinaryDoor.PHASE_OPENING,
+		"open_fraction": 0.5,
+		"motion_blocked": false,
+	})
+	await _completed_physics_frame()
+	var partial_leaf_positions: Dictionary = _positions_across_leaf(
+		door_collision,
+		0.30
+	)
+	guard.global_position = partial_leaf_positions.get("guard", Vector3.ZERO)
+	player.global_position = partial_leaf_positions.get("player", Vector3.ZERO)
+	guard.look_at(player.global_position, Vector3.UP, true)
+	reaction.call("reset_reaction")
+	reaction.call("sample_vision_now")
+	var partial_leaf_summary: Dictionary = reaction.call("get_debug_summary")
+	_assert_true(
+		partial_applied
+		and bool(partial_leaf_summary.get("last_vision_blocked", false))
+		and partial_leaf_summary.get("last_vision_blocker", "") == "OrdinaryDoor",
+		"5.7 a partially open rotated leaf remains a real production guard LOS occluder"
+	)
+
+	var reopened_for_save: bool = door.apply_semantic_state({
+		"phase": VarkOrdinaryDoor.PHASE_OPEN,
+		"open_fraction": 1.0,
+		"motion_blocked": false,
+	})
+	await _completed_physics_frame()
+	_assert_true(
+		reopened_for_save,
+		"5.7 returns the same door to OPEN before save/restore verification"
 	)
 
 	# Save OPEN truth, mutate the source world CLOSED, then quickload. The fresh
@@ -340,6 +399,27 @@ func _assert_same_door_integration() -> void:
 	)
 
 	await _cleanup(application)
+
+
+func _positions_across_leaf(
+	door_collision: CollisionShape3D,
+	offset: float
+) -> Dictionary:
+	var leaf_transform: Transform3D = door_collision.global_transform
+	var normal := Vector3(
+		leaf_transform.basis.z.x,
+		0.0,
+		leaf_transform.basis.z.z
+	).normalized()
+	var center := Vector3(
+		leaf_transform.origin.x,
+		0.0,
+		leaf_transform.origin.z
+	)
+	return {
+		"guard": center - normal * offset,
+		"player": center + normal * offset,
+	}
 
 
 func _wait_for_navigation_ready(world: Node3D, max_frames: int) -> bool:

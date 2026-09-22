@@ -218,11 +218,41 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Open ordinary door clears the same doorway for physical passage and straight-through vision"
 	)
 
+	var open_leaf_center: Vector3 = door_collision.global_position
+	var open_leaf_normal := Vector3(
+		door_collision.global_transform.basis.z.x,
+		0.0,
+		door_collision.global_transform.basis.z.z
+	).normalized()
+	assert_true.call(
+		_first_ray_collider(
+			world,
+			open_leaf_center - open_leaf_normal * 0.55,
+			open_leaf_center + open_leaf_normal * 0.55
+		) == door,
+		"Fully open ordinary door still blocks sight across the rotated physical leaf"
+	)
+
 	var open_state: Dictionary = door.call("capture_semantic_state")
 	var event_count_before_apply: int = door_events.size()
 	var sound_count_before_apply: int = sound_events.size()
+	var mid_applied: bool = bool(door.call("apply_semantic_state", mid_state))
+	var partial_leaf_center: Vector3 = door_collision.global_position
+	var partial_leaf_normal := Vector3(
+		door_collision.global_transform.basis.z.x,
+		0.0,
+		door_collision.global_transform.basis.z.z
+	).normalized()
+	var partial_leaf_blocks_ray: bool = (
+		_first_ray_collider(
+			world,
+			partial_leaf_center - partial_leaf_normal * 0.55,
+			partial_leaf_center + partial_leaf_normal * 0.55
+		) == door
+	)
 	assert_true.call(
-		bool(door.call("apply_semantic_state", mid_state))
+		mid_applied
+		and partial_leaf_blocks_ray
 		and door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPENING
 		and is_equal_approx(
 			float(door.call("get_open_fraction")),
@@ -231,7 +261,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not bool(door.call("is_motion_blocked"))
 		and door_events.size() == event_count_before_apply
 		and sound_events.size() == sound_count_before_apply,
-		"Applying captured door progress restores semantic/derived state without replaying interaction consequences"
+		"Applying captured door progress restores semantic/derived state, keeps the partial rotated leaf as a sight blocker, and replays no interaction consequences"
 	)
 	assert_true.call(
 		not bool(door.call("apply_semantic_state", {
