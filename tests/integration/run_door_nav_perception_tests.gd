@@ -121,6 +121,7 @@ func _assert_same_door_integration() -> void:
 
 	guard.set_physics_process(false)
 	player.set_physics_process(false)
+	door.set_physics_process(false)
 	guard.velocity = Vector3.ZERO
 	player.velocity = Vector3.ZERO
 	guard.global_position = Vector3(0.0, 0.0, -2.5)
@@ -133,7 +134,7 @@ func _assert_same_door_integration() -> void:
 		"open_fraction": 0.0,
 		"motion_blocked": false,
 	})
-	await _completed_physics_frame()
+	await _settle_physics_frames(2)
 	reaction.call("reset_reaction")
 	guard.look_at(player.global_position, Vector3.UP, true)
 	reaction.call("sample_vision_now")
@@ -155,7 +156,7 @@ func _assert_same_door_integration() -> void:
 		"open_fraction": 1.0,
 		"motion_blocked": false,
 	})
-	await _completed_physics_frame()
+	await _settle_physics_frames(2)
 	reaction.call("reset_reaction")
 	guard.look_at(player.global_position, Vector3.UP, true)
 	reaction.call("sample_vision_now")
@@ -210,6 +211,7 @@ func _assert_same_door_integration() -> void:
 
 	var door_collision := door.get_node("CollisionShape3D") as CollisionShape3D
 	var open_leaf_positions: Dictionary = _positions_across_leaf(
+		door,
 		door_collision,
 		0.55
 	)
@@ -231,7 +233,9 @@ func _assert_same_door_integration() -> void:
 			{
 				"guard_position": guard.global_position,
 				"player_position": player.global_position,
-				"door_collision_transform": door_collision.global_transform,
+				"door_collision_transform": (
+					door.global_transform * door_collision.transform
+				),
 				"guard_in_north": north_space.contains_world_point(
 					guard.global_position
 				),
@@ -251,8 +255,9 @@ func _assert_same_door_integration() -> void:
 		"open_fraction": 0.5,
 		"motion_blocked": false,
 	})
-	await _completed_physics_frame()
+	await _settle_physics_frames(2)
 	var partial_leaf_positions: Dictionary = _positions_across_leaf(
+		door,
 		door_collision,
 		0.45
 	)
@@ -274,7 +279,9 @@ func _assert_same_door_integration() -> void:
 				"partial_applied": partial_applied,
 				"guard_position": guard.global_position,
 				"player_position": player.global_position,
-				"door_collision_transform": door_collision.global_transform,
+				"door_collision_transform": (
+					door.global_transform * door_collision.transform
+				),
 				"vision": partial_leaf_summary,
 			}
 		)
@@ -288,7 +295,7 @@ func _assert_same_door_integration() -> void:
 		"open_fraction": 1.0,
 		"motion_blocked": false,
 	})
-	await _completed_physics_frame()
+	await _settle_physics_frames(2)
 	_assert_true(
 		reopened_for_save,
 		"5.7 returns the same door to OPEN before save/restore verification"
@@ -435,10 +442,13 @@ func _assert_same_door_integration() -> void:
 
 
 func _positions_across_leaf(
+	door: VarkOrdinaryDoor,
 	door_collision: CollisionShape3D,
 	offset: float
 ) -> Dictionary:
-	var leaf_transform: Transform3D = door_collision.global_transform
+	var leaf_transform: Transform3D = (
+		door.global_transform * door_collision.transform
+	)
 	var normal := Vector3(
 		leaf_transform.basis.z.x,
 		0.0,
@@ -536,6 +546,12 @@ func _wait_for_replacement_world(
 		await physics_frame
 		await process_frame
 	return false
+
+
+func _settle_physics_frames(count: int) -> void:
+	for _index: int in maxi(count, 1):
+		await physics_frame
+		await process_frame
 
 
 func _completed_physics_frame() -> void:
