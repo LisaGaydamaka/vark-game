@@ -1416,9 +1416,24 @@ This item does not implement squad tactics, radio networks, body discovery, miss
 
 **Manual:** none for this bounded architecture item. Final warning dialogue/nonverbal presentation, alarm audio/visual presentation, authored alarm switches, and mission-specific propagation feel are later player-facing/content work; this step's knowledge ownership, locality, event ordering, and persistence are deterministic.
 
-## 5.7 Door/nav/perception integration `[ ]`
+## 5.7 Door/nav/perception integration `[~]`
 
 The same ordinary door coherently affects traversal/navigation, sight, acoustics, NPC use, and save/load.
+
+This step does not introduce a second door state or retune any accepted stealth parameter. The existing Integrated Slice `slice.door` / `door.slice` remains the single semantic owner and now has one explicit cross-system proof:
+
+- navigation continues to carve the ordinary doorway out of the baked region and reconnect it only through the door-owned `NavigationLink3D`; the real patrol guard must request/use that same door to traverse the route;
+- the door leaf remains the actual collision/vision occluder. CLOSED blocks the guard's production LOS ray through the doorway; OPEN clears it. Perception does not maintain a parallel "door visibility" flag;
+- the existing `portal.slice.door` acoustic portal resolves the same `door.slice` owner. CLOSED uses the muffled transmission, OPEN uses full transmission, and propagation remains route/topology based;
+- the same semantic CLOSED/OPEN state exposes the matching narrow navigation-passage and acoustic-openness seams; NPC use, player interaction, sight, acoustics, and navigation therefore cannot independently disagree about which door is open;
+- quicksave stores only the semantic door owner. Quickload creates a fresh world, restores the saved phase/open fraction, rebuilds navigation/link state, rebinds the acoustic portal, and lets the physical leaf immediately produce the correct LOS result. Restore must not queue a new door-use/state event;
+- `IntegratedSlice.get_door_integration_debug_summary()` provides one read-only diagnostic view over persistent/semantic door identity, phase/fraction, navigation link/passage, guard door-use state, acoustic portal/openness, and the guard's most recent LOS obstruction. It does not become a second owner of any of those values.
+
+**Done when:** one real Integrated Slice run proves the guard uses the door-owned navigation link, CLOSED and OPEN produce matching nav-passage/LOS/acoustic states on the exact same `slice.door` instance, the acoustic portal and guard both identify `door.slice`, saving OPEN then mutating the source door CLOSED and quickloading reconstructs OPEN nav/LOS/acoustic truth in a fresh world with no pending restore-time semantic consequences, existing dedicated Door/Navigation/Acoustics/Awareness/Application-save suites remain green, and the focused player-facing check confirms the door is understandable in ordinary play.
+
+**Automated:** a dedicated Door/Nav/Perception Integration suite launches the real Integrated Slice through Application/WorldSession. It waits for the real patrol guard to use the ordinary door, verifies the door-owned navigation link and guard/acoustic consumers reference the same ID, drives that exact door CLOSED then OPEN while comparing navigation passage, production guard LOS blocker, acoustic openness/portal transmission and propagated strength, quicksaves OPEN, mutates the source world CLOSED, quickloads, and verifies the replacement world reconstructs OPEN navigation, LOS and acoustics with an empty semantic event queue. The suite is wired into the authoritative all-tests barrier; existing Door, Navigation, Acoustics, Awareness, Phase 3 Integration, and Application/save regressions remain compatibility barriers.
+
+**Manual:** required because this is the final player-facing coherence check for the Phase 5 door integration spine. In Development Launch → **Integrated Slice**, observe the guard use the closed door on its patrol without clipping/stalling; put the closed opaque door between you and the guard and verify it blocks sight while sound through it is noticeably muffled, then open it and verify both visibility and audibility through the doorway increase coherently; quicksave with the door open, quickload, and verify it is still open and the guard can continue navigating/perceiving through that doorway. Report any case where the rendered/physical door state disagrees with sight, sound, guard traversal, or the restored state.
 
 ## 5.8 Early stress fixtures `[ ]`
 

@@ -51,6 +51,10 @@ const SUITES = [
 		"script": "res://tests/integration/run_phase3_slice_tests.gd",
 	},
 	{
+		"name": "Door/Nav/Perception Integration",
+		"script": "res://tests/integration/run_door_nav_perception_tests.gd",
+	},
+	{
 		"name": "Navigation",
 		"script": "res://tests/navigation/run_navigation_tests.gd",
 	},

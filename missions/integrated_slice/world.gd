@@ -98,6 +98,65 @@ func get_slice_debug_summary() -> Dictionary:
 			if objective != null
 			else {}
 		),
+		"door_integration": get_door_integration_debug_summary(),
+	}
+
+
+func get_door_integration_debug_summary() -> Dictionary:
+	var propagation := get_node_or_null(
+		"AcousticPropagation"
+	) as VarkAcousticPropagation
+	var reaction: Node = (
+		guard.get_node_or_null("Reaction") if guard != null else null
+	)
+	var guard_summary: Dictionary = (
+		guard.get_debug_summary() if guard != null else {}
+	)
+	var reaction_summary: Dictionary = (
+		reaction.call("get_debug_summary")
+		if reaction != null and reaction.has_method("get_debug_summary")
+		else {}
+	)
+	var portal_summary: Dictionary = (
+		propagation.get_portal_debug_state(&"portal.slice.door")
+		if propagation != null
+		else {}
+	)
+	if ordinary_door == null:
+		return {
+			"configured": false,
+			"error": "Integrated Slice has no ordinary door.",
+		}
+	return {
+		"configured": true,
+		"persistent_id": ordinary_door.get_persistent_id(),
+		"door_id": ordinary_door.door_id,
+		"phase": ordinary_door.get_semantic_phase(),
+		"open_fraction": ordinary_door.get_open_fraction(),
+		"navigation_passage_open": (
+			ordinary_door.is_navigation_passage_open()
+		),
+		"navigation_link": ordinary_door.get_navigation_link_summary(),
+		"guard_door_id": guard_summary.get("door_id", ""),
+		"guard_door_use_count": guard_summary.get("door_use_count", 0),
+		"guard_door_traversal_state": guard_summary.get(
+			"door_traversal_state",
+			""
+		),
+		"acoustic_openness": ordinary_door.get_acoustic_openness(),
+		"acoustic_portal": portal_summary,
+		"vision_blocked": reaction_summary.get(
+			"last_vision_blocked",
+			false
+		),
+		"vision_blocker": reaction_summary.get(
+			"last_vision_blocker",
+			""
+		),
+		"vision_distance": reaction_summary.get(
+			"last_vision_distance",
+			0.0
+		),
 	}
 
 
