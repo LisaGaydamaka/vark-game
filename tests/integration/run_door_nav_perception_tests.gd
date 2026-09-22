@@ -211,7 +211,7 @@ func _assert_same_door_integration() -> void:
 	var door_collision := door.get_node("CollisionShape3D") as CollisionShape3D
 	var open_leaf_positions: Dictionary = _positions_across_leaf(
 		door_collision,
-		0.32
+		0.55
 	)
 	guard.global_position = open_leaf_positions.get("guard", Vector3.ZERO)
 	player.global_position = open_leaf_positions.get("player", Vector3.ZERO)
@@ -219,11 +219,30 @@ func _assert_same_door_integration() -> void:
 	reaction.call("reset_reaction")
 	reaction.call("sample_vision_now")
 	var open_leaf_summary: Dictionary = reaction.call("get_debug_summary")
-	_assert_true(
+	var open_leaf_passed: bool = (
 		north_space.contains_world_point(guard.global_position)
 		and north_space.contains_world_point(player.global_position)
 		and bool(open_leaf_summary.get("last_vision_blocked", false))
-		and open_leaf_summary.get("last_vision_blocker", "") == "OrdinaryDoor",
+		and open_leaf_summary.get("last_vision_blocker", "") == "OrdinaryDoor"
+	)
+	if not open_leaf_passed:
+		print(
+			"5.7 open-leaf LOS diagnostics: ",
+			{
+				"guard_position": guard.global_position,
+				"player_position": player.global_position,
+				"door_collision_transform": door_collision.global_transform,
+				"guard_in_north": north_space.contains_world_point(
+					guard.global_position
+				),
+				"player_in_north": north_space.contains_world_point(
+					player.global_position
+				),
+				"vision": open_leaf_summary,
+			}
+		)
+	_assert_true(
+		open_leaf_passed,
 		"5.7 fully OPEN clears the doorway opening but the rotated leaf still blocks guard LOS when the player hides behind it in the same room"
 	)
 
@@ -235,7 +254,7 @@ func _assert_same_door_integration() -> void:
 	await _completed_physics_frame()
 	var partial_leaf_positions: Dictionary = _positions_across_leaf(
 		door_collision,
-		0.30
+		0.45
 	)
 	guard.global_position = partial_leaf_positions.get("guard", Vector3.ZERO)
 	player.global_position = partial_leaf_positions.get("player", Vector3.ZERO)
@@ -243,10 +262,24 @@ func _assert_same_door_integration() -> void:
 	reaction.call("reset_reaction")
 	reaction.call("sample_vision_now")
 	var partial_leaf_summary: Dictionary = reaction.call("get_debug_summary")
-	_assert_true(
+	var partial_leaf_passed: bool = (
 		partial_applied
 		and bool(partial_leaf_summary.get("last_vision_blocked", false))
-		and partial_leaf_summary.get("last_vision_blocker", "") == "OrdinaryDoor",
+		and partial_leaf_summary.get("last_vision_blocker", "") == "OrdinaryDoor"
+	)
+	if not partial_leaf_passed:
+		print(
+			"5.7 partial-leaf LOS diagnostics: ",
+			{
+				"partial_applied": partial_applied,
+				"guard_position": guard.global_position,
+				"player_position": player.global_position,
+				"door_collision_transform": door_collision.global_transform,
+				"vision": partial_leaf_summary,
+			}
+		)
+	_assert_true(
+		partial_leaf_passed,
 		"5.7 a partially open rotated leaf remains a real production guard LOS occluder"
 	)
 
