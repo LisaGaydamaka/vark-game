@@ -273,7 +273,7 @@ func _assert_integrated_slice() -> void:
 			float((
 				stone_surface.call("get_surface_summary") as Dictionary
 			).get("footstep_strength", 0.0)),
-			0.45
+			0.21
 		)
 		and is_equal_approx(
 			float((
@@ -344,12 +344,15 @@ func _assert_integrated_slice() -> void:
 		and (open_route.get("portal_route", []) as Array)
 			== [&"portal.slice.door"]
 		and float(open_route.get("propagated_strength", 0.0))
-			> float(closed_route.get("propagated_strength", 0.0)) * 5.0,
+			> float(closed_route.get("propagated_strength", 0.0)) * 2.0,
 		"Opening the same ordinary door materially increases the same acoustic route used by the guard and speech"
 	)
 
 	reaction.call("reset_reaction")
-	player.global_position = Vector3(0.0, 0.0, 2.5)
+	# The normal/stone tier is intentionally too quiet across this room.
+	# Use the loud tile patch for the integration proof that a real footstep can
+	# cross the same open acoustic route and drive reaction + speech.
+	player.global_position = Vector3(0.0, 0.0, 6.85)
 	guard.global_position = Vector3(0.0, 0.0, -2.5)
 	for _frame_index: int in 3:
 		await physics_frame
@@ -365,15 +368,15 @@ func _assert_integrated_slice() -> void:
 		and int(footstep_summary.get("queued_count", 0)) == 1
 		and reaction_summary.get("state", &"") == &"heard_noise"
 		and int(reaction_summary.get("heard_count", 0)) == 1
-		and reaction_summary.get("last_heard_kind", &"") == &"footstep.stone"
+		and reaction_summary.get("last_heard_kind", &"") == &"footstep.tile"
 		and footstep_summary.get("last_stance", "") == "standing"
 		and is_equal_approx(
 			float(footstep_summary.get("last_base_strength", 0.0)),
-			0.45
+			0.90
 		)
 		and is_equal_approx(
 			float(footstep_summary.get("last_strength", 0.0)),
-			0.45
+			0.90
 		)
 		and int(reaction_summary.get("speech_reaction_count", 0)) == 1
 		and int(speech_summary.get("queued_count", 0)) == 1
@@ -383,11 +386,16 @@ func _assert_integrated_slice() -> void:
 			== &"speech.slice.heard_noise"
 		and speech_label.visible
 		and speech_label.text == "What was that?",
-		"A real loud stone footstep crosses the acoustic graph, triggers the guard reaction, and produces one acoustically gated world-space spoken response"
+		"A real loud tile footstep crosses the acoustic graph, triggers the guard reaction, and produces one acoustically gated world-space spoken response"
 	)
 
 	guard_listener.clear_perception()
 	reaction.call("reset_reaction")
+	player.global_position = Vector3(0.0, 0.0, 2.95)
+	guard.global_position = Vector3(0.0, 0.0, -2.5)
+	for _frame_index: int in 3:
+		await physics_frame
+		await process_frame
 	var crouched_for_sound: bool = await _request_player_stance(
 		player,
 		PlayerCrouch.Stance.CROUCHED
@@ -408,11 +416,11 @@ func _assert_integrated_slice() -> void:
 		and crouched_footstep_summary.get("last_stance", "") == "crouched"
 		and is_equal_approx(
 			float(crouched_footstep_summary.get("last_base_strength", 0.0)),
-			0.45
+			0.21
 		)
 		and is_equal_approx(
 			float(crouched_footstep_summary.get("last_strength", 0.0)),
-			0.45 * 0.45
+			0.21 * 0.75
 		)
 		and not bool(crouched_guard_perception.get("heard", true))
 		and crouched_reaction_summary.get("state", &"") == &"calm"

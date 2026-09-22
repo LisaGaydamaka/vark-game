@@ -475,9 +475,10 @@ func _assert_acoustic_lab_integration() -> void:
 	_assert_true(
 		impact_queued
 		and corner_listener.get_heard_count() == 2
-		and door_listener.get_heard_count() == 0
+		and door_listener.get_heard_count() == 2
+		and bool(door_listener.get_last_perception().get("heard", false))
 		and isolated_listener.get_heard_count() == 0,
-		"Strong impact propagates around the connected corridor while the closed-door and disconnected-room cases remain protected"
+		"Strong impact remains audible through the muffled closed door while the disconnected room stays protected"
 	)
 
 	door.apply_semantic_state({

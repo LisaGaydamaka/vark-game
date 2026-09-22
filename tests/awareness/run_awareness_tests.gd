@@ -1469,6 +1469,7 @@ func _configure_short_durations(
 	# the configurable heightened-hearing seam only inside this compressed fixture.
 	reaction.engaged_hearing_investigate_threshold_scale = 0.80
 	reaction.engaged_footstep_investigate_source_floor_scale = 0.80
+	reaction.hearing_footstep_investigate_source_floor = 0.22
 	reaction.suspicion_seconds = 0.08
 	reaction.investigation_seconds = 0.10
 	reaction.investigation_stare_min = 0.20

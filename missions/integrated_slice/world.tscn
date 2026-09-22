@@ -407,7 +407,7 @@ script = ExtResource("18_footsteps")
 player_path = NodePath("../Player")
 step_distance = 1.25
 minimum_move_speed = 0.35
-crouched_strength_scale = 0.45
+crouched_strength_scale = 0.75
 
 [node name="CrateA" parent="." instance=ExtResource("4_prop")]
 position = Vector3(-2.4, 0.3, 4.8)
