@@ -1416,7 +1416,7 @@ This item does not implement squad tactics, radio networks, body discovery, miss
 
 **Manual:** none for this bounded architecture item. Final warning dialogue/nonverbal presentation, alarm audio/visual presentation, authored alarm switches, and mission-specific propagation feel are later player-facing/content work; this step's knowledge ownership, locality, event ordering, and persistence are deterministic.
 
-## 5.7 Door/nav/perception integration `[~]`
+## 5.7 Door/nav/perception integration `[x]`
 
 The same ordinary door coherently affects traversal/navigation, sight, acoustics, NPC use, and save/load.
 
@@ -1431,13 +1431,28 @@ This step does not introduce a second door state or retune any accepted stealth 
 
 **Done when:** one real Integrated Slice run proves the guard uses the door-owned navigation link, CLOSED and OPEN produce matching nav-passage/straight-through-LOS/acoustic states on the exact same `slice.door` instance, fully open and partial rotated leaves still block production guard LOS when physically between guard/player, the acoustic portal and guard both identify `door.slice`, saving OPEN then mutating the source door CLOSED and quickloading reconstructs OPEN nav/LOS/acoustic truth in a fresh world with no pending restore-time semantic consequences, existing dedicated Door/Navigation/Acoustics/Awareness/Application-save suites remain green, and the focused player-facing check confirms the door is understandable in ordinary play.
 
-**Automated:** a dedicated Door/Nav/Perception Integration suite launches the real Integrated Slice through Application/WorldSession. It waits for the real patrol guard to use the ordinary door, verifies the door-owned navigation link and guard/acoustic consumers reference the same ID, drives that exact door CLOSED then OPEN while comparing navigation passage, production guard LOS blocker, acoustic openness/portal transmission and propagated strength, quicksaves OPEN, mutates the source world CLOSED, quickloads, and verifies the replacement world reconstructs OPEN navigation, LOS and acoustics with an empty semantic event queue. The suite is wired into the authoritative all-tests barrier; existing Door, Navigation, Acoustics, Awareness, Phase 3 Integration, and Application/save regressions remain compatibility barriers.
+**Automated:** accepted — exact pre-5.8 `test` head `d5b2681585d3b4410777d086a0f9d7ce34d7b6f1` passed GitHub Actions Test run #360. The dedicated Door/Nav/Perception Integration suite launched the real Integrated Slice through Application/WorldSession, observed real guard use of the door-owned navigation link, proved CLOSED/OPEN nav/straight-through-LOS/acoustic coherence on the same semantic door owner, proved the fully open and partially open physical leaf still blocks production guard LOS when actually interposed, and passed open-door save/mutate/quickload reconstruction with no replayed semantic consequences. Existing Door, Navigation, Acoustics, Awareness, Phase 3 Integration, Application/save, and the authoritative all-tests barrier remained green.
 
-**Manual:** required because this is the final player-facing coherence check for the Phase 5 door integration spine. In Development Launch → **Integrated Slice**, observe the guard use the closed door on its patrol without clipping/stalling; put the closed opaque door between you and the guard and verify it blocks sight while sound through it is noticeably muffled, then open it and verify both visibility and audibility through the doorway opening increase coherently. While fully open, hide directly behind the rotated leaf in the same room and verify the leaf itself still blocks the guard's sight; repeat at a partial opening and verify the angled leaf still blocks sight wherever it physically covers you. Report any case where the rendered/physical door state disagrees with sight, sound, or guard traversal. The current application has no player-facing quicksave/quickload control, so restore coherence is not part of the manual check; the authoritative automated suite covers open-door save/mutate/quickload reconstruction through Application/SaveCoordinator.
+**Manual:** accepted for roadmap continuation under the fresh-chat reconciliation rule in `AGENTS.md`. The user explicitly requested continuation to the next roadmap work after the exact 5.7 implementation head and its authoritative CI were green, and reported no 5.7 failure. This closes the ordinary player-facing door-coherence check without inventing any new tuning or changing the accepted Phase 5 stealth baseline.
 
-## 5.8 Early stress fixtures `[ ]`
+## 5.8 Early stress fixtures `[~]`
 
 Measure representative cost for multiple guards/vision, sounds/hearing, gameplay lights/exposure, and nav updates around doors. Record the reference environment.
+
+The bounded early fixture is `tests/performance/run_phase5_stress_tests.gd`. It launches the real Integrated Slice through Application/WorldSession, leaves all accepted Phase 5 gameplay tuning unchanged, and adds only runtime test load that is discarded with the fixture:
+
+- 12 real `VarkGuard` / production awareness owners perform 32 explicit vision samples each (384 production guard-vision checks total) against the real player/exposure/physics world;
+- the real acoustic topology is refreshed with those guards' hearing listeners, then 48 semantic sound facts are propagated synchronously across every discovered receiver;
+- 24 additional real `VarkGameplayLight` sources are attached to the same world and the production exposure owner performs 48 complete three-body-point exposure samples;
+- 64 alternating CLOSED/OPEN semantic door changes are paired with synchronous `NavigationServer3D.map_get_path()` queries across the real baked patrol route and door-owned navigation link.
+
+The suite records wall-clock observation time with `Time.get_ticks_usec()`, operation counts, receiver/source counts, and a reference-environment record containing Godot version, OS, processor name/count, and GitHub runner OS/architecture when present. Timing values are deliberately observational at this stage: shared CI hardware is not a stable performance budget. The test fails on malformed workload/state, missing real consumers, failed path resolution, or non-executed work—not on a guessed millisecond threshold.
+
+**Done when:** one authoritative early-stress fixture exercises all four currently real Phase 5 expensive-system categories at explicit representative counts; every workload proves it actually reached the production implementation and preserves coherent door/navigation state; the suite prints detached environment + timing records suitable for comparison; the suite is wired into the authoritative all-tests barrier; and a successful exact-head run records the first reference baseline without changing stealth semantics to make the numbers look better.
+
+**Automated:** implemented and wired; exact-head reference measurements are pending post-push GitHub Actions validation.
+
+**Manual:** none — this item measures existing deterministic/headless system cost and adds no player-facing behavior or target-specific runtime integration.
 
 **Phase gate:** the five-minute slice supports understandable darkness- and sound-based stealth with predictable guard behavior, stable save/reload semantics including resolved AI choices, and no architecture known to require replacement when active hostility expands later.
 

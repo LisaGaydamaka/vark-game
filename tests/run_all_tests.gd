@@ -59,6 +59,10 @@ const SUITES = [
 		"script": "res://tests/navigation/run_navigation_tests.gd",
 	},
 	{
+		"name": "Phase 5 Early Stress",
+		"script": "res://tests/performance/run_phase5_stress_tests.gd",
+	},
+	{
 		"name": "Movement",
 		"script": "res://tests/movement/run_movement_tests.gd",
 	},

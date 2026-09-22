@@ -1200,6 +1200,23 @@ When campaign flow exists:
 
 ---
 
+## Phase 5.8 early stress baseline
+
+`tests/performance/run_phase5_stress_tests.gd` is the authoritative early scaling fixture for the stealth systems that are already real. It launches the production Integrated Slice through Application/WorldSession and does not introduce alternate performance-only implementations or retune gameplay.
+
+The fixed workload is intentionally modest enough for the ordinary all-tests barrier while being large enough to expose obvious scaling mistakes:
+
+- 12 real guards / awareness owners × 32 explicit production vision samples = 384 guard-vision checks;
+- 48 semantic sound dispatches through the real acoustic graph after the same world has at least 12 guard hearing receivers;
+- 24 additional real gameplay-light sources followed by 48 complete production exposure samples (three player-body sample rays per relevant light);
+- 64 alternating ordinary-door semantic CLOSED/OPEN changes with 64 synchronous path queries across the Integrated Slice's baked patrol route and door-owned navigation link.
+
+The suite prints one `[PHASE5_STRESS_ENV]` JSON record and one `[PHASE5_STRESS_METRICS]` JSON record. The environment record includes the exact Godot version exposed by the runtime, OS, processor name/count, and GitHub runner OS/architecture when available. The metrics record includes workload counts, discovered listener/light counts, successful path count, and total microseconds for each category.
+
+These early timings are **observations, not CI budgets**. GitHub-hosted runner load varies, so the suite validates finite/executed workload and semantic correctness rather than failing on a millisecond cutoff. Record the first exact-head successful GitHub Actions values in the development plan as the reference baseline. Later representative-scale profiling may establish real budgets on a controlled reference machine.
+
+---
+
 # Supported-platform validation
 
 Windows x64 desktop is the supported development/export target. The Ubuntu GitHub Actions environment is a headless automated validation environment, not proof of Windows-specific runtime/export behavior.
