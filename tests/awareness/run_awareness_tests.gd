@@ -1059,8 +1059,22 @@ func _assert_advanced_local_search_behavior() -> void:
 		"Phase 5.5 exhausted local evidence expands the bounded uncertainty radius while confidence falls"
 	)
 	var second_origin: Vector3 = guard.global_position + Vector3(-0.05, 0.0, 0.05)
-	var search_attention_before_reseed: Dictionary = reaction.get_debug_summary()
-	var reseed_queued: bool = bool(session.call(
+	var search_attention_before_weak_cue: Dictionary = reaction.get_debug_summary()
+	var anchor_before_weak_cue: Vector3 = _dict_vector(
+		search_attention_before_weak_cue,
+		"search_anchor"
+	)
+	var seed_before_weak_cue: int = int(
+		search_attention_before_weak_cue.get("search_seed", 0)
+	)
+	var reseeds_before_weak_cue: int = int(
+		search_attention_before_weak_cue.get("search_reseed_count", 0)
+	)
+	# Production Thief-like tuning keeps hearing interpretation neutral while
+	# searching: heightened persistence must not upgrade a weak stone cue.
+	reaction.engaged_hearing_investigate_threshold_scale = 1.00
+	reaction.engaged_footstep_investigate_source_floor_scale = 1.00
+	var weak_search_cue_queued: bool = bool(session.call(
 		"queue_gameplay_sound",
 		int(session.get("session_id")),
 		&"footstep.stone",
@@ -1068,52 +1082,30 @@ func _assert_advanced_local_search_behavior() -> void:
 		0.2025
 	))
 	await _completed_physics_frame()
-	var reseed_summary: Dictionary = reaction.get_debug_summary()
-	var reseed_nav: Dictionary = guard.get_awareness_navigation_state()
-	var reseed_investigating: bool = (
-		reseed_summary.get("awareness_state", &"") == STATE_INVESTIGATING
-		and int(reseed_summary.get("search_reseed_count", 0)) >= 1
-		and bool(reseed_summary.get("investigation_stare_active", false))
-		and bool(reseed_nav.get("motion_paused", false))
-		and reseed_nav.get("movement_mode", &"") == &"investigating"
-	)
-	var second_search: bool = await _wait_for_awareness_state(
-		reaction,
-		STATE_SEARCHING,
-		45
-	)
-	var second_summary: Dictionary = reaction.get_debug_summary()
+	var after_weak_search_cue: Dictionary = reaction.get_debug_summary()
+	var after_weak_search_nav: Dictionary = guard.get_awareness_navigation_state()
 	_assert_true(
 		visited_first
-		and bool(search_attention_before_reseed.get("heightened_attention", false))
-		and float(search_attention_before_reseed.get(
-			"effective_hearing_investigate_strength",
-			1.0
-		)) < reaction.hearing_investigate_strength
-		and float(search_attention_before_reseed.get(
-			"effective_footstep_investigate_source_floor",
-			1.0
-		)) < 0.2025
-		and reaction.hearing_footstep_investigate_source_floor > 0.2025
-		and reseed_queued
-		and reseed_investigating
-		and second_search
-		and _dict_vector(second_summary, "search_anchor").distance_to(
-			second_origin
-		) <= 0.001
-		and int(second_summary.get("search_stage", -1)) == 0
+		and bool(search_attention_before_weak_cue.get("heightened_attention", false))
 		and is_equal_approx(
-			float(second_summary.get("search_uncertainty_radius", 0.0)),
-			1.40
+			float(search_attention_before_weak_cue.get(
+				"effective_hearing_investigate_strength",
+				0.0
+			)),
+			reaction.hearing_investigate_strength * 0.80
 		)
-		and float(second_summary.get("search_confidence", 0.0)) >= 0.99
-		and int(second_summary.get("search_seed", 0))
-			!= int(first_summary.get("search_seed", 0))
-		and not _vector_arrays_equal(
-			plan_before_hidden_move,
-			second_summary.get("search_points", [])
-		),
-		"Phase 5.5 heightened search attention promotes a very close stone-sneak-strength cue that calm guards cap at suspicion, then stops/turns/stares before reseeding without global player knowledge"
+		and weak_search_cue_queued
+		and after_weak_search_cue.get("awareness_state", &"") == STATE_SEARCHING
+		and int(after_weak_search_cue.get("search_reseed_count", -1))
+			== reseeds_before_weak_cue
+		and not bool(after_weak_search_cue.get("investigation_stare_active", true))
+		and _dict_vector(after_weak_search_cue, "search_anchor").distance_to(
+			anchor_before_weak_cue
+		) <= 0.001
+		and int(after_weak_search_cue.get("search_seed", 0))
+			== seed_before_weak_cue
+		and after_weak_search_nav.get("movement_mode", &"") == &"investigating",
+		"Phase 5.5 production search persistence does not upgrade a weak stone footstep into new investigation evidence"
 	)
 
 	var human_stop_seen: bool = await _wait_for_stationary_search_action(

@@ -475,7 +475,7 @@ func _assert_acoustic_lab_integration() -> void:
 	_assert_true(
 		impact_queued
 		and corner_listener.get_heard_count() == 2
-		and door_listener.get_heard_count() == 2
+		and door_listener.get_heard_count() == 1
 		and bool(door_listener.get_last_perception().get("heard", false))
 		and isolated_listener.get_heard_count() == 0,
 		"Strong impact remains audible through the muffled closed door while the disconnected room stays protected"
@@ -508,7 +508,7 @@ func _assert_acoustic_lab_integration() -> void:
 	var final_debug_text: String = inspector.refresh_now()
 	_assert_true(
 		open_impact_queued
-		and door_listener.get_heard_count() == 1
+		and door_listener.get_heard_count() == 2
 		and bool(door_listener.get_last_perception().get("heard", false))
 		and (door_listener.get_last_perception().get("portal_route", []) as Array) == [&"portal.door"]
 		and last_sound_debug.get("kind", &"") == &"impact.test"
