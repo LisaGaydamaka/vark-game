@@ -92,7 +92,8 @@ func _assert_guard_awareness_state_machine() -> void:
 		"Guard locomotion exposes exactly walking 1.20 < player sneak 2.00, investigating/search 0.72, and running/pursuit 2.64 semantic speeds"
 	)
 	_assert_true(
-		is_equal_approx(reaction.investigation_stare_min, 1.50)
+		is_equal_approx(reaction.vision_distance, 7.0)
+		and is_equal_approx(reaction.investigation_stare_min, 1.50)
 		and is_equal_approx(reaction.investigation_stare_max, 3.50)
 		and is_equal_approx(reaction.engaged_hearing_investigate_threshold_scale, 0.80)
 		and is_equal_approx(reaction.engaged_footstep_investigate_source_floor_scale, 0.80)
@@ -100,7 +101,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		and is_equal_approx(reaction.engaged_visual_suspicion_rate_scale, 1.50)
 		and reaction.observation_stare_repeat_limit == 2
 		and is_equal_approx(reaction.observation_stare_reset_seconds, 6.00),
-		"Phase 5.4 production attention tuning uses a longer 1.50-3.50 second observation hold, explicit evidence-salience scales, and at most two repeated stare freezes per active cue chain"
+		"Phase 5.4 production perception tuning uses a 7.0 m base vision range, longer 1.50-3.50 second observation hold, explicit evidence-salience scales, and at most two repeated stare freezes per active cue chain"
 	)
 
 	_configure_short_durations(reaction)
