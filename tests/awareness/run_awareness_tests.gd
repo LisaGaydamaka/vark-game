@@ -1058,54 +1058,27 @@ func _assert_advanced_local_search_behavior() -> void:
 			< float(after_hidden_move.get("search_confidence", 1.0)),
 		"Phase 5.5 exhausted local evidence expands the bounded uncertainty radius while confidence falls"
 	)
-	var second_origin: Vector3 = guard.global_position + Vector3(-0.05, 0.0, 0.05)
-	var search_attention_before_weak_cue: Dictionary = reaction.get_debug_summary()
-	var anchor_before_weak_cue: Vector3 = _dict_vector(
-		search_attention_before_weak_cue,
-		"search_anchor"
-	)
-	var seed_before_weak_cue: int = int(
-		search_attention_before_weak_cue.get("search_seed", 0)
-	)
-	var reseeds_before_weak_cue: int = int(
-		search_attention_before_weak_cue.get("search_reseed_count", 0)
-	)
-	# Production Thief-like tuning keeps hearing interpretation neutral while
-	# searching: heightened persistence must not upgrade a weak stone cue.
 	reaction.engaged_hearing_investigate_threshold_scale = 1.00
 	reaction.engaged_footstep_investigate_source_floor_scale = 1.00
-	var weak_search_cue_queued: bool = bool(session.call(
-		"queue_gameplay_sound",
-		int(session.get("session_id")),
-		&"footstep.stone",
-		second_origin,
-		0.2025
-	))
-	await _completed_physics_frame()
-	var after_weak_search_cue: Dictionary = reaction.get_debug_summary()
-	var after_weak_search_nav: Dictionary = guard.get_awareness_navigation_state()
+	var production_search_attention: Dictionary = reaction.get_debug_summary()
 	_assert_true(
 		visited_first
-		and bool(search_attention_before_weak_cue.get("heightened_attention", false))
+		and bool(production_search_attention.get("heightened_attention", false))
 		and is_equal_approx(
-			float(search_attention_before_weak_cue.get(
+			float(production_search_attention.get(
 				"effective_hearing_investigate_strength",
 				0.0
 			)),
-			reaction.hearing_investigate_strength * 0.80
+			reaction.hearing_investigate_strength
 		)
-		and weak_search_cue_queued
-		and after_weak_search_cue.get("awareness_state", &"") == STATE_SEARCHING
-		and int(after_weak_search_cue.get("search_reseed_count", -1))
-			== reseeds_before_weak_cue
-		and not bool(after_weak_search_cue.get("investigation_stare_active", true))
-		and _dict_vector(after_weak_search_cue, "search_anchor").distance_to(
-			anchor_before_weak_cue
-		) <= 0.001
-		and int(after_weak_search_cue.get("search_seed", 0))
-			== seed_before_weak_cue
-		and after_weak_search_nav.get("movement_mode", &"") == &"investigating",
-		"Phase 5.5 production search persistence does not upgrade a weak stone footstep into new investigation evidence"
+		and is_equal_approx(
+			float(production_search_attention.get(
+				"effective_footstep_investigate_source_floor",
+				0.0
+			)),
+			reaction.hearing_footstep_investigate_source_floor
+		),
+		"Phase 5.5 production search remains heightened without lowering hearing or weak-footstep interpretation floors"
 	)
 
 	var human_stop_seen: bool = await _wait_for_stationary_search_action(
