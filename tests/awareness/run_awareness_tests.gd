@@ -106,7 +106,7 @@ func _assert_guard_awareness_state_machine() -> void:
 		and is_equal_approx(reaction.engaged_visual_suspicion_rate_scale, 1.25)
 		and is_equal_approx(reaction.suspicion_seconds, 4.00)
 		and is_equal_approx(reaction.investigation_seconds, 12.00)
-		and is_equal_approx(reaction.search_seconds, 45.00)
+		and is_equal_approx(reaction.search_seconds, 25.00)
 		and is_equal_approx(reaction.pursuit_max_lost_seconds, 30.00)
 		and is_equal_approx(reaction.recovery_seconds, 8.00)
 		and reaction.observation_stare_repeat_limit == 2

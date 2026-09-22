@@ -1369,7 +1369,7 @@ The player-facing contract is:
 - exhausting active search enters a meaningful residual-alert/recovery period rather than instant amnesia. During recovery the guard may resume its ordinary route while remaining temporarily easier to re-alert before decaying fully to unaware;
 - do not query the hidden player's current position, choose cover because the player is actually behind it, or otherwise manufacture omniscient search choices.
 
-Current Thief-like production tuning keeps the existing locomotion and state machine but extends persistence: suspicion 4 s, investigation 12 s, search 45 s, lost-pursuit budget 30 s, recovery 8 s, and observation-repeat reset 12 s. Search confidence decays at 0.02/s. Search stops use one or two looks with 2.0–2.8 s held gazes plus shorter turn/arrival/between/departure pauses.
+Current Thief-like production tuning keeps the existing locomotion and state machine but extends persistence: suspicion 4 s, investigation 12 s, search 25 s, lost-pursuit budget 30 s, recovery 8 s, and observation-repeat reset 12 s. Search confidence decays at 0.02/s. Search stops use one or two looks with 2.0–2.8 s held gazes plus shorter turn/arrival/between/departure pauses.
 
 Do not turn this item into room-clearing combat tactics, squad coordination, alarm broadcasting, or combat decision-making. Those remain separate later work.
 
