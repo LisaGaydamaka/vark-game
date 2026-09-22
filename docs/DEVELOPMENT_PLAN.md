@@ -1435,7 +1435,7 @@ This step does not introduce a second door state or retune any accepted stealth 
 
 **Manual:** accepted for roadmap continuation under the fresh-chat reconciliation rule in `AGENTS.md`. The user explicitly requested continuation to the next roadmap work after the exact 5.7 implementation head and its authoritative CI were green, and reported no 5.7 failure. This closes the ordinary player-facing door-coherence check without inventing any new tuning or changing the accepted Phase 5 stealth baseline.
 
-## 5.8 Early stress fixtures `[~]`
+## 5.8 Early stress fixtures `[x]`
 
 Measure representative cost for multiple guards/vision, sounds/hearing, gameplay lights/exposure, and nav updates around doors. Record the reference environment.
 
@@ -1450,7 +1450,7 @@ The suite records wall-clock observation time with `Time.get_ticks_usec()`, oper
 
 **Done when:** one authoritative early-stress fixture exercises all four currently real Phase 5 expensive-system categories at explicit representative counts; every workload proves it actually reached the production implementation and preserves coherent door/navigation state; the suite prints detached environment + timing records suitable for comparison; the suite is wired into the authoritative all-tests barrier; and a successful exact-head run records the first reference baseline without changing stealth semantics to make the numbers look better.
 
-**Automated:** implemented and wired; exact-head reference measurements are pending post-push GitHub Actions validation.
+**Automated:** accepted — exact implementation head `01e16311d02523e65df9fcb971b2ba5e4d2ec3d3` passed GitHub Actions Test run #361 and the authoritative all-tests barrier. The stress suite reported the fixed workload and reference environment without parser/resource/reference failures. Reference runtime: Godot `4.7.2-stable (official)`, Linux/X64 GitHub-hosted runner, AMD EPYC 7763, 4 exposed processors. Observed totals: 384 vision checks = 6.570 ms; 48 semantic sounds across 13 listeners = 624 receiver evaluations = 21.875 ms; 48 exposure samples with 25 gameplay lights = 49.559 ms; 64 alternating door/nav path cycles = 0.567 ms with 64/64 paths resolved. These are comparison observations, not CI budgets.
 
 **Manual:** none — this item measures existing deterministic/headless system cost and adds no player-facing behavior or target-specific runtime integration.
 

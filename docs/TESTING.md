@@ -1213,7 +1213,9 @@ The fixed workload is intentionally modest enough for the ordinary all-tests bar
 
 The suite prints one `[PHASE5_STRESS_ENV]` JSON record and one `[PHASE5_STRESS_METRICS]` JSON record. The environment record includes the exact Godot version exposed by the runtime, OS, processor name/count, and GitHub runner OS/architecture when available. The metrics record includes workload counts, discovered listener/light counts, successful path count, and total microseconds for each category.
 
-These early timings are **observations, not CI budgets**. GitHub-hosted runner load varies, so the suite validates finite/executed workload and semantic correctness rather than failing on a millisecond cutoff. Record the first exact-head successful GitHub Actions values in the development plan as the reference baseline. Later representative-scale profiling may establish real budgets on a controlled reference machine.
+These early timings are **observations, not CI budgets**. GitHub-hosted runner load varies, so the suite validates finite/executed workload and semantic correctness rather than failing on a millisecond cutoff. Later representative-scale profiling may establish real budgets on a controlled reference machine.
+
+The first recorded baseline is GitHub Actions Test run #361 on exact implementation head `01e16311d02523e65df9fcb971b2ba5e4d2ec3d3`: Godot `4.7.2-stable (official)`, Linux/X64, AMD EPYC 7763, 4 exposed processors. The fixed workload observed 6,570 µs for 384 vision checks; 21,875 µs for 48 sound dispatches across 13 listeners (624 receiver evaluations); 49,559 µs for 48 exposure samples with 25 total gameplay lights; and 567 µs for 64 alternating ordinary-door/nav path cycles with 64/64 paths resolved. Treat these values only as a reference point for later regressions or controlled-machine profiling.
 
 ---
 
