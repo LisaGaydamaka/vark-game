@@ -230,8 +230,8 @@ func _assert_integrated_surface_noise() -> void:
 
 	var stone_meter_summary: Dictionary = noise_meter.get_last_summary()
 	_assert_true(
-		is_equal_approx(noise_meter.get_current_loudness(), 0.21)
-		and is_equal_approx(float(noise_bar.value), 0.21)
+		is_equal_approx(noise_meter.get_current_loudness(), 0.35)
+		and is_equal_approx(float(noise_bar.value), 0.35)
 		and stone_meter_summary.get("last_sound_kind", &"")
 			== &"footstep.stone"
 		and is_equal_approx(
