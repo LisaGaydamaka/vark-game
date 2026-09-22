@@ -1394,7 +1394,7 @@ No cover prediction, hidden-player scoring, room-clearing tactics, or squad beha
 
 **Manual:** accepted by the user/playtester on tuned `test` head `7b0002a808a9cd2ce5a999eac1f0d286781095b7` after the Phase 5 stealth playtest. The accepted search/pursuit feel covers last-known pursuit before search, distraction priority, cautious search movement, spaced stops and held looks, long bounded search patience, non-omniscient local evidence, immediate real-evidence response, recovery, and elevated/lowered pursuit/search behavior with real occlusion.
 
-## 5.6 NPC communication/local knowledge `[~]`
+## 5.6 NPC communication/local knowledge `[x]`
 
 Implement explicit information sharing/alarm behavior without automatic global player knowledge.
 
@@ -1412,7 +1412,7 @@ This item does not implement squad tactics, radio networks, body discovery, miss
 
 **Done when:** newly confirmed local sight emits one explicit local report instead of a per-frame broadcast; wrong-faction or acoustically inaudible guards gain no knowledge; an audible same-faction receiver investigates exactly the reported last-confirmed position and does not track later hidden player motion; an explicitly raised authored alarm reaches only subscribed faction/channel recipients and starts local search from the alarm evidence position without granting confirmed pursuit; current confirmed pursuit cannot be overwritten by second-hand reports; active alarm plus recipient knowledge survive save/load without communication replay; malformed communication payloads fail closed; and existing stealth/search/save/event regressions remain green.
 
-**Automated:** a dedicated Communication suite launches the real Communication Lab through Application/WorldSession and proves exact local-warning payload shape/no current-player field, one report per confirmed-alert transition, closed-door acoustic rejection, faction rejection, same-faction nearby acceptance, fixed reported-position knowledge despite later player movement, explicit alarm subscription, alarm search without confirmed pursuit, and quicksave/quickload of alarm + recipient search with zero replayed communication events. The suite is wired through the authoritative all-tests barrier; existing Awareness, Acoustics, Application/save, Navigation, and Phase 3 Integration suites remain required compatibility barriers.
+**Automated:** accepted on exact implementation head `8aa547217c2fe37f7804a8e4ad32064895277146` in GitHub Actions run #352. The dedicated Communication suite launched the real Communication Lab through Application/WorldSession and proved exact local-warning payload shape/no current-player field, one report per confirmed-alert transition, closed-door acoustic rejection, faction rejection, same-faction nearby acceptance, fixed reported-position knowledge despite later player movement, explicit alarm subscription, alarm search without confirmed pursuit, and quicksave/quickload of alarm + recipient search with zero replayed communication events. Application, Acoustics, Awareness, Navigation, Phase 3 Integration, and the authoritative all-tests barrier all remained green.
 
 **Manual:** none for this bounded architecture item. Final warning dialogue/nonverbal presentation, alarm audio/visual presentation, authored alarm switches, and mission-specific propagation feel are later player-facing/content work; this step's knowledge ownership, locality, event ordering, and persistence are deterministic.
 
