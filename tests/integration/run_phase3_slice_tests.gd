@@ -273,7 +273,7 @@ func _assert_integrated_slice() -> void:
 			float((
 				stone_surface.call("get_surface_summary") as Dictionary
 			).get("footstep_strength", 0.0)),
-			0.21
+			0.35
 		)
 		and is_equal_approx(
 			float((
@@ -416,11 +416,11 @@ func _assert_integrated_slice() -> void:
 		and crouched_footstep_summary.get("last_stance", "") == "crouched"
 		and is_equal_approx(
 			float(crouched_footstep_summary.get("last_base_strength", 0.0)),
-			0.21
+			0.35
 		)
 		and is_equal_approx(
 			float(crouched_footstep_summary.get("last_strength", 0.0)),
-			0.21 * 0.75
+			0.35 * 0.45
 		)
 		and not bool(crouched_guard_perception.get("heard", true))
 		and crouched_reaction_summary.get("state", &"") == &"calm"

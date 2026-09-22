@@ -8,7 +8,7 @@ signal gameplay_noise_emitted(summary: Dictionary)
 @export var player_path: NodePath = NodePath("../Player")
 @export_range(0.2, 4.0, 0.05) var step_distance: float = 1.25
 @export_range(0.0, 5.0, 0.05) var minimum_move_speed: float = 0.35
-@export_range(0.05, 1.0, 0.05) var crouched_strength_scale: float = 0.75
+@export_range(0.05, 1.0, 0.05) var crouched_strength_scale: float = 0.45
 @export_range(1.0, 2.0, 0.05) var sprint_strength_scale: float = 1.35
 @export var emission_enabled: bool = true
 
