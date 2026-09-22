@@ -143,6 +143,17 @@ func get_interaction_semantic_state() -> Dictionary:
 	return player_interaction.get_semantic_state()
 
 
+func get_interaction_debug_summary() -> Dictionary:
+	if player_interaction == null:
+		return {
+			"available": false,
+			"has_target": false,
+			"target_name": "",
+			"selection_status": &"unavailable",
+		}
+	return player_interaction.get_debug_summary()
+
+
 func try_carry_prop(prop: Node) -> bool:
 	if prop_carry == null:
 		return false

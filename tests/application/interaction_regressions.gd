@@ -62,6 +62,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var door: Node3D = world.get_node("DoorProbe") as Node3D
 	var prop: Node3D = world.get_node("PropProbe") as Node3D
 	var divider: Node3D = world.get_node("Divider") as Node3D
+	var sensor: Area3D = world.get_node("NonBlockingSensor") as Area3D
 	var door_mesh: MeshInstance3D = door.get_node("MeshInstance3D") as MeshInstance3D
 	var prop_mesh: MeshInstance3D = prop.get_node("MeshInstance3D") as MeshInstance3D
 	var door_material: StandardMaterial3D = door_mesh.material_override as StandardMaterial3D
@@ -75,11 +76,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	# production center-view direction rather than mutating a child camera in tests.
 	await _settle_player_physics(tree)
 	var centered_state: Dictionary = player.call("get_interaction_semantic_state")
+	var centered_debug: Dictionary = player.call("get_interaction_debug_summary")
 	assert_true.call(
-		bool(door.call("is_interaction_highlighted"))
+		sensor != null
+		and bool(door.call("is_interaction_highlighted"))
 		and bool(centered_state.get("has_target", false))
-		and centered_state.get("target_name", "") == "DoorProbe",
-		"Center-view interaction targeting highlights the first eligible in-range hit"
+		and centered_state.get("target_name", "") == "DoorProbe"
+		and centered_debug.get("selection_status", &"") == &"targeted"
+		and centered_debug.get("hit_name", "") == "DoorProbe"
+		and bool(centered_debug.get("areas_ignored", false)),
+		"Center-view targeting reaches the eligible physical target through a generic non-blocking sensor Area"
 	)
 	assert_true.call(
 		door_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
@@ -91,12 +97,34 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Selected interaction feedback removes surface shadowing while preserving the object's ordinary cast shadow"
 	)
 
+	door.position = Vector3(1.5, door_position.y, door_position.z)
+	await _settle_player_physics(tree, 2)
+	var off_axis_debug: Dictionary = player.call("get_interaction_debug_summary")
+	assert_true.call(
+		not bool(door.call("is_interaction_highlighted"))
+		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false))
+		and off_axis_debug.get("selection_status", &"") == &"no_hit",
+		"An in-range object that is off the exact center-view axis is not selected"
+	)
+	door.position = door_position
+	await _settle_player_physics(tree, 2)
+	assert_true.call(
+		bool(door.call("is_interaction_highlighted")),
+		"Returning the same eligible object to center view reacquires selection"
+	)
+
 	player.global_position = Vector3(0, 0, 5)
 	player.set("velocity", Vector3.ZERO)
 	await _settle_player_physics(tree)
+	var out_of_range_debug: Dictionary = player.call("get_interaction_debug_summary")
 	assert_true.call(
 		not bool(door.call("is_interaction_highlighted"))
-		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
+		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false))
+		and out_of_range_debug.get("selection_status", &"") == &"no_hit"
+		and is_equal_approx(
+			float(out_of_range_debug.get("max_range", -1.0)),
+			float(player.get("interaction_range"))
+		),
 		"Interaction targeting rejects an otherwise valid target outside the configured range"
 	)
 	assert_true.call(
@@ -115,18 +143,24 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	prop.position = Vector3(0, 1.3, 0)
 	divider.position = Vector3(0, 0.9, 1.0)
 	await _settle_player_physics(tree, 2)
+	var blocked_debug: Dictionary = player.call("get_interaction_debug_summary")
 	assert_true.call(
 		not bool(prop.call("is_interaction_highlighted"))
-		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
-		"Interaction targeting treats the first blocking physics hit as occlusion"
+		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false))
+		and blocked_debug.get("selection_status", &"") == &"blocked"
+		and blocked_debug.get("hit_name", "") == "Divider",
+		"Interaction targeting treats the first blocking physical body as occlusion"
 	)
 
 	divider.position = Vector3(-3, divider_position.y, divider_position.z)
 	await _settle_player_physics(tree, 2)
+	var prop_targeted_debug: Dictionary = player.call("get_interaction_debug_summary")
 	assert_true.call(
 		bool(prop.call("is_interaction_highlighted"))
-		and (player.call("get_interaction_semantic_state") as Dictionary).get("target_name", "") == "PropProbe",
-		"An eligible in-range target highlights once the center-view line is unobstructed"
+		and (player.call("get_interaction_semantic_state") as Dictionary).get("target_name", "") == "PropProbe"
+		and prop_targeted_debug.get("selection_status", &"") == &"targeted"
+		and prop_targeted_debug.get("hit_name", "") == "PropProbe",
+		"An eligible in-range target highlights once the center-view line is physically unobstructed"
 	)
 	assert_true.call(
 		prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
@@ -138,10 +172,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	prop.call("set_interaction_enabled", false)
 	await _settle_player_physics(tree)
+	var ineligible_debug: Dictionary = player.call("get_interaction_debug_summary")
 	assert_true.call(
 		not bool(prop.call("is_interaction_highlighted"))
-		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
-		"Target-owned current-state eligibility can reject interaction without changing the selector"
+		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false))
+		and ineligible_debug.get("selection_status", &"") == &"ineligible"
+		and ineligible_debug.get("candidate_name", "") == "PropProbe",
+		"Target-owned current-state eligibility rejects interaction and reports the physical candidate without selecting it"
 	)
 	assert_true.call(
 		prop_mesh.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON
@@ -149,6 +186,29 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"State-ineligible interactables restore ordinary shaded presentation while keeping normal cast shadows"
 	)
 	prop.call("set_interaction_enabled", true)
+
+	prop.position = Vector3(-3.0, prop_position.y, prop_position.z)
+	var malformed := StaticBody3D.new()
+	malformed.name = "MalformedInteractable"
+	malformed.add_to_group(&"vark_interactable")
+	malformed.position = Vector3(0.0, 1.3, 0.4)
+	var malformed_collision := CollisionShape3D.new()
+	var malformed_shape := BoxShape3D.new()
+	malformed_shape.size = Vector3(0.7, 0.7, 0.35)
+	malformed_collision.shape = malformed_shape
+	malformed.add_child(malformed_collision)
+	world.add_child(malformed)
+	await _settle_player_physics(tree, 2)
+	var malformed_debug: Dictionary = player.call("get_interaction_debug_summary")
+	assert_true.call(
+		malformed_debug.get("selection_status", &"") == &"invalid_contract"
+		and malformed_debug.get("hit_name", "") == "MalformedInteractable"
+		and malformed_debug.get("candidate_name", "") == "MalformedInteractable"
+		and not bool((player.call("get_interaction_semantic_state") as Dictionary).get("has_target", false)),
+		"A grouped physical object with an incomplete interaction contract fails closed with useful targeting diagnostics"
+	)
+	malformed.queue_free()
+	await _settle_player_physics(tree, 2)
 
 	# Restore the authored lab layout before exercising primary interaction so the
 	# door is again the real center-view target and the manual fixture stays legible.

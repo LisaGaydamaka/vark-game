@@ -1462,9 +1462,23 @@ The suite records wall-clock observation time with `Time.get_ticks_usec()`, oper
 
 Goal: expand the minimal interaction contract without changing its fundamental language.
 
-## 6.1 Interaction targeting/highlight completion `[ ]`
+## 6.1 Interaction targeting/highlight completion `[~]`
 
 Harden center-view targeting, range/occlusion/state checks, highlight, and one primary world-interaction input. The Phase 3 door/prop keep using the same contract.
+
+The established `PlayerInteraction` owner remains the single ordinary world-selection path. Each permitted gameplay physics tick samples the current production camera's exact center-forward ray, bounded by the player's authored `interaction_range`. Only physical bodies participate in this generic selector: ordinary trigger/sensor `Area3D` nodes are neither interaction targets nor occluders, so mission/acoustic/surface sensors cannot accidentally steal the first hit. The first physical body still owns occlusion; the selector never skips through a wall, prop, inactive interactable, or malformed grouped object to reach another target behind it.
+
+A physical hit becomes selected only when its node/ancestor carries the existing `vark_interactable` group and implements `can_interact(interactor) -> bool`, `interact(interactor)`, and `set_interaction_highlighted(bool)`. Missing methods or a non-boolean eligibility result fail closed. A valid `false` eligibility result also fails closed without searching through that physical object. The shared selector owns only selection; each target continues to own its current eligibility, interaction consequence, and Thief-style fullbright selection presentation.
+
+The default primary world-interaction input remains **F** and continues through the application-owned one-physics-frame gameplay edge. Holding F never repeats an ordinary use. Losing gameplay/interaction ownership clears target highlight and blocked/stale input edges remain suppressed on resume. Carried Junk keeps its existing higher-priority F ownership and centrally suppresses ordinary world selection until carry ends.
+
+`Player.get_interaction_debug_summary()` exposes observational selection status (`targeted`, `no_hit`, `blocked`, `ineligible`, `invalid_contract`, or unavailable/invalid-view), first physical hit/candidate name, hit distance, range, and the sensor-area policy. This is diagnosis only and is not save state or a second interaction owner.
+
+**Done when:** Interaction Lab proves exact center-view selection, range rejection, physical first-hit occlusion, non-blocking generic sensor Areas, target-owned current-state rejection, fail-closed malformed target contracts, immediate highlight restoration/clearing, and one fresh F edge per ordinary use; central interaction suppression clears selection and resumes cleanly; existing real ordinary-door and ordinary-prop interaction/highlight regressions remain green through the unchanged shared contract; and the user/playtester confirms the targeting/highlight behavior remains understandable in ordinary play.
+
+**Automated:** the existing Application interaction regression is expanded around the real Application → WorldSession → Player path and the 6.1 sensor fixture. The authoritative all-tests barrier must also keep the dedicated real Door and Props suites green so hardening the selector cannot silently fork their interaction behavior.
+
+**Manual:** user/playtester. Development Launch → **Interaction Lab**: verify the centered Door Contract Probe highlights even though the visible translucent SENSOR AREA lies between camera and door; moving the view off the door or backing outside range clears highlight immediately; the solid divider prevents the Prop Contract Probe from highlighting until you move around it; F uses the highlighted door exactly once per fresh press and holding F does not repeat; F on the prop makes it INACTIVE and removes highlight immediately; ordinary movement/crouch/sprint/jump/mouse-look remain normal while selecting and using objects. Report any visible selection through a solid blocker, selection that survives looking/ranging away, sensor volume that wrongly blocks the door, stale highlight, or repeated held-F use.
 
 ## 6.2 Door completion `[ ]`
 
