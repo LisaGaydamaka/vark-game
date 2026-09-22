@@ -490,7 +490,7 @@ portal_id = "portal.vertical.door"
 space_a_id = "space.vertical.south"
 space_b_id = "space.vertical.north"
 door_id = "door.vertical"
-closed_transmission = 0.08
+closed_transmission = 0.40
 open_transmission = 1.0
 
 [node name="GameplayExposure" type="Node3D" parent="."]

@@ -49,7 +49,7 @@ func _assert_surface_profile_contract() -> void:
 		and stone.get_footstep_sound_kind() == &"footstep.stone"
 		and tile.get_footstep_sound_kind() == &"footstep.tile"
 		and is_equal_approx(carpet.get_footstep_strength(), 0.09)
-		and is_equal_approx(stone.get_footstep_strength(), 0.45)
+		and is_equal_approx(stone.get_footstep_strength(), 0.21)
 		and is_equal_approx(tile.get_footstep_strength(), 0.90)
 		and carpet.get_footstep_strength() < stone.get_footstep_strength()
 		and stone.get_footstep_strength() < tile.get_footstep_strength(),
@@ -216,11 +216,11 @@ func _assert_integrated_surface_noise() -> void:
 		and stone_summary.get("last_sound_kind", &"") == &"footstep.stone"
 		and is_equal_approx(
 			float(stone_summary.get("last_base_strength", 0.0)),
-			0.45
+			0.21
 		)
 		and is_equal_approx(
 			float(stone_summary.get("last_strength", 0.0)),
-			0.45
+			0.21
 		)
 		and int(stone_reaction.get("heard_count", 0)) == 1
 		and stone_reaction.get("last_heard_kind", &"")
@@ -230,13 +230,13 @@ func _assert_integrated_surface_noise() -> void:
 
 	var stone_meter_summary: Dictionary = noise_meter.get_last_summary()
 	_assert_true(
-		is_equal_approx(noise_meter.get_current_loudness(), 0.45)
-		and is_equal_approx(float(noise_bar.value), 0.45)
+		is_equal_approx(noise_meter.get_current_loudness(), 0.21)
+		and is_equal_approx(float(noise_bar.value), 0.21)
 		and stone_meter_summary.get("last_sound_kind", &"")
 			== &"footstep.stone"
 		and is_equal_approx(
 			float(stone_meter_summary.get("last_strength", 0.0)),
-			0.45
+			0.21
 		)
 		and noise_meter.get_debug_text().contains("footstep.stone"),
 		"Integrated Slice development loudness meter observes the actual semantic footstep source strength beside the exposure meter"
@@ -368,7 +368,7 @@ func _assert_integrated_surface_noise() -> void:
 		)
 		and is_equal_approx(
 			float(crouched_summary.get("last_strength", 0.0)),
-			0.09 * 0.45
+			0.09 * 0.75
 		)
 		and float(crouched_summary.get("last_strength", 0.0))
 			< guard_listener.hearing_threshold,
@@ -378,11 +378,11 @@ func _assert_integrated_surface_noise() -> void:
 	_assert_true(
 		is_equal_approx(
 			noise_meter.get_current_loudness(),
-			0.09 * 0.45
+			0.09 * 0.75
 		)
 		and is_equal_approx(
 			float(crouched_meter_summary.get("last_strength", 0.0)),
-			0.09 * 0.45
+			0.09 * 0.75
 		)
 		and crouched_meter_summary.get("last_stance", "")
 			== "crouched"
@@ -403,8 +403,8 @@ func _assert_integrated_surface_noise() -> void:
 		)
 	)
 
-	# Stone sneak: clearly heard at close range, but source intensity is capped
-	# below investigation even if propagated strength is high enough.
+	# Stone sneak: Gold-like Minor tuning keeps crouched stone below the
+	# physical hearing floor even at this deliberately point-blank distance.
 	var stone_sneak_ready: bool = await _request_player_stance(
 		player,
 		PlayerCrouch.Stance.CROUCHED
@@ -432,18 +432,19 @@ func _assert_integrated_surface_noise() -> void:
 		and stone_sneak_repeat_queued
 		and is_equal_approx(
 			float(stone_sneak_step.get("last_strength", 0.0)),
-			0.45 * 0.45
+			0.21 * 0.75
 		)
 		and float(stone_sneak_step.get("last_strength", 0.0))
 			< investigate_source_floor
-		and bool(stone_sneak_perception.get("heard", false))
-		and stone_sneak_reaction.get("awareness_state", &"") == &"suspicious"
+		and not bool(stone_sneak_perception.get("heard", true))
+		and stone_sneak_reaction.get("awareness_state", &"") == &"unaware"
 		and stone_sneak_repeat_reaction.get("awareness_state", &"")
-			== &"suspicious",
-		"Stone sneak can be noticed at very close range but repeated sneak steps are source-capped at suspicion and never promote to investigation"
+			== &"unaware",
+		"Stone sneak stays below the guard hearing floor even at point-blank range"
 	)
 
-	# Stone walk/run: both are strong enough sources to investigate.
+	# Stone walk/run: heard nearby, but the Minor tier stays below the
+	# footstep investigation source floor.
 	var stone_walk_ready: bool = await _request_player_stance(
 		player,
 		PlayerCrouch.Stance.STANDING
@@ -459,8 +460,8 @@ func _assert_integrated_surface_noise() -> void:
 		stone_walk_ready
 		and stone_walk_queued
 		and stone_walk_reaction.get("awareness_state", &"")
-			== &"investigating",
-		"Stone walk is strong enough to trigger investigation when heard at close range"
+			== &"suspicious",
+		"Stone walk can be heard nearby but remains suspicious-only"
 	)
 
 	var stone_run_command := PlayerCommand.new()
@@ -480,8 +481,8 @@ func _assert_integrated_surface_noise() -> void:
 		player_input != null
 		and stone_run_queued
 		and stone_run_reaction.get("awareness_state", &"")
-			== &"investigating",
-		"Stone run is strong enough to trigger investigation when heard at close range"
+			== &"suspicious",
+		"Stone run is louder than walking but remains suspicious-only on the Minor surface tier"
 	)
 
 	guard_listener.clear_perception()
@@ -498,7 +499,7 @@ func _assert_integrated_surface_noise() -> void:
 			float(stone_landing_summary.get("last_strength", 0.0)),
 			stone_run_strength
 		)
-		and stone_landing_reaction.get("awareness_state", &"") == &"investigating",
+		and stone_landing_reaction.get("awareness_state", &"") == &"suspicious",
 		"Landing after airborne movement uses exactly the running loudness multiplier for the corresponding surface"
 	)
 
@@ -524,7 +525,7 @@ func _assert_integrated_surface_noise() -> void:
 		and tile_sneak_queued
 		and is_equal_approx(
 			float(tile_sneak_step.get("last_strength", 0.0)),
-			0.90 * 0.45
+			0.90 * 0.75
 		)
 		and float(tile_sneak_step.get("last_strength", 0.0))
 			>= investigate_source_floor

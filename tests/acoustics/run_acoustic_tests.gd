@@ -265,7 +265,7 @@ func _assert_acoustic_lab_integration() -> void:
 				"current_transmission",
 				0.0
 			)),
-			0.08
+			0.40
 		)
 		and not bool(initial_east_portal.get("uses_door", true))
 		and is_equal_approx(
@@ -277,7 +277,7 @@ func _assert_acoustic_lab_integration() -> void:
 		)
 		and initial_debug_text.contains("portal.door")
 		and initial_debug_text.contains("open=0.00")
-		and initial_debug_text.contains("tx=0.080")
+		and initial_debug_text.contains("tx=0.400")
 		and initial_debug_text.contains("portal.east")
 		and initial_debug_text.contains("opening tx=1.000"),
 		"Phase 5.2 acoustic inspection exposes live door-linked transmission and constant authored opening transmission from the same portal graph"
@@ -379,7 +379,7 @@ func _assert_acoustic_lab_integration() -> void:
 		and closed_strength > 0.0
 		and closed_strength < half_strength
 		and half_strength < open_strength
-		and open_strength > closed_strength * 5.0
+		and open_strength > closed_strength * 2.0
 		and is_equal_approx(
 			float(closed_portal_debug.get("door_openness", -1.0)),
 			0.0
@@ -389,7 +389,7 @@ func _assert_acoustic_lab_integration() -> void:
 				"current_transmission",
 				-1.0
 			)),
-			0.08
+			0.40
 		)
 		and is_equal_approx(
 			float(half_portal_debug.get("door_openness", -1.0)),
@@ -400,7 +400,7 @@ func _assert_acoustic_lab_integration() -> void:
 				"current_transmission",
 				-1.0
 			)),
-			0.54
+			0.70
 		)
 		and is_equal_approx(
 			float(open_portal_debug.get("door_openness", -1.0)),

@@ -144,7 +144,7 @@ portal_id = "portal.door"
 space_a_id = "room.open"
 space_b_id = "room.door"
 door_id = "door.acoustic"
-closed_transmission = 0.08
+closed_transmission = 0.40
 open_transmission = 1.0
 
 [node name="EastPortal" type="Node3D" parent="."]

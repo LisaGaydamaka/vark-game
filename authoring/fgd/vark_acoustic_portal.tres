@@ -12,7 +12,7 @@ class_properties = Dictionary[String, Variant]({
 "space_a_id": "",
 "space_b_id": "",
 "door_id": "",
-"closed_transmission": 0.08,
+"closed_transmission": 0.40,
 "open_transmission": 1.0,
 "angle": 180.0
 })

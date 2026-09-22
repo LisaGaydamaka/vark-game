@@ -6,7 +6,7 @@ extends Node3D
 @export var space_a_id: String = ""
 @export var space_b_id: String = ""
 @export var door_id: String = ""
-@export_range(0.0, 1.0, 0.01) var closed_transmission: float = 0.08
+@export_range(0.0, 1.0, 0.01) var closed_transmission: float = 0.40
 @export_range(0.0, 1.0, 0.01) var open_transmission: float = 1.0
 
 

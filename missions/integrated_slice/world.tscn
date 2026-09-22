@@ -310,7 +310,7 @@ portal_id = "portal.slice.door"
 space_a_id = "space.slice.south"
 space_b_id = "space.slice.north"
 door_id = "door.slice"
-closed_transmission = 0.08
+closed_transmission = 0.40
 open_transmission = 1.0
 
 [node name="GameplayExposure" type="Node3D" parent="."]

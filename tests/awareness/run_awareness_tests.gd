@@ -92,16 +92,26 @@ func _assert_guard_awareness_state_machine() -> void:
 		"Guard locomotion exposes exactly walking 1.20 < player sneak 2.00, investigating/search 0.72, and running/pursuit 2.64 semantic speeds"
 	)
 	_assert_true(
-		is_equal_approx(reaction.vision_distance, 7.0)
+		is_equal_approx(reaction.vision_distance, 10.0)
+		and is_equal_approx(reaction.vision_alert_retain_facing_dot, -0.42)
+		and is_equal_approx(reaction.vision_confirm_exposure_threshold, 0.44)
+		and is_equal_approx(reaction.vision_suspicion_rate_max, 2.00)
+		and is_equal_approx(reaction.vision_suspicion_decay_per_second, 0.08)
+		and is_equal_approx(reaction.vision_investigate_suspicion, 0.40)
 		and is_equal_approx(reaction.investigation_stare_min, 1.50)
 		and is_equal_approx(reaction.investigation_stare_max, 3.50)
-		and is_equal_approx(reaction.engaged_hearing_investigate_threshold_scale, 0.80)
-		and is_equal_approx(reaction.engaged_footstep_investigate_source_floor_scale, 0.80)
-		and is_equal_approx(reaction.engaged_vision_exposure_threshold_scale, 0.75)
-		and is_equal_approx(reaction.engaged_visual_suspicion_rate_scale, 1.50)
+		and is_equal_approx(reaction.engaged_hearing_investigate_threshold_scale, 1.00)
+		and is_equal_approx(reaction.engaged_footstep_investigate_source_floor_scale, 1.00)
+		and is_equal_approx(reaction.engaged_vision_exposure_threshold_scale, 0.90)
+		and is_equal_approx(reaction.engaged_visual_suspicion_rate_scale, 1.25)
+		and is_equal_approx(reaction.suspicion_seconds, 4.00)
+		and is_equal_approx(reaction.investigation_seconds, 12.00)
+		and is_equal_approx(reaction.search_seconds, 45.00)
+		and is_equal_approx(reaction.pursuit_max_lost_seconds, 30.00)
+		and is_equal_approx(reaction.recovery_seconds, 8.00)
 		and reaction.observation_stare_repeat_limit == 2
-		and is_equal_approx(reaction.observation_stare_reset_seconds, 6.00),
-		"Phase 5.4 production perception tuning uses a 7.0 m base vision range, longer 1.50-3.50 second observation hold, explicit evidence-salience scales, and at most two repeated stare freezes per active cue chain"
+		and is_equal_approx(reaction.observation_stare_reset_seconds, 12.00),
+		"Production perception keeps Vark's continuous/stare architecture but uses the Thief-Gold-like range, persistence, alert-retention, and evidence tuning"
 	)
 
 	_configure_short_durations(reaction)
@@ -1455,6 +1465,10 @@ func _configure_short_durations(
 	reaction: Node
 ) -> void:
 	reaction.hearing_investigate_strength = 0.20
+	# Production defaults keep engaged hearing interpretation neutral. Exercise
+	# the configurable heightened-hearing seam only inside this compressed fixture.
+	reaction.engaged_hearing_investigate_threshold_scale = 0.80
+	reaction.engaged_footstep_investigate_source_floor_scale = 0.80
 	reaction.suspicion_seconds = 0.08
 	reaction.investigation_seconds = 0.10
 	reaction.investigation_stare_min = 0.20
