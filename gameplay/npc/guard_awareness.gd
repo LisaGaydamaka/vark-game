@@ -1,6 +1,9 @@
 extends Node
 
 
+signal local_alert_confirmed(evidence_position: Vector3)
+
+
 # Keep this reusable script independent of custom global-class scan order.
 # These values are stable semantic contract values owned by the corresponding
 # guard/session APIs; runtime interaction stays on built-in Node seams.
@@ -167,6 +170,10 @@ var _investigation_stare_target: Vector3 = Vector3.ZERO
 var _investigation_stare_serial: int = 0
 var _observation_stare_chain_count: int = 0
 var _observation_stare_reset_remaining_seconds: float = 0.0
+var _shared_evidence_count: int = 0
+var _last_shared_evidence_kind: StringName = &""
+var _last_shared_source_actor_id: String = ""
+var _last_shared_evidence_position: Vector3 = Vector3.ZERO
 
 
 func _ready() -> void:
@@ -344,6 +351,10 @@ func reset_reaction() -> void:
 	_observation_stare_chain_count = 0
 	_observation_stare_reset_remaining_seconds = 0.0
 	_search_reseed_count = 0
+	_shared_evidence_count = 0
+	_last_shared_evidence_kind = &""
+	_last_shared_source_actor_id = ""
+	_last_shared_evidence_position = Vector3.ZERO
 	_refresh_label()
 
 
@@ -414,6 +425,10 @@ func get_debug_summary() -> Dictionary:
 		"observation_stare_reset_remaining_seconds": _observation_stare_reset_remaining_seconds,
 		"observation_stare_repeat_limit": observation_stare_repeat_limit,
 		"observation_stare_reset_seconds": observation_stare_reset_seconds,
+		"shared_evidence_count": _shared_evidence_count,
+		"last_shared_evidence_kind": _last_shared_evidence_kind,
+		"last_shared_source_actor_id": _last_shared_source_actor_id,
+		"last_shared_evidence_position": _last_shared_evidence_position,
 		"search_radius": search_radius,
 		"search_max_radius": search_max_radius,
 		"search_point_count": search_point_count,
@@ -458,6 +473,35 @@ func get_debug_summary() -> Dictionary:
 		"engaged_visual_suspicion_rate_scale": engaged_visual_suspicion_rate_scale,
 		"gameplay_time_seconds": _get_gameplay_time(),
 	}
+
+
+func receive_shared_evidence(
+	kind: StringName,
+	source_actor_id: String,
+	evidence_position: Vector3
+) -> bool:
+	if (
+		kind != &"warning"
+		and kind != &"alarm"
+	):
+		return false
+	if not _is_finite_vector(evidence_position) or not _guard_is_conscious():
+		return false
+	# Confirmed local sight remains stronger than second-hand knowledge. A guard
+	# already in active pursuit does not let a warning/alarm overwrite its trail.
+	if _awareness_state == STATE_ALERTED:
+		return false
+
+	_shared_evidence_count += 1
+	_last_shared_evidence_kind = kind
+	_last_shared_source_actor_id = source_actor_id.strip_edges()
+	_last_shared_evidence_position = evidence_position
+	_set_attention_toward(evidence_position)
+	if kind == &"alarm":
+		_enter_state(STATE_SEARCHING, evidence_position, true)
+	else:
+		_enter_state(STATE_INVESTIGATING, evidence_position, true)
+	return true
 
 
 func get_semantic_save_id() -> String:
@@ -1113,6 +1157,7 @@ func _advance_visual_suspicion(
 		_apply_investigation_stare_pose()
 
 	if _visual_suspicion >= maxf(vision_alert_suspicion, 0.01):
+		var newly_confirmed: bool = _awareness_state != STATE_ALERTED
 		_last_seen_position = observed_position
 		_last_confirmed_velocity = _player.velocity
 		_set_attention_toward(observed_position)
@@ -1120,6 +1165,8 @@ func _advance_visual_suspicion(
 		_mark_pursuit_visible()
 		_seen_count += 1
 		_enter_state(STATE_ALERTED, observed_position, true)
+		if newly_confirmed:
+			local_alert_confirmed.emit(observed_position)
 		return
 
 	if (

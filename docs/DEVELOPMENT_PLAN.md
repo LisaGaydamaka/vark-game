@@ -1394,9 +1394,27 @@ No cover prediction, hidden-player scoring, room-clearing tactics, or squad beha
 
 **Manual:** accepted by the user/playtester on tuned `test` head `7b0002a808a9cd2ce5a999eac1f0d286781095b7` after the Phase 5 stealth playtest. The accepted search/pursuit feel covers last-known pursuit before search, distraction priority, cautious search movement, spaced stops and held looks, long bounded search patience, non-omniscient local evidence, immediate real-evidence response, recovery, and elevated/lowered pursuit/search behavior with real occlusion.
 
-## 5.6 NPC communication/local knowledge `[ ]`
+## 5.6 NPC communication/local knowledge `[~]`
 
 Implement explicit information sharing/alarm behavior without automatic global player knowledge.
+
+The first bounded implementation keeps the accepted 5.4/5.5 perception/search values unchanged and adds only explicit knowledge-transfer seams:
+
+- `VarkGuardCommunication` listens for a guard's **new local confirmed visual alert**. The first transition into confirmed ALERTED queues one `npc.local_warning` semantic report containing reporter identity/faction, reporter origin, authored warning strength, and the reporter's last confirmed evidence position. Continued same-contact vision does not rebroadcast every frame;
+- local warnings are not global knowledge. A potential receiver must be conscious, share the explicit faction, and be able to hear the warning through the existing acoustic topology at its real listener position/threshold. Closed doors/spaces therefore affect warning transfer through the same propagation math as other gameplay-significant sound. The separate `npc.warning` gameplay-sound fact contains only origin/strength and does not smuggle the evidence position through the sound API;
+- an accepted local warning gives second-hand **investigation** knowledge at the reported evidence position. It never queries or follows the hidden current player position. A guard already in confirmed ALERTED pursuit keeps its stronger local trail instead of accepting weaker shared knowledge;
+- `VarkAlarmChannel` is an explicit authored/mission-facing alarm seam. Raising an alarm queues `npc.alarm_raised` with an alarm-channel ID, audience faction, source actor ID, evidence position, and serial. Only guards subscribed to that alarm channel/faction accept it. Alarm reception begins **search** around the reported evidence location; it does not turn recipients into confirmed pursuit or reveal current player position;
+- ordinary confirmed detection automatically warns only through the local acoustic rule. It does **not** automatically raise a building/faction alarm. Mission logic, a switch, machine, script, or future rule action must explicitly call the authored alarm channel when broad propagation is intended;
+- active alarm channel state (active flag, last evidence/source, raise serial) is semantic save truth. Recipient investigation/search truth is already owned by guard awareness. Restore reinstates those states without replaying warning/alarm events, preserving the foundation rule that loading a save must not itself become gameplay;
+- the Communication Lab uses two real guards, the real acoustic spaces/ordinary door, real awareness/navigation, one local-warning pair, and one explicit building alarm. It is a development proof fixture rather than a new mission rule language or dialogue system.
+
+This item does not implement squad tactics, radio networks, body discovery, mission-rule authoring, alarm switches/sirens, combat coordination, faction diplomacy, or omniscient global alert. Those remain later content/system work.
+
+**Done when:** newly confirmed local sight emits one explicit local report instead of a per-frame broadcast; wrong-faction or acoustically inaudible guards gain no knowledge; an audible same-faction receiver investigates exactly the reported last-confirmed position and does not track later hidden player motion; an explicitly raised authored alarm reaches only subscribed faction/channel recipients and starts local search from the alarm evidence position without granting confirmed pursuit; current confirmed pursuit cannot be overwritten by second-hand reports; active alarm plus recipient knowledge survive save/load without communication replay; malformed communication payloads fail closed; and existing stealth/search/save/event regressions remain green.
+
+**Automated:** a dedicated Communication suite launches the real Communication Lab through Application/WorldSession and proves exact local-warning payload shape/no current-player field, one report per confirmed-alert transition, closed-door acoustic rejection, faction rejection, same-faction nearby acceptance, fixed reported-position knowledge despite later player movement, explicit alarm subscription, alarm search without confirmed pursuit, and quicksave/quickload of alarm + recipient search with zero replayed communication events. The suite is wired through the authoritative all-tests barrier; existing Awareness, Acoustics, Application/save, Navigation, and Phase 3 Integration suites remain required compatibility barriers.
+
+**Manual:** none for this bounded architecture item. Final warning dialogue/nonverbal presentation, alarm audio/visual presentation, authored alarm switches, and mission-specific propagation feel are later player-facing/content work; this step's knowledge ownership, locality, event ordering, and persistence are deterministic.
 
 ## 5.7 Door/nav/perception integration `[ ]`
 
