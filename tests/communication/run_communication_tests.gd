@@ -238,11 +238,11 @@ func _assert_local_warning_and_alarm_knowledge() -> void:
 		&"committed",
 		60
 	)
-	var old_world: Node = world
+	var old_world_instance_id: int = world.get_instance_id()
 	var loaded: bool = bool(application.call("quickload_latest"))
 	var replacement_ready: bool = await _wait_for_replacement_world(
 		application,
-		old_world,
+		old_world_instance_id,
 		240
 	)
 	var restored_world := application.get("current_world") as Node3D
@@ -279,7 +279,7 @@ func _assert_local_warning_and_alarm_knowledge() -> void:
 		and loaded
 		and replacement_ready
 		and restored_world != null
-		and restored_world != old_world
+		and restored_world.get_instance_id() != old_world_instance_id
 		and restored_session != null
 		and restored_alarm != null
 		and restored_reaction != null
@@ -343,7 +343,7 @@ func _wait_for_save_status(
 
 func _wait_for_replacement_world(
 	application: Node,
-	old_world: Node,
+	old_world_instance_id: int,
 	max_frames: int
 ) -> bool:
 	for _index: int in max_frames:
@@ -351,7 +351,7 @@ func _wait_for_replacement_world(
 		var session: Node = application.get("current_session")
 		if (
 			world != null
-			and world != old_world
+			and world.get_instance_id() != old_world_instance_id
 			and session != null
 			and int(session.get("state")) == WorldSession.State.PLAYING
 			and bool(world.get("navigation_ready"))

@@ -107,7 +107,7 @@ func _assert_same_door_integration() -> void:
 		and post_use.get("guard_door_id", "") == "door.slice"
 		and int(post_use.get("guard_door_use_count", 0)) >= 1
 		and bool(link_summary.get("configured", false))
-		and bool(link_summary.get("map_valid", false))
+		and bool(link_summary.get("map_bound", false))
 		and bool(portal_after_use.get("uses_door", false))
 		and portal_after_use.get("door_id", &"") == &"door.slice",
 		"5.7 the same persistent door owns the explicit nav link used by the guard and the acoustic portal consumed by perception"
@@ -218,11 +218,11 @@ func _assert_same_door_integration() -> void:
 		"open_fraction": 0.0,
 		"motion_blocked": false,
 	})
-	var old_world: Node = world
+	var old_world_instance_id: int = world.get_instance_id()
 	var loaded: bool = bool(application.call("quickload_latest"))
 	var replacement_ready: bool = await _wait_for_replacement_world(
 		application,
-		old_world,
+		old_world_instance_id,
 		300
 	)
 
@@ -301,7 +301,7 @@ func _assert_same_door_integration() -> void:
 		and loaded
 		and replacement_ready
 		and restored_world != null
-		and restored_world != old_world
+		and restored_world.get_instance_id() != old_world_instance_id
 		and restored_session != null
 		and restored_player != null
 		and restored_guard != null
@@ -318,7 +318,7 @@ func _assert_same_door_integration() -> void:
 		)
 		and bool(restored_summary.get("navigation_passage_open", false))
 		and bool(restored_link.get("configured", false))
-		and bool(restored_link.get("map_valid", false))
+		and bool(restored_link.get("map_bound", false))
 		and is_equal_approx(
 			float(restored_summary.get("acoustic_openness", 0.0)),
 			1.0
@@ -406,7 +406,7 @@ func _wait_for_save_status(
 
 func _wait_for_replacement_world(
 	application: Node,
-	old_world: Node,
+	old_world_instance_id: int,
 	max_frames: int
 ) -> bool:
 	for _index: int in max_frames:
@@ -414,7 +414,7 @@ func _wait_for_replacement_world(
 		var session: Node = application.get("current_session")
 		if (
 			world != null
-			and world != old_world
+			and world.get_instance_id() != old_world_instance_id
 			and session != null
 			and int(session.get("state")) == WorldSession.State.PLAYING
 			and bool(world.get("navigation_ready"))
