@@ -5,11 +5,15 @@ const ApplicationScene = preload("res://application/Application.tscn")
 const Collectible = preload("res://gameplay/pickups/collectible.gd")
 const OrdinaryDoor = preload("res://gameplay/doors/ordinary_door.gd")
 const LAB_PATH: String = "res://scenes/LootKeyLab.tscn"
+const TEST_SAVE_DIRECTORY: String = "user://vark_tests/phase63"
 
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
 	_release_interact()
+	_cleanup_test_storage()
 	var application: Node = ApplicationScene.instantiate()
+	var coordinator: Node = application.get_node("SaveCoordinator")
+	coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
 	var labels: PackedStringArray = application.get("development_launch_labels")
 	var paths: PackedStringArray = application.get("development_launch_resource_paths")
 	assert_true.call(
@@ -119,7 +123,12 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	await _settle(tree, 2)
 	var generation: int = int(application.call("request_quicksave"))
-	var snapshot: Dictionary = await _wait_for_quicksave(application, tree, 120)
+	var snapshot: Dictionary = await _wait_for_quicksave(
+		coordinator,
+		tree,
+		generation,
+		120
+	)
 	var saved_world: Dictionary = snapshot.get("session", {}).get("world_state", {})
 	var saved_existence: Dictionary = saved_world.get("object_existence", {})
 	var saved_player: Dictionary = saved_world.get("player", {})
@@ -168,6 +177,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	application.call("exit_current_world")
 	application.queue_free()
 	await tree.process_frame
+	_cleanup_test_storage()
 
 
 func _collect_at(
@@ -200,14 +210,40 @@ func _settle(tree: SceneTree, frames: int = 1) -> void:
 
 
 func _wait_for_quicksave(
-	application: Node,
+	coordinator: Node,
 	tree: SceneTree,
+	generation: int,
 	max_frames: int
 ) -> Dictionary:
 	for _index: int in max_frames:
-		var snapshot: Dictionary = application.call("get_latest_quicksave_snapshot")
-		if not snapshot.is_empty():
-			return snapshot
+		var status: Dictionary = coordinator.call(
+			"get_request_status",
+			generation
+		)
+		if status.get("status", &"") == &"committed":
+			return coordinator.call(
+				"get_request_snapshot",
+				generation
+			)
+		if (
+			status.get("status", &"") == &"failed"
+			or status.get("status", &"") == &"cancelled"
+		):
+			return {}
 		await tree.physics_frame
 		await tree.process_frame
 	return {}
+
+
+func _cleanup_test_storage() -> void:
+	var final_path: String = TEST_SAVE_DIRECTORY + "/quicksave.varksave"
+	for path: String in [
+		final_path,
+		final_path + ".new",
+		final_path + ".bak",
+	]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var absolute_dir: String = ProjectSettings.globalize_path(TEST_SAVE_DIRECTORY)
+	if DirAccess.dir_exists_absolute(absolute_dir):
+		DirAccess.remove_absolute(absolute_dir)
