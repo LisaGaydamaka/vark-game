@@ -379,6 +379,8 @@ Do not design a universal subsystem before at least one representative gameplay 
 
 When a system touches an existing integration spine such as doors, save/load, input ownership, perception, mission loading, world lifetime, persistent identity, or authoring, test the interaction while both systems are still small.
 
+**Door/frame geometry rule:** never leave any gap between a closed door leaf and its doorframe. This applies to authored maps, generated/test fixtures, reusable door/opening scenes, and replacement visual models. Whenever door or frame dimensions/transforms change, adjust the geometry so the closed door seats flush against the frame with no visible slit or unintended collision/LOS/acoustic opening. Do not preserve or introduce a gap merely for placement convenience.
+
 Cross-cutting architecture is not considered stable until the relevant `FOUNDATION_CONTRACT.md` gate has been exercised. In particular, do not harden stealth APIs before the crude hostile/combat compatibility proof demonstrates that the same actor/input/event/perception/persistence model can support active hostile interaction.
 
 When save/load work begins, preserve the foundation's stable gameplay boundary: semantic save capture represents one completed simulation/event instant, and restore establishes object existence before applying semantic state. Do not add per-system ad hoc save timing.
