@@ -13,8 +13,9 @@ const KIND_LOOT: StringName = &"loot"
 @export var pickup_kind: StringName = KIND_LOOT
 @export var loot_value: int = 0
 @export var display_label: String = "Collectible"
-@export var base_color: Color = Color(0.78, 0.62, 0.18, 1.0)
+@export var asset: VarkCollectibleAsset
 
+@onready var pickup_collision: CollisionShape3D = $CollisionShape3D
 @onready var pickup_mesh: MeshInstance3D = $MeshInstance3D
 @onready var pickup_label: Label3D = $Label3D
 
@@ -25,9 +26,12 @@ var _material: StandardMaterial3D = null
 
 func _ready() -> void:
 	add_to_group(&"vark_interactable")
+	pickup_collision.shape = pickup_collision.shape.duplicate()
 	_material = StandardMaterial3D.new()
 	pickup_mesh.material_override = _material
 	pickup_label.text = display_label
+	if not _apply_asset():
+		push_error("VarkCollectible requires a valid imported VarkCollectibleAsset.")
 	_refresh_visual()
 
 
@@ -46,6 +50,8 @@ func get_content_id() -> String:
 func can_interact(interactor: Node) -> bool:
 	return (
 		not _collected
+		and asset != null
+		and asset.is_valid_asset()
 		and interactor != null
 		and interactor.has_method("collect_authored_pickup")
 	)
@@ -67,6 +73,10 @@ func is_interaction_highlighted() -> bool:
 
 func is_collected() -> bool:
 	return _collected
+
+
+func get_asset_summary() -> Dictionary:
+	return asset.get_summary().duplicate(true) if asset != null else {}
 
 
 func get_collection_payload() -> Dictionary:
@@ -94,10 +104,28 @@ func mark_collected_for_tombstone() -> bool:
 	return true
 
 
+func _apply_asset() -> bool:
+	if asset == null or not asset.is_valid_asset():
+		pickup_mesh.mesh = null
+		return false
+	pickup_mesh.mesh = asset.visual_model
+	var box := pickup_collision.shape as BoxShape3D
+	if box == null:
+		return false
+	box.size = asset.collision_size
+	pickup_collision.position = asset.collision_offset
+	pickup_label.position = asset.label_offset
+	return true
+
+
 func _refresh_visual() -> void:
 	if _material == null:
 		return
-	_material.albedo_color = base_color
+	_material.albedo_color = (
+		asset.base_color
+		if asset != null
+		else Color(0.78, 0.62, 0.18, 1.0)
+	)
 	_material.emission_enabled = false
 	if _highlighted:
 		_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED

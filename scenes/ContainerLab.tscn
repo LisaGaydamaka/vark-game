@@ -1,14 +1,17 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scenes/container_lab.gd" id="1_lab"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
 [ext_resource type="PackedScene" path="res://gameplay/containers/OrdinaryContainer.tscn" id="3_container"]
+[ext_resource type="PackedScene" path="res://assets/container_assets/DeskDrawer.tscn" id="4_drawer_asset"]
+[ext_resource type="PackedScene" path="res://assets/container_assets/WoodenChest.tscn" id="5_chest_asset"]
+[ext_resource type="PackedScene" path="res://assets/container_assets/TallCabinet.tscn" id="6_cabinet_asset"]
 
 [sub_resource type="BoxShape3D" id="FloorShape"]
-size = Vector3(11, 0.2, 10)
+size = Vector3(7, 0.2, 7)
 
 [sub_resource type="BoxMesh" id="FloorMesh"]
-size = Vector3(11, 0.2, 10)
+size = Vector3(7, 0.2, 7)
 
 [sub_resource type="StandardMaterial3D" id="FloorMaterial"]
 albedo_color = Color(0.30, 0.30, 0.30, 1)
@@ -21,7 +24,7 @@ rotation_degrees = Vector3(-55, -25, 0)
 shadow_enabled = true
 
 [node name="Player" parent="." instance=ExtResource("2_player")]
-position = Vector3(0, 0, 4.8)
+position = Vector3(0, 0, 3.0)
 
 [node name="Floor" type="StaticBody3D" parent="."]
 position = Vector3(0, -0.1, 0)
@@ -34,78 +37,57 @@ mesh = SubResource("FloorMesh")
 material_override = SubResource("FloorMaterial")
 
 [node name="Drawer" parent="." instance=ExtResource("3_container")]
-position = Vector3(-3.0, 0.45, 0.0)
+position = Vector3(-1.45, 0, 0)
 persistent_id = "container_lab.drawer"
 content_id = "container.drawer"
 container_id = &"container.drawer"
-container_variant = "sliding_drawer"
-opening_face = &"front"
-mechanism_mode = &"slide"
-outer_size = Vector3(1.8, 0.9, 1.0)
-open_position_offset = Vector3(0, 0, 0.9)
-contents_closed_position = Vector3(0, 0, 0.12)
-contents_follow_mechanism = true
-base_color = Color(0.31, 0.20, 0.12, 1)
-mechanism_color = Color(0.46, 0.29, 0.15, 1)
+container_variant = "desk_drawer"
+asset_scene = ExtResource("4_drawer_asset")
 
 [node name="Chest" parent="." instance=ExtResource("3_container")]
-position = Vector3(0, 0.60, 0.0)
+position = Vector3(0, 0, 0)
 persistent_id = "container_lab.chest"
 content_id = "container.chest"
 container_id = &"container.chest"
-container_variant = "hinged_chest"
-opening_face = &"top"
-mechanism_mode = &"hinge"
-outer_size = Vector3(1.8, 1.2, 1.25)
-open_rotation_degrees = Vector3(-105, 0, 0)
-contents_closed_position = Vector3(0, 0.12, 0)
-contents_follow_mechanism = false
-base_color = Color(0.25, 0.17, 0.10, 1)
-mechanism_color = Color(0.40, 0.25, 0.12, 1)
+container_variant = "wooden_chest"
+asset_scene = ExtResource("5_chest_asset")
 
 [node name="Cabinet" parent="." instance=ExtResource("3_container")]
-position = Vector3(3.0, 1.0, 0.0)
+position = Vector3(1.45, 0, 0)
 persistent_id = "container_lab.cabinet"
 content_id = "container.cabinet"
 container_id = &"container.cabinet"
-container_variant = "hinged_cabinet"
-opening_face = &"front"
-mechanism_mode = &"hinge"
-outer_size = Vector3(1.6, 2.0, 0.8)
-open_rotation_degrees = Vector3(0, -105, 0)
-contents_closed_position = Vector3(0, 0, 0.05)
-contents_follow_mechanism = false
-base_color = Color(0.22, 0.27, 0.21, 1)
-mechanism_color = Color(0.30, 0.40, 0.27, 1)
+container_variant = "tall_cabinet"
+asset_scene = ExtResource("6_cabinet_asset")
 
 [node name="DrawerLabel" type="Label3D" parent="."]
-position = Vector3(-3.0, 1.55, 0.2)
-text = "DRAWER\nF opens physically · contents move with it"
+position = Vector3(-1.45, 0.95, 0.15)
+text = "DRAWER\nimported furniture + real moving tray"
 billboard = 1
-font_size = 20
-outline_size = 6
+font_size = 18
+outline_size = 5
 no_depth_test = true
 
 [node name="ChestLabel" type="Label3D" parent="."]
-position = Vector3(0, 2.1, 0.2)
-text = "CHEST\nF lifts lid · loot remains in base"
+position = Vector3(0, 0.85, 0.15)
+text = "CHEST\nimported base + hinged imported lid"
 billboard = 1
-font_size = 20
-outline_size = 6
+font_size = 18
+outline_size = 5
 no_depth_test = true
 
 [node name="CabinetLabel" type="Label3D" parent="."]
-position = Vector3(3.0, 2.5, 0.2)
-text = "CABINET\nF swings door · item stays inside"
+position = Vector3(1.45, 1.65, 0.15)
+text = "CABINET\nimported body + side-hinged door"
 billboard = 1
-font_size = 20
-outline_size = 6
+font_size = 18
+outline_size = 5
 no_depth_test = true
 
 [node name="Instructions" type="Label3D" parent="."]
-position = Vector3(0, 3.1, 1.4)
-text = "6.4 CONTAINER LAB\nNo inventory menu: open furniture, look inside, take the physical object with F"
+position = Vector3(0, 2.15, 1.0)
+text = "6.4 CONTAINER LAB\nImported models define size, pivot, open pose, collision and contents anchor"
 billboard = 1
-font_size = 24
+font_size = 22
 outline_size = 6
 no_depth_test = true

@@ -75,6 +75,22 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Loot/Key Lab closed door leaf seats flush against both frame sides, header, and floor with no authored slit"
 	)
 
+	var key_asset: Dictionary = key.get_asset_summary() if key != null else {}
+	var loot25_asset: Dictionary = loot25.get_asset_summary() if loot25 != null else {}
+	var loot75_asset: Dictionary = loot75.get_asset_summary() if loot75 != null else {}
+	assert_true.call(
+		key_asset.get("asset_id", &"") == &"brass_key"
+		and loot25_asset.get("asset_id", &"") == &"gold_cup"
+		and loot75_asset.get("asset_id", &"") == &"silver_candlestick"
+		and str(key_asset.get("model_path", "")).ends_with(".obj")
+		and str(loot25_asset.get("model_path", "")).ends_with(".obj")
+		and str(loot75_asset.get("model_path", "")).ends_with(".obj")
+		and (key_asset.get("visual_size", Vector3.ZERO) as Vector3).length() < 0.18
+		and (loot25_asset.get("visual_size", Vector3.ZERO) as Vector3).length() < 0.30
+		and (loot75_asset.get("visual_size", Vector3.ZERO) as Vector3).length() < 0.30,
+		"6.3 key and loot presentation uses realistically scaled imported item models"
+	)
+
 	assert_true.call(
 		launched
 		and world != null

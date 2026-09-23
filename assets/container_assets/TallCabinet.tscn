@@ -1,0 +1,60 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://gameplay/containers/container_asset.gd" id="1_asset"]
+[ext_resource type="ArrayMesh" path="res://assets/models/containers/cabinet_body.obj" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://assets/models/containers/cabinet_door.obj" id="3_mechanism"]
+
+[sub_resource type="BoxShape3D" id="TopBottomShape"]
+size = Vector3(0.75, 0.05, 0.45)
+[sub_resource type="BoxShape3D" id="SideShape"]
+size = Vector3(0.05, 1.25, 0.45)
+[sub_resource type="BoxShape3D" id="BackShape"]
+size = Vector3(0.65, 1.25, 0.04)
+[sub_resource type="BoxShape3D" id="ShelfShape"]
+size = Vector3(0.65, 0.04, 0.41)
+[sub_resource type="BoxShape3D" id="DoorShape"]
+size = Vector3(0.75, 1.25, 0.04)
+
+[node name="CabinetAsset" type="Node3D"]
+script = ExtResource("1_asset")
+asset_id = &"tall_cabinet"
+body_color = Color(0.22, 0.27, 0.21, 1)
+mechanism_color = Color(0.30, 0.40, 0.27, 1)
+
+[node name="StaticBody" type="StaticBody3D" parent="."]
+[node name="Bottom" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0, 0.025, 0)
+shape = SubResource("TopBottomShape")
+[node name="Top" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0, 1.325, 0)
+shape = SubResource("TopBottomShape")
+[node name="Left" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(-0.35, 0.675, 0)
+shape = SubResource("SideShape")
+[node name="Right" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0.35, 0.675, 0)
+shape = SubResource("SideShape")
+[node name="Back" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0, 0.675, -0.205)
+shape = SubResource("BackShape")
+[node name="Shelf" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0, 0.67, 0.02)
+shape = SubResource("ShelfShape")
+
+[node name="BodyMesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_body")
+
+[node name="Mechanism" type="AnimatableBody3D" parent="."]
+position = Vector3(-0.375, 0.675, 0.225)
+[node name="Door" type="CollisionShape3D" parent="Mechanism"]
+position = Vector3(0.375, 0, 0.02)
+shape = SubResource("DoorShape")
+[node name="MechanismMesh" type="MeshInstance3D" parent="Mechanism"]
+mesh = ExtResource("3_mechanism")
+
+[node name="ContentsAnchor" type="Node3D" parent="."]
+position = Vector3(0, 0.69, 0.04)
+
+[node name="OpenPose" type="Marker3D" parent="."]
+position = Vector3(-0.375, 0.675, 0.225)
+rotation_degrees = Vector3(0, -105, 0)

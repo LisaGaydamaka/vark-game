@@ -1,9 +1,12 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scenes/loot_key_lab.gd" id="1_lab"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
 [ext_resource type="PackedScene" path="res://gameplay/pickups/Collectible.tscn" id="3_pickup"]
 [ext_resource type="PackedScene" path="res://gameplay/doors/OrdinaryDoor.tscn" id="4_door"]
+[ext_resource type="Resource" path="res://assets/items/brass_key.tres" id="5_key_asset"]
+[ext_resource type="Resource" path="res://assets/items/gold_cup.tres" id="6_loot25_asset"]
+[ext_resource type="Resource" path="res://assets/items/silver_candlestick.tres" id="7_loot75_asset"]
 
 [sub_resource type="BoxShape3D" id="FloorShape"]
 size = Vector3(9, 0.2, 9)
@@ -52,25 +55,25 @@ persistent_id = "loot_key_lab.key"
 content_id = "key.lab"
 pickup_kind = &"key"
 display_label = "KEY · key.lab"
-base_color = Color(0.78, 0.72, 0.20, 1)
+asset = ExtResource("5_key_asset")
 
 [node name="Loot25" parent="." instance=ExtResource("3_pickup")]
-position = Vector3(-2.0, 1.3, 2.0)
+position = Vector3(-2.0, 1.215, 2.0)
 persistent_id = "loot_key_lab.loot25"
 content_id = "loot.lab.25"
 pickup_kind = &"loot"
 loot_value = 25
 display_label = "LOOT · 25"
-base_color = Color(0.70, 0.35, 0.16, 1)
+asset = ExtResource("6_loot25_asset")
 
 [node name="Loot75" parent="." instance=ExtResource("3_pickup")]
-position = Vector3(2.0, 1.3, 2.0)
+position = Vector3(2.0, 1.205, 2.0)
 persistent_id = "loot_key_lab.loot75"
 content_id = "loot.lab.75"
 pickup_kind = &"loot"
 loot_value = 75
 display_label = "LOOT · 75"
-base_color = Color(0.72, 0.48, 0.16, 1)
+asset = ExtResource("7_loot75_asset")
 
 [node name="LeftWall" type="StaticBody3D" parent="." groups=["vark_door_frame"]]
 position = Vector3(-2.575, 1.3, -1.0)
@@ -108,7 +111,7 @@ required_key_id = &"key.lab"
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(0, 2.9, 2.1)
-text = "6.3 LOOT / KEY LAB\nF = collect centered key/loot · collected objects disappear\nkey.lab unlocks the real locked door · loot becomes abstract run stats"
+text = "6.3 LOOT / KEY LAB\nF = collect imported key/loot objects · collected objects disappear\nkey.lab unlocks the real locked door · loot becomes abstract run stats"
 billboard = 1
 font_size = 24
 outline_size = 6

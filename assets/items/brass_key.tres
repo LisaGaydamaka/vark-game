@@ -1,0 +1,11 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+[ext_resource type="Script" path="res://gameplay/pickups/collectible_asset.gd" id="1_asset"]
+[ext_resource type="ArrayMesh" path="res://assets/models/items/brass_key.obj" id="2_model"]
+[resource]
+script = ExtResource("1_asset")
+asset_id = &"brass_key"
+visual_model = ExtResource("2_model")
+collision_size = Vector3(0.14, 0.06, 0.02)
+collision_offset = Vector3(-0.005, 0, 0)
+label_offset = Vector3(0, 0.11, 0)
+base_color = Color(0.72, 0.62, 0.18, 1)

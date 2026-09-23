@@ -1,16 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://gameplay/pickups/collectible.gd" id="1_collectible"]
 
 [sub_resource type="BoxShape3D" id="PickupShape"]
-size = Vector3(0.55, 0.55, 0.22)
-
-[sub_resource type="BoxMesh" id="PickupMesh"]
-size = Vector3(0.55, 0.55, 0.22)
-
-[sub_resource type="StandardMaterial3D" id="LabelBacking"]
-transparency = 1
-albedo_color = Color(1, 1, 1, 0)
+size = Vector3(0.1, 0.1, 0.1)
 
 [node name="Collectible" type="StaticBody3D"]
 collision_layer = 1
@@ -21,10 +14,8 @@ script = ExtResource("1_collectible")
 shape = SubResource("PickupShape")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-mesh = SubResource("PickupMesh")
 
 [node name="Label3D" type="Label3D" parent="."]
-position = Vector3(0, 0.55, 0)
 text = "Collectible"
 billboard = 1
 font_size = 20

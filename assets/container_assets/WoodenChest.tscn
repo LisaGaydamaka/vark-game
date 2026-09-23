@@ -1,0 +1,55 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://gameplay/containers/container_asset.gd" id="1_asset"]
+[ext_resource type="ArrayMesh" path="res://assets/models/containers/chest_body.obj" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://assets/models/containers/chest_lid.obj" id="3_mechanism"]
+
+[sub_resource type="BoxShape3D" id="BaseShape"]
+size = Vector3(0.9, 0.06, 0.55)
+[sub_resource type="BoxShape3D" id="SideShape"]
+size = Vector3(0.05, 0.36, 0.55)
+[sub_resource type="BoxShape3D" id="FrontBackShape"]
+size = Vector3(0.8, 0.36, 0.05)
+[sub_resource type="BoxShape3D" id="LidShape"]
+size = Vector3(0.9, 0.06, 0.55)
+
+[node name="ChestAsset" type="Node3D"]
+script = ExtResource("1_asset")
+asset_id = &"wooden_chest"
+body_color = Color(0.25, 0.17, 0.10, 1)
+mechanism_color = Color(0.40, 0.25, 0.12, 1)
+
+[node name="StaticBody" type="StaticBody3D" parent="."]
+[node name="Base" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0, 0.03, 0)
+shape = SubResource("BaseShape")
+[node name="Left" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(-0.425, 0.24, 0)
+shape = SubResource("SideShape")
+[node name="Right" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0.425, 0.24, 0)
+shape = SubResource("SideShape")
+[node name="Front" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0, 0.24, 0.25)
+shape = SubResource("FrontBackShape")
+[node name="Back" type="CollisionShape3D" parent="StaticBody"]
+position = Vector3(0, 0.24, -0.25)
+shape = SubResource("FrontBackShape")
+
+[node name="BodyMesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_body")
+
+[node name="Mechanism" type="AnimatableBody3D" parent="."]
+position = Vector3(0, 0.42, -0.275)
+[node name="Lid" type="CollisionShape3D" parent="Mechanism"]
+position = Vector3(0, 0.03, 0.275)
+shape = SubResource("LidShape")
+[node name="MechanismMesh" type="MeshInstance3D" parent="Mechanism"]
+mesh = ExtResource("3_mechanism")
+
+[node name="ContentsAnchor" type="Node3D" parent="."]
+position = Vector3(0, 0.06, 0.01)
+
+[node name="OpenPose" type="Marker3D" parent="."]
+position = Vector3(0, 0.42, -0.275)
+rotation_degrees = Vector3(-105, 0, 0)

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+[ext_resource type="Script" path="res://gameplay/pickups/collectible_asset.gd" id="1_asset"]
+[ext_resource type="ArrayMesh" path="res://assets/models/items/gold_cup.obj" id="2_model"]
+[resource]
+script = ExtResource("1_asset")
+asset_id = &"gold_cup"
+visual_model = ExtResource("2_model")
+collision_size = Vector3(0.16, 0.17, 0.12)
+collision_offset = Vector3(0, 0.085, 0)
+label_offset = Vector3(0, 0.24, 0)
+base_color = Color(0.82, 0.56, 0.13, 1)

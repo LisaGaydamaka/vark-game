@@ -416,7 +416,7 @@ Lockpicking is not part of the base game.
 
 The normal base door is not destructible.
 
-Doors physically animate between open and closed states. The player does not need a special mechanic for holding a normal door at an arbitrary partial angle. Compatible external model variants provide the visible door/openable-window presentation without replacing the shared ordinary-door gameplay contract.
+Doors physically animate between open and closed states. The player does not need a special mechanic for holding a normal door at an arbitrary partial angle. Compatible external model variants provide the visible **leaf-only** door/openable-window presentation without replacing the shared ordinary-door gameplay contract. The ordinary door asset is the moving leaf; its surrounding frame/wall opening remains level geometry rather than part of the reusable door object.
 
 There is no keyhole-peeking mode.
 
@@ -440,11 +440,13 @@ Because doors touch interaction, collision, sound, vision, navigation, NPC use, 
 
 Containers may physically open and expose their contents.
 
-Drawers, lids, cabinets, and similar mechanisms should visibly change state where the content uses such an object.
+Ordinary furniture-like containers are authored as reusable **imported container assets**, not generated from generic runtime dimensions. An asset owns its imported static/body model, imported moving-part model, authored collision, mechanism pivot/closed pose, authored open pose, and contents anchor. The shared container gameplay archetype owns interaction, semantic phase/progress, sound/events, and persistence; it does not infer furniture proportions, hinge location, or drawer geometry from a generic bounding box.
 
-Loot or inventory items inside can then be taken normally.
+A drawer asset therefore moves an authored drawer/tray assembly; a chest rotates an authored lid around its rear hinge; a cabinet rotates an authored door around its side hinge. Contents anchors may live under the moving mechanism (drawer) or the stationary body (chest/cabinet) as appropriate.
 
-Mission authors may create simpler containers when a full moving mechanism is unnecessary.
+Loot or inventory items inside are real world objects and can then be taken normally. There is no hidden container inventory/list.
+
+Mission authors may create simpler container assets when a full moving mechanism is unnecessary, but ordinary container presentation still comes from authored/imported content rather than a universal generated furniture block.
 
 ---
 
@@ -452,7 +454,9 @@ Mission authors may create simpler containers when a full moving mechanism is un
 
 Loot is an abstract collected resource once taken.
 
-When collected, the world object disappears and its value/count is recorded.
+Before collection, loot, keys, and small mission items use reusable **imported item models** through the shared collectible gameplay archetype. The imported asset defines the visible object and authored collision/scale; the gameplay archetype defines interaction, highlight, semantic kind/value/ID, collection, persistence, and tombstone behavior. There is no universal generated pickup block used as ordinary content.
+
+When collected, the world object disappears and its value/count or semantic possession is recorded as appropriate.
 
 Its meaning between missions—score, purchasing power, objective resource, campaign resource, etc.—is content policy.
 

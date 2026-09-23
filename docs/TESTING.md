@@ -1085,7 +1085,7 @@ The completed Windows run satisfied these cases. The first round trip exposed on
 
 ## Loot, keys, possession, and run stats (Phase 6.3)
 
-- **Fixture:** Development Launch → **Loot/Key Lab** uses the production Application/WorldSession/Player path, the real ordinary locked door, and authored persistent collectible instances.
+- **Fixture:** Development Launch → **Loot/Key Lab** uses the production Application/WorldSession/Player path, the real ordinary locked door, and authored persistent collectible instances backed by reusable imported item models. Representative key/loot model bounds are asserted so the removed 55 cm placeholder block cannot return silently.
 - **Possession:** key and mission-item pickups grant only semantic possession IDs. Door/mission queries use `Player.has_semantic_possession(id)`; 6.3 adds no inventory selection/equip/menu behavior.
 - **Run stats:** one session-owned `VarkMissionRunState` records `loot_count` and `loot_value`. Collected loot does not remain as a physical carried object or a second possession counter.
 - **Authored removal:** collection unregisters the authored persistent entity and records its stable persistent ID in `object_existence.authored_tombstones`. Save validation requires unique non-empty string IDs and still rejects non-empty `runtime_entities`.
@@ -1096,7 +1096,7 @@ Manual acceptance:
 
 - [ ] F5 → Development Launch → **Loot/Key Lab**.
 - [ ] Before collecting the key, inspect the closed locked door from both sides and up close. The leaf meets both frame sides, the header, and the floor exactly; there is no visible slit between the closed door and its frame.
-- [ ] Center **KEY · key.lab** and press **F** once. It disappears; the status changes to **KEY key.lab: OWNED**. Holding F does not repeat collection.
+- [ ] Confirm the key and two loot objects look like plausibly scaled imported objects, not identical oversized blocks. Center **KEY · key.lab** and press **F** once. It disappears; the status changes to **KEY key.lab: OWNED**. Holding F does not repeat collection.
 - [ ] Approach the locked door and press **F**. The same ordinary door unlocks and opens fully because the player owns `key.lab`; the flush frame must not stop or latch the moving leaf, and no inventory menu or explicit key-selection step appears.
 - [ ] Collect **LOOT · 25** and **LOOT · 75**. Each disappears and the status reaches **LOOT: 2 items / 100 value**.
 - [ ] Looking away/out of range clears highlight normally; walking, sprinting, crouching, jumping, and mouse look remain unchanged.
@@ -1104,22 +1104,23 @@ Manual acceptance:
 
 ## Containers and physical searching (Phase 6.4)
 
-- **Fixture:** Development Launch → **Container Lab** uses the production Application/WorldSession/Player interaction path and one reusable `VarkOrdinaryContainer` archetype.
-- **Physical search:** the moving mechanism is real solid geometry. Closed panel/lid geometry is the first interaction hit; contents are ordinary child world objects and become independently targetable only after physical exposure.
-- **Variants:** sliding drawer, top-hinged chest, and front-hinged cabinet are configuration of the same script/archetype. Compatible external frame/mechanism mesh paths may replace generated low-fi presentation without changing collision, identity, save ownership, interaction, or content semantics.
-- **Persistence:** container phase/progress is the container's persistent snapshot. Loot/key/item children retain separate persistent IDs; collection uses existing tombstones, possession, and MissionRunState. There is no serialized hidden container inventory.
+- **Fixture:** Development Launch → **Container Lab** uses the production Application/WorldSession/Player path and one shared `VarkOrdinaryContainer` gameplay archetype.
+- **Imported asset contract:** each variant supplies a reusable `VarkContainerAsset` scene with imported body/mechanism models, authored collision, mechanism closed pivot, authored `OpenPose`, and a contents anchor. Gameplay code does not infer furniture dimensions or hinge locations.
+- **Scale regression:** imported closed visual bounds are checked against human-scale ceilings relative to the 1.49 m player; representative container loot/key meshes are also bounded at ordinary handheld-object scale.
+- **Physical search:** closed authored collision is the first interaction hit. Drawer contents live under the moving tray anchor; chest/cabinet contents stay under stationary anchors. Exposed contents are ordinary imported-model collectibles.
+- **Persistence:** container phase/progress remains the container snapshot. Contents retain independent persistent IDs and existing tombstone/possession/run-stat ownership; there is no serialized hidden container inventory.
 
 Manual acceptance:
 
 - [ ] F5 → Development Launch → **Container Lab**.
-- [ ] Center the closed **DRAWER** and press **F** once. It physically slides out; holding F does not repeatedly toggle.
-- [ ] Before opening, contents are not selectable through the closed drawer front. After opening, the physical loot/key inside become independently highlightable.
-- [ ] Take an exposed item with **F**. Loot disappears into run stats or the key becomes semantic possession exactly like ordinary 6.3 pickups; no container screen/list appears.
-- [ ] Press **F** on the open drawer itself to close it again.
-- [ ] Open the **CHEST**: its lid physically hinges away and exposes stationary contents in the base.
-- [ ] Open the **CABINET**: its front door physically swings away and exposes the item inside.
-- [ ] Looking/range/highlight, walking, sprinting, crouching, jumping, and mouse look remain unchanged.
-- [ ] Report any through-closed-container pickup, floating/misaligned content, mechanism that fails to complete, stale highlight, held-F repeat, or unexpected inventory/container UI.
+- [ ] Check scale before interacting. Drawer and chest are ordinary small furniture; cabinet is normal furniture height. None should read as door-sized.
+- [ ] Open the **DRAWER** with F. The complete drawer tray—not just a flat front plate—slides outward a plausible distance, carrying the small cup/key with it.
+- [ ] Closed drawer geometry prevents selecting its contents. Once open, cup/key are independently highlightable and collect normally with F.
+- [ ] Open the **CHEST**. Its imported lid rotates around the rear hinge edge; it must not translate like a floating panel.
+- [ ] Open the **CABINET**. Its imported door rotates around the side hinge edge; it must not translate like a floating panel.
+- [ ] Re-aim at an open container and F closes it; holding F does not repeatedly toggle.
+- [ ] Looking/range/highlight, walking, sprinting, crouching, jumping, and mouse look remain unchanged; no inventory/container UI appears.
+- [ ] Report any oversized model, wrong pivot, sliding hinge, detached/floating contents, through-closed-container pickup, stale highlight, or held-F repeat.
 
 ## Doors (Phase 6.2)
 

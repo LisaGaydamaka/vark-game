@@ -1,0 +1,11 @@
+[gd_resource type="Resource" load_steps=3 format=3]
+[ext_resource type="Script" path="res://gameplay/pickups/collectible_asset.gd" id="1_asset"]
+[ext_resource type="ArrayMesh" path="res://assets/models/items/sealed_scroll.obj" id="2_model"]
+[resource]
+script = ExtResource("1_asset")
+asset_id = &"sealed_scroll"
+visual_model = ExtResource("2_model")
+collision_size = Vector3(0.20, 0.06, 0.08)
+collision_offset = Vector3(0, 0.025, 0)
+label_offset = Vector3(0, 0.13, 0)
+base_color = Color(0.67, 0.52, 0.32, 1)
