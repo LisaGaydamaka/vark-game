@@ -2,7 +2,7 @@ extends RefCounted
 
 
 const ApplicationScene = preload("res://application/Application.tscn")
-const Container = preload("res://gameplay/containers/ordinary_container.gd")
+const ContainerScript = preload("res://gameplay/containers/ordinary_container.gd")
 const LAB_PATH: String = "res://scenes/ContainerLab.tscn"
 
 
@@ -56,9 +56,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and cabinet != null
 		and drawer_loot != null
 		and drawer_key != null
-		and drawer.get_semantic_phase() == Container.PHASE_CLOSED
-		and chest.get_semantic_phase() == Container.PHASE_CLOSED
-		and cabinet.get_semantic_phase() == Container.PHASE_CLOSED,
+		and drawer.get_semantic_phase() == ContainerScript.PHASE_CLOSED
+		and chest.get_semantic_phase() == ContainerScript.PHASE_CLOSED
+		and cabinet.get_semantic_phase() == ContainerScript.PHASE_CLOSED,
 		"6.4 lab launches three real reusable container variants with authored physical contents"
 	)
 	if (
@@ -85,7 +85,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		bool(session.call(
 			"register_semantic_event_handler",
-			Container.STATE_CHANGED_EVENT_NAME,
+			ContainerScript.STATE_CHANGED_EVENT_NAME,
 			state_handler
 		)),
 		"Container terminal state changes use the existing detached semantic event route"
@@ -108,11 +108,11 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	_release_interact()
 	await _settle(tree, 40)
 	assert_true.call(
-		drawer.get_semantic_phase() == Container.PHASE_OPEN
+		drawer.get_semantic_phase() == ContainerScript.PHASE_OPEN
 		and is_equal_approx(drawer.get_open_fraction(), 1.0)
 		and state_events.size() >= 1
 		and state_events[-1].get("container_id", &"") == &"container.drawer"
-		and state_events[-1].get("state", &"") == Container.PHASE_OPEN,
+		and state_events[-1].get("state", &"") == ContainerScript.PHASE_OPEN,
 		"Fresh F opens the sliding drawer physically and emits one terminal container state fact"
 	)
 
@@ -163,8 +163,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	cabinet.request_open(player)
 	await _settle(tree, 40)
 	assert_true.call(
-		chest.get_semantic_phase() == Container.PHASE_OPEN
-		and cabinet.get_semantic_phase() == Container.PHASE_OPEN
+		chest.get_semantic_phase() == ContainerScript.PHASE_OPEN
+		and cabinet.get_semantic_phase() == ContainerScript.PHASE_OPEN
 		and chest.get_node("Mechanism").rotation.x < deg_to_rad(-90.0)
 		and cabinet.get_node("Mechanism").rotation.y < deg_to_rad(-90.0),
 		"The same container archetype supports top-hinged chest and front-hinged cabinet mechanisms without separate gameplay code"
@@ -181,7 +181,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		generation > 0
 		and not snapshot.is_empty()
-		and saved_container.get("phase", &"") == Container.PHASE_OPEN
+		and saved_container.get("phase", &"") == ContainerScript.PHASE_OPEN
 		and is_equal_approx(float(saved_container.get("open_fraction", -1.0)), 1.0)
 		and (saved_world.get("object_existence", {}) as Dictionary).get(
 			"authored_tombstones",
@@ -234,7 +234,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		quickloaded
 		and restored_drawer != null
-		and restored_drawer.get_semantic_phase() == Container.PHASE_OPEN
+		and restored_drawer.get_semantic_phase() == ContainerScript.PHASE_OPEN
 		and is_equal_approx(restored_drawer.get_open_fraction(), 1.0)
 		and restored_world.find_child("container_lab.drawer.loot25", true, false) == null
 		and not bool((restored_session.call(
