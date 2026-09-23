@@ -1017,8 +1017,14 @@ func _retry_door_open_request(delta: float) -> void:
 	_door_request_pending = true
 	_door_retry_remaining = maxf(0.0, _door_retry_remaining - delta)
 	if is_zero_approx(_door_retry_remaining):
-		_door.call(DOOR_REQUEST_OPEN_METHOD, self)
+		var request_result: Variant = _door.call(
+			DOOR_REQUEST_OPEN_METHOD,
+			self
+		)
 		_door_open_request_count += 1
+		if typeof(request_result) == TYPE_BOOL and not bool(request_result):
+			_abort_door_traversal("ordinary door denied open request")
+			return
 		_door_retry_remaining = DOOR_REQUEST_RETRY_SECONDS
 
 

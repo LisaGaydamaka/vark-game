@@ -1462,7 +1462,7 @@ The suite records wall-clock observation time with `Time.get_ticks_usec()`, oper
 
 Goal: expand the minimal interaction contract without changing its fundamental language.
 
-## 6.1 Interaction targeting/highlight completion `[~]`
+## 6.1 Interaction targeting/highlight completion `[x]`
 
 Harden center-view targeting, range/occlusion/state checks, highlight, and one primary world-interaction input. The Phase 3 door/prop keep using the same contract.
 
@@ -1478,11 +1478,31 @@ The default primary world-interaction input remains **F** and continues through 
 
 **Automated:** the existing Application interaction regression is expanded around the real Application → WorldSession → Player path and the 6.1 sensor fixture. The authoritative all-tests barrier must also keep the dedicated real Door and Props suites green so hardening the selector cannot silently fork their interaction behavior.
 
-**Manual:** user/playtester. Development Launch → **Interaction Lab**: verify the centered Door Contract Probe highlights even though the visible translucent SENSOR AREA lies between camera and door; moving the view off the door or backing outside range clears highlight immediately; the solid divider prevents the Prop Contract Probe from highlighting until you move around it; F uses the highlighted door exactly once per fresh press and holding F does not repeat; F on the prop makes it INACTIVE and removes highlight immediately; ordinary movement/crouch/sprint/jump/mouse-look remain normal while selecting and using objects. Report any visible selection through a solid blocker, selection that survives looking/ranging away, sensor volume that wrongly blocks the door, stale highlight, or repeated held-F use.
+**Manual:** accepted by the user on exact implementation head `220bdd1d6d9db257b975c71198e2b531117ae763` after GitHub Actions Test run #363 passed. Interaction Lab targeting, non-blocking sensor behavior, physical occlusion, range/highlight clearing, fresh-F use, state invalidation, and ordinary movement/look all passed the requested player-facing check.
 
-## 6.2 Door completion `[ ]`
+## 6.2 Door completion `[~]`
 
 Keys/locks/barred restrictions, authoring properties, obstruction behavior, NPC use, events, save state. Complete the mapper-facing external-model/variant authoring path so wooden, metal, ornate, window-like, or other compatible opening presentations can reuse the same ordinary door/opening gameplay archetype. Openable windows are variants of this system, not a separate gameplay subsystem.
+
+The existing `VarkOrdinaryDoor` remains the single ordinary opening owner. Its previously proven physical leaf, obstruction latch/reversal, vision blocking, acoustic openness, door-owned navigation link, NPC smart-link traversal, interaction highlight, use sound, terminal state events, and direct semantic restore remain unchanged for unrestricted doors.
+
+6.2 adds semantic restriction state directly to that owner:
+
+- `locked` and `barred` are saved runtime truth. A restricted opening must be stably closed; restore rejects impossible open/moving restricted snapshots.
+- `required_key_id` is authored configuration. A locked door asks the requester for `has_semantic_possession(required_key_id) -> bool`; a successful key query clears the lock without consuming possession. The door does not implement inventory, key pickup, selection, or ownership; 6.3 will make player/NPC possession real through this narrow query.
+- a locked door with no usable key stays locked until world/mission logic calls the semantic lock setter. A barred opening ignores keys and stays closed until explicitly unbarred.
+- ordinary player interaction on a restricted door remains targetable and emits one detached `door.access_denied` fact rather than disappearing from selection. Lock/bar changes emit `door.restriction_changed`; physical terminal motion continues to emit `door.state_changed`. Restore emits none of these consequences.
+- the door-owned `NavigationLink3D` is disabled while locked/barred and re-enabled from the same restriction truth after unlock/unbar. A late NPC open request that is denied returns `false`; the guard aborts the local smart-link traversal instead of retrying the door forever. Unrestricted guard use remains the existing path.
+
+The new TrenchBroom/FuncGodot point class is `vark_opening`. It instantiates the real `OrdinaryDoor.tscn`, directly exposes required `persistent_id`/`door_id`, `opening_variant`, `visual_model_path`, tint/motion/noise properties, starting lock/key/bar configuration, and mapper yaw, and applies them onto that same scene instance. `visual_model_path` accepts a compatible Godot `Mesh` resource path; `opening_variant` is descriptive presentation/content metadata only. Wooden, metal, ornate, window-like, or other compatible presentations therefore do not create new gameplay classes. The scene-owned collision/gameplay leaf remains authoritative, so a replacement model must be compatible with the authored opening volume.
+
+Door snapshots now capture `phase`, `open_fraction`, `motion_blocked`, `locked`, and `barred`. The loader also accepts the previous three-field snapshot as safely unrestricted, so this additive capability does not require a global save-format bump. Authored mission changes that make an old in-mission save semantically unsafe still use the existing mission-content revision rule.
+
+**Done when:** the real Door Lab and authoring suites prove unlocked/locked/keyed/barred behavior, restriction/denial/state events, physical obstruction/reversal, unrestricted NPC use plus fail-closed denied NPC requests, persistent restriction quicksave/quickload with no restore-time event replay, legacy unrestricted snapshot compatibility, external model-path/variant reuse on the same archetype, and real FuncGodot construction of `vark_opening`; existing Door/Nav/Perception and Integrated Slice regressions stay green; and the user confirms the restricted/unrestricted player-facing door behavior is understandable.
+
+**Automated:** implementation and coverage are wired; exact-head post-push GitHub Actions validation is pending.
+
+**Manual:** user/playtester. Development Launch → **Door Lab**: center door must retain the accepted F open/close, physical obstruction/reversal, and highlight behavior; the left **LOCKED** door must highlight but refuse F without `key.lab`; the right **BARRED** opening must highlight but refuse F; neither restricted door may visibly start opening from repeated F. Movement/look must remain normal. Key acquisition/use itself is intentionally not manually testable until 6.3 supplies real possession.
 
 ## 6.3 Loot, keys, minimal possession, and run-stat ownership `[ ]`
 

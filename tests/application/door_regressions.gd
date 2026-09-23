@@ -8,6 +8,15 @@ const DefaultDoorVisual: Mesh = preload("res://assets/models/doors/ordinary_door
 const AlternateDoorVisual: Mesh = preload("res://assets/models/doors/ordinary_door_leaf_narrow.obj")
 
 
+class SemanticPossessionProbe:
+	extends Node
+
+	var possession_ids: Dictionary = {}
+
+	func has_semantic_possession(possession_id: StringName) -> bool:
+		return possession_ids.has(str(possession_id))
+
+
 func run(tree: SceneTree, assert_true: Callable) -> void:
 	_release_interact()
 	var application: Node = ApplicationScene.instantiate()
@@ -49,6 +58,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		return
 
 	var door: AnimatableBody3D = world.get_node("OrdinaryDoor") as AnimatableBody3D
+	var locked_door: AnimatableBody3D = world.get_node("LockedDoor") as AnimatableBody3D
+	var barred_door: AnimatableBody3D = world.get_node("BarredDoor") as AnimatableBody3D
 	var vision_target: StaticBody3D = world.get_node("VisionTarget") as StaticBody3D
 	var left_wall: StaticBody3D = world.get_node("LeftWall") as StaticBody3D
 	var right_wall: StaticBody3D = world.get_node("RightWall") as StaticBody3D
@@ -69,12 +80,20 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	var door_events: Array[StringName] = []
 	var sound_events: Array[Dictionary] = []
+	var restriction_events: Array[Dictionary] = []
+	var access_denied_events: Array[Dictionary] = []
 	var door_handler: Callable = func(event: Dictionary) -> bool:
 		var payload: Dictionary = event.get("payload", {})
 		door_events.append(payload.get("state", &""))
 		return true
 	var sound_handler: Callable = func(event: Dictionary) -> bool:
 		sound_events.append(event)
+		return true
+	var restriction_handler: Callable = func(event: Dictionary) -> bool:
+		restriction_events.append((event.get("payload", {}) as Dictionary).duplicate(true))
+		return true
+	var denied_handler: Callable = func(event: Dictionary) -> bool:
+		access_denied_events.append((event.get("payload", {}) as Dictionary).duplicate(true))
 		return true
 	assert_true.call(
 		bool(session.call(
@@ -86,8 +105,18 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"register_semantic_event_handler",
 			&"gameplay.sound",
 			sound_handler
+		))
+		and bool(session.call(
+			"register_semantic_event_handler",
+			OrdinaryDoor.RESTRICTION_CHANGED_EVENT_NAME,
+			restriction_handler
+		))
+		and bool(session.call(
+			"register_semantic_event_handler",
+			OrdinaryDoor.ACCESS_DENIED_EVENT_NAME,
+			denied_handler
 		)),
-		"Ordinary door registers consumers through the accepted semantic event route"
+		"Ordinary door registers motion, restriction, denial, and gameplay-sound consumers through the accepted semantic event route"
 	)
 
 	var initial_state: Dictionary = door.call("capture_semantic_state")
@@ -97,6 +126,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"phase": OrdinaryDoor.PHASE_CLOSED,
 			"open_fraction": 0.0,
 			"motion_blocked": false,
+			"locked": false,
+			"barred": false,
 		}
 		and not bool(door.call("is_navigation_passage_open"))
 		and is_zero_approx(float(door.call("get_acoustic_openness"))),
@@ -116,6 +147,22 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		_first_ray_collider(world, Vector3(0, 1.1, 1.5), Vector3(0, 1.1, -2.2)) == door
 		and _door_overlaps_passage_probe(world, door),
 		"Closed ordinary door is the physical and vision obstruction across its doorway"
+	)
+
+	var locked_access: Dictionary = locked_door.call("get_access_summary")
+	var barred_access: Dictionary = barred_door.call("get_access_summary")
+	assert_true.call(
+		bool(locked_access.get("locked", false))
+		and not bool(locked_access.get("barred", true))
+		and str(locked_access.get("required_key_id", "")) == "key.lab"
+		and str(locked_access.get("opening_variant", "")) == "metal"
+		and str(locked_access.get("visual_model_path", ""))
+			== "res://assets/models/doors/ordinary_door_leaf_narrow.obj"
+		and (locked_door.get_node("DoorMesh") as MeshInstance3D).mesh == AlternateDoorVisual
+		and not bool(barred_access.get("locked", true))
+		and bool(barred_access.get("barred", false))
+		and str(barred_access.get("opening_variant", "")) == "window_like",
+		"Door Lab exposes locked/keyed, barred, and compatible external-model variants through the same OrdinaryDoor archetype"
 	)
 
 	var configured_visual: Mesh = door.call("get_visual_model") as Mesh
@@ -268,6 +315,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"phase": OrdinaryDoor.PHASE_OPEN,
 			"open_fraction": 0.5,
 			"motion_blocked": false,
+			"locked": false,
+			"barred": false,
 		})),
 		"Ordinary door rejects internally inconsistent semantic restore state"
 	)
@@ -276,6 +325,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"phase": OrdinaryDoor.PHASE_OPEN,
 			"open_fraction": 1.0,
 			"motion_blocked": true,
+			"locked": false,
+			"barred": false,
 		})),
 		"Ordinary door rejects impossible terminal state marked as motion-blocked"
 	)
@@ -402,6 +453,124 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Re-requesting OPEN after the obstruction clears resumes the same opening without toggle reversal or duplicate use sound"
 	)
 
+	var legacy_open_snapshot: Dictionary = {
+		"phase": OrdinaryDoor.PHASE_OPEN,
+		"open_fraction": 1.0,
+		"motion_blocked": false,
+	}
+	assert_true.call(
+		bool(door.call("apply_semantic_state", legacy_open_snapshot))
+		and not bool((door.call("get_access_summary") as Dictionary).get("locked", true))
+		and not bool((door.call("get_access_summary") as Dictionary).get("barred", true)),
+		"Additive 6.2 restriction state keeps pre-6.2 three-field door snapshots safely loadable as unrestricted"
+	)
+
+	var denied_count_before: int = access_denied_events.size()
+	locked_door.call("interact", player)
+	await _settle_player_physics(tree, 2)
+	assert_true.call(
+		locked_door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSED
+		and is_zero_approx(float(locked_door.call("get_open_fraction")))
+		and access_denied_events.size() == denied_count_before + 1
+		and str(access_denied_events[-1].get("door_id", "")) == "door.lab.locked"
+		and access_denied_events[-1].get("reason", &"") == &"missing_key"
+		and str(access_denied_events[-1].get("required_key_id", "")) == "key.lab",
+		"A keyed locked door stays closed and emits one semantic access-denied fact when an ordinary requester lacks the key"
+	)
+
+	var key_holder := SemanticPossessionProbe.new()
+	key_holder.name = "KeyHolder"
+	key_holder.possession_ids["key.lab"] = true
+	world.add_child(key_holder)
+	var restriction_count_before_key: int = restriction_events.size()
+	var keyed_open_accepted: bool = bool(locked_door.call("request_open", key_holder))
+	await _settle_player_physics(tree, 2)
+	var unlocked_access: Dictionary = locked_door.call("get_access_summary")
+	assert_true.call(
+		keyed_open_accepted
+		and not bool(unlocked_access.get("locked", true))
+		and restriction_events.size() == restriction_count_before_key + 1
+		and restriction_events[-1].get("reason", &"") == &"key"
+		and not bool(restriction_events[-1].get("locked", true)),
+		"A requester that owns the authored semantic key unlocks the same door without the door owning or consuming possession"
+	)
+	await _settle_player_physics(tree, 45)
+	assert_true.call(
+		locked_door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPEN
+		and not bool(locked_door.call("set_locked", true)),
+		"Key-authorized opening reaches OPEN and a door cannot be re-locked while physically open"
+	)
+
+	var barred_open_accepted: bool = bool(barred_door.call("request_open", key_holder))
+	assert_true.call(
+		not barred_open_accepted
+		and barred_door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSED
+		and bool((barred_door.call("get_access_summary") as Dictionary).get("barred", false)),
+		"Barred/external restriction blocks opening even for a requester that owns an unrelated valid key"
+	)
+	var restriction_count_before_unbar: int = restriction_events.size()
+	assert_true.call(
+		bool(barred_door.call("set_barred", false, &"test_unbar"))
+		and bool(barred_door.call("request_open", key_holder)),
+		"External world logic can unbar the same opening and ordinary open behavior resumes without a separate window/door subsystem"
+	)
+	await _settle_player_physics(tree, 2)
+	assert_true.call(
+		restriction_events.size() == restriction_count_before_unbar + 1
+		and restriction_events[-1].get("reason", &"") == &"test_unbar"
+		and not bool(restriction_events[-1].get("barred", true)),
+		"Unbarring publishes one detached restriction-change semantic event"
+	)
+
+	door.call("request_close", player)
+	await _settle_player_physics(tree, 45)
+	assert_true.call(
+		door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSED
+		and bool(door.call("set_locked", true, &"save_probe"))
+		and bool(door.call("set_barred", true, &"save_probe")),
+		"Primary Door Lab opening can enter a stable closed+locked+barred semantic state for save proof"
+	)
+	await _settle_player_physics(tree, 2)
+	var save_request_id: int = int(application.call("request_quicksave"))
+	var saved_snapshot: Dictionary = await _wait_for_quicksave(application, tree)
+	assert_true.call(
+		save_request_id > 0
+		and not saved_snapshot.is_empty(),
+		"Door restriction save proof captures through the application-owned stable-boundary quicksave path"
+	)
+
+	assert_true.call(
+		bool(door.call("set_barred", false, &"post_save_mutation"))
+		and bool(door.call("set_locked", false, &"post_save_mutation")),
+		"Live door restriction state can diverge after the detached save capture"
+	)
+	await _settle_player_physics(tree, 2)
+	var quickloaded: bool = bool(application.call("quickload_latest"))
+	await tree.process_frame
+	var restored_world: Node3D = application.get("current_world") as Node3D
+	var restored_session: Node = application.get("current_session") as Node
+	var restored_door: AnimatableBody3D = (
+		restored_world.get_node_or_null("OrdinaryDoor") as AnimatableBody3D
+		if restored_world != null
+		else null
+	)
+	var restored_access: Dictionary = (
+		restored_door.call("get_access_summary")
+		if restored_door != null
+		else {}
+	)
+	assert_true.call(
+		quickloaded
+		and restored_door != null
+		and restored_door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSED
+		and is_zero_approx(float(restored_door.call("get_open_fraction")))
+		and bool(restored_access.get("locked", false))
+		and bool(restored_access.get("barred", false))
+		and restored_session != null
+		and int(restored_session.call("get_pending_semantic_event_count")) == 0,
+		"Quickload reconstructs locked+barred door truth on the replacement persistent opening without replaying restriction events"
+	)
+
 	_release_interact()
 	application.call("exit_current_world")
 	application.queue_free()
@@ -426,6 +595,22 @@ func _door_overlaps_passage_probe(world: Node3D, door: CollisionObject3D) -> boo
 		if result.get("collider", null) == door:
 			return true
 	return false
+
+
+func _wait_for_quicksave(
+	application: Node,
+	tree: SceneTree,
+	max_frames: int = 120
+) -> Dictionary:
+	for _frame_index: int in max_frames:
+		var snapshot: Dictionary = application.call(
+			"get_latest_quicksave_snapshot"
+		)
+		if not snapshot.is_empty():
+			return snapshot
+		await tree.physics_frame
+		await tree.process_frame
+	return {}
 
 
 func _settle_player_physics(tree: SceneTree, frame_count: int = 1) -> void:

@@ -77,7 +77,43 @@ mesh = SubResource("HeaderMesh")
 
 [node name="OrdinaryDoor" parent="." instance=ExtResource("2_door")]
 position = Vector3(-0.65, 0, 0)
+persistent_id = "door.lab.primary"
 door_id = &"door.lab"
+opening_variant = "wooden"
+
+[node name="LockedDoor" parent="." instance=ExtResource("2_door")]
+position = Vector3(-3.6, 0, -2.4)
+persistent_id = "door.lab.locked"
+door_id = &"door.lab.locked"
+opening_variant = "metal"
+visual_model_path = "res://assets/models/doors/ordinary_door_leaf_narrow.obj"
+base_color = Color(0.20, 0.30, 0.48, 1)
+starts_locked = true
+required_key_id = &"key.lab"
+
+[node name="LockedLabel" type="Label3D" parent="."]
+position = Vector3(-2.95, 2.45, -2.4)
+text = "LOCKED · requires key.lab\nF without key = denied"
+billboard = 1
+font_size = 20
+outline_size = 6
+no_depth_test = true
+
+[node name="BarredDoor" parent="." instance=ExtResource("2_door")]
+position = Vector3(2.3, 0, -2.4)
+persistent_id = "door.lab.barred"
+door_id = &"door.lab.barred"
+opening_variant = "window_like"
+base_color = Color(0.25, 0.42, 0.26, 1)
+starts_barred = true
+
+[node name="BarredLabel" type="Label3D" parent="."]
+position = Vector3(2.95, 2.45, -2.4)
+text = "BARRED / externally restricted\nF = denied"
+billboard = 1
+font_size = 20
+outline_size = 6
+no_depth_test = true
 
 [node name="VisionTarget" type="StaticBody3D" parent="."]
 position = Vector3(0, 1.1, -2)
@@ -91,6 +127,6 @@ material_override = SubResource("TargetMaterial")
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(0, 2.9, 1.0)
-text = "3.4 DOOR LAB\nF = toggle ordinary door\nClosed = blocks doorway/green marker · Moving door stops on obstacles · F again reverses"
+text = "6.2 DOOR LAB\nF = ordinary door interaction\nCenter: normal · left: locked · right: barred\nPhysical obstruction, NPC use, events, save state, and variants share one archetype"
 billboard = 1
 font_size = 28

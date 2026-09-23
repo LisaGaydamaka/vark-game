@@ -12,6 +12,7 @@ const MissionContentValidationRegressions = preload(
 	"res://tests/authoring/mission_content_validation_regressions.gd"
 )
 const PersistentEntity = preload("res://missions/persistence/persistent_entity.gd")
+const OrdinaryDoor = preload("res://gameplay/doors/ordinary_door.gd")
 const PersistentIdentityValidator = preload(
 	"res://missions/persistence/persistent_identity_validator.gd"
 )
@@ -24,6 +25,7 @@ const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
 const VARK_TRENCHBROOM_CONFIG_PATH: String = "res://VarkTrenchBroom.tres"
 const VARK_PROOF_MATERIAL_PATH: String = "res://textures/zebra/zebra16x16.png"
 const TEMP_MAP_PATH: String = "user://vark_persistent_identity_feasibility.map"
+const OPENING_MAP_PATH: String = "user://vark_opening_authoring.map"
 
 var failures: Array[String] = []
 
@@ -45,6 +47,7 @@ func _run_tests() -> void:
 	_assert_vark_trenchbroom_material_config()
 	_assert_vark_runtime_identity_wiring()
 	_assert_vark_point_entity_foundation()
+	_assert_vark_opening_authoring_path()
 	var content_validation_regressions: RefCounted = MissionContentValidationRegressions.new()
 	content_validation_regressions.run(get_root(), Callable(self, "_assert_true"))
 	var reimport_stability_regressions: RefCounted = ReimportStabilityRegressions.new()
@@ -245,6 +248,7 @@ func _run_tests() -> void:
 	)
 
 	_remove_temp_map()
+	_remove_opening_map()
 	_print_summary()
 	quit(1 if not failures.is_empty() else 0)
 
@@ -445,6 +449,121 @@ func _assert_vark_point_entity_foundation() -> void:
 	if int(session.get("state")) != WorldSession.State.EMPTY:
 		session.call("teardown")
 	session.free()
+
+
+func _assert_vark_opening_authoring_path() -> void:
+	var config := load(VARK_TRENCHBROOM_CONFIG_PATH) as TrenchBroomGameConfig
+	var fgd_file: FuncGodotFGDFile = config.fgd_file if config != null else null
+	var definitions: Dictionary[String, FuncGodotFGDEntityClass] = {}
+	var exported_fgd: String = ""
+	if fgd_file != null:
+		definitions = fgd_file.get_entity_definitions()
+		exported_fgd = fgd_file.build_class_text(
+			FuncGodotFGDFile.FuncGodotTargetMapEditors.TRENCHBROOM
+		)
+
+	var opening := definitions.get("vark_opening") as FuncGodotFGDPointClass
+	var props: Dictionary = opening.class_properties if opening != null else {}
+	_assert_true(
+		opening != null
+		and opening.scene_file != null
+		and opening.scene_file.resource_path == "res://gameplay/doors/OrdinaryDoor.tscn"
+		and opening.auto_apply_to_matching_node_properties
+		and opening.node_groups.has("vark_interactable")
+		and props.has("persistent_id")
+		and props.has("door_id")
+		and props.has("opening_variant")
+		and props.has("visual_model_path")
+		and props.has("base_color")
+		and props.has("transition_seconds")
+		and props.has("open_angle_degrees")
+		and props.has("gameplay_sound_strength")
+		and props.has("starts_locked")
+		and props.has("required_key_id")
+		and props.has("starts_barred")
+		and exported_fgd.contains("vark_opening")
+		and exported_fgd.contains("visual_model_path")
+		and exported_fgd.contains("starts_locked")
+		and exported_fgd.contains("required_key_id")
+		and exported_fgd.contains("starts_barred"),
+		"Vark TrenchBroom FGD exposes one mapper-facing ordinary opening archetype with model/variant and restriction properties"
+	)
+
+	var source: String = FileAccess.get_file_as_string(PLAYGROUND_SOURCE_PATH)
+	var wrote: bool = false
+	if not source.is_empty():
+		var file := FileAccess.open(OPENING_MAP_PATH, FileAccess.WRITE)
+		if file != null:
+			file.store_string(
+				source.trim_suffix("\n")
+				+ "\n"
+				+ _opening_probe_entity()
+				+ "\n"
+			)
+			file.flush()
+			file.close()
+			wrote = true
+
+	if wrote:
+		var func_map := FuncGodotMap.new()
+		func_map.map_settings = load(MAP_SETTINGS_PATH) as FuncGodotMapSettings
+		func_map.local_map_file = OPENING_MAP_PATH
+		func_map.build()
+		var found: Node = null
+		for node: Node in func_map.find_children("*", "", true, false):
+			if node.get_script() != OrdinaryDoor:
+				continue
+			if str(node.call("get_persistent_id")) != "pid-opening-probe":
+				continue
+			found = node
+			break
+		var validation: Dictionary = PersistentIdentityValidator.validate_subtree(func_map)
+		_assert_true(
+			found != null
+			and found is AnimatableBody3D
+			and str(found.call("get_content_id")) == "door.authoring_probe"
+			and str(found.get("opening_variant")) == "ornate"
+			and str(found.get("visual_model_path"))
+				== "res://assets/models/doors/ordinary_door_leaf_narrow.obj"
+			and bool(found.get("starts_locked"))
+			and str(found.get("required_key_id")) == "key.authoring_probe"
+			and not bool(found.get("starts_barred"))
+			and is_equal_approx(float(found.get("transition_seconds")), 0.8)
+			and bool(validation.get("ok", false)),
+			"FuncGodot instantiates vark_opening as the real OrdinaryDoor scene and carries mapper model/restriction properties onto the same persistent semantic owner"
+		)
+		func_map.free()
+	else:
+		_assert_true(
+			false,
+			"6.2 opening authoring fixture can be written from Playground source"
+		)
+
+	_remove_opening_map()
+
+
+func _opening_probe_entity() -> String:
+	return "\n".join([
+		"// Phase 6.2 mapper-facing opening probe",
+		"{",
+		"\"classname\" \"vark_opening\"",
+		"\"origin\" \"352 0 0\"",
+		"\"angle\" \"180\"",
+		"\"persistent_id\" \"pid-opening-probe\"",
+		"\"door_id\" \"door.authoring_probe\"",
+		"\"opening_variant\" \"ornate\"",
+		"\"visual_model_path\" \"res://assets/models/doors/ordinary_door_leaf_narrow.obj\"",
+		"\"transition_seconds\" \"0.8\"",
+		"\"starts_locked\" \"1\"",
+		"\"required_key_id\" \"key.authoring_probe\"",
+		"\"starts_barred\" \"0\"",
+		"}",
+	])
+
+
+func _remove_opening_map() -> void:
+	if FileAccess.file_exists(OPENING_MAP_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(OPENING_MAP_PATH))
 
 
 func _assert_runtime_identity_validator_diagnostics() -> void:

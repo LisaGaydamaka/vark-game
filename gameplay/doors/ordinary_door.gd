@@ -7,6 +7,8 @@ const PHASE_OPENING: StringName = &"opening"
 const PHASE_OPEN: StringName = &"open"
 const PHASE_CLOSING: StringName = &"closing"
 const STATE_CHANGED_EVENT_NAME: StringName = &"door.state_changed"
+const RESTRICTION_CHANGED_EVENT_NAME: StringName = &"door.restriction_changed"
+const ACCESS_DENIED_EVENT_NAME: StringName = &"door.access_denied"
 const USE_SOUND_KIND: StringName = &"door.use"
 
 
@@ -17,6 +19,11 @@ const USE_SOUND_KIND: StringName = &"door.use"
 @export var gameplay_sound_strength: float = 0.65
 @export var base_color: Color = Color(0.34, 0.20, 0.10, 1.0)
 @export var visual_model: Mesh
+@export var visual_model_path: String = ""
+@export var opening_variant: String = "ordinary"
+@export var starts_locked: bool = false
+@export var required_key_id: StringName = &""
+@export var starts_barred: bool = false
 @export var obstacle_probe_step_degrees: float = 2.0
 @export var navigation_cut_depth: float = 0.20
 
@@ -33,16 +40,39 @@ var _material: StandardMaterial3D = null
 var _world_session: Node = null
 var _navigation_link: NavigationLink3D = null
 var _navigation_link_clearance: float = 0.0
+var _navigation_link_finalized: bool = false
+var _locked: bool = false
+var _barred: bool = false
 
 
 func _ready() -> void:
 	add_to_group(&"vark_interactable")
 	_closed_rotation_y = rotation.y
 	_world_session = _find_world_session()
+	_locked = starts_locked
+	_barred = starts_barred
 	_material = StandardMaterial3D.new()
 	door_mesh.material_override = _material
-	if not set_visual_model(visual_model):
-		push_error("VarkOrdinaryDoor requires a configured visual_model Mesh.")
+
+	var configured_visual: Mesh = visual_model
+	if visual_model_path.strip_edges().is_empty():
+		if not _apply_visual_model(configured_visual, true):
+			push_error("VarkOrdinaryDoor requires a configured visual_model Mesh.")
+	else:
+		var requested_path: String = visual_model_path
+		if not set_visual_model_from_path(requested_path):
+			visual_model_path = requested_path
+			if not _apply_visual_model(configured_visual, false):
+				push_error(
+					"VarkOrdinaryDoor could not load visual_model_path '%s' and has no fallback Mesh."
+					% requested_path
+				)
+			else:
+				push_error(
+					"VarkOrdinaryDoor could not load visual_model_path '%s'; using the default compatible model."
+					% requested_path
+				)
+
 	_ensure_navigation_link()
 	_sync_derived_state()
 
@@ -108,42 +138,96 @@ func can_interact(_interactor: Node) -> bool:
 
 func interact(interactor: Node) -> void:
 	if _phase == PHASE_CLOSED or _phase == PHASE_CLOSING:
-		request_open(interactor)
+		var denial_reason: StringName = get_open_denial_reason(interactor)
+		if not request_open(interactor):
+			_queue_access_denied(denial_reason)
 		return
 	request_close(interactor)
 
 
-func request_open(_requester: Node = null) -> void:
-	# AI/navigation consumers express an idempotent desired state instead of
-	# using the player's toggle interaction. Re-requesting a blocked opening
-	# clears only the obstruction latch; the next physics sweep still decides
-	# whether motion can safely continue.
+func request_open(requester: Node = null) -> bool:
+	var denial_reason: StringName = get_open_denial_reason(requester)
+	if not denial_reason.is_empty():
+		return false
+
+	if _locked:
+		_set_locked_runtime(false, &"key")
 	if _phase == PHASE_OPEN:
-		return
+		return true
 	if _phase == PHASE_OPENING:
 		_motion_blocked = false
 		_motion_blocker = null
-		return
+		return true
 	_phase = PHASE_OPENING
 	_motion_blocked = false
 	_motion_blocker = null
 	_queue_use_sound()
+	return true
 
 
-func request_close(_requester: Node = null) -> void:
-	# AI door maneuvers need the symmetric idempotent desired state. This is
-	# intentionally not the player's toggle seam: retrying CLOSE only releases
-	# a transient obstruction latch and never turns a closing/closed door open.
+func request_close(_requester: Node = null) -> bool:
 	if _phase == PHASE_CLOSED:
-		return
+		return true
 	if _phase == PHASE_CLOSING:
 		_motion_blocked = false
 		_motion_blocker = null
-		return
+		return true
 	_phase = PHASE_CLOSING
 	_motion_blocked = false
 	_motion_blocker = null
 	_queue_use_sound()
+	return true
+
+
+func get_open_denial_reason(requester: Node = null) -> StringName:
+	if _barred:
+		return &"barred"
+	if not _locked:
+		return &""
+	var key_id_text: String = str(required_key_id).strip_edges()
+	if key_id_text.is_empty():
+		return &"locked"
+	if requester == null or not is_instance_valid(requester):
+		return &"missing_key"
+	if not requester.has_method("has_semantic_possession"):
+		return &"missing_key"
+	var possession_result: Variant = requester.call(
+		"has_semantic_possession",
+		StringName(key_id_text)
+	)
+	if typeof(possession_result) != TYPE_BOOL or not bool(possession_result):
+		return &"missing_key"
+	return &""
+
+
+func set_locked(locked: bool, reason: StringName = &"scripted") -> bool:
+	if locked and _phase != PHASE_CLOSED:
+		return false
+	return _set_locked_runtime(locked, reason)
+
+
+func set_barred(barred: bool, reason: StringName = &"scripted") -> bool:
+	if barred and _phase != PHASE_CLOSED:
+		return false
+	if _barred == barred:
+		return true
+	_barred = barred
+	_motion_blocked = false
+	_motion_blocker = null
+	_sync_navigation_link_access()
+	_queue_restriction_changed(reason)
+	return true
+
+
+func get_access_summary() -> Dictionary:
+	return {
+		"locked": _locked,
+		"barred": _barred,
+		"required_key_id": required_key_id,
+		"open_allowed_without_requester": get_open_denial_reason(null).is_empty(),
+		"opening_variant": opening_variant,
+		"visual_model_path": visual_model_path,
+	}
 
 
 func set_interaction_highlighted(highlighted: bool) -> void:
@@ -156,16 +240,37 @@ func is_interaction_highlighted() -> bool:
 
 
 func set_visual_model(model: Mesh) -> bool:
-	if model == null:
+	return _apply_visual_model(model, true)
+
+
+func set_visual_model_from_path(path: String) -> bool:
+	var normalized_path: String = path.strip_edges()
+	if normalized_path.is_empty() or not ResourceLoader.exists(normalized_path):
 		return false
-	visual_model = model
-	if door_mesh != null:
-		door_mesh.mesh = model
-	return true
+	var loaded: Resource = ResourceLoader.load(normalized_path)
+	if not (loaded is Mesh):
+		return false
+	visual_model_path = normalized_path
+	return _apply_visual_model(loaded as Mesh, false)
 
 
 func get_visual_model() -> Mesh:
 	return visual_model
+
+
+func get_visual_model_path() -> String:
+	return visual_model_path
+
+
+func _apply_visual_model(model: Mesh, update_path: bool) -> bool:
+	if model == null:
+		return false
+	visual_model = model
+	if update_path and not model.resource_path.is_empty():
+		visual_model_path = model.resource_path
+	if door_mesh != null:
+		door_mesh.mesh = model
+	return true
 
 
 func get_semantic_phase() -> StringName:
@@ -425,7 +530,8 @@ func finalize_navigation_traversal(navigation_map: RID) -> bool:
 	_navigation_link.set_global_start_position(projected_start)
 	_navigation_link.set_global_end_position(projected_end)
 	_navigation_link.set_navigation_map(navigation_map)
-	_navigation_link.enabled = true
+	_navigation_link_finalized = true
+	_sync_navigation_link_access()
 	return true
 
 
@@ -447,7 +553,11 @@ func get_navigation_link_clearance() -> float:
 
 func get_navigation_link_summary() -> Dictionary:
 	return {
-		"configured": _navigation_link != null and _navigation_link.enabled,
+		"configured": _navigation_link_finalized,
+		"enabled": (
+			_navigation_link != null and _navigation_link.enabled
+		),
+		"access_restricted": _locked or _barred,
 		"clearance": _navigation_link_clearance,
 		"start": (
 			_navigation_link.get_global_start_position()
@@ -548,6 +658,11 @@ func _ensure_navigation_link() -> void:
 	_navigation_link.travel_cost = 1.0
 	_navigation_link.navigation_layers = 1
 	_navigation_link.enabled = false
+	_navigation_link_finalized = (
+		_navigation_link.get_rid().is_valid()
+		and NavigationServer3D.link_get_map(_navigation_link.get_rid()).is_valid()
+	)
+	_sync_navigation_link_access()
 
 
 func capture_semantic_state() -> Dictionary:
@@ -555,11 +670,13 @@ func capture_semantic_state() -> Dictionary:
 		"phase": _phase,
 		"open_fraction": _open_fraction,
 		"motion_blocked": _motion_blocked,
+		"locked": _locked,
+		"barred": _barred,
 	}
 
 
 func apply_semantic_state(snapshot: Dictionary) -> bool:
-	if snapshot.size() != 3:
+	if snapshot.size() != 3 and snapshot.size() != 5:
 		return false
 	if (
 		not snapshot.has("phase")
@@ -581,6 +698,18 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if typeof(snapshot["motion_blocked"]) != TYPE_BOOL:
 		return false
 	var motion_blocked: bool = bool(snapshot["motion_blocked"])
+	var locked: bool = false
+	var barred: bool = false
+	if snapshot.size() == 5:
+		if (
+			not snapshot.has("locked")
+			or not snapshot.has("barred")
+			or typeof(snapshot["locked"]) != TYPE_BOOL
+			or typeof(snapshot["barred"]) != TYPE_BOOL
+		):
+			return false
+		locked = bool(snapshot["locked"])
+		barred = bool(snapshot["barred"])
 	if phase == PHASE_CLOSED and not is_zero_approx(fraction):
 		return false
 	if phase == PHASE_OPEN and not is_equal_approx(fraction, 1.0):
@@ -594,11 +723,21 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		)
 	):
 		return false
+	if (
+		(locked or barred)
+		and (
+			phase != PHASE_CLOSED
+			or not is_zero_approx(fraction)
+			or motion_blocked
+		)
+	):
+		return false
 
 	_phase = phase
 	_open_fraction = fraction
 	_motion_blocked = motion_blocked
-	# Blocker identity is transient physical context, not semantic save state.
+	_locked = locked
+	_barred = barred
 	_motion_blocker = null
 	_sync_derived_state()
 	return true
@@ -615,7 +754,29 @@ func _sync_derived_state() -> void:
 		_closed_rotation_y
 		+ deg_to_rad(open_angle_degrees) * _open_fraction
 	)
+	_sync_navigation_link_access()
 	_refresh_visual()
+
+
+func _sync_navigation_link_access() -> void:
+	if _navigation_link == null:
+		return
+	_navigation_link.enabled = (
+		_navigation_link_finalized
+		and not _locked
+		and not _barred
+	)
+
+
+func _set_locked_runtime(locked: bool, reason: StringName) -> bool:
+	if _locked == locked:
+		return true
+	_locked = locked
+	_motion_blocked = false
+	_motion_blocker = null
+	_sync_navigation_link_access()
+	_queue_restriction_changed(reason)
+	return true
 
 
 func _get_sweep_limited_fraction(next_fraction: float) -> float:
@@ -705,6 +866,39 @@ func _queue_state_changed() -> void:
 		{
 			"door_id": door_id,
 			"state": _phase,
+		}
+	)
+
+
+func _queue_restriction_changed(reason: StringName) -> void:
+	if _world_session == null:
+		return
+	var source_session_id: int = int(_world_session.get("session_id"))
+	_world_session.call(
+		"queue_semantic_gameplay_event",
+		source_session_id,
+		RESTRICTION_CHANGED_EVENT_NAME,
+		{
+			"door_id": door_id,
+			"locked": _locked,
+			"barred": _barred,
+			"reason": reason,
+		}
+	)
+
+
+func _queue_access_denied(reason: StringName) -> void:
+	if _world_session == null or reason.is_empty():
+		return
+	var source_session_id: int = int(_world_session.get("session_id"))
+	_world_session.call(
+		"queue_semantic_gameplay_event",
+		source_session_id,
+		ACCESS_DENIED_EVENT_NAME,
+		{
+			"door_id": door_id,
+			"reason": reason,
+			"required_key_id": required_key_id,
 		}
 	)
 
