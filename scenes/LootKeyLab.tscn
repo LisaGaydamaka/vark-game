@@ -47,7 +47,7 @@ mesh = SubResource("FloorMesh")
 material_override = SubResource("FloorMaterial")
 
 [node name="Key" parent="." instance=ExtResource("3_pickup")]
-position = Vector3(0, 0.45, 2.25)
+position = Vector3(0, 1.3, 2.25)
 persistent_id = "loot_key_lab.key"
 content_id = "key.lab"
 pickup_kind = &"key"
@@ -55,7 +55,7 @@ display_label = "KEY · key.lab"
 base_color = Color(0.78, 0.72, 0.20, 1)
 
 [node name="Loot25" parent="." instance=ExtResource("3_pickup")]
-position = Vector3(-2.0, 0.45, 2.0)
+position = Vector3(-2.0, 1.3, 2.0)
 persistent_id = "loot_key_lab.loot25"
 content_id = "loot.lab.25"
 pickup_kind = &"loot"
@@ -64,7 +64,7 @@ display_label = "LOOT · 25"
 base_color = Color(0.70, 0.35, 0.16, 1)
 
 [node name="Loot75" parent="." instance=ExtResource("3_pickup")]
-position = Vector3(2.0, 0.45, 2.0)
+position = Vector3(2.0, 1.3, 2.0)
 persistent_id = "loot_key_lab.loot75"
 content_id = "loot.lab.75"
 pickup_kind = &"loot"

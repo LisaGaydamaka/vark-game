@@ -63,6 +63,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	# The authored key starts exactly on the player's center-view line and within range.
+	await _settle(tree, 2)
+	var key_target: Dictionary = player.call("get_interaction_semantic_state")
+	assert_true.call(
+		bool(key.call("is_interaction_highlighted"))
+		and key_target.get("target_name", "") == "Key",
+		"6.3 fixture places the authored key on the production exact center-view selector before collection"
+	)
 	_press_interact()
 	await _settle(tree, 2)
 	_release_interact()
