@@ -1083,6 +1083,24 @@ The completed Windows run satisfied these cases. The first round trip exposed on
 - [ ] Walking, sprinting, jumping, crouching, and mouse look remain accepted while using the interaction lab.
 - [ ] Report any solid-blocker through-selection, sensor-area false blockage, stale highlight after look/range/state loss, or repeated held-F use.
 
+## Loot, keys, possession, and run stats (Phase 6.3)
+
+- **Fixture:** Development Launch → **Loot/Key Lab** uses the production Application/WorldSession/Player path, the real ordinary locked door, and authored persistent collectible instances.
+- **Possession:** key and mission-item pickups grant only semantic possession IDs. Door/mission queries use `Player.has_semantic_possession(id)`; 6.3 adds no inventory selection/equip/menu behavior.
+- **Run stats:** one session-owned `VarkMissionRunState` records `loot_count` and `loot_value`. Collected loot does not remain as a physical carried object or a second possession counter.
+- **Authored removal:** collection unregisters the authored persistent entity and records its stable persistent ID in `object_existence.authored_tombstones`. Save validation requires unique non-empty string IDs and still rejects non-empty `runtime_entities`.
+- **Restore order:** tombstoned authored instances are removed from the fresh candidate world before persistent/player/semantic state application. Collection events are not replayed during restore.
+- **Compatibility:** pre-6.3 player snapshots without `semantic_possession` restore empty possession; saves without `mission_run_state` restore zero loot. Existing global save-format and mission-content revision rules remain unchanged.
+
+Manual acceptance:
+
+- [ ] F5 → Development Launch → **Loot/Key Lab**.
+- [ ] Center **KEY · key.lab** and press **F** once. It disappears; the status changes to **KEY key.lab: OWNED**. Holding F does not repeat collection.
+- [ ] Approach the locked door and press **F**. The same ordinary door unlocks/opens because the player owns `key.lab`; no inventory menu or explicit key-selection step appears.
+- [ ] Collect **LOOT · 25** and **LOOT · 75**. Each disappears and the status reaches **LOOT: 2 items / 100 value**.
+- [ ] Looking away/out of range clears highlight normally; walking, sprinting, crouching, jumping, and mouse look remain unchanged.
+- [ ] Report any collected object that reappears during the live run, duplicate loot count, key that fails to unlock the door, stale highlight, or unexpected inventory UI.
+
 ## Doors (Phase 6.2)
 
 - [ ] Development Launch → **Door Lab**. The center ordinary door still highlights and toggles with one fresh **F** press; holding F does not repeat.

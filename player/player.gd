@@ -41,6 +41,7 @@ var locomotion_controller: PlayerLocomotionController
 var player_interaction: PlayerInteraction
 var player_hostile_interaction: PlayerHostileInteraction
 var prop_carry: PlayerPropCarry
+var semantic_possession: PlayerSemanticPossession
 var junk_hud_container: Control
 var junk_hud_mesh: MeshInstance3D
 var junk_hud_material: StandardMaterial3D
@@ -154,6 +155,38 @@ func get_interaction_debug_summary() -> Dictionary:
 	return player_interaction.get_debug_summary()
 
 
+func has_semantic_possession(possession_id: StringName) -> bool:
+	return (
+		semantic_possession != null
+		and semantic_possession.has(possession_id)
+	)
+
+
+func grant_semantic_possession(possession_id: StringName) -> bool:
+	if semantic_possession == null:
+		return false
+	return semantic_possession.grant(possession_id)
+
+
+func get_semantic_possession_summary() -> Dictionary:
+	if semantic_possession == null:
+		return {
+			"count": 0,
+			"ids": [],
+		}
+	return semantic_possession.get_debug_summary()
+
+
+func collect_authored_pickup(pickup: Node) -> bool:
+	var session: Node = _find_world_session()
+	if (
+		session == null
+		or not session.has_method("collect_authored_pickup")
+	):
+		return false
+	return bool(session.call("collect_authored_pickup", self, pickup))
+
+
 func try_carry_prop(prop: Node) -> bool:
 	if prop_carry == null:
 		return false
@@ -258,12 +291,17 @@ func capture_semantic_state() -> Dictionary:
 		"restore_stance": restore_stance,
 		"source_traversal": source_traversal,
 		"restore_policy": restore_policy,
+		"semantic_possession": (
+			semantic_possession.capture_semantic_state()
+			if semantic_possession != null
+			else {"ids": []}
+		),
 	}
 
 
 func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if (
-		snapshot.size() != 6
+		(snapshot.size() != 6 and snapshot.size() != 7)
 		or typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
 		or typeof(snapshot.get("velocity", null)) != TYPE_VECTOR3
 	):
@@ -300,6 +338,15 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	):
 		return false
 
+	if semantic_possession == null:
+		return false
+	var possession_snapshot: Dictionary = snapshot.get(
+		"semantic_possession",
+		{"ids": []}
+	)
+	if not semantic_possession.apply_semantic_state(possession_snapshot):
+		return false
+
 	global_transform = restored_transform
 	if crouch == null:
 		return false
@@ -330,7 +377,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 
 
 func validate_restored_semantic_state(snapshot: Dictionary) -> bool:
-	if snapshot.size() != 6:
+	if snapshot.size() != 6 and snapshot.size() != 7:
 		return false
 	if (
 		typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
@@ -347,6 +394,15 @@ func validate_restored_semantic_state(snapshot: Dictionary) -> bool:
 		or not velocity.is_equal_approx(expected_velocity)
 		or not _is_valid_stance_semantic_name(restore_stance, false)
 		or not _is_valid_traversal_semantic_name(source_traversal)
+	):
+		return false
+	var expected_possession: Dictionary = snapshot.get(
+		"semantic_possession",
+		{"ids": []}
+	)
+	if (
+		semantic_possession == null
+		or semantic_possession.capture_semantic_state() != expected_possession
 	):
 		return false
 	var current_stance: StringName = _get_stance_semantic_name()
@@ -512,9 +568,23 @@ func _refresh_world_interaction_availability() -> void:
 	)
 
 
+
+func _find_world_session() -> Node:
+	var cursor: Node = self
+	while cursor != null:
+		if (
+			cursor.has_method("collect_authored_pickup")
+			and cursor.has_method("get_mission_run_summary")
+		):
+			return cursor
+		cursor = cursor.get_parent()
+	return null
+
+
 func _create_components() -> void:
 	player_input = PlayerInput.new()
 	velocity_state = PlayerVelocityState.new()
+	semantic_possession = PlayerSemanticPossession.new()
 	player_look = PlayerLook.new(
 		self,
 		head,

@@ -9,10 +9,12 @@ const MissionContentValidator = preload("res://missions/mission_content_validato
 const WorldEntityRegistry = preload(
 	"res://missions/persistence/world_entity_registry.gd"
 )
+const MissionRunState = preload("res://missions/mission_run_state.gd")
 const SEMANTIC_EVENT_CASCADE_LIMIT: int = 256
 const SEMANTIC_EVENT_TRACE_LIMIT: int = 24
 const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000
 const GAMEPLAY_SOUND_EVENT_NAME: StringName = &"gameplay.sound"
+const PICKUP_COLLECTED_EVENT_NAME: StringName = &"pickup.collected"
 const SEMANTIC_SAVE_ID_METHOD: StringName = &"get_semantic_save_id"
 const CAPTURE_SEMANTIC_STATE_METHOD: StringName = &"capture_semantic_state"
 const APPLY_SEMANTIC_STATE_METHOD: StringName = &"apply_semantic_state"
@@ -38,6 +40,7 @@ var mission_definition: Resource = null
 var world: Node = null
 var player: Node = null
 var entity_registry: RefCounted = null
+var mission_run_state: RefCounted = null
 var state: int = State.EMPTY
 var gameplay_time_seconds: float = 0.0
 
@@ -49,6 +52,7 @@ var _stable_gameplay_boundary_serial: int = 0
 var _last_semantic_event_error: String = ""
 var _last_restore_error: String = ""
 var _restore_state_applied: bool = false
+var _authored_tombstones: Dictionary[String, bool] = {}
 
 
 func _init() -> void:
@@ -197,21 +201,29 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 	if not _validate_world_state_structure(world_state):
 		return false
 
-	# Object existence is established before semantic state. The current slice
-	# has no tombstones or runtime-created persistent objects, so non-empty
-	# existence sections fail closed rather than being silently ignored.
+	# Object existence is established before semantic state. Phase 6.3 supports
+	# authored removals through stable persistent-ID tombstones. Runtime-created
+	# persistent objects remain unsupported and still fail closed.
 	var existence: Dictionary = world_state.get("object_existence", {})
 	var tombstones: Array = existence.get("authored_tombstones", [])
 	var runtime_entities: Array = existence.get("runtime_entities", [])
-	if not tombstones.is_empty() or not runtime_entities.is_empty():
+	if not runtime_entities.is_empty():
 		return _fail_restore(
-			"Current Phase 4.2 slice cannot restore tombstones or runtime-persistent entities."
+			"Current Phase 6.3 slice cannot restore runtime-persistent entities."
 		)
+	if not _apply_authored_tombstones(tombstones):
+		return false
 
 	var persistent_snapshots: Dictionary = world_state.get(
 		"persistent_entities",
 		{}
 	)
+	for persistent_id: String in _authored_tombstones.keys():
+		if persistent_snapshots.has(persistent_id):
+			return _fail_restore(
+				"Tombstoned authored entity '%s' also has a persistent snapshot."
+				% persistent_id
+			)
 	var persistent_ids: Array = persistent_snapshots.keys()
 	persistent_ids.sort()
 	for id_value: Variant in persistent_ids:
@@ -273,6 +285,21 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 		return _fail_restore(
 			"Current slice has no mission-script semantic state owner."
 		)
+	var run_state_snapshot: Dictionary = world_state.get(
+		"mission_run_state",
+		{
+			"loot_count": 0,
+			"loot_value": 0,
+		}
+	)
+	if (
+		mission_run_state == null
+		or not bool(mission_run_state.call(
+			"apply_semantic_state",
+			run_state_snapshot
+		))
+	):
+		return _fail_restore("Restore could not apply MissionRunState.")
 
 	for id_value: Variant in persistent_ids:
 		var persistent_id: String = str(id_value).strip_edges()
@@ -339,6 +366,12 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 	# state. The player validates that policy above; every other semantic owner
 	# must still recapture exactly.
 	comparable_expected["player"] = restored_player_state.duplicate(true)
+	# Pre-6.3 saves have no MissionRunState section. Their meaning is an empty
+	# run-stat owner, so compare against the explicit default after restore.
+	if not comparable_expected.has("mission_run_state"):
+		comparable_expected["mission_run_state"] = (
+			restored_state.get("mission_run_state", {}) as Dictionary
+		).duplicate(true)
 	if restored_state != comparable_expected:
 		return _fail_restore(
 			"Restored non-player semantic world state did not validate against the captured snapshot."
@@ -431,14 +464,19 @@ func _capture_world_semantic_state() -> Dictionary:
 			snapshot as Dictionary
 		).duplicate(true)
 
+	var tombstones: Array[String] = get_authored_tombstones()
+	var run_state_snapshot: Dictionary = {}
+	if mission_run_state != null:
+		run_state_snapshot = mission_run_state.call("capture_semantic_state")
 	return {
 		"object_existence": {
-			"authored_tombstones": [],
+			"authored_tombstones": tombstones,
 			"runtime_entities": [],
 		},
 		"persistent_entities": persistent_snapshots,
 		"player": (player_snapshot as Dictionary).duplicate(true),
 		"semantic_owners": semantic_snapshots,
+		"mission_run_state": run_state_snapshot.duplicate(true),
 		"mission_script_state": {},
 	}
 
@@ -486,6 +524,57 @@ func _validate_world_state_structure(world_state: Dictionary) -> bool:
 		or typeof(existence.get("runtime_entities", null)) != TYPE_ARRAY
 	):
 		return _fail_restore("Semantic object-existence state is malformed.")
+	var tombstone_ids: Dictionary[String, bool] = {}
+	for value: Variant in existence.get("authored_tombstones", []):
+		if typeof(value) != TYPE_STRING:
+			return _fail_restore("Authored tombstone IDs must be strings.")
+		var persistent_id: String = str(value).strip_edges()
+		if persistent_id.is_empty() or tombstone_ids.has(persistent_id):
+			return _fail_restore("Authored tombstone IDs must be non-empty and unique.")
+		tombstone_ids[persistent_id] = true
+	if world_state.has("mission_run_state"):
+		var run_state_value: Variant = world_state.get("mission_run_state")
+		if (
+			typeof(run_state_value) != TYPE_DICTIONARY
+			or mission_run_state == null
+			or not bool(MissionRunState.new().call(
+				"apply_semantic_state",
+				run_state_value
+			))
+		):
+			return _fail_restore("Semantic MissionRunState is malformed.")
+	return true
+
+
+func _apply_authored_tombstones(tombstones: Array) -> bool:
+	_authored_tombstones.clear()
+	for value: Variant in tombstones:
+		var persistent_id: String = str(value).strip_edges()
+		if persistent_id.is_empty() or _authored_tombstones.has(persistent_id):
+			return _fail_restore("Restore contains an invalid authored tombstone ID.")
+		var lookup: Dictionary = lookup_persistent_entity(persistent_id)
+		var owner := lookup.get("node") as Node
+		if not bool(lookup.get("ok", false)) or owner == null:
+			return _fail_restore(
+				"Restore tombstone could not resolve authored persistent entity '%s'."
+				% persistent_id
+			)
+		if owner == player:
+			return _fail_restore("Player cannot be removed through an authored tombstone.")
+		if not bool(entity_registry.call(
+			"unregister_persistent_id",
+			persistent_id,
+			owner
+		)):
+			return _fail_restore(
+				"Restore could not unregister tombstoned authored entity '%s'."
+				% persistent_id
+			)
+		_authored_tombstones[persistent_id] = true
+		var parent: Node = owner.get_parent()
+		if parent != null:
+			parent.remove_child(owner)
+		owner.free()
 	return true
 
 
@@ -690,6 +779,8 @@ func build(
 			return false
 
 	add_child(world)
+	mission_run_state = MissionRunState.new()
+	_authored_tombstones.clear()
 	entity_registry = WorldEntityRegistry.new()
 	var registry_result: Dictionary = entity_registry.call("build_from_subtree", world)
 	if not bool(registry_result.get("ok", false)):
@@ -745,6 +836,113 @@ func lookup_content_entity(content_id: String) -> Dictionary:
 	return entity_registry.call("lookup_content_id", content_id)
 
 
+func get_mission_run_summary() -> Dictionary:
+	if mission_run_state == null:
+		return {
+			"loot_count": 0,
+			"loot_value": 0,
+		}
+	return mission_run_state.call("get_summary")
+
+
+func get_authored_tombstones() -> Array[String]:
+	var result: Array[String] = []
+	for persistent_id: String in _authored_tombstones.keys():
+		result.append(persistent_id)
+	result.sort()
+	return result
+
+
+func collect_authored_pickup(collector: Node, pickup: Node) -> bool:
+	if (
+		state != State.PLAYING
+		or collector == null
+		or collector != player
+		or pickup == null
+		or not is_instance_valid(pickup)
+		or entity_registry == null
+		or mission_run_state == null
+		or not pickup.has_method("get_collection_payload")
+		or not pickup.has_method("mark_collected_for_tombstone")
+		or not pickup.has_method("is_collected")
+		or bool(pickup.call("is_collected"))
+	):
+		return false
+
+	var payload_value: Variant = pickup.call("get_collection_payload")
+	if typeof(payload_value) != TYPE_DICTIONARY:
+		return false
+	var payload: Dictionary = payload_value
+	if (
+		payload.size() != 4
+		or typeof(payload.get("persistent_id", null)) != TYPE_STRING
+		or typeof(payload.get("content_id", null)) != TYPE_STRING
+		or typeof(payload.get("kind", null)) != TYPE_STRING_NAME
+		or typeof(payload.get("loot_value", null)) != TYPE_INT
+	):
+		return false
+
+	var persistent_id: String = str(payload.get("persistent_id", "")).strip_edges()
+	var content_id: String = str(payload.get("content_id", "")).strip_edges()
+	var kind: StringName = payload.get("kind", &"")
+	var loot_value: int = int(payload.get("loot_value", -1))
+	if (
+		persistent_id.is_empty()
+		or _authored_tombstones.has(persistent_id)
+		or loot_value < 0
+	):
+		return false
+	var lookup: Dictionary = lookup_persistent_entity(persistent_id)
+	if (
+		not bool(lookup.get("ok", false))
+		or lookup.get("node") != pickup
+	):
+		return false
+	if kind == &"loot":
+		pass
+	elif kind == &"key" or kind == &"mission_item":
+		if (
+			content_id.is_empty()
+			or not collector.has_method("grant_semantic_possession")
+		):
+			return false
+	else:
+		return false
+
+	if not bool(entity_registry.call(
+		"unregister_persistent_id",
+		persistent_id,
+		pickup
+	)):
+		return false
+
+	if kind == &"loot":
+		if not bool(mission_run_state.call("record_loot", loot_value)):
+			return false
+	else:
+		if not bool(collector.call(
+			"grant_semantic_possession",
+			StringName(content_id)
+		)):
+			return false
+
+	_authored_tombstones[persistent_id] = true
+	if not bool(pickup.call("mark_collected_for_tombstone")):
+		return false
+
+	queue_semantic_gameplay_event(
+		session_id,
+		PICKUP_COLLECTED_EVENT_NAME,
+		{
+			"persistent_id": persistent_id,
+			"content_id": content_id,
+			"kind": kind,
+			"loot_value": loot_value,
+		}
+	)
+	return true
+
+
 func begin_play() -> bool:
 	if state != State.READY and state != State.STOPPED:
 		return false
@@ -794,6 +992,8 @@ func teardown() -> void:
 	if entity_registry != null:
 		entity_registry.call("clear")
 		entity_registry = null
+	mission_run_state = null
+	_authored_tombstones.clear()
 
 	if world != null:
 		if world.get_parent() == self:

@@ -701,14 +701,32 @@ func _is_valid_world_state_structure(world_state: Dictionary) -> bool:
 		or typeof(existence.get("runtime_entities", null)) != TYPE_ARRAY
 	):
 		return false
-	# The current slice contains neither permanent authored removals nor
-	# runtime-created persistent objects. Reject unsupported non-empty sections
-	# before destructive replacement; later roadmap items extend these sections.
-	return (
-		(existence.get("authored_tombstones", []) as Array).is_empty()
-		and (existence.get("runtime_entities", []) as Array).is_empty()
-		and (world_state.get("mission_script_state", {}) as Dictionary).is_empty()
-	)
+	var tombstone_ids: Dictionary[String, bool] = {}
+	for value: Variant in existence.get("authored_tombstones", []):
+		if typeof(value) != TYPE_STRING:
+			return false
+		var persistent_id: String = str(value).strip_edges()
+		if persistent_id.is_empty() or tombstone_ids.has(persistent_id):
+			return false
+		tombstone_ids[persistent_id] = true
+	if not (existence.get("runtime_entities", []) as Array).is_empty():
+		return false
+	if not (world_state.get("mission_script_state", {}) as Dictionary).is_empty():
+		return false
+	if world_state.has("mission_run_state"):
+		var run_state: Variant = world_state.get("mission_run_state")
+		if typeof(run_state) != TYPE_DICTIONARY:
+			return false
+		var run: Dictionary = run_state
+		if (
+			run.size() != 2
+			or typeof(run.get("loot_count", null)) != TYPE_INT
+			or typeof(run.get("loot_value", null)) != TYPE_INT
+			or int(run.get("loot_count", -1)) < 0
+			or int(run.get("loot_value", -1)) < 0
+		):
+			return false
+	return true
 
 
 func _is_valid_view_pose(view_pose: Dictionary) -> bool:

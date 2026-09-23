@@ -1480,7 +1480,7 @@ The default primary world-interaction input remains **F** and continues through 
 
 **Manual:** accepted by the user on exact implementation head `220bdd1d6d9db257b975c71198e2b531117ae763` after GitHub Actions Test run #363 passed. Interaction Lab targeting, non-blocking sensor behavior, physical occlusion, range/highlight clearing, fresh-F use, state invalidation, and ordinary movement/look all passed the requested player-facing check.
 
-## 6.2 Door completion `[~]`
+## 6.2 Door completion `[x]`
 
 Keys/locks/barred restrictions, authoring properties, obstruction behavior, NPC use, events, save state. Complete the mapper-facing external-model/variant authoring path so wooden, metal, ornate, window-like, or other compatible opening presentations can reuse the same ordinary door/opening gameplay archetype. Openable windows are variants of this system, not a separate gameplay subsystem.
 
@@ -1502,9 +1502,9 @@ Door snapshots now capture `phase`, `open_fraction`, `motion_blocked`, `locked`,
 
 **Automated:** accepted on exact fix-forward implementation head `d8b6c52e9acbb2d7cb31c790da2501cdd1ac259d` by GitHub Actions Test run #365. The real Authoring suite exported and built `vark_opening` through Vark's FGD/FuncGodot path; Door Lab passed locked denial, semantic-key unlock, barred/unbar behavior, detached restriction/denial events, obstruction/reversal, model-path variants, legacy/new snapshots, and application quicksave/quickload with no restore replay. Existing Navigation and Door/Nav/Perception integration suites remained green, and the authoritative run ended with `ALL TEST SUITES PASSED`.
 
-**Manual:** user/playtester. Development Launch → **Door Lab**: center door must retain the accepted F open/close, physical obstruction/reversal, and highlight behavior; the left **LOCKED** door must highlight but refuse F without `key.lab`; the right **BARRED** opening must highlight but refuse F; neither restricted door may visibly start opening from repeated F. Movement/look must remain normal. Key acquisition/use itself is intentionally not manually testable until 6.3 supplies real possession.
+**Manual:** accepted by the user on current 6.2 implementation/docs lineage after exact-head GitHub Actions run #366 was green. Door Lab preserved ordinary open/close, obstruction/reversal, highlighting and controls; locked and barred openings remained targetable but refused repeated F without opening.
 
-## 6.3 Loot, keys, minimal possession, and run-stat ownership `[ ]`
+## 6.3 Loot, keys, minimal possession, and run-stat ownership `[~]`
 
 Collected loot becomes abstract recorded value/count.
 
@@ -1515,6 +1515,24 @@ Doors/mission logic query semantic possession rather than depending on future in
 When the first mission statistic becomes real (loot is likely first), introduce a tiny semantic `MissionRunState`/statistics owner for run counters rather than letting each subsystem keep duplicated counters or making the future results UI scrape private state. Later kills/knockouts/alerts/time extend the same owner as they become real.
 
 Because collecting authored loot removes an authored world instance, implement the minimal removed-authored tombstone representation and prove collected loot remains absent after restore without replaying collection/stat consequences.
+
+The bounded 6.3 grammar is intentionally smaller than the later inventory system:
+
+- `PlayerSemanticPossession` owns only a sorted set of semantic possession IDs. The player exposes `has_semantic_possession(id)` for doors/mission logic and `grant_semantic_possession(id)` for collected keys or small mission items. There is no selection, equipped slot, quantity UI, consumption, purchase/carryover, or general inventory menu in this item.
+- player possession is embedded in the existing player semantic snapshot. New snapshots add `semantic_possession`; pre-6.3 six-field player snapshots remain valid and restore as empty possession. Player restore validation explicitly checks the possession set so traversal normalization cannot mask a lost key.
+- `VarkMissionRunState` is the single mission-run statistics owner introduced with exactly `loot_count` and `loot_value`. `WorldSession` owns it and exposes a detached summary; later statistics extend this owner instead of duplicating counters in loot, objectives, or results UI.
+- `VarkCollectible` is the minimal physical authored pickup archetype for `key`, `mission_item`, and `loot`. It reuses center-view/F interaction and the accepted fullbright highlight. Keys/mission items become semantic possession IDs; loot becomes only abstract MissionRunState count/value.
+- collection is one session-owned cross-system mutation: validate the authored persistent pickup, remove it from the entity registry, grant possession or record loot, add its persistent ID to authored tombstones, disable/remove its world presentation, then queue one detached `pickup.collected` fact. Collection never turns loot into a carried rigid body or a temporary inventory object.
+- `object_existence.authored_tombstones` is now the supported representation for permanently removed authored entities. Tombstones are unique non-empty persistent IDs. Save validation accepts them, runtime-created persistent entities remain unsupported, and restore removes the matching authored instances **before** semantic snapshots are applied. A tombstoned ID may not also have a persistent snapshot.
+- the new `mission_run_state` world-state section is optional for backward compatibility: pre-6.3 saves restore zero loot; new saves capture the run owner directly. No global save-format bump is required because older supported snapshots retain unambiguous default meaning.
+
+The focused fixture is **Development Launch → Loot/Key Lab**. It contains the real player, an authored `key.lab` pickup, two loot pickups worth 25 and 75, and the real 6.2 locked ordinary door requiring `key.lab`. A world-space diagnostic label shows whether the key is owned and the current abstract loot count/value.
+
+**Done when:** the production F interaction collects the authored key into semantic possession; the real locked door unlocks by querying that possession; two authored loot pickups disappear and produce exactly 2 / 100 on one MissionRunState; collection queues detached semantic facts once; quicksave contains possession, run stats, and tombstones; quickload reconstructs a fresh world with the three collected authored pickups still absent, restored key/loot truth, no transient post-save mutation, and no replayed collection consequences; pre-6.3 player/run-state saves remain supported; existing persistence/door/interaction suites remain green; and the user confirms the player-facing key/loot/door behavior is understandable without inventory UI.
+
+**Automated:** wired into the authoritative Application suite through `tests/application/possession_loot_regressions.gd`. It launches the real Loot/Key Lab through Application/WorldSession, uses fresh F pickup edges, proves the 6.2 door consumes real player possession, checks registry tombstones and MissionRunState, captures through the application quicksave path, deliberately diverges possession/run stats, then quickloads and verifies object-existence-first restoration plus an empty semantic event queue. Existing save compatibility, transient restore, interaction, door, and all-tests barriers remain compatibility checks. Exact-head post-push CI is required.
+
+**Manual:** user/playtester. Development Launch → **Loot/Key Lab**: center the key and press F; it should disappear and the status should switch to `KEY key.lab: OWNED`. Approach the locked door and press F; it should now unlock/open through the same ordinary-door interaction. Collect `LOOT · 25` and `LOOT · 75`; each should disappear and the status should finish at `LOOT: 2 items / 100 value`. Looking/range/highlight and movement controls must remain normal. No inventory menu or item selection is expected in 6.3.
 
 ## 6.4 Containers `[ ]`
 

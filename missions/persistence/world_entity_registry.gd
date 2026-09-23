@@ -85,6 +85,26 @@ func lookup_content_id(content_id: String) -> Dictionary:
 	return _lookup(_by_content_id, content_id, "content_id")
 
 
+func unregister_persistent_id(
+	persistent_id: String,
+	expected_node: Node = null
+) -> bool:
+	var normalized: String = persistent_id.strip_edges()
+	if normalized.is_empty() or not _by_persistent_id.has(normalized):
+		return false
+	var owner: Node = _by_persistent_id[normalized]
+	if expected_node != null and owner != expected_node:
+		return false
+	_by_persistent_id.erase(normalized)
+	var content_ids: Array[String] = []
+	for content_id: String in _by_content_id.keys():
+		if _by_content_id[content_id] == owner:
+			content_ids.append(content_id)
+	for content_id: String in content_ids:
+		_by_content_id.erase(content_id)
+	return true
+
+
 func _lookup(registry: Dictionary[String, Node], raw_id: String, id_name: String) -> Dictionary:
 	var lookup_id: String = raw_id.strip_edges()
 	if lookup_id.is_empty():

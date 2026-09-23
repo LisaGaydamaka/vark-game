@@ -1,0 +1,123 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scenes/loot_key_lab.gd" id="1_lab"]
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
+[ext_resource type="PackedScene" path="res://gameplay/pickups/Collectible.tscn" id="3_pickup"]
+[ext_resource type="PackedScene" path="res://gameplay/doors/OrdinaryDoor.tscn" id="4_door"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(9, 0.2, 9)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(9, 0.2, 9)
+
+[sub_resource type="BoxShape3D" id="WallShape"]
+size = Vector3(3.8, 2.6, 0.3)
+
+[sub_resource type="BoxMesh" id="WallMesh"]
+size = Vector3(3.8, 2.6, 0.3)
+
+[sub_resource type="BoxShape3D" id="HeaderShape"]
+size = Vector3(1.4, 0.5, 0.3)
+
+[sub_resource type="BoxMesh" id="HeaderMesh"]
+size = Vector3(1.4, 0.5, 0.3)
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.32, 0.32, 0.32, 1)
+
+[node name="LootKeyLab" type="Node3D"]
+script = ExtResource("1_lab")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -25, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector3(0, 0, 4)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+material_override = SubResource("FloorMaterial")
+
+[node name="Key" parent="." instance=ExtResource("3_pickup")]
+position = Vector3(0, 0.45, 2.25)
+persistent_id = "loot_key_lab.key"
+content_id = "key.lab"
+pickup_kind = &"key"
+display_label = "KEY · key.lab"
+base_color = Color(0.78, 0.72, 0.20, 1)
+
+[node name="Loot25" parent="." instance=ExtResource("3_pickup")]
+position = Vector3(-2.0, 0.45, 2.0)
+persistent_id = "loot_key_lab.loot25"
+content_id = "loot.lab.25"
+pickup_kind = &"loot"
+loot_value = 25
+display_label = "LOOT · 25"
+base_color = Color(0.70, 0.35, 0.16, 1)
+
+[node name="Loot75" parent="." instance=ExtResource("3_pickup")]
+position = Vector3(2.0, 0.45, 2.0)
+persistent_id = "loot_key_lab.loot75"
+content_id = "loot.lab.75"
+pickup_kind = &"loot"
+loot_value = 75
+display_label = "LOOT · 75"
+base_color = Color(0.72, 0.48, 0.16, 1)
+
+[node name="LeftWall" type="StaticBody3D" parent="."]
+position = Vector3(-2.6, 1.3, -1.0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LeftWall"]
+shape = SubResource("WallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="LeftWall"]
+mesh = SubResource("WallMesh")
+
+[node name="RightWall" type="StaticBody3D" parent="."]
+position = Vector3(2.6, 1.3, -1.0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RightWall"]
+shape = SubResource("WallShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RightWall"]
+mesh = SubResource("WallMesh")
+
+[node name="Header" type="StaticBody3D" parent="."]
+position = Vector3(0, 2.35, -1.0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Header"]
+shape = SubResource("HeaderShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Header"]
+mesh = SubResource("HeaderMesh")
+
+[node name="LockedDoor" parent="." instance=ExtResource("4_door")]
+position = Vector3(-0.65, 0, -1.0)
+persistent_id = "loot_key_lab.door"
+door_id = &"door.loot_key_lab"
+starts_locked = true
+required_key_id = &"key.lab"
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(0, 2.9, 2.1)
+text = "6.3 LOOT / KEY LAB\nF = collect centered key/loot · collected objects disappear\nkey.lab unlocks the real locked door · loot becomes abstract run stats"
+billboard = 1
+font_size = 24
+outline_size = 6
+no_depth_test = true
+
+[node name="Status" type="Label3D" parent="."]
+position = Vector3(0, 2.35, 1.7)
+text = "KEY key.lab: not owned\nLOOT: 0 items / 0 value"
+billboard = 1
+font_size = 22
+outline_size = 6
+no_depth_test = true
