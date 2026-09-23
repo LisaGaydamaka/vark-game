@@ -36,5 +36,8 @@ jobs:
       - name: Import project
         run: godot --headless --path . --import
 
+      - name: Diagnose Application suite
+        run: timeout 90s godot --headless --path . --script res://tests/application/run_application_tests.gd
+
       - name: Run regression suites
         run: godot --headless --path . --script res://tests/run_all_tests.gd
