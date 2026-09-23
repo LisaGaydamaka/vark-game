@@ -173,7 +173,12 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	# Save with drawer open, 25 loot collected, key still present.
 	await _settle(tree, 2)
 	var generation: int = int(application.call("request_quicksave"))
-	var snapshot: Dictionary = await _wait_for_quicksave(application, tree, 120)
+	var snapshot: Dictionary = await _wait_for_quicksave(
+		application,
+		tree,
+		generation,
+		120
+	)
 	var saved_world: Dictionary = snapshot.get("session", {}).get("world_state", {})
 	var saved_container: Dictionary = (
 		saved_world.get("persistent_entities", {}) as Dictionary
@@ -277,12 +282,25 @@ func _settle(tree: SceneTree, frames: int = 1) -> void:
 func _wait_for_quicksave(
 	application: Node,
 	tree: SceneTree,
+	generation: int,
 	max_frames: int
 ) -> Dictionary:
+	var coordinator := application.get_node_or_null("SaveCoordinator") as Node
+	if coordinator == null or generation <= 0:
+		return {}
 	for _index: int in max_frames:
-		var snapshot: Dictionary = application.call("get_latest_quicksave_snapshot")
-		if not snapshot.is_empty():
-			return snapshot
+		var status: Dictionary = coordinator.call(
+			"get_request_status",
+			generation
+		)
+		if status.get("status", &"") == &"committed":
+			return coordinator.call("get_request_snapshot", generation)
+		if (
+			status.get("status", &"") == &"failed"
+			or status.get("status", &"") == &"cancelled"
+			or status.get("status", &"") == &"superseded"
+		):
+			return {}
 		await tree.physics_frame
 		await tree.process_frame
 	return {}
