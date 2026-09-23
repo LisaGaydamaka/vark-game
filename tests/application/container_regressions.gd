@@ -61,6 +61,22 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and cabinet.get_semantic_phase() == Container.PHASE_CLOSED,
 		"6.4 lab launches three real reusable container variants with authored physical contents"
 	)
+	if (
+		not launched
+		or world == null
+		or player == null
+		or session == null
+		or drawer == null
+		or chest == null
+		or cabinet == null
+		or drawer_loot == null
+		or drawer_key == null
+	):
+		_release_interact()
+		application.call("exit_current_world")
+		application.queue_free()
+		await tree.process_frame
+		return
 
 	var state_events: Array[Dictionary] = []
 	var state_handler: Callable = func(event: Dictionary) -> bool:
@@ -177,11 +193,17 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	# Deliberately diverge after capture: close drawer and collect the key directly.
 	drawer.request_close(player)
 	await _settle(tree, 40)
+	var diverged_key: bool = (
+		drawer_key != null
+		and is_instance_valid(drawer_key)
+		and bool(player.call("collect_authored_pickup", drawer_key))
+	)
 	assert_true.call(
-		bool(player.call("collect_authored_pickup", drawer_key))
+		diverged_key
 		and bool(player.call("has_semantic_possession", &"key.container.lab")),
 		"Live container/possession state can diverge after the committed 6.4 snapshot"
 	)
+	await _settle(tree, 2)
 
 	var quickloaded: bool = bool(application.call("quickload_latest"))
 	await tree.process_frame
@@ -189,6 +211,21 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var restored_world := application.get("current_world") as Node3D
 	var restored_session := application.get("current_session") as Node
 	var restored_player := application.get("current_player") as CharacterBody3D
+	if (
+		not quickloaded
+		or restored_world == null
+		or restored_session == null
+		or restored_player == null
+	):
+		assert_true.call(
+			false,
+			"6.4 quickload must produce a replacement world/session/player before restore assertions"
+		)
+		_release_interact()
+		application.call("exit_current_world")
+		application.queue_free()
+		await tree.process_frame
+		return
 	var restored_drawer := restored_world.get_node_or_null("Drawer") as VarkOrdinaryContainer
 	var restored_key_lookup: Dictionary = restored_session.call(
 		"lookup_persistent_entity",
