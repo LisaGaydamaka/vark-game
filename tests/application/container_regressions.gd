@@ -95,7 +95,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	player.global_position = Vector3(-3.0, 0.0, 2.7)
 	player.velocity = Vector3.ZERO
 	player.rotation.y = 0.0
-	(player.get_node("Head") as Node3D).rotation.x = deg_to_rad(-8.0)
+	(player.get_node("Head") as Node3D).rotation.x = deg_to_rad(-18.0)
 	await _settle(tree, 3)
 	var closed_target: Dictionary = player.call("get_interaction_semantic_state")
 	assert_true.call(
