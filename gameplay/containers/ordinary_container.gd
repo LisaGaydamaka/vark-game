@@ -250,7 +250,10 @@ func _configure_geometry() -> void:
 	var wall: float = clampf(
 		wall_thickness,
 		0.02,
-		maxf(0.02, minf(outer_size.x, outer_size.y, outer_size.z) * 0.45)
+		maxf(
+			0.02,
+			minf(outer_size.x, minf(outer_size.y, outer_size.z)) * 0.45
+		)
 	)
 	var panel: float = clampf(mechanism_thickness, 0.02, maxf(wall, 0.02))
 	var inner_x: float = maxf(outer_size.x - wall * 2.0, 0.10)
