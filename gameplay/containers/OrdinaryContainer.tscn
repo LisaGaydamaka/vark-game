@@ -1,0 +1,74 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://gameplay/containers/ordinary_container.gd" id="1_container"]
+
+[sub_resource type="BoxShape3D" id="FrameShape"]
+size = Vector3(0.1, 0.1, 0.1)
+
+[sub_resource type="BoxMesh" id="FrameMesh"]
+size = Vector3(0.1, 0.1, 0.1)
+
+[sub_resource type="BoxShape3D" id="MechanismShape"]
+size = Vector3(0.1, 0.1, 0.1)
+
+[sub_resource type="BoxMesh" id="MechanismMesh"]
+size = Vector3(0.1, 0.1, 0.1)
+
+[node name="OrdinaryContainer" type="Node3D"]
+script = ExtResource("1_container")
+
+[node name="FrameA" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FrameA"]
+shape = SubResource("FrameShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="FrameA"]
+mesh = SubResource("FrameMesh")
+
+[node name="FrameB" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FrameB"]
+shape = SubResource("FrameShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="FrameB"]
+mesh = SubResource("FrameMesh")
+
+[node name="FrameC" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FrameC"]
+shape = SubResource("FrameShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="FrameC"]
+mesh = SubResource("FrameMesh")
+
+[node name="FrameD" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FrameD"]
+shape = SubResource("FrameShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="FrameD"]
+mesh = SubResource("FrameMesh")
+
+[node name="FrameE" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FrameE"]
+shape = SubResource("FrameShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="FrameE"]
+mesh = SubResource("FrameMesh")
+
+[node name="FrameModel" type="MeshInstance3D" parent="."]
+visible = false
+
+[node name="Mechanism" type="AnimatableBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Mechanism"]
+shape = SubResource("MechanismShape")
+
+[node name="FallbackMesh" type="MeshInstance3D" parent="Mechanism"]
+mesh = SubResource("MechanismMesh")
+
+[node name="Model" type="MeshInstance3D" parent="Mechanism"]
+visible = false
+
+[node name="Contents" type="Node3D" parent="."]

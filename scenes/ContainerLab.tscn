@@ -1,0 +1,111 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scenes/container_lab.gd" id="1_lab"]
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="2_player"]
+[ext_resource type="PackedScene" path="res://gameplay/containers/OrdinaryContainer.tscn" id="3_container"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(11, 0.2, 10)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(11, 0.2, 10)
+
+[sub_resource type="StandardMaterial3D" id="FloorMaterial"]
+albedo_color = Color(0.30, 0.30, 0.30, 1)
+
+[node name="ContainerLab" type="Node3D"]
+script = ExtResource("1_lab")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -25, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("2_player")]
+position = Vector3(0, 0, 4.8)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+material_override = SubResource("FloorMaterial")
+
+[node name="Drawer" parent="." instance=ExtResource("3_container")]
+position = Vector3(-3.0, 0.65, 0.0)
+persistent_id = "container_lab.drawer"
+content_id = "container.drawer"
+container_id = &"container.drawer"
+container_variant = "sliding_drawer"
+opening_face = &"front"
+mechanism_mode = &"slide"
+outer_size = Vector3(1.8, 1.3, 1.0)
+open_position_offset = Vector3(0, 0, 0.9)
+contents_closed_position = Vector3(0, 0, 0.12)
+contents_follow_mechanism = true
+base_color = Color(0.31, 0.20, 0.12, 1)
+mechanism_color = Color(0.46, 0.29, 0.15, 1)
+
+[node name="Chest" parent="." instance=ExtResource("3_container")]
+position = Vector3(0, 0.60, 0.0)
+persistent_id = "container_lab.chest"
+content_id = "container.chest"
+container_id = &"container.chest"
+container_variant = "hinged_chest"
+opening_face = &"top"
+mechanism_mode = &"hinge"
+outer_size = Vector3(1.8, 1.2, 1.25)
+open_rotation_degrees = Vector3(-105, 0, 0)
+contents_closed_position = Vector3(0, 0.12, 0)
+contents_follow_mechanism = false
+base_color = Color(0.25, 0.17, 0.10, 1)
+mechanism_color = Color(0.40, 0.25, 0.12, 1)
+
+[node name="Cabinet" parent="." instance=ExtResource("3_container")]
+position = Vector3(3.0, 1.0, 0.0)
+persistent_id = "container_lab.cabinet"
+content_id = "container.cabinet"
+container_id = &"container.cabinet"
+container_variant = "hinged_cabinet"
+opening_face = &"front"
+mechanism_mode = &"hinge"
+outer_size = Vector3(1.6, 2.0, 0.8)
+open_rotation_degrees = Vector3(0, -105, 0)
+contents_closed_position = Vector3(0, 0, 0.05)
+contents_follow_mechanism = false
+base_color = Color(0.22, 0.27, 0.21, 1)
+mechanism_color = Color(0.30, 0.40, 0.27, 1)
+
+[node name="DrawerLabel" type="Label3D" parent="."]
+position = Vector3(-3.0, 2.0, 0.2)
+text = "DRAWER\nF opens physically · contents move with it"
+billboard = 1
+font_size = 20
+outline_size = 6
+no_depth_test = true
+
+[node name="ChestLabel" type="Label3D" parent="."]
+position = Vector3(0, 2.1, 0.2)
+text = "CHEST\nF lifts lid · loot remains in base"
+billboard = 1
+font_size = 20
+outline_size = 6
+no_depth_test = true
+
+[node name="CabinetLabel" type="Label3D" parent="."]
+position = Vector3(3.0, 2.5, 0.2)
+text = "CABINET\nF swings door · item stays inside"
+billboard = 1
+font_size = 20
+outline_size = 6
+no_depth_test = true
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(0, 3.1, 1.4)
+text = "6.4 CONTAINER LAB\nNo inventory menu: open furniture, look inside, take the physical object with F"
+billboard = 1
+font_size = 24
+outline_size = 6
+no_depth_test = true

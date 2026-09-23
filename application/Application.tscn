@@ -8,8 +8,8 @@
 [node name="Application" type="Node"]
 script = ExtResource("1_app")
 default_world_scene = ExtResource("2_world")
-development_launch_labels = PackedStringArray("VarkTest", "Playground", "Interaction Lab", "Door Lab", "Loot/Key Lab", "Prop Lab", "Acoustic Lab", "Guard/Nav Lab", "Exposure Lab", "Speech Lab", "Objective Lab", "Integrated Slice", "Vertical Stealth Lab", "Communication Lab")
-development_launch_resource_paths = PackedStringArray("res://scenes/VarkTest.tscn", "res://missions/playground/mission.tres", "res://scenes/InteractionLab.tscn", "res://scenes/DoorLab.tscn", "res://scenes/LootKeyLab.tscn", "res://scenes/PropLab.tscn", "res://scenes/AcousticLab.tscn", "res://missions/guard_nav_lab/mission.tres", "res://scenes/ExposureLab.tscn", "res://scenes/SpeechLab.tscn", "res://scenes/ObjectiveLab.tscn", "res://missions/integrated_slice/world.tscn", "res://missions/vertical_stealth_lab/world.tscn", "res://missions/communication_lab/world.tscn")
+development_launch_labels = PackedStringArray("VarkTest", "Playground", "Interaction Lab", "Door Lab", "Loot/Key Lab", "Container Lab", "Prop Lab", "Acoustic Lab", "Guard/Nav Lab", "Exposure Lab", "Speech Lab", "Objective Lab", "Integrated Slice", "Vertical Stealth Lab", "Communication Lab")
+development_launch_resource_paths = PackedStringArray("res://scenes/VarkTest.tscn", "res://missions/playground/mission.tres", "res://scenes/InteractionLab.tscn", "res://scenes/DoorLab.tscn", "res://scenes/LootKeyLab.tscn", "res://scenes/ContainerLab.tscn", "res://scenes/PropLab.tscn", "res://scenes/AcousticLab.tscn", "res://missions/guard_nav_lab/mission.tres", "res://scenes/ExposureLab.tscn", "res://scenes/SpeechLab.tscn", "res://scenes/ObjectiveLab.tscn", "res://missions/integrated_slice/world.tscn", "res://missions/vertical_stealth_lab/world.tscn", "res://missions/communication_lab/world.tscn")
 
 [node name="InputBoundary" type="Node" parent="."]
 script = ExtResource("3_input")

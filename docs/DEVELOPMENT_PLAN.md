@@ -1504,7 +1504,7 @@ Door snapshots now capture `phase`, `open_fraction`, `motion_blocked`, `locked`,
 
 **Manual:** accepted by the user on current 6.2 implementation/docs lineage after exact-head GitHub Actions run #366 was green. Door Lab preserved ordinary open/close, obstruction/reversal, highlighting and controls; locked and barred openings remained targetable but refused repeated F without opening.
 
-## 6.3 Loot, keys, minimal possession, and run-stat ownership `[~]`
+## 6.3 Loot, keys, minimal possession, and run-stat ownership `[x]`
 
 Collected loot becomes abstract recorded value/count.
 
@@ -1532,11 +1532,40 @@ The focused fixture is **Development Launch → Loot/Key Lab**. It contains the 
 
 **Automated:** accepted on exact current implementation head `c70dd8512a57a2afb8a30b455f8ab5c316f1aa29` by GitHub Actions Test run #369. The authoritative Application suite launched the real Loot/Key Lab, proved exact-center F pickup, semantic key possession, real 6.2 door unlock, 2 / 100 MissionRunState loot, stable authored tombstones, save capture, deliberate post-save possession/stat divergence, and object-existence-first quickload with no collection-event replay. Existing save compatibility, transient restore, interaction, door, and all other repository suites remained green; the run ended with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`.
 
-**Manual:** user/playtester. Development Launch → **Loot/Key Lab**: before collecting the key, inspect the closed locked door from both sides and close range; the leaf must meet both frame sides, the header, and the floor with no visible slit. Then center the key and press F; it should disappear and the status should switch to `KEY key.lab: OWNED`. Approach the locked door and press F; it should now unlock and complete its full opening sweep through the same ordinary-door interaction without the flush frame stopping it. Collect `LOOT · 25` and `LOOT · 75`; each should disappear and the status should finish at `LOOT: 2 items / 100 value`. Looking/range/highlight and movement controls must remain normal. No inventory menu or item selection is expected in 6.3.
+**Manual:** accepted by the user on the 6.3 implementation lineage after the flush-frame follow-up and GitHub Actions run #373 were green. Key collection/possession, locked-door use, both loot pickups, 2 / 100 run stats, highlighting/controls, and the corrected gapless door opening all passed the requested player-facing checks.
 
-## 6.4 Containers `[ ]`
+## 6.4 Containers `[~]`
 
 Physical opening/exposed contents where appropriate. Ordinary cabinets, chests, drawers, and furniture-like containers use reusable external model assets/variants where appropriate rather than requiring bespoke brush geometry or gameplay code per visual model.
+
+The bounded 6.4 implementation introduces one reusable `VarkOrdinaryContainer` gameplay archetype rather than separate drawer/chest/cabinet systems. The container is a persistent semantic owner for only its physical mechanism state; its contents remain ordinary independent world objects.
+
+The archetype provides:
+
+- one fixed structural frame/cavity assembled from real solid collision pieces;
+- one physical `AnimatableBody3D` mechanism using either a translation or hinge transform;
+- front-opening and top-opening rectangular cavity layouts sufficient for drawer/cabinet/chest proofs;
+- explicit `closed / opening / open / closing` phase plus normalized open progress, captured/restored as semantic state;
+- center-view/F interaction and the accepted fullbright/no-received-shadow highlight on the moving mechanism;
+- detached `container.use` gameplay-sound facts and terminal `container.state_changed` semantic events;
+- optional `frame_visual_model_path`, `mechanism_visual_model_path`, and descriptive `container_variant` configuration so compatible reusable presentation can replace the low-fi generated box meshes without new gameplay code. The fixed collision/cavity contract remains semantic/physical authority.
+
+A container has a real `Contents` transform, not an abstract inventory list. For a drawer, contents can follow the moving mechanism and physically come out with it. For a chest/cabinet, contents may remain fixed in the cavity while a lid/door moves away. Closed solid geometry naturally wins the existing first-hit interaction ray, so contents cannot be targeted through the closed mechanism; after physical opening, an exposed child loot/key/item is targeted and collected through the unchanged 6.3 `VarkCollectible` path.
+
+The focused fixture is **Development Launch → Container Lab**:
+
+- a sliding drawer carries a 25-value loot object plus a semantic key with the drawer;
+- a top-hinged chest exposes a stationary 75-value loot object;
+- a front-hinged cabinet exposes a stationary mission item;
+- all three are instances of the same ordinary container archetype with different configuration, not different gameplay scripts.
+
+Save ownership stays compositional. The container snapshot stores only its mechanism phase/progress. Individual contents keep their own authored persistent IDs; collected contents use the existing 6.3 tombstone/run-stat/possession owners. Therefore a save can restore an open drawer with one collected child still absent and another uncollected child still physically present without a hidden container-content serialization layer.
+
+**Done when:** Container Lab proves a closed container physically owns the first interaction hit; one fresh F opens the real drawer; drawer contents move into exposed world space; exposed child loot becomes the independent normal interaction target and collects through 6.3; the same archetype completes top/front hinge variants; container terminal events are detached; quicksave records open container state plus the collected child tombstone; post-save close/key collection can diverge; quickload restores the drawer open, collected loot absent, uncollected key present, saved run stats/possession, and an empty semantic event queue; existing interaction, persistence, loot, prop, and door suites stay green; and the user confirms searching feels physical and understandable with no container menu.
+
+**Automated:** wired into the authoritative Application suite through `tests/application/container_regressions.gd`. Exact-head post-push GitHub Actions validation is required.
+
+**Manual:** user/playtester. Development Launch → **Container Lab**. Center the drawer/front and press F: the drawer should physically slide toward you, exposing the real loot/key inside. Look directly at an exposed item: only that item should highlight; press F to take it normally. The chest lid and cabinet door should physically hinge open with F and expose their contents rather than opening a menu. Re-aim at an open container and F should close it. Closed containers must not allow taking contents through the panel/lid. Holding F must not repeat toggles/collection, movement/look remain normal, and no inventory/container UI should appear.
 
 ## 6.5 Switches and switchable/extinguishable lights `[ ]`
 

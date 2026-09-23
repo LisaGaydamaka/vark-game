@@ -24,6 +24,9 @@ const DoorRegressions = preload(
 const PossessionLootRegressions = preload(
 	"res://tests/application/possession_loot_regressions.gd"
 )
+const ContainerRegressions = preload(
+	"res://tests/application/container_regressions.gd"
+)
 const PauseArbitrationRegressions = preload(
 	"res://tests/application/pause_arbitration_regressions.gd"
 )
@@ -118,6 +121,12 @@ func _run_tests() -> void:
 
 	var possession_loot_regressions: RefCounted = PossessionLootRegressions.new()
 	await possession_loot_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var container_regressions: RefCounted = ContainerRegressions.new()
+	await container_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)

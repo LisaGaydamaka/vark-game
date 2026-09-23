@@ -1102,6 +1102,25 @@ Manual acceptance:
 - [ ] Looking away/out of range clears highlight normally; walking, sprinting, crouching, jumping, and mouse look remain unchanged.
 - [ ] Report any collected object that reappears during the live run, duplicate loot count, key that fails to unlock the door, stale highlight, or unexpected inventory UI.
 
+## Containers and physical searching (Phase 6.4)
+
+- **Fixture:** Development Launch → **Container Lab** uses the production Application/WorldSession/Player interaction path and one reusable `VarkOrdinaryContainer` archetype.
+- **Physical search:** the moving mechanism is real solid geometry. Closed panel/lid geometry is the first interaction hit; contents are ordinary child world objects and become independently targetable only after physical exposure.
+- **Variants:** sliding drawer, top-hinged chest, and front-hinged cabinet are configuration of the same script/archetype. Compatible external frame/mechanism mesh paths may replace generated low-fi presentation without changing collision, identity, save ownership, interaction, or content semantics.
+- **Persistence:** container phase/progress is the container's persistent snapshot. Loot/key/item children retain separate persistent IDs; collection uses existing tombstones, possession, and MissionRunState. There is no serialized hidden container inventory.
+
+Manual acceptance:
+
+- [ ] F5 → Development Launch → **Container Lab**.
+- [ ] Center the closed **DRAWER** and press **F** once. It physically slides out; holding F does not repeatedly toggle.
+- [ ] Before opening, contents are not selectable through the closed drawer front. After opening, the physical loot/key inside become independently highlightable.
+- [ ] Take an exposed item with **F**. Loot disappears into run stats or the key becomes semantic possession exactly like ordinary 6.3 pickups; no container screen/list appears.
+- [ ] Press **F** on the open drawer itself to close it again.
+- [ ] Open the **CHEST**: its lid physically hinges away and exposes stationary contents in the base.
+- [ ] Open the **CABINET**: its front door physically swings away and exposes the item inside.
+- [ ] Looking/range/highlight, walking, sprinting, crouching, jumping, and mouse look remain unchanged.
+- [ ] Report any through-closed-container pickup, floating/misaligned content, mechanism that fails to complete, stale highlight, held-F repeat, or unexpected inventory/container UI.
+
 ## Doors (Phase 6.2)
 
 - [ ] Development Launch → **Door Lab**. The center ordinary door still highlights and toggles with one fresh **F** press; holding F does not repeat.
