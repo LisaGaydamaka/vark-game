@@ -1095,6 +1095,7 @@ The completed Windows run satisfied these cases. The first round trip exposed on
 Manual acceptance:
 
 - [ ] F5 → Development Launch → **Loot/Key Lab**.
+- [ ] Before collecting the key, inspect the closed locked door from both sides and up close. The leaf meets both frame sides, the header, and the floor exactly; there is no visible slit between the closed door and its frame.
 - [ ] Center **KEY · key.lab** and press **F** once. It disappears; the status changes to **KEY key.lab: OWNED**. Holding F does not repeat collection.
 - [ ] Approach the locked door and press **F**. The same ordinary door unlocks/opens because the player owns `key.lab`; no inventory menu or explicit key-selection step appears.
 - [ ] Collect **LOOT · 25** and **LOOT · 75**. Each disappears and the status reaches **LOOT: 2 items / 100 value**.

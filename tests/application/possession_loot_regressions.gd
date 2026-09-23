@@ -36,6 +36,45 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var loot75 := world.get_node_or_null("Loot75") as VarkCollectible if world != null else null
 	var door := world.get_node_or_null("LockedDoor") as VarkOrdinaryDoor if world != null else null
 
+	var left_wall := world.get_node_or_null("LeftWall") as StaticBody3D if world != null else null
+	var right_wall := world.get_node_or_null("RightWall") as StaticBody3D if world != null else null
+	var header := world.get_node_or_null("Header") as StaticBody3D if world != null else null
+	var floor := world.get_node_or_null("Floor") as StaticBody3D if world != null else null
+	var door_mesh := door.get_node_or_null("DoorMesh") as MeshInstance3D if door != null else null
+	var frame_flush: bool = false
+	if (
+		left_wall != null
+		and right_wall != null
+		and header != null
+		and floor != null
+		and door_mesh != null
+		and door_mesh.mesh != null
+	):
+		var door_aabb: AABB = door_mesh.mesh.get_aabb()
+		var door_local_min: Vector3 = door_mesh.position + door_aabb.position
+		var door_local_max: Vector3 = door_local_min + door_aabb.size
+		var door_world_min: Vector3 = door.global_position + door_local_min
+		var door_world_max: Vector3 = door.global_position + door_local_max
+		var left_shape := left_wall.get_node("CollisionShape3D").shape as BoxShape3D
+		var right_shape := right_wall.get_node("CollisionShape3D").shape as BoxShape3D
+		var header_shape := header.get_node("CollisionShape3D").shape as BoxShape3D
+		var floor_shape := floor.get_node("CollisionShape3D").shape as BoxShape3D
+		var left_inner_x: float = left_wall.global_position.x + left_shape.size.x * 0.5
+		var right_inner_x: float = right_wall.global_position.x - right_shape.size.x * 0.5
+		var header_bottom_y: float = header.global_position.y - header_shape.size.y * 0.5
+		var floor_top_y: float = floor.global_position.y + floor_shape.size.y * 0.5
+		frame_flush = (
+			is_equal_approx(left_inner_x, door_world_min.x)
+			and is_equal_approx(right_inner_x, door_world_max.x)
+			and is_equal_approx(header_bottom_y, door_world_max.y)
+			and is_equal_approx(floor_top_y, door_world_min.y)
+		)
+
+	assert_true.call(
+		frame_flush,
+		"Loot/Key Lab closed door leaf seats flush against both frame sides, header, and floor with no authored slit"
+	)
+
 	assert_true.call(
 		launched
 		and world != null
