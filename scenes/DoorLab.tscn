@@ -78,18 +78,18 @@ mesh = SubResource("HeaderMesh")
 [node name="OrdinaryDoor" parent="." instance=ExtResource("2_door")]
 position = Vector3(-0.65, 0, 0)
 persistent_id = "door.lab.primary"
-door_id = &"door.lab"
+door_id = "door.lab"
 opening_variant = "wooden"
 
 [node name="LockedDoor" parent="." instance=ExtResource("2_door")]
 position = Vector3(-3.6, 0, -2.4)
 persistent_id = "door.lab.locked"
-door_id = &"door.lab.locked"
+door_id = "door.lab.locked"
 opening_variant = "metal"
 visual_model_path = "res://assets/models/doors/ordinary_door_leaf_narrow.obj"
 base_color = Color(0.20, 0.30, 0.48, 1)
 starts_locked = true
-required_key_id = &"key.lab"
+required_key_id = "key.lab"
 
 [node name="LockedLabel" type="Label3D" parent="."]
 position = Vector3(-2.95, 2.45, -2.4)
@@ -102,7 +102,7 @@ no_depth_test = true
 [node name="BarredDoor" parent="." instance=ExtResource("2_door")]
 position = Vector3(2.3, 0, -2.4)
 persistent_id = "door.lab.barred"
-door_id = &"door.lab.barred"
+door_id = "door.lab.barred"
 opening_variant = "window_like"
 base_color = Color(0.25, 0.42, 0.26, 1)
 starts_barred = true

@@ -13,7 +13,7 @@ const USE_SOUND_KIND: StringName = &"door.use"
 
 
 @export var persistent_id: String = ""
-@export var door_id: StringName = &"door"
+@export var door_id: String = "door"
 @export var transition_seconds: float = 0.55
 @export var open_angle_degrees: float = 90.0
 @export var gameplay_sound_strength: float = 0.65
@@ -22,7 +22,7 @@ const USE_SOUND_KIND: StringName = &"door.use"
 @export var visual_model_path: String = ""
 @export var opening_variant: String = "ordinary"
 @export var starts_locked: bool = false
-@export var required_key_id: StringName = &""
+@export var required_key_id: String = ""
 @export var starts_barred: bool = false
 @export var obstacle_probe_step_degrees: float = 2.0
 @export var navigation_cut_depth: float = 0.20
@@ -864,7 +864,7 @@ func _queue_state_changed() -> void:
 		source_session_id,
 		STATE_CHANGED_EVENT_NAME,
 		{
-			"door_id": door_id,
+			"door_id": StringName(door_id),
 			"state": _phase,
 		}
 	)
@@ -879,7 +879,7 @@ func _queue_restriction_changed(reason: StringName) -> void:
 		source_session_id,
 		RESTRICTION_CHANGED_EVENT_NAME,
 		{
-			"door_id": door_id,
+			"door_id": StringName(door_id),
 			"locked": _locked,
 			"barred": _barred,
 			"reason": reason,
@@ -896,9 +896,9 @@ func _queue_access_denied(reason: StringName) -> void:
 		source_session_id,
 		ACCESS_DENIED_EVENT_NAME,
 		{
-			"door_id": door_id,
+			"door_id": StringName(door_id),
 			"reason": reason,
-			"required_key_id": required_key_id,
+			"required_key_id": StringName(required_key_id),
 		}
 	)
 

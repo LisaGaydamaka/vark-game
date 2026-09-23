@@ -26,7 +26,7 @@ shadow_enabled = true
 [node name="OrdinaryDoor" parent="." instance=ExtResource("5_door")]
 position = Vector3(2.65, 0, 0)
 rotation = Vector3(0, 3.14159265, 0)
-door_id = &"door.guard_nav"
+door_id = "door.guard_nav"
 open_angle_degrees = 90.0
 
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]

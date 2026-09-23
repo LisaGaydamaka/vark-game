@@ -86,7 +86,7 @@ mesh = SubResource("WallMesh")
 
 [node name="OrdinaryDoor" parent="." instance=ExtResource("2_door")]
 position = Vector3(-0.65, 0, -2)
-door_id = &"door.acoustic"
+door_id = "door.acoustic"
 
 [node name="CornerWall" type="StaticBody3D" parent="."]
 position = Vector3(7, 1.4, 0.35)
