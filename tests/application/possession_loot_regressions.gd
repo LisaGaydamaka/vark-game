@@ -139,6 +139,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and door.get_semantic_phase() == OrdinaryDoor.PHASE_OPENING,
 		"The real 6.2 locked door queries the real player's 6.3 semantic key possession and unlocks without inventory UI"
 	)
+	await _settle(tree, 45)
+	assert_true.call(
+		door.get_semantic_phase() == OrdinaryDoor.PHASE_OPEN
+		and is_equal_approx(door.get_open_fraction(), 1.0)
+		and not door.is_motion_blocked(),
+		"The flush Loot/Key Lab frame remains solid/sealed but never blocks the authored door from completing its full opening sweep"
+	)
 
 	await _collect_at(tree, player, Vector3(-2.0, 0.0, 3.35))
 	await _collect_at(tree, player, Vector3(2.0, 0.0, 3.35))

@@ -1097,7 +1097,7 @@ Manual acceptance:
 - [ ] F5 → Development Launch → **Loot/Key Lab**.
 - [ ] Before collecting the key, inspect the closed locked door from both sides and up close. The leaf meets both frame sides, the header, and the floor exactly; there is no visible slit between the closed door and its frame.
 - [ ] Center **KEY · key.lab** and press **F** once. It disappears; the status changes to **KEY key.lab: OWNED**. Holding F does not repeat collection.
-- [ ] Approach the locked door and press **F**. The same ordinary door unlocks/opens because the player owns `key.lab`; no inventory menu or explicit key-selection step appears.
+- [ ] Approach the locked door and press **F**. The same ordinary door unlocks and opens fully because the player owns `key.lab`; the flush frame must not stop or latch the moving leaf, and no inventory menu or explicit key-selection step appears.
 - [ ] Collect **LOOT · 25** and **LOOT · 75**. Each disappears and the status reaches **LOOT: 2 items / 100 value**.
 - [ ] Looking away/out of range clears highlight normally; walking, sprinting, crouching, jumping, and mouse look remain unchanged.
 - [ ] Report any collected object that reappears during the live run, duplicate loot count, key that fails to unlock the door, stale highlight, or unexpected inventory UI.

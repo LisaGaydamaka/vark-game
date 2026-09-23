@@ -10,6 +10,7 @@ const STATE_CHANGED_EVENT_NAME: StringName = &"door.state_changed"
 const RESTRICTION_CHANGED_EVENT_NAME: StringName = &"door.restriction_changed"
 const ACCESS_DENIED_EVENT_NAME: StringName = &"door.access_denied"
 const USE_SOUND_KIND: StringName = &"door.use"
+const FRAME_COLLIDER_GROUP: StringName = &"vark_door_frame"
 
 
 @export var persistent_id: String = ""
@@ -816,8 +817,16 @@ func _get_obstacle_at_fraction(sample_fraction: float) -> CollisionObject3D:
 	query.exclude = [get_rid()]
 	for result: Dictionary in get_world_3d().direct_space_state.intersect_shape(query, 8):
 		var collider := result.get("collider", null) as CollisionObject3D
-		if collider != null:
-			return collider
+		if collider == null:
+			continue
+		# The authored frame is allowed to seat flush against the closed leaf.
+		# It remains real solid geometry for players, vision, and other physics,
+		# but it is not an obstruction to the leaf moving away from its own
+		# correctly authored jamb/header contact. Dynamic/static world blockers
+		# that are not explicit frame members still stop the sweep normally.
+		if collider.is_in_group(FRAME_COLLIDER_GROUP):
+			continue
+		return collider
 	return null
 
 
