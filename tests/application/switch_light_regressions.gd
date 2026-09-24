@@ -92,6 +92,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Fixture asset authors the real emitter inside its bright glass instead of emitting from the mapper origin, and owns solid world collision"
 	)
 
+	var extinguishable_asset := extinguishable.get_node_or_null(
+		"FixtureAnchor/WallLampAsset"
+	) as VarkLightFixtureAsset
 	var player_collision := player.get_node("CollisionShape3D") as CollisionShape3D
 	var overlap_query := PhysicsShapeQueryParameters3D.new()
 	overlap_query.shape = player_collision.shape
@@ -114,8 +117,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		var collider := hit.get("collider") as Node
 		if (
 			collider != null
-			and light_a_asset != null
-			and light_a_asset.is_ancestor_of(collider)
+			and extinguishable_asset != null
+			and extinguishable_asset.is_ancestor_of(collider)
 		):
 			hits_lamp_fixture = true
 			break

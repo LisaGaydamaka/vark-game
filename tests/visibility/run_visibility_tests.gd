@@ -95,7 +95,7 @@ func _assert_exposure_lab() -> void:
 		and fill_light.get_emitter() is OmniLight3D
 		and key_light.get_emitter().shadow_enabled
 		and fill_light.get_emitter().shadow_enabled
-		and not (decorative_light is VarkGameplayLight)
+		and decorative_light.get_script() != GameplayLight
 		and decorative_light.light_energy > key_light.light_energy
 		and readout != null
 		and bar != null,

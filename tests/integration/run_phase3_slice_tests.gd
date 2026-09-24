@@ -226,8 +226,9 @@ func _assert_integrated_slice() -> void:
 		and gameplay_light != null
 		and crouch_cover != null
 		and rendered_lights.size() == 1
-		and rendered_lights[0] == gameplay_light
-		and gameplay_light.shadow_enabled
+		and gameplay_light.get_emitter() != null
+		and rendered_lights[0] == gameplay_light.get_emitter()
+		and gameplay_light.get_emitter().shadow_enabled
 		and crate_a.get_script() == OrdinaryPropScript
 		and crate_b.get_script() == OrdinaryPropScript
 		and persistent_guard.get("node") == guard
