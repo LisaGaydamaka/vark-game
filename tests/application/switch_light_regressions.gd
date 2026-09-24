@@ -74,6 +74,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		if light_a_asset != null
 		else Vector3.ZERO
 	)
+	var initial_body_material_id: int = int(
+		light_a_contract.get("body_material_instance_id", 0)
+	)
+	var initial_body_albedo: Color = light_a_contract.get(
+		"body_material_albedo",
+		Color()
+	)
+	var initial_body_shading_mode: int = int(
+		light_a_contract.get("body_material_shading_mode", -1)
+	)
 	assert_true.call(
 		light_a_asset != null
 		and light_a_asset.validate_contract()
@@ -88,8 +98,23 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		) < 0.001
 		and light_a.get_emitter_global_position().distance_to(
 			light_a.global_position
-		) > 0.15,
-		"Fixture asset authors the real emitter inside its bright glass instead of emitting from the mapper origin, and owns solid world collision"
+		) > 0.15
+		and float(light_a_contract.get("fixture_fill_energy", 0.0)) > 0.0
+		and int(light_a_contract.get("fixture_fill_cull_mask", 0))
+			== VarkLightFixtureAsset.FIXTURE_SELF_FILL_RENDER_LAYER
+		and not bool(light_a_contract.get("fixture_fill_shadows", true))
+		and (
+			int(light_a_contract.get("body_layers", 0))
+			& VarkLightFixtureAsset.FIXTURE_SELF_FILL_RENDER_LAYER
+		) != 0
+		and (
+			int(light_a_contract.get("body_layers", 0)) & 1
+		) != 0
+		and (
+			int(light_a_contract.get("lit_surface_layers", 0))
+			& VarkLightFixtureAsset.FIXTURE_SELF_FILL_RENDER_LAYER
+		) == 0,
+		"Fixture asset authors the real emitter inside its bright glass, solid world collision, and a private unshadowed self-fill that illuminates only the normally shaded fixture body"
 	)
 
 	var extinguishable_asset := extinguishable.get_node_or_null(
@@ -190,8 +215,18 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not bool(off_asset_summary.get("lit_surface_emission_enabled", true))
 		and is_zero_approx(light_a.light_energy)
 		and light_a.get_emitter() != null
-		and is_zero_approx(light_a.get_emitter().light_energy),
-		"Turning a lamp off leaves its model/dark glass visible while removing emissive appearance and the actual light emitter"
+		and is_zero_approx(light_a.get_emitter().light_energy)
+		and is_zero_approx(float(
+			off_asset_summary.get("fixture_fill_energy", -1.0)
+		))
+		and int(off_asset_summary.get("body_material_instance_id", 0))
+			== initial_body_material_id
+		and (
+			off_asset_summary.get("body_material_albedo", Color()) as Color
+		).is_equal_approx(initial_body_albedo)
+		and int(off_asset_summary.get("body_material_shading_mode", -2))
+			== initial_body_shading_mode,
+		"Turning a lamp off changes only its authored glass/emitter state: body material identity/color/shading stay unchanged, the model stays visible, and both world emitter plus fixture-only self-fill go to zero"
 	)
 
 	player.global_position = Vector3(3.2, 0, 2.45)

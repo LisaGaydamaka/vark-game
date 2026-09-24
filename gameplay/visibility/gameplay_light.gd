@@ -268,6 +268,10 @@ func _configure_fixture() -> void:
 		return
 	_fixture_anchor.add_child(asset)
 	_fixture_asset = asset
+	_fixture_asset.configure_source_lighting(
+		light_color,
+		_configured_light_energy
+	)
 	_fixture_asset.set_lit_enabled(gameplay_enabled)
 	_fixture_asset.set_highlighted(_highlighted)
 	if _emitter != null:
@@ -284,6 +288,11 @@ func _sync_emitter_configuration() -> void:
 	_emitter.light_color = light_color
 	_emitter.omni_range = maxf(omni_range, 0.001)
 	_emitter.shadow_enabled = shadow_enabled
+	if _fixture_asset != null:
+		_fixture_asset.configure_source_lighting(
+			light_color,
+			_configured_light_energy
+		)
 	_apply_enabled_presentation()
 
 

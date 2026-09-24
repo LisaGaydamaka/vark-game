@@ -1,8 +1,12 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://gameplay/visibility/light_fixture_asset.gd" id="1_asset"]
 [ext_resource type="ArrayMesh" path="res://assets/models/lights/wall_lamp.obj" id="2_body"]
 [ext_resource type="ArrayMesh" path="res://assets/models/lights/wall_lamp_glass.obj" id="3_glass"]
+
+[sub_resource type="StandardMaterial3D" id="BodyMaterial"]
+albedo_color = Color(0.20, 0.16, 0.10, 1)
+roughness = 0.78
 
 [sub_resource type="BoxShape3D" id="MountShape"]
 size = Vector3(0.24, 0.24, 0.07)
@@ -16,20 +20,29 @@ size = Vector3(0.20, 0.18, 0.13)
 [node name="WallLampAsset" type="Node3D"]
 script = ExtResource("1_asset")
 asset_id = &"wall_lamp"
-body_color = Color(0.20, 0.16, 0.10, 1)
 lit_surface_off_color = Color(0.08, 0.07, 0.055, 1)
 lit_surface_on_color = Color(1, 0.72, 0.28, 1)
 lit_surface_emission_energy = 3.5
 lit_surface_visible_when_off = true
+self_fill_energy_scale = 0.45
+self_fill_range = 0.85
 
 [node name="BodyMesh" type="MeshInstance3D" parent="."]
+layers = 524289
 mesh = ExtResource("2_body")
+material_override = SubResource("BodyMaterial")
 
 [node name="LitSurfaceMesh" type="MeshInstance3D" parent="."]
 mesh = ExtResource("3_glass")
 
 [node name="EmitterAnchor" type="Marker3D" parent="."]
 position = Vector3(0, 0, 0.23)
+
+[node name="FixtureFill" type="OmniLight3D" parent="EmitterAnchor"]
+light_energy = 0.0
+omni_range = 0.85
+shadow_enabled = false
+light_cull_mask = 524288
 
 [node name="SolidBody" type="StaticBody3D" parent="."]
 collision_layer = 1
