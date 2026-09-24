@@ -16,7 +16,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	var invalid_definition: Resource = _make_definition()
-	invalid_definition.set("mission_fact_declarations", [
+	var invalid_declarations: Array[Dictionary] = [
 		{
 			"key": &"duplicate",
 			"type": &"bool",
@@ -41,7 +41,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"default": 1,
 			"scope": &"mission",
 		},
-	])
+	]
+	invalid_definition.set("mission_fact_declarations", invalid_declarations)
 	var invalid_errors: PackedStringArray = invalid_definition.call("get_load_errors")
 	assert_true.call(
 		invalid_errors.size() >= 3
