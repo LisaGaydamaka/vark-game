@@ -632,7 +632,7 @@ Phase 7.1 promotes that same dispatcher through one world-scoped `VarkMissionEve
 - author emission from outside the controlled pass queues only; handlers run at the later consequence point and the stable boundary publishes afterward;
 - source mutation after emit and handler-local mutation cannot alter queued sibling/trace values;
 - nested author emission preserves the existing FIFO append contract;
-- a bounded recent trace records detached sequence/name/payload/session/handler-count/stable-pass data and remains available after a guarded semantic-drain failure for diagnosis;
+- a bounded recent trace records detached sequence/name/payload/session/handler-count/controlled-consequence-pass data and remains available after a guarded semantic-drain failure for diagnosis;
 - live `Object`/`Callable`/`Signal`/`RID` payloads remain rejected by the underlying detached-value boundary;
 - teardown invalidates retained bus references and replacement creates a distinct fresh bus, preventing stale author code from targeting the new world.
 
