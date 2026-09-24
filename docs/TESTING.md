@@ -695,6 +695,20 @@ Phase 7.5 adds one provisional world-lifetime `VarkMissionScript` surface over a
 
 Phase 8.4 owns the first real mission-specific GDScript use. Extend the provisional surface only when that representative content proves a new semantic query/command is required; do not add arbitrary Node access for convenience.
 
+Phase 7.6 makes rule ordering/repeat state explicit without introducing a second scheduler. The Application suite must prove:
+
+- source events retain existing FIFO sequence order, while rules sharing one source event evaluate in authored declaration order and each rule queues its actions in authored action order;
+- later same-source declarations still observe trigger-time fact truth because earlier `set_fact` actions are queued rather than applied inside rule evaluation;
+- omitted `repeat` preserves legacy repeating semantics; `repeat=true` repeats; `repeat=false` fires once after all of that rule's actions queue successfully;
+- the resulting rule/action cascade completes before the stable gameplay boundary is published;
+- save capture stores only sorted fired one-shot rule IDs in detached `mission_rules` state, while repeating-rule execution history is not persisted;
+- malformed, duplicate, unknown, or currently-repeating saved IDs fail closed;
+- fresh restore reapplies fired one-shot state without emitting/replaying rule consequences, then continues repeating rules while suppressing restored one-shots;
+- a pre-7.6 snapshot with no `mission_rules` section resolves to the default unfired rule state;
+- teardown/replacement cannot leak one-shot state across world lifetimes.
+
+Do not add rule priority numbers, delayed actions, timers, callbacks, suspended `await` state, or serialized continuations in 7.6. Multi-step behavior remains explicit semantic fact/objective stages driven by later events.
+
 ## Acoustic fixture
 
 Phase 3.6 currently prototypes an authored acoustic space/portal graph rather than radius-only or single-ray hearing.

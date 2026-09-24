@@ -16,6 +16,9 @@ var _event_bus: RefCounted = null
 var _mission_facts: RefCounted = null
 var _rules_by_event: Dictionary = {}
 var _subscriptions: Array[Dictionary] = []
+var _rule_ids: Dictionary[String, bool] = {}
+var _one_shot_rule_ids: Dictionary[String, bool] = {}
+var _fired_one_shot_rule_ids: Dictionary[String, bool] = {}
 var _rule_count: int = 0
 var _match_count: int = 0
 var _action_count: int = 0
@@ -35,18 +38,22 @@ static func validate_declarations(
 	for rule_index: int in declarations.size():
 		var rule: Dictionary = declarations[rule_index]
 		var prefix: String = "mission_rule_declarations[%d]" % rule_index
+		var has_repeat: bool = rule.has("repeat")
 		if (
-			rule.size() != 4
+			(rule.size() != 4 and rule.size() != 5)
 			or not rule.has("rule_id")
 			or not rule.has("event_name")
 			or not rule.has("conditions")
 			or not rule.has("actions")
+			or (rule.size() == 5 and not has_repeat)
 		):
 			errors.append(
-				"%s must contain exactly rule_id, event_name, conditions, and actions."
+				"%s must contain rule_id, event_name, conditions, actions, and optional repeat only."
 				% prefix
 			)
 			continue
+		if has_repeat and typeof(rule.get("repeat")) != TYPE_BOOL:
+			errors.append("%s repeat must be bool." % prefix)
 
 		var rule_id: String = str(rule.get("rule_id", "")).strip_edges()
 		var event_name: String = str(rule.get("event_name", "")).strip_edges()
@@ -111,6 +118,9 @@ func configure(
 	_event_bus = event_bus
 	_mission_facts = mission_facts
 	_rules_by_event.clear()
+	_rule_ids.clear()
+	_one_shot_rule_ids.clear()
+	_fired_one_shot_rule_ids.clear()
 	_rule_count = declarations.size()
 	_match_count = 0
 	_action_count = 0
@@ -119,11 +129,19 @@ func configure(
 
 	for declaration: Dictionary in declarations:
 		var rule: Dictionary = declaration.duplicate(true)
+		var rule_id: String = str(rule.get("rule_id", "")).strip_edges()
+		var repeats: bool = bool(rule.get("repeat", true))
+		rule["repeat"] = repeats
+		_rule_ids[rule_id] = true
+		if not repeats:
+			_one_shot_rule_ids[rule_id] = true
 		var event_name := StringName(
 			str(rule.get("event_name", "")).strip_edges()
 		)
 		if not _rules_by_event.has(event_name):
 			_rules_by_event[event_name] = []
+		# Per-event arrays retain MissionDefinition declaration order. This is
+		# the deterministic cross-rule order; no separate priority system exists.
 		(_rules_by_event[event_name] as Array).append(rule)
 
 	var event_names: Array = _rules_by_event.keys()
@@ -155,6 +173,9 @@ func shutdown() -> void:
 				_event_bus.call("unsubscribe", event_name, handler)
 	_subscriptions.clear()
 	_rules_by_event.clear()
+	_rule_ids.clear()
+	_one_shot_rule_ids.clear()
+	_fired_one_shot_rule_ids.clear()
 	_session = null
 	_event_bus = null
 	_mission_facts = null
@@ -182,8 +203,69 @@ func get_debug_summary() -> Dictionary:
 		"action_count": _action_count,
 		"last_rule_id": _last_rule_id,
 		"last_event_name": _last_event_name,
+		"fired_one_shot_rule_ids": _get_fired_one_shot_rule_ids(),
 		"last_error": _last_error,
 	}
+
+
+func capture_semantic_state() -> Dictionary:
+	return {
+		"fired_one_shot_rule_ids": _get_fired_one_shot_rule_ids(),
+	}
+
+
+func get_default_semantic_state() -> Dictionary:
+	return {
+		"fired_one_shot_rule_ids": [],
+	}
+
+
+func validate_semantic_state(snapshot: Dictionary) -> bool:
+	_last_error = ""
+	if (
+		snapshot.size() != 1
+		or not snapshot.has("fired_one_shot_rule_ids")
+		or typeof(snapshot.get("fired_one_shot_rule_ids")) != TYPE_ARRAY
+	):
+		_last_error = (
+			"Mission rule state must contain exactly fired_one_shot_rule_ids."
+		)
+		return false
+
+	var seen: Dictionary[String, bool] = {}
+	for value: Variant in snapshot.get("fired_one_shot_rule_ids", []):
+		if typeof(value) != TYPE_STRING:
+			_last_error = "Fired one-shot rule IDs must be strings."
+			return false
+		var rule_id: String = str(value).strip_edges()
+		if rule_id.is_empty() or seen.has(rule_id):
+			_last_error = "Fired one-shot rule IDs must be non-empty and unique."
+			return false
+		if not _one_shot_rule_ids.has(rule_id):
+			_last_error = (
+				"Saved one-shot rule ID '%s' is not a configured one-shot rule."
+				% rule_id
+			)
+			return false
+		seen[rule_id] = true
+	return true
+
+
+func apply_semantic_state(snapshot: Dictionary) -> bool:
+	if not validate_semantic_state(snapshot):
+		return false
+	_fired_one_shot_rule_ids.clear()
+	for value: Variant in snapshot.get("fired_one_shot_rule_ids", []):
+		_fired_one_shot_rule_ids[str(value)] = true
+	return true
+
+
+func _get_fired_one_shot_rule_ids() -> Array[String]:
+	var result: Array[String] = []
+	for rule_id: String in _fired_one_shot_rule_ids.keys():
+		result.append(rule_id)
+	result.sort()
+	return result
 
 
 func _on_event(event: Dictionary, subscribed_event_name: StringName) -> bool:
@@ -200,13 +282,22 @@ func _on_event(event: Dictionary, subscribed_event_name: StringName) -> bool:
 	var rules: Array = _rules_by_event.get(event_name, [])
 	for rule_value: Variant in rules:
 		var rule: Dictionary = rule_value
+		var rule_id: String = str(rule.get("rule_id", "")).strip_edges()
+		var repeats: bool = bool(rule.get("repeat", true))
+		if not repeats and _fired_one_shot_rule_ids.has(rule_id):
+			continue
+		# Every same-source rule sees trigger-time fact state. Earlier rules may
+		# enqueue fact changes, but those changes remain later FIFO events and do
+		# not alter conditions for later declarations in this handler.
 		if not _conditions_match(rule, event):
 			continue
-		_match_count += 1
-		_last_rule_id = StringName(str(rule.get("rule_id", "")))
-		_last_event_name = event_name
 		if not _execute_actions(rule):
 			return false
+		_match_count += 1
+		_last_rule_id = StringName(rule_id)
+		_last_event_name = event_name
+		if not repeats:
+			_fired_one_shot_rule_ids[rule_id] = true
 	return true
 
 

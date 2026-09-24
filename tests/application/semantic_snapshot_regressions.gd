@@ -267,6 +267,8 @@ func run(
 			"mission_script_state",
 			{}
 		) as Dictionary).is_empty()
+		and (world_state.get("mission_rules", {}) as Dictionary)
+			== {"fired_one_shot_rule_ids": []}
 		and persistent.has("slice.guard")
 		and persistent.has("slice.door")
 		and persistent.has("slice.prop.a")

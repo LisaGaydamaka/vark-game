@@ -1753,9 +1753,27 @@ Mutation timing remains the foundation contract: commands issued from `_process(
 
 **Manual:** none required for this architecture-only provisional surface. Phase 8.4 will provide the first player-facing/author-facing mission-specific GDScript proof.
 
-## 7.6 Deterministic rule ordering and save state `[ ]`
+## 7.6 Deterministic rule ordering and save state `[~]`
 
-Define rule ordering relative to the event queue/stable boundary, repeat/one-shot behavior, and restore semantics.
+Rule ordering now stays inside the existing semantic event contract rather than adding a priority/scheduler layer:
+
+- source events are processed in existing FIFO sequence order;
+- rules subscribed to the same source event are evaluated in their `MissionDefinition.mission_rule_declarations` declaration order;
+- all same-source rule conditions observe the semantic fact state that exists while that source event handler is running; actions from an earlier rule are only queued and therefore cannot mutate fact truth underneath a later declaration;
+- each matched rule queues its actions in authored action order, so actions from rule A are appended before actions from later matching rule B;
+- the entire resulting cascade still completes before `WorldSession` publishes the next stable gameplay boundary.
+
+The only new execution policy is optional `repeat: bool`. Omitted `repeat` preserves 7.4 behavior and normalizes to `true`; `repeat = false` creates a one-shot rule. There is no numeric priority, expression language, timer, delayed callback, coroutine continuation, or hidden scheduler.
+
+One-shot completion is world-semantic state. `VarkMissionRules` records only the stable IDs of configured one-shot rules that have successfully queued all of their actions. Stable save capture stores those IDs under a dedicated `mission_rules` section. Restore applies that state in the fresh non-playing world without replaying actions; a fired one-shot remains suppressed while repeating rules continue normally. Pre-7.6 snapshots with no `mission_rules` section restore as “no one-shots fired.” Unknown/duplicate/non-one-shot saved IDs fail closed, so changing rule identity/policy incompatibly remains subject to the existing `mission_content_revision` discipline.
+
+Long-running or delayed mission behavior remains explicit facts/objective stages advanced by later ordinary semantic events. 7.6 does not add saveable runtime continuations.
+
+**Done when:** same-event rules deterministically evaluate in declaration order against trigger-time fact truth; queued actions appear in FIFO declaration/action order and complete before the stable boundary; omitted `repeat` retains legacy repeating behavior; explicit repeating rules can fire again while one-shot rules execute once; fired one-shot IDs are detached save truth; fresh restore suppresses already-fired one-shots without consequence replay while repeating rules continue; malformed/unknown saved rule IDs fail closed; pre-7.6 saves without a rule section resolve to default unfired state; teardown/replacement isolate rule state with the world lifetime; and existing event/fact/script/objective/save/gameplay regressions remain green.
+
+**Automated:** pending exact-head post-push validation. The focused Application regression must prove declaration-order evaluation/action FIFO ordering, trigger-time fact semantics across multiple same-source rules, repeat vs one-shot behavior, stable-boundary publication after the cascade, detached one-shot save state, malformed-state rejection, fresh restore/no replay, restored one-shot suppression, legacy no-`repeat` compatibility, and the full regression barrier.
+
+**Manual:** none required for this architecture-only ordering/persistence step. Phase 8.3 will provide the first player-facing authored-rule proof.
 
 ## 7.7 Mission logic debugger `[ ]`
 

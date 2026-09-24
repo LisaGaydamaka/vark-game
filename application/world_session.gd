@@ -310,6 +310,21 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 	):
 		return _fail_restore("Restore could not apply MissionFacts.")
 
+	if mission_rules == null:
+		return _fail_restore("Restore requires MissionRules.")
+	var rule_state_snapshot: Dictionary = world_state.get(
+		"mission_rules",
+		mission_rules.call("get_default_semantic_state")
+	)
+	if not bool(mission_rules.call(
+		"apply_semantic_state",
+		rule_state_snapshot
+	)):
+		return _fail_restore(
+			"Restore could not apply MissionRules: %s"
+			% str(mission_rules.call("get_last_error"))
+		)
+
 	var run_state_snapshot: Dictionary = world_state.get(
 		"mission_run_state",
 		{
@@ -400,6 +415,10 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 	if not comparable_expected.has("mission_facts"):
 		comparable_expected["mission_facts"] = (
 			restored_state.get("mission_facts", {}) as Dictionary
+		).duplicate(true)
+	if not comparable_expected.has("mission_rules"):
+		comparable_expected["mission_rules"] = (
+			restored_state.get("mission_rules", {}) as Dictionary
 		).duplicate(true)
 	if restored_state != comparable_expected:
 		var differing_sections: PackedStringArray = []
@@ -551,6 +570,9 @@ func _capture_world_semantic_state() -> Dictionary:
 	var mission_fact_snapshot: Dictionary = {}
 	if mission_facts != null:
 		mission_fact_snapshot = mission_facts.call("capture_semantic_state")
+	var mission_rule_snapshot: Dictionary = {}
+	if mission_rules != null:
+		mission_rule_snapshot = mission_rules.call("capture_semantic_state")
 	return {
 		"object_existence": {
 			"authored_tombstones": tombstones,
@@ -560,6 +582,7 @@ func _capture_world_semantic_state() -> Dictionary:
 		"player": (player_snapshot as Dictionary).duplicate(true),
 		"semantic_owners": semantic_snapshots,
 		"mission_facts": mission_fact_snapshot.duplicate(true),
+		"mission_rules": mission_rule_snapshot.duplicate(true),
 		"mission_run_state": run_state_snapshot.duplicate(true),
 		"mission_script_state": {},
 	}
@@ -627,6 +650,24 @@ func _validate_world_state_structure(world_state: Dictionary) -> bool:
 			))
 		):
 			return _fail_restore("Semantic MissionFacts state is malformed.")
+	if world_state.has("mission_rules"):
+		var rule_state_value: Variant = world_state.get("mission_rules")
+		if (
+			typeof(rule_state_value) != TYPE_DICTIONARY
+			or mission_rules == null
+			or not bool(mission_rules.call(
+				"validate_semantic_state",
+				rule_state_value
+			))
+		):
+			return _fail_restore(
+				"Semantic MissionRules state is malformed: %s"
+				% (
+					str(mission_rules.call("get_last_error"))
+					if mission_rules != null
+					else "owner unavailable"
+				)
+			)
 	if world_state.has("mission_run_state"):
 		var run_state_value: Variant = world_state.get("mission_run_state")
 		if (
