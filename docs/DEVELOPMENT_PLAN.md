@@ -1731,7 +1731,7 @@ Rule validation cross-checks fact conditions/actions against the already-declare
 
 **Manual:** none required for this architecture-only grammar step. Phase 8 will provide the first player-facing authored-rule proof.
 
-## 7.5 Provisional VarkMissionScript API `[~]`
+## 7.5 Provisional VarkMissionScript API `[x]`
 
 `WorldSession` now owns one fresh `VarkMissionScript` per world lifetime. Mission-authored GDScript can resolve that surface from a node in the current world with `VarkMissionScript.resolve(node)`; teardown invalidates retained references and replacement creates a distinct instance.
 
@@ -1749,7 +1749,7 @@ Mutation timing remains the foundation contract: commands issued from `_process(
 
 **Done when:** one READY world owns an active resolvable provisional API while ordinary commands remain lifecycle-rejected until PLAYING; fact/objective/exit/run/time queries return detached value data and unknown semantic IDs fail closed; `_process()`, signal-callback, and resumed-async mutation calls demonstrably leave authoritative truth unchanged until the next controlled consequence pass; custom event emission reuses the existing detached FIFO event path; objective commands reuse the existing objective request events; the public surface exposes no arbitrary Node/entity/application reach-through; save capture gains no hidden mission-script/continuation state; teardown invalidates retained references and replacement creates a fresh API; and existing event/fact/rule/objective/save/application/gameplay regressions remain green.
 
-**Automated:** pending exact-head post-push validation. The focused Application regression must prove READY/PLAYING lifecycle gating, safe resolution/lifetime, detached fact/run/objective queries, no mutable entity/world reach-through, `_process()` + signal + async/out-of-pass command timing, detached custom event emission, queued objective activation, unchanged mission-script save state, teardown invalidation, and replacement isolation. The authoritative all-tests barrier remains the compatibility gate.
+**Automated:** accepted on stabilized provisional mission-script implementation head `f41b755d066a83849b045c4f48a02df9e1980763` by GitHub Actions Test run #489. The focused Application regression proves READY/PLAYING lifecycle gating, safe world-node resolution and lifetime invalidation, detached typed fact/run/objective/exit queries, no generic mutable entity/world reach-through, `_process()` + arbitrary signal + resumed async/out-of-pass mutation requests remaining non-authoritative until the controlled consequence pass, detached custom event emission through the existing bus, queued objective activation through the existing request event, no independent mission-script/continuation save state, and fresh replacement isolation. The same full barrier kept event/fact/rule/objective/save/restore, awareness, gameplay, authoring, movement, and all other regression suites green; the run ended with `ALL TEST SUITES PASSED`. The fix-forward also retained section/persistent-ID restore mismatch diagnostics for future save-state failures without altering successful restore semantics.
 
 **Manual:** none required for this architecture-only provisional surface. Phase 8.4 will provide the first player-facing/author-facing mission-specific GDScript proof.
 
