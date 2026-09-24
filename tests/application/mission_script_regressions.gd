@@ -15,6 +15,8 @@ const OBJECTIVE_LAB: PackedScene = preload("res://scenes/ObjectiveLab.tscn")
 class ProcessFactProbe:
 	extends Node
 
+	signal command_issued
+
 	var api: RefCounted = null
 	var queued: bool = false
 	var immediate_value: Variant = null
@@ -30,6 +32,7 @@ class ProcessFactProbe:
 		queued = bool(api.call("set_fact", &"script_flag", true))
 		immediate_value = api.call("get_fact", &"script_flag", null)
 		set_process(false)
+		command_issued.emit()
 
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
@@ -106,7 +109,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	process_probe.name = "MissionScriptProcessProbe"
 	process_probe.configure(api)
 	tree.get_root().add_child(process_probe)
-	await tree.process_frame
+	await process_probe.command_issued
 	assert_true.call(
 		process_probe.fired
 		and process_probe.queued
@@ -123,16 +126,26 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	process_probe.queue_free()
 	await tree.process_frame
 
-	var signal_queued: bool = false
-	var signal_immediate: Variant = null
+	var signal_result: Dictionary = {
+		"queued": false,
+		"immediate": null,
+	}
 	var signal_handler: Callable = func() -> void:
-		signal_queued = bool(api.call("set_fact", &"script_stage", 1))
-		signal_immediate = api.call("get_fact", &"script_stage", null)
+		signal_result["queued"] = bool(api.call(
+			"set_fact",
+			&"script_stage",
+			1
+		))
+		signal_result["immediate"] = api.call(
+			"get_fact",
+			&"script_stage",
+			null
+		)
 	command_probe.connect(signal_handler, CONNECT_ONE_SHOT)
 	emit_signal("command_probe")
 	assert_true.call(
-		signal_queued
-		and int(signal_immediate) == 0
+		bool(signal_result.get("queued", false))
+		and int(signal_result.get("immediate", -1)) == 0
 		and int(api.call("get_fact", &"script_stage", -1)) == 0,
 		"7.5 arbitrary signal callbacks cannot bypass the controlled semantic mutation boundary"
 	)

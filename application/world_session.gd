@@ -417,13 +417,48 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 				or comparable_expected[key_value] != restored_state[key_value]
 			):
 				differing_sections.append(str(key_value))
+		var persistent_detail: String = ""
+		if differing_sections.has("persistent_entities"):
+			persistent_detail = _describe_persistent_state_difference(
+				comparable_expected.get("persistent_entities", {}),
+				restored_state.get("persistent_entities", {})
+			)
 		return _fail_restore(
-			"Restored non-player semantic world state did not validate against the captured snapshot. Differing sections: %s."
-			% ", ".join(differing_sections)
+			"Restored non-player semantic world state did not validate against the captured snapshot. Differing sections: %s.%s"
+			% [", ".join(differing_sections), persistent_detail]
 		)
 
 	_restore_state_applied = true
 	return true
+
+
+func _describe_persistent_state_difference(
+	expected_value: Variant,
+	restored_value: Variant
+) -> String:
+	if (
+		typeof(expected_value) != TYPE_DICTIONARY
+		or typeof(restored_value) != TYPE_DICTIONARY
+	):
+		return " Persistent entity sections are not both dictionaries."
+	var expected: Dictionary = expected_value
+	var restored: Dictionary = restored_value
+	var ids: Array = expected.keys()
+	for id_value: Variant in restored.keys():
+		if not ids.has(id_value):
+			ids.append(id_value)
+	ids.sort_custom(func(a: Variant, b: Variant) -> bool: return str(a) < str(b))
+	for id_value: Variant in ids:
+		if not expected.has(id_value):
+			return " Unexpected restored persistent ID '%s'." % str(id_value)
+		if not restored.has(id_value):
+			return " Missing restored persistent ID '%s'." % str(id_value)
+		if expected[id_value] != restored[id_value]:
+			return (
+				" Persistent ID '%s' differs: expected=%s restored=%s."
+				% [str(id_value), str(expected[id_value]), str(restored[id_value])]
+			)
+	return " Persistent entity difference could not be localized."
 
 
 func complete_restore() -> bool:
