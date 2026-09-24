@@ -18,6 +18,9 @@ const InteractionRegressions = preload(
 const SemanticEventRegressions = preload(
 	"res://tests/application/semantic_event_regressions.gd"
 )
+const MissionEventBusRegressions = preload(
+	"res://tests/application/mission_event_bus_regressions.gd"
+)
 const DoorRegressions = preload(
 	"res://tests/application/door_regressions.gd"
 )
@@ -115,6 +118,12 @@ func _run_tests() -> void:
 
 	var semantic_event_regressions: RefCounted = SemanticEventRegressions.new()
 	await semantic_event_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var mission_event_bus_regressions: RefCounted = MissionEventBusRegressions.new()
+	await mission_event_bus_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)
