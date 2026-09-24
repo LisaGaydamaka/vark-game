@@ -1095,7 +1095,7 @@ func _record_semantic_event_trace(event: Dictionary, handler_count: int) -> void
 		"payload": (event.get("payload", {}) as Dictionary).duplicate(true),
 		"session_id": int(event.get("session_id", 0)),
 		"handler_count": maxi(handler_count, 0),
-		"boundary_serial": _stable_gameplay_boundary_serial + 1,
+		"consequence_pass_serial": _stable_gameplay_boundary_serial + 1,
 	})
 	while _semantic_event_trace.size() > SEMANTIC_EVENT_TRACE_LIMIT:
 		_semantic_event_trace.remove_at(0)
