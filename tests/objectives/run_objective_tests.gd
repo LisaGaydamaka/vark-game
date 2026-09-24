@@ -70,6 +70,16 @@ func _assert_objective_lab() -> void:
 		if world != null
 		else null
 	)
+	var bonus_activate_trigger := (
+		world.get_node_or_null("BonusActivateTrigger") as VarkSemanticRouteTrigger
+		if world != null
+		else null
+	)
+	var bonus_complete_trigger := (
+		world.get_node_or_null("BonusCompleteTrigger") as VarkSemanticRouteTrigger
+		if world != null
+		else null
+	)
 	var status_label := (
 		world.get_node_or_null("StatusLabel") as Label3D
 		if world != null
@@ -87,6 +97,10 @@ func _assert_objective_lab() -> void:
 		and objective_trigger.get_script() == RouteTriggerScript
 		and exit_trigger != null
 		and exit_trigger.get_script() == RouteTriggerScript
+		and bonus_activate_trigger != null
+		and bonus_activate_trigger.get_script() == RouteTriggerScript
+		and bonus_complete_trigger != null
+		and bonus_complete_trigger.get_script() == RouteTriggerScript
 		and status_label != null,
 		"Objective Lab launches through the production Application → WorldSession → Player path"
 	)
@@ -97,6 +111,8 @@ func _assert_objective_lab() -> void:
 		or objective_state == null
 		or objective_trigger == null
 		or exit_trigger == null
+		or bonus_activate_trigger == null
+		or bonus_complete_trigger == null
 		or status_label == null
 	):
 		application.call("exit_current_world")
@@ -108,6 +124,10 @@ func _assert_objective_lab() -> void:
 	var mission_completed_handler: Callable = func(event: Dictionary) -> bool:
 		mission_completed_events.append(event.duplicate(true))
 		return true
+	var objective_state_events: Array[Dictionary] = []
+	var objective_state_handler: Callable = func(event: Dictionary) -> bool:
+		objective_state_events.append(event.duplicate(true))
+		return true
 	_assert_true(
 		bool(session.call(
 			"register_semantic_event_handler",
@@ -116,11 +136,25 @@ func _assert_objective_lab() -> void:
 		)),
 		"Objective proof observes mission completion through the existing semantic event bus"
 	)
+	_assert_true(
+		bool(session.call(
+			"register_semantic_event_handler",
+			&"objective.state_changed",
+			objective_state_handler
+		)),
+		"Objective proof observes active/complete/failed lifecycle changes through the existing semantic event bus"
+	)
 
 	var initial_objective: Dictionary = objective_state.query_objective(
 		&"objective.route"
 	)
 	var initial_exit: Dictionary = objective_state.query_exit(&"exit.route")
+	var initial_bonus: Dictionary = objective_state.query_objective(
+		&"objective.bonus"
+	)
+	var initial_no_alarm: Dictionary = objective_state.query_objective(
+		&"objective.no_alarm"
+	)
 	_assert_true(
 		bool(initial_objective.get("ok", false))
 		and initial_objective.get("state", &"") == &"active"
@@ -128,6 +162,11 @@ func _assert_objective_lab() -> void:
 		and bool(initial_exit.get("ok", false))
 		and not bool(initial_exit.get("unlocked", true))
 		and not bool(initial_exit.get("mission_complete", true))
+		and bool(initial_bonus.get("ok", false))
+		and bool(initial_bonus.get("optional", false))
+		and initial_bonus.get("state", &"") == &"inactive"
+		and bool(initial_no_alarm.get("optional", false))
+		and initial_no_alarm.get("state", &"") == &"active"
 		and status_label.text.contains("OBJECTIVE ACTIVE")
 		and status_label.text.contains("EXIT LOCKED"),
 		"Objective owner exposes one active beginning state and a locked exit through public semantic queries"
@@ -140,6 +179,8 @@ func _assert_objective_lab() -> void:
 
 	var objective_trigger_summary: Dictionary = objective_trigger.get_debug_summary()
 	var exit_trigger_summary: Dictionary = exit_trigger.get_debug_summary()
+	var bonus_activate_summary: Dictionary = bonus_activate_trigger.get_debug_summary()
+	var bonus_complete_summary: Dictionary = bonus_complete_trigger.get_debug_summary()
 	_assert_true(
 		objective_trigger_summary.get("event_name", &"")
 			== &"objective.complete_requested"
@@ -152,7 +193,16 @@ func _assert_objective_lab() -> void:
 			== &"mission.exit_requested"
 		and exit_trigger_summary.get("payload_key", &"") == &"exit_id"
 		and exit_trigger_summary.get("payload_id", &"") == &"exit.route"
-		and not bool(exit_trigger_summary.get("one_shot_on_queue", true)),
+		and not bool(exit_trigger_summary.get("one_shot_on_queue", true))
+		and bonus_activate_summary.get("event_name", &"")
+			== &"objective.activate_requested"
+		and bonus_activate_summary.get("payload_id", &"")
+			== &"objective.bonus"
+		and bool(bonus_activate_summary.get("one_shot_on_queue", false))
+		and bonus_complete_summary.get("event_name", &"")
+			== &"objective.complete_requested"
+		and bonus_complete_summary.get("payload_id", &"")
+			== &"objective.bonus",
 		"Objective/exit world triggers carry only semantic event IDs and do not read private objective, door, or NPC state"
 	)
 
@@ -167,6 +217,70 @@ func _assert_objective_lab() -> void:
 		and mission_completed_events.is_empty()
 		and status_label.text.contains("EXIT LOCKED"),
 		"Trying the exit before the objective emits a semantic attempt but cannot complete the route"
+	)
+
+	var source_session_id: int = int(session.get("session_id"))
+	var optional_requests_queued: bool = (
+		bool(session.call(
+			"queue_semantic_gameplay_event",
+			source_session_id,
+			&"objective.activate_requested",
+			{"objective_id": &"objective.bonus"}
+		))
+		and bool(session.call(
+			"queue_semantic_gameplay_event",
+			source_session_id,
+			&"objective.fail_requested",
+			{"objective_id": &"objective.no_alarm"}
+		))
+		and bool(session.call(
+			"queue_semantic_gameplay_event",
+			source_session_id,
+			&"objective.complete_requested",
+			{"objective_id": &"objective.bonus"}
+		))
+	)
+	var bonus_before_drain: Dictionary = objective_state.query_objective(
+		&"objective.bonus"
+	)
+	_assert_true(
+		optional_requests_queued
+		and bonus_before_drain.get("state", &"") == &"inactive"
+		and objective_state_events.is_empty(),
+		"Dynamic/optional objective requests queue without immediate objective-state mutation"
+	)
+	await _completed_physics_frame()
+	var bonus_after_drain: Dictionary = objective_state.query_objective(
+		&"objective.bonus"
+	)
+	var no_alarm_after_drain: Dictionary = objective_state.query_objective(
+		&"objective.no_alarm"
+	)
+	var optional_exit: Dictionary = objective_state.query_exit(&"exit.route")
+	var state_transitions: Array[String] = []
+	for state_event: Dictionary in objective_state_events:
+		var state_payload: Dictionary = state_event.get("payload", {})
+		state_transitions.append(
+			"%s:%s>%s"
+			% [
+				str(state_payload.get("objective_id", &"")),
+				str(state_payload.get("from_state", &"")),
+				str(state_payload.get("to_state", &"")),
+			]
+		)
+	_assert_true(
+		bonus_after_drain.get("state", &"") == &"complete"
+		and bool(bonus_after_drain.get("optional", false))
+		and no_alarm_after_drain.get("state", &"") == &"failed"
+		and bool(no_alarm_after_drain.get("optional", false))
+		and not bool(optional_exit.get("unlocked", true))
+		and not bool(optional_exit.get("required_failed", true))
+		and state_transitions == [
+			"objective.bonus:inactive>active",
+			"objective.no_alarm:active>failed",
+			"objective.bonus:active>complete",
+		],
+		"Inactive optional objectives can activate dynamically, optional objectives can complete/fail, ordered state-changed events are detached, and optional failure does not become a required-route failure"
 	)
 
 	await _move_player_to_position(player, Vector3(0.0, 0.0, -2.5))
@@ -246,6 +360,11 @@ func _assert_objective_lab() -> void:
 		"unregister_semantic_event_handler",
 		&"mission.completed",
 		mission_completed_handler
+	)
+	session.call(
+		"unregister_semantic_event_handler",
+		&"objective.state_changed",
+		objective_state_handler
 	)
 	application.call("exit_current_world")
 	application.queue_free()
