@@ -1604,7 +1604,7 @@ The production-completion additions are deliberately narrow:
 
 **Manual:** accepted — user/playtester. After the top-supported-crate correction and green run #421, the user reported the Prop Lab behavior all good. Development Launch → **Prop Lab**. Confirm the standard and tall crates both behave as the same ordinary Junk class despite different model/collision dimensions. Stack/use crates as walkable climbing aids; settled stacks should stay still. Remove a lower support and confirm the upper crate drops without tumbling/scattering. Carry a crate: bottom-center Junk presentation appears, ordinary world/hand interaction is suppressed, movement remains normal, F throws and R gently releases along the current view with R materially gentler/quieter. Open the lab door, place a crate in its side swing, and close it: the door must stop on the crate; remove the crate and the same door must finish closing. Then balance/place a crate on the door's top edge and operate the door: the leaf must move, the crate must release/fall through ordinary prop physics, and the door must not remain pinned merely because it was supporting the crate. Quicksave/quickload representative carried and moving props should preserve their existing semantic behavior.
 
-## 6.7 Configured breakables/effects `[~]`
+## 6.7 Configured breakables/effects `[x]`
 
 Only explicitly authored damageable/breakable objects respond. No universal destruction/fire simulation.
 
@@ -1623,7 +1623,7 @@ The focused **Development Launch → Breakable Lab** contains one loose ordinary
 
 **Automated:** accepted on configured-breakable implementation head `94952f96e382fe1e0a2734d230d21d8afaaa2437` by GitHub Actions Test run #437. The Authoring suite proves `vark_breakable` exports through the Vark FGD and a real FuncGodot build applies authored persistent/content identity, accepted effect, threshold, and collision dimensions. The Application suite proves wrong/sub-threshold effects fail closed, a real carried-Junk F throw breaks the configured panel through ordinary rigid-body contact impulse, an ordinary door exposes no effect/damage responder, exactly one detached `breakable.broken` event carries stable IDs/effect data, repeated effects are idempotent, and broken semantic state is captured/restored without consequence replay. Existing props, doors, save/application, authoring, movement, and the full regression suite remained green; the run ended with `ALL TEST SUITES PASSED`.
 
-**Manual:** user/playtester. Development Launch → **Breakable Lab**. Pick up the loose crate with F and throw it with F into the red panel. The panel should disappear/stop blocking after a sufficiently strong hit. The ordinary door beside it must remain an ordinary nonbreakable door. Restart the lab and use R/gentle handling or weak incidental contact: the panel should not break from a clearly weak touch; a committed F throw should. Movement, carried-Junk behavior, and unrelated door interaction must remain normal.
+**Manual:** accepted — user/playtester. After green exact-head run #438, the user reported the focused Breakable Lab behavior good. Development Launch → **Breakable Lab**. Pick up the loose crate with F and throw it with F into the red panel. The panel should disappear/stop blocking after a sufficiently strong hit. The ordinary door beside it must remain an ordinary nonbreakable door. Restart the lab and use R/gentle handling or weak incidental contact: the panel should not break from a clearly weak touch; a committed F throw should. Movement, carried-Junk behavior, and unrelated door interaction must remain normal.
 
 **Phase gate:** systemic world interaction works without disconnected controls or unrealistic always-active rigid bodies; key/loot possession works without a temporary inventory architecture; mission-run counters have one owner; and permanently removed authored content restores correctly.
 
@@ -1633,13 +1633,26 @@ The focused **Development Launch → Breakable Lab** contains one loose ordinary
 
 Goal: promote proven internal semantic contracts into a small mission logic system and a provisional script surface.
 
-## 7.1 Author-facing semantic event bus `[ ]`
+## 7.1 Author-facing semantic event bus `[~]`
 
-Promote useful gameplay-event vocabulary while preserving proven world ownership, FIFO/re-entrant append, controlled semantic mutation, stable-boundary, and lifecycle semantics.
+Promote the already-proven world-owned semantic queue instead of introducing a second dispatcher. `WorldSession` owns one fresh `VarkMissionEventBus` per world lifetime; teardown invalidates retained bus references and replacement creates a distinct instance.
 
-Do not expose private subsystem signals. Mission event handlers participating in the current semantic drain are synchronous; long-running reactions become explicit semantic state advanced on future gameplay ticks.
+The author-facing bus deliberately exposes only:
 
-Keep the development runaway-event/cascade guard and provide a useful event trace.
+- `subscribe(event_name, handler)` / `unsubscribe(...)` for synchronous consequence handlers participating in the current semantic drain;
+- `emit(event_name, detached_payload)` for mission-defined or promoted semantic facts, still subject to the current `PLAYING` lifecycle/session boundary;
+- `get_known_event_names()` as useful documented vocabulary for proven facts such as gameplay sound, pickup collection, door/container/light/switch changes, breakage, guard communication/alarm, objective-completion request, mission-exit request, and mission completion;
+- `get_recent_trace()` as a bounded detached diagnostic history containing sequence, name, payload, current session identity, handler count, and the stable-boundary pass that processed the event.
+
+This wrapper does **not** expose private subsystem signals, mutable gameplay Nodes, a scheduler, arbitrary delayed callbacks, or an alternate mutation path. Mission-defined event names remain permitted; payloads still fail closed on live `Object`/`Callable`/`Signal`/`RID` values. The existing FIFO order, re-entrant append, late controlled physics drain, synchronous-handler acknowledgement, lifecycle gating, replacement-world isolation, stable-boundary publication, and runaway-cascade guard remain authoritative inside `WorldSession`.
+
+Long-running reactions are still explicit semantic state advanced on future gameplay ticks; they do not suspend/await inside a current event drain.
+
+**Done when:** a READY world owns one bus but cannot emit ordinary semantic work until PLAYING; authors can subscribe before play, then emit a detached mission-defined fact that reaches handlers only at the controlled pass; source payload mutation and handler-local payload mutation cannot alter the queued/trace copies; nested author emission preserves FIFO append; the promoted known vocabulary contains representative current facts without private signals; trace history is detached/bounded/useful and survives a guarded failure for diagnosis; teardown invalidates a retained old bus; replacement creates a fresh isolated bus; existing internal event users and all save/stable-boundary regressions remain green.
+
+**Automated:** pending exact-head post-push validation. The focused Application regression must exercise the author-facing wrapper over the real `WorldSession`, including READY/PLAYING gating, known vocabulary, detached payload/trace behavior, mission-defined names, nested FIFO append, invalid live-object payload rejection, teardown invalidation, and replacement isolation. Existing Phase 3.2 semantic-event/cascade/stable-boundary regressions remain the compatibility barrier for the underlying dispatcher.
+
+**Manual:** none required for this architecture-only step. No player-facing control or feel changes are intended.
 
 ## 7.2 Typed mission facts `[ ]`
 
