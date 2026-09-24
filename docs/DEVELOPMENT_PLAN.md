@@ -1703,7 +1703,7 @@ Objective Lab now declares one required active route objective, one initially in
 
 **Manual:** accepted — user/playtester. After green exact-head run #477, the user reported the extended Objective Lab flow all good: required EXIT gating remained intact while OPTIONAL START/OPTIONAL COMPLETE exposed the optional lifecycle without taking exit authority.
 
-## 7.4 Small data rule system `[~]`
+## 7.4 Small data rule system `[x]`
 
 `MissionDefinition.mission_rule_declarations` now owns a deliberately small declarative grammar. Each rule contains exactly `rule_id`, `event_name`, `conditions`, and `actions`. Rule IDs are stable authored diagnostic identity; duplicate/blank IDs and blank source event names fail definition validation.
 
@@ -1727,7 +1727,7 @@ Rule validation cross-checks fact conditions/actions against the already-declare
 
 **Done when:** valid rule declarations build with one world-scoped rule owner; invalid unknown-fact/arbitrary-action/duplicate-ID/wrong-type declarations fail MissionDefinition validation; fact and event-payload conditions can independently prevent a match; a matching rule does not mutate before the controlled consequence pass; one matched rule can queue both a typed fact change and detached semantic event through the existing cascade; handler-local event mutation cannot alter authored rule data; the stateless rule layer introduces no hidden save section/continuation state; teardown invalidates it with the old world; and existing event/fact/save/gameplay regressions remain green.
 
-**Automated:** pending exact-head post-push validation. The focused Application regression must prove declaration validation, world ownership, condition misses, controlled-match timing, `set_fact` + `emit_event` action delivery, detached authored payload behavior, absence of hidden rule save state, and teardown invalidation. Existing semantic cascade/runaway guard and typed-fact suites remain the compatibility barrier for dispatcher and mutation semantics.
+**Automated:** accepted on small-rule-system implementation head `3c93e6e1465476e20ca6665cc222db119f9a2d66` by GitHub Actions Test run #485. The focused Application regression proves valid rule construction; rejection of unknown facts, arbitrary action kinds, duplicate rule IDs, and wrong typed literals; independent fact/payload condition misses; no pre-drain mutation; one matched rule queuing both typed `set_fact` and detached `emit_event` actions through the existing semantic cascade; authored payload detachment; absence of hidden `mission_rules`/continuation save state; and teardown invalidation. Existing semantic event/cascade/runaway-guard, typed-fact, save/restore, gameplay, authoring, movement, and full regression suites remained green; the run ended with `ALL TEST SUITES PASSED`.
 
 **Manual:** none required for this architecture-only grammar step. Phase 8 will provide the first player-facing authored-rule proof.
 
