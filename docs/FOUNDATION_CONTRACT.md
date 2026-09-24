@@ -136,7 +136,7 @@ Before author-facing rules depend on event cascades, add a development-only runa
 
 Phase 7.1 exposes this proven dispatcher to mission authors through one world-scoped `VarkMissionEventBus` owned by the current `WorldSession`. It is only a narrow wrapper over the same queue/handlers: authors may subscribe synchronously, emit detached semantic facts, inspect a bounded detached recent trace, and query a useful vocabulary of already-proven event names. Mission-defined event names remain allowed. The wrapper does not expose private subsystem signals, arbitrary mutable Nodes, a second scheduler, or an alternate consequence path. Retained bus references are invalidated at teardown and cannot target a replacement world.
 
-The recent trace is diagnostic state, not gameplay truth and not save state. It records enough detached information to identify sequence/name/payload/session/handler count and the controlled boundary pass that processed an event, including recent events leading into a guarded failure. Trace storage is bounded and reset with world lifetime.
+The recent trace is diagnostic state, not gameplay truth and not save state. It records enough detached information to identify sequence/name/payload/session/handler count and the controlled consequence pass that processed an event, including recent events leading into a guarded failure. Trace storage is bounded and reset with world lifetime.
 
 ## Controlled semantic mutation
 
