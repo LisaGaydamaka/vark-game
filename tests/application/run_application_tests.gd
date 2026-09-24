@@ -30,6 +30,9 @@ const ContainerRegressions = preload(
 const SwitchLightRegressions = preload(
 	"res://tests/application/switch_light_regressions.gd"
 )
+const BreakableRegressions = preload(
+	"res://tests/application/breakable_regressions.gd"
+)
 const PauseArbitrationRegressions = preload(
 	"res://tests/application/pause_arbitration_regressions.gd"
 )
@@ -136,6 +139,12 @@ func _run_tests() -> void:
 
 	var switch_light_regressions: RefCounted = SwitchLightRegressions.new()
 	await switch_light_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var breakable_regressions: RefCounted = BreakableRegressions.new()
+	await breakable_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)
