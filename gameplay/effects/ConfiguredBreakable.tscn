@@ -1,0 +1,20 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://gameplay/effects/configured_breakable.gd" id="1_breakable"]
+
+[sub_resource type="BoxShape3D" id="BreakableShape"]
+size = Vector3(0.6, 0.6, 0.6)
+
+[sub_resource type="BoxMesh" id="BreakableMesh"]
+size = Vector3(0.6, 0.6, 0.6)
+
+[node name="ConfiguredBreakable" type="StaticBody3D"]
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("1_breakable")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BreakableShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("BreakableMesh")
