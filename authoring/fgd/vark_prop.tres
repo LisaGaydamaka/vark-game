@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="PackedScene" path="res://gameplay/props/OrdinaryProp.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_prop"
+description = "Reusable ordinary physical Junk prop. Model/variant/collision dimensions are authored configuration; carry, throw/release, support, impact/noise, obstruction, and save behavior stay on the shared OrdinaryProp gameplay owner."
+class_properties = Dictionary[String, Variant]({
+"persistent_id": "",
+"prop_id": "prop",
+"prop_variant": "ordinary_crate",
+"visual_model_path": "res://assets/models/props/ordinary_crate.obj",
+"collision_size": Vector3(0.6, 0.6, 0.6),
+"base_color": Color(0.42, 0.27, 0.12, 1),
+"throw_speed": 6.0,
+"impact_sound_strength": 0.55,
+"gentle_release_sound_scale": 0.35,
+"angle": 180.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"persistent_id": "Required stable authored identity for save/restore. Moving the prop or changing its compatible model must not replace this identity.",
+"prop_id": "Required unique semantic prop/content ID.",
+"prop_variant": "Presentation/content label such as ordinary_crate or tall_crate. It does not select a separate gameplay subsystem.",
+"visual_model_path": "Godot res:// path to a compatible external Mesh. The shared OrdinaryProp gameplay/physics owner remains unchanged.",
+"collision_size": "Authored box collision dimensions in Vark meters. Keep these aligned with the compatible model's physical extents.",
+"base_color": "Default prop-surface tint used by the current low-fi presentation/highlight path.",
+"throw_speed": "Forward launch speed used by carried-Junk F throw.",
+"impact_sound_strength": "Relative semantic gameplay-sound strength for physical impacts.",
+"gentle_release_sound_scale": "Impact-sound multiplier used for R gentle release compared with ordinary throw/impact.",
+"angle": "Initial TrenchBroom yaw. Ordinary box props remain top-up during gameplay."
+})
+auto_apply_to_matching_node_properties = true
+scene_file = ExtResource("2_scene")
+node_groups = Array[String](["vark_interactable"])

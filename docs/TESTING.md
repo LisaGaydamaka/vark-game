@@ -1213,30 +1213,42 @@ If the user explicitly reopens player movement/traversal behavior, update automa
 - **Persistence:** only lights persist state. Quickload restores off lights and a fresh switch derives the off pose without replaying consequences.
 - **Fixture:** Development Launch → **Switch/Light Lab** contains two grouped room lights, one imported wall switch, one directly extinguishable lamp, and the real gameplay-exposure/light-gem observer.
 
-Manual acceptance:
+Manual acceptance: **accepted by user/playtester after the fixture-shadow exposure correction.**
 
-- [ ] F5 → Development Launch → **Switch/Light Lab**.
-- [ ] With a lamp ON, move directly into the visible shadow behind its opaque fixture body/frame, especially toward the wall/mount side. The light gem/exposure must fall there, then rise again when you step back into a visibly lit path; the meter must not treat the opaque lamp body as transparent.
-- [ ] Center the imported wall switch; it highlights through normal F interaction.
-- [ ] Press F once: both room emitters disappear, the light gem/exposure drops, and the lever moves to OFF, but the lamp models/collision remain present with their glass/lit surfaces dark and non-emissive. The lamp frame/body base colors must not change with ON/OFF. When ON, the frame/body should be naturally shaded by lamp-origin/scene lighting rather than recolored or made emissive.
-- [ ] Press F again: both room lights and exposure return, and the lever moves to ON.
-- [ ] Walk into the separate right-hand lamp first: its housing must physically block the player. Aim at it before pressing F: the **entire lamp body + glass** must become fullbright/unshaded with no received scene shadows, like doors and other interactables; body base color/emission and ordinary cast shadow must not change. Aim away and the authored PBR shading must return. Then press F on its fixture: it directly extinguishes, its model/collision remain present, its lit surface becomes dark/non-emissive, and it no longer contributes emitted or gameplay light.
-- [ ] No Godot/editor wiring is required for mapper semantics: the lab's equivalent authoring relationship is only matching `control_id`.
-- [ ] Movement/look, range clearing, highlight, save/load, and unrelated interaction remain normal.
+- [x] F5 → Development Launch → **Switch/Light Lab**.
+- [x] With a lamp ON, move directly into the visible shadow behind its opaque fixture body/frame, especially toward the wall/mount side. The light gem/exposure must fall there, then rise again when you step back into a visibly lit path; the meter must not treat the opaque lamp body as transparent.
+- [x] Center the imported wall switch; it highlights through normal F interaction.
+- [x] Press F once: both room emitters disappear, the light gem/exposure drops, and the lever moves to OFF, but the lamp models/collision remain present with their glass/lit surfaces dark and non-emissive. The lamp frame/body base colors must not change with ON/OFF. When ON, the frame/body should be naturally shaded by lamp-origin/scene lighting rather than recolored or made emissive.
+- [x] Press F again: both room lights and exposure return, and the lever moves to ON.
+- [x] Walk into the separate right-hand lamp first: its housing must physically block the player. Aim at it before pressing F: the **entire lamp body + glass** must become fullbright/unshaded with no received scene shadows, like doors and other interactables; body base color/emission and ordinary cast shadow must not change. Aim away and the authored PBR shading must return. Then press F on its fixture: it directly extinguishes, its model/collision remain present, its lit surface becomes dark/non-emissive, and it no longer contributes emitted or gameplay light.
+- [x] No Godot/editor wiring is required for mapper semantics: the lab's equivalent authoring relationship is only matching `control_id`.
+- [x] Movement/look, range clearing, highlight, save/load, and unrelated interaction remain normal.
 ## Gameplay lighting
 
 - [ ] Light gem agrees intuitively with dark/partial/full/occluded cases.
 - [ ] Decorative brightness does not accidentally define stealth exposure.
 - [ ] Switching/extinguishing gameplay light updates exposure coherently.
 
-## Thief-style props
+## Thief-style props (Phase 6.6)
 
-- [ ] Edge-supported props look intentionally stable.
-- [ ] Stacks remain motionless while supported.
-- [ ] Removing lower support makes upper supported objects fall without exploding/scattering.
-- [ ] Dropped/thrown props remain top-up, move physically, then stop directly in stable rest with no visible orientation-correction phase.
-- [ ] Props remain useful for stacking/climbing/door obstruction.
-- [ ] Held ordinary props use intended first-person presentation, cannot be freely rotated, and suppress ordinary world interaction without per-object special cases.
+Automated contract:
+
+- **Shared runtime owner:** standard/tall compatible external models remain `VarkOrdinaryProp` instances; model path/variant/collision dimensions are authored configuration, while runtime semantic save truth remains phase + motion kind + upright transform + linear velocity.
+- **Mapper authoring:** Vark FGD exports `vark_prop`. The Authoring suite builds two real mapper-style props through FuncGodot and verifies stable IDs, variant labels, external model paths, collision dimensions, and tuning without variant-specific gameplay scenes.
+- **Support/climbing:** settled edge placements/stacks remain exact; a player can use the settled stack as real support; removing the lower support activates the upper prop through the existing unsupported rigid-body path.
+- **Carry/motion/noise:** existing Props coverage retains bottom-center carried-Junk presentation, central hand/world-interaction suppression, view-derived F throw and R gentle release, top-up rigid translation/rest, prop-to-prop/player disturbance, and semantic impact-sound strength ordering.
+- **Obstruction:** Prop Lab uses the real ordinary door. A settled ordinary prop in the leaf sweep latches the same physical obstruction path used by other bodies; removing it allows the same close request to finish. No prop-specific door behavior exists.
+- **Persistence:** existing Phase 4 semantic/transient restore regressions remain authoritative for carried Junk and moving/thrown props; authored model/collision configuration is reconstructed from mission content rather than duplicated into semantic snapshots.
+
+Manual acceptance — user/playtester, Development Launch → **Prop Lab**:
+
+- [ ] Standard and tall imported crate variants look physically aligned with their configured collision and otherwise obey the same prop behavior.
+- [ ] Edge-supported props and stacks remain motionless while supported; the player can stand/use stacked crates as climbing aids.
+- [ ] Removing a lower support makes the upper prop fall without exploding/scattering/tumbling.
+- [ ] Held ordinary props use the bottom-center carried-Junk presentation, cannot be freely rotated, suppress ordinary world/hand interaction centrally, and leave normal locomotion/traversal available.
+- [ ] F throw follows view and is materially stronger/louder than R gentle release; both remain top-up, move physically, and stop directly in stable rest without a visible orientation-correction phase.
+- [ ] Open the lab door, put a crate in its swing, and close it: the door stops on the prop. Remove the crate and the same door completes closing.
+- [ ] Representative carried and moving prop quicksave/quickload behavior remains coherent.
 
 ## Save/load
 

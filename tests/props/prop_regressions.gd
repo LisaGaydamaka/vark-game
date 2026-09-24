@@ -4,6 +4,7 @@ extends RefCounted
 const ApplicationScene = preload("res://application/Application.tscn")
 const ApplicationRoot = preload("res://application/application_root.gd")
 const OrdinaryProp = preload("res://gameplay/props/ordinary_prop.gd")
+const OrdinaryDoor = preload("res://gameplay/doors/ordinary_door.gd")
 const DefaultPropVisual: Mesh = preload("res://assets/models/props/ordinary_crate.obj")
 const AlternatePropVisual: Mesh = preload("res://assets/models/props/ordinary_crate_tall.obj")
 
@@ -46,8 +47,25 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var edge_prop: RigidBody3D = world.get_node("EdgeProp") as RigidBody3D
 	var stack_lower: RigidBody3D = world.get_node("StackLower") as RigidBody3D
 	var stack_upper: RigidBody3D = world.get_node("StackUpper") as RigidBody3D
-	assert_true.call(pickup_prop != null and edge_prop != null and stack_lower != null and stack_upper != null, "Ordinary world props are real RigidBody3D physics bodies")
-	if pickup_prop == null or edge_prop == null or stack_lower == null or stack_upper == null:
+	var obstruction_door: AnimatableBody3D = world.get_node("ObstructionDoor") as AnimatableBody3D
+	var door_blocker: RigidBody3D = world.get_node("DoorBlockerProp") as RigidBody3D
+	assert_true.call(
+		pickup_prop != null
+		and edge_prop != null
+		and stack_lower != null
+		and stack_upper != null
+		and obstruction_door != null
+		and door_blocker != null,
+		"6.6 Prop Lab uses real ordinary props plus the shared ordinary door for obstruction proof"
+	)
+	if (
+		pickup_prop == null
+		or edge_prop == null
+		or stack_lower == null
+		or stack_upper == null
+		or obstruction_door == null
+		or door_blocker == null
+	):
 		return
 
 	var prop_mesh: MeshInstance3D = pickup_prop.get_node("PropMesh") as MeshInstance3D
@@ -78,12 +96,75 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Ordinary crates use the lighter, more responsive Phase 3.5 physical tuning"
 	)
 	assert_true.call(pickup_prop.call("get_visual_model") == DefaultPropVisual and bool(pickup_prop.call("set_visual_model", AlternatePropVisual)) and pickup_prop.get_instance_id() == original_instance_id and prop_collision.shape != null, "Compatible external prop model replacement preserves the gameplay instance and collider")
+	var blocker_collision := door_blocker.get_node("CollisionShape3D") as CollisionShape3D
+	var blocker_box := blocker_collision.shape as BoxShape3D if blocker_collision != null else null
+	assert_true.call(
+		str(door_blocker.call("get_visual_model_path"))
+			== "res://assets/models/props/ordinary_crate_tall.obj"
+		and str(door_blocker.get("prop_variant")) == "tall_crate"
+		and door_blocker.call("get_visual_model") == AlternatePropVisual
+		and blocker_box != null
+		and blocker_box.size.is_equal_approx(Vector3(0.5, 0.7, 0.5)),
+		"Imported tall-crate variant changes presentation and authored collision dimensions without changing the shared ordinary-prop gameplay class"
+	)
 
 	var edge_start: Transform3D = edge_prop.global_transform
 	var lower_start: Transform3D = stack_lower.global_transform
 	var upper_start: Transform3D = stack_upper.global_transform
 	await _settle_physics(tree, 20)
 	assert_true.call(edge_prop.global_transform.is_equal_approx(edge_start) and stack_lower.global_transform.is_equal_approx(lower_start) and stack_upper.global_transform.is_equal_approx(upper_start), "Supported edge placement and a simple stack remain exactly stationary while settled")
+
+	var player_start_transform: Transform3D = player.global_transform
+	player.global_position = stack_upper.global_position + Vector3.UP * 0.3
+	player.velocity = Vector3.ZERO
+	await _settle_physics(tree, 3)
+	assert_true.call(
+		bool(player.call("is_grounded")),
+		"Settled stacked ordinary props provide real walkable support and remain usable as climbing aids"
+	)
+	player.global_transform = player_start_transform
+	player.velocity = Vector3.ZERO
+	await _settle_physics(tree, 3)
+
+	assert_true.call(
+		bool(obstruction_door.call("request_open", player)),
+		"Shared ordinary door opens normally before the prop-obstruction proof"
+	)
+	await _settle_physics(tree, 45)
+	var door_collision := obstruction_door.get_node("CollisionShape3D") as CollisionShape3D
+	var sweep_angle: float = deg_to_rad(float(obstruction_door.get("open_angle_degrees")) * 0.5)
+	var sweep_local: Vector3 = Basis(Vector3.UP, sweep_angle) * Vector3(
+		door_collision.position.x,
+		0.0,
+		door_collision.position.z
+	)
+	var blocker_target: Vector3 = obstruction_door.to_global(sweep_local)
+	blocker_target.y = blocker_box.size.y * 0.5
+	door_blocker.global_position = blocker_target
+	door_blocker.linear_velocity = Vector3.ZERO
+	await _settle_physics(tree, 3)
+	assert_true.call(
+		bool(obstruction_door.call("request_close", player)),
+		"Ordinary door begins closing toward a settled ordinary prop"
+	)
+	await _settle_physics(tree, 45)
+	assert_true.call(
+		obstruction_door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSING
+		and bool(obstruction_door.call("is_motion_blocked"))
+		and bool(obstruction_door.call("is_motion_blocked_by", door_blocker))
+		and door_blocker.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED
+		and door_blocker.freeze,
+		"A settled ordinary prop physically obstructs the shared door sweep without a prop-specific door rule or forced prop motion"
+	)
+	door_blocker.global_position += Vector3(0.0, 0.0, 1.4)
+	await _settle_physics(tree, 2)
+	obstruction_door.call("request_close", player)
+	await _settle_physics(tree, 45)
+	assert_true.call(
+		obstruction_door.call("get_semantic_phase") == OrdinaryDoor.PHASE_CLOSED
+		and not bool(obstruction_door.call("is_motion_blocked")),
+		"Removing the prop obstruction lets the same ordinary door finish closing"
+	)
 
 	Input.action_press("interact")
 	await _settle_physics(tree)

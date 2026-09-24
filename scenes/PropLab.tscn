@@ -1,7 +1,8 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
 [ext_resource type="PackedScene" path="res://gameplay/props/OrdinaryProp.tscn" id="2_prop"]
+[ext_resource type="PackedScene" path="res://gameplay/doors/OrdinaryDoor.tscn" id="3_door"]
 
 [sub_resource type="BoxShape3D" id="FloorShape"]
 size = Vector3(10, 0.2, 10)
@@ -81,8 +82,20 @@ prop_id = &"prop.lab.stack.lower"
 position = Vector3(2, 0.9, 0)
 prop_id = &"prop.lab.stack.upper"
 
+[node name="ObstructionDoor" parent="." instance=ExtResource("3_door")]
+position = Vector3(-3.5, 0, -2.4)
+door_id = "prop.lab.obstruction"
+transition_seconds = 0.45
+
+[node name="DoorBlockerProp" parent="." instance=ExtResource("2_prop")]
+position = Vector3(-2.35, 0.35, -3.6)
+prop_id = &"prop.lab.door_blocker"
+prop_variant = "tall_crate"
+visual_model_path = "res://assets/models/props/ordinary_crate_tall.obj"
+collision_size = Vector3(0.5, 0.7, 0.5)
+
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(0, 2.65, 0.4)
-text = "3.5 PROP LAB\nF = pick up / throw · R = gentle release\nProps push other props; walking into a crate can shove it\nSettle eases top-up, preserves yaw, then sleeps wakeable · no hover gap"
+text = "6.6 PROP LAB\nF = pick up / throw · R = gentle release\nStack/climb crates; place a crate in the door swing to obstruct it\nStandard + tall imported variants share the same prop gameplay rules"
 billboard = 1
 font_size = 24

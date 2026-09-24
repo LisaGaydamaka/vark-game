@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="FuncGodotFGDFile" load_steps=21 format=3]
+[gd_resource type="Resource" script_class="FuncGodotFGDFile" load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_file.gd" id="1_fgd"]
 [ext_resource type="Resource" path="res://addons/func_godot/fgd/phong_base.tres" id="2_phong"]
@@ -21,8 +21,9 @@
 [ext_resource type="Resource" path="res://authoring/fgd/vark_opening.tres" id="19_opening"]
 [ext_resource type="Resource" path="res://authoring/fgd/vark_gameplay_light.tres" id="20_gameplay_light"]
 [ext_resource type="Resource" path="res://authoring/fgd/vark_switch.tres" id="21_switch"]
+[ext_resource type="Resource" path="res://authoring/fgd/vark_prop.tres" id="22_prop"]
 
 [resource]
 script = ExtResource("1_fgd")
 fgd_name = "Vark"
-entity_definitions = Array[Resource]([ExtResource("2_phong"), ExtResource("3_vertex"), ExtResource("4_cull"), ExtResource("5_identity"), ExtResource("11_content"), ExtResource("6_worldspawn"), ExtResource("7_geo"), ExtResource("8_detail"), ExtResource("9_detail_illusionary"), ExtResource("10_illusionary"), ExtResource("12_player_start"), ExtResource("13_marker"), ExtResource("14_exit"), ExtResource("15_acoustic_space"), ExtResource("16_acoustic_portal"), ExtResource("17_guard"), ExtResource("18_patrol_point"), ExtResource("19_opening"), ExtResource("20_gameplay_light"), ExtResource("21_switch")])
+entity_definitions = Array[Resource]([ExtResource("2_phong"), ExtResource("3_vertex"), ExtResource("4_cull"), ExtResource("5_identity"), ExtResource("11_content"), ExtResource("6_worldspawn"), ExtResource("7_geo"), ExtResource("8_detail"), ExtResource("9_detail_illusionary"), ExtResource("10_illusionary"), ExtResource("12_player_start"), ExtResource("13_marker"), ExtResource("14_exit"), ExtResource("15_acoustic_space"), ExtResource("16_acoustic_portal"), ExtResource("17_guard"), ExtResource("18_patrol_point"), ExtResource("19_opening"), ExtResource("20_gameplay_light"), ExtResource("21_switch"), ExtResource("22_prop")])

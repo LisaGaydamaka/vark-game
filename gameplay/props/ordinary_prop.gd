@@ -29,7 +29,10 @@ const COLLISION_LAYER_PROP_IGNORING_PLAYER: int = 1 << 3
 
 @export var persistent_id: String = ""
 @export var prop_id: StringName = &"prop"
+@export var prop_variant: String = "ordinary_crate"
 @export var visual_model: Mesh
+@export var visual_model_path: String = ""
+@export var collision_size: Vector3 = Vector3(0.6, 0.6, 0.6)
 @export var base_color: Color = Color(0.42, 0.27, 0.12, 1.0)
 @export var throw_speed: float = 6.0
 @export var impact_sound_strength: float = 0.55
@@ -74,6 +77,8 @@ func _ready() -> void:
 	_ordinary_collision_mask = collision_mask
 	_world_session = _find_world_session()
 	global_transform = _top_up_transform(global_transform)
+	if not _configure_collision_shape():
+		push_error("VarkOrdinaryProp requires a BoxShape3D collision shape.")
 
 	# Ordinary props are frozen while settled, but released/unsupported props
 	# use the real rigid-body solver for gravity and translational collision.
@@ -96,8 +101,24 @@ func _ready() -> void:
 	_material.metallic = 0.0
 	prop_mesh.material_override = _material
 	prop_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	if not set_visual_model(visual_model):
-		push_error("VarkOrdinaryProp requires a configured visual_model Mesh.")
+	var configured_visual: Mesh = visual_model
+	if visual_model_path.strip_edges().is_empty():
+		if not _apply_visual_model(configured_visual, true):
+			push_error("VarkOrdinaryProp requires a configured visual_model Mesh.")
+	else:
+		var requested_path: String = visual_model_path
+		if not set_visual_model_from_path(requested_path):
+			visual_model_path = requested_path
+			if not _apply_visual_model(configured_visual, false):
+				push_error(
+					"VarkOrdinaryProp could not load visual_model_path '%s' and has no fallback Mesh."
+					% requested_path
+				)
+			else:
+				push_error(
+					"VarkOrdinaryProp could not load visual_model_path '%s'; using the default compatible model."
+					% requested_path
+				)
 	_refresh_visual()
 
 
@@ -225,16 +246,61 @@ func is_interaction_highlighted() -> bool:
 
 
 func set_visual_model(model: Mesh) -> bool:
+	return _apply_visual_model(model, true)
+
+
+func set_visual_model_from_path(path: String) -> bool:
+	var normalized_path: String = path.strip_edges()
+	if normalized_path.is_empty() or not ResourceLoader.exists(normalized_path):
+		return false
+	var loaded: Resource = ResourceLoader.load(normalized_path)
+	if not (loaded is Mesh):
+		return false
+	visual_model_path = normalized_path
+	return _apply_visual_model(loaded as Mesh, false)
+
+
+func get_visual_model() -> Mesh:
+	return visual_model
+
+
+func get_visual_model_path() -> String:
+	return visual_model_path
+
+
+func get_collision_size() -> Vector3:
+	var box := prop_collision.shape as BoxShape3D if prop_collision != null else null
+	return box.size if box != null else Vector3.ZERO
+
+
+func _apply_visual_model(model: Mesh, update_path: bool) -> bool:
 	if model == null:
 		return false
 	visual_model = model
+	if update_path and not model.resource_path.is_empty():
+		visual_model_path = model.resource_path
 	if prop_mesh != null:
 		prop_mesh.mesh = model
 	return true
 
 
-func get_visual_model() -> Mesh:
-	return visual_model
+func _configure_collision_shape() -> bool:
+	if prop_collision == null:
+		return false
+	var source_box := prop_collision.shape as BoxShape3D
+	if source_box == null:
+		return false
+	var box := source_box.duplicate() as BoxShape3D
+	if box == null:
+		return false
+	collision_size = Vector3(
+		maxf(absf(collision_size.x), 0.05),
+		maxf(absf(collision_size.y), 0.05),
+		maxf(absf(collision_size.z), 0.05)
+	)
+	box.size = collision_size
+	prop_collision.shape = box
+	return true
 
 
 func get_semantic_phase() -> StringName:
