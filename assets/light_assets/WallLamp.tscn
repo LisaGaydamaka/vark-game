@@ -1,8 +1,17 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://gameplay/visibility/light_fixture_asset.gd" id="1_asset"]
 [ext_resource type="ArrayMesh" path="res://assets/models/lights/wall_lamp.obj" id="2_body"]
 [ext_resource type="ArrayMesh" path="res://assets/models/lights/wall_lamp_glass.obj" id="3_glass"]
+
+[sub_resource type="BoxShape3D" id="MountShape"]
+size = Vector3(0.24, 0.24, 0.07)
+
+[sub_resource type="BoxShape3D" id="ArmShape"]
+size = Vector3(0.07, 0.06, 0.16)
+
+[sub_resource type="BoxShape3D" id="LanternShape"]
+size = Vector3(0.20, 0.18, 0.13)
 
 [node name="WallLampAsset" type="Node3D"]
 script = ExtResource("1_asset")
@@ -18,3 +27,22 @@ mesh = ExtResource("2_body")
 
 [node name="LitSurfaceMesh" type="MeshInstance3D" parent="."]
 mesh = ExtResource("3_glass")
+
+[node name="EmitterAnchor" type="Marker3D" parent="."]
+position = Vector3(0, 0, 0.23)
+
+[node name="SolidBody" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Mount" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, 0, -0.015)
+shape = SubResource("MountShape")
+
+[node name="Arm" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, 0, 0.10)
+shape = SubResource("ArmShape")
+
+[node name="Lantern" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, 0, 0.235)
+shape = SubResource("LanternShape")

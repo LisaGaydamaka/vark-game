@@ -12,6 +12,8 @@ extends Node3D
 
 @onready var body_mesh: MeshInstance3D = $BodyMesh
 @onready var lit_surface_mesh: MeshInstance3D = $LitSurfaceMesh
+@onready var emitter_anchor: Marker3D = $EmitterAnchor
+@onready var solid_body: StaticBody3D = $SolidBody
 
 var _body_material: StandardMaterial3D = null
 var _lit_material: StandardMaterial3D = null
@@ -31,9 +33,28 @@ func validate_contract() -> bool:
 		and body_mesh.mesh != null
 		and lit_surface_mesh != null
 		and lit_surface_mesh.mesh != null
+		and emitter_anchor != null
+		and solid_body != null
+		and _collision_shape_count() > 0
 		and _is_imported_mesh(body_mesh.mesh)
 		and _is_imported_mesh(lit_surface_mesh.mesh)
+		and _emitter_is_inside_lit_surface()
 	)
+
+
+func get_emitter_transform() -> Transform3D:
+	return (
+		emitter_anchor.transform
+		if emitter_anchor != null
+		else Transform3D.IDENTITY
+	)
+
+
+func get_collision_rids() -> Array[RID]:
+	var result: Array[RID] = []
+	if solid_body != null and solid_body.get_rid().is_valid():
+		result.append(solid_body.get_rid())
+	return result
 
 
 func set_lit_enabled(enabled: bool) -> void:
@@ -63,6 +84,18 @@ func get_contract_summary() -> Dictionary:
 			if lit_surface_mesh != null and lit_surface_mesh.mesh != null
 			else ""
 		),
+		"emitter_local_position": (
+			emitter_anchor.position
+			if emitter_anchor != null
+			else Vector3.ZERO
+		),
+		"emitter_inside_lit_surface": _emitter_is_inside_lit_surface(),
+		"collision_shape_count": _collision_shape_count(),
+		"collision_layer": (
+			solid_body.collision_layer
+			if solid_body != null
+			else 0
+		),
 		"lit_enabled": _lit_enabled,
 		"lit_surface_visible": (
 			lit_surface_mesh.visible
@@ -80,6 +113,33 @@ func get_contract_summary() -> Dictionary:
 			else Color()
 		),
 	}
+
+
+func _collision_shape_count() -> int:
+	if solid_body == null:
+		return 0
+	var count: int = 0
+	for candidate: Node in solid_body.get_children():
+		if candidate is CollisionShape3D:
+			var collision := candidate as CollisionShape3D
+			if collision.shape != null and not collision.disabled:
+				count += 1
+	return count
+
+
+func _emitter_is_inside_lit_surface() -> bool:
+	if (
+		emitter_anchor == null
+		or lit_surface_mesh == null
+		or lit_surface_mesh.mesh == null
+	):
+		return false
+	var lit_bounds: AABB = lit_surface_mesh.mesh.get_aabb()
+	var point_in_mesh_space: Vector3 = (
+		lit_surface_mesh.transform.affine_inverse()
+		* emitter_anchor.position
+	)
+	return lit_bounds.has_point(point_in_mesh_space)
 
 
 func _apply_authored_materials() -> void:

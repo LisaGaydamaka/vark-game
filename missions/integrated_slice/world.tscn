@@ -317,7 +317,7 @@ open_transmission = 1.0
 script = ExtResource("12_exposure")
 player_path = NodePath("../Player")
 
-[node name="NorthGameplayLight" type="OmniLight3D" parent="."]
+[node name="NorthGameplayLight" type="Node3D" parent="."]
 position = Vector3(0, 2.6, -2.7)
 omni_range = 5.8
 light_energy = 3.0

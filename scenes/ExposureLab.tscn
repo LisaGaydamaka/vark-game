@@ -50,7 +50,7 @@ position = Vector3(-7, 0, 4)
 [node name="GameplayExposure" type="Node3D" parent="."]
 script = ExtResource("2_exposure")
 
-[node name="KeyGameplayLight" type="OmniLight3D" parent="."]
+[node name="KeyGameplayLight" type="Node3D" parent="."]
 position = Vector3(-2.5, 2.2, 0)
 light_color = Color(1, 0.82, 0.58, 1)
 light_energy = 3.0
@@ -60,7 +60,7 @@ script = ExtResource("3_light")
 gameplay_light_id = &"key"
 gameplay_strength = 1.35
 
-[node name="FillGameplayLight" type="OmniLight3D" parent="."]
+[node name="FillGameplayLight" type="Node3D" parent="."]
 position = Vector3(3.5, 2.2, 0)
 light_color = Color(0.58, 0.72, 1, 1)
 light_energy = 2.2

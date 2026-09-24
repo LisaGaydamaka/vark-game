@@ -62,12 +62,66 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Two saved gameplay lights and one unsaved presentation switch share one mapper-authored control_id"
 	)
 	var light_a_asset := light_a.get_node_or_null("FixtureAnchor/WallLampAsset") as VarkLightFixtureAsset
+	var light_a_contract: Dictionary = (
+		light_a_asset.get_contract_summary()
+		if light_a_asset != null
+		else {}
+	)
+	var expected_emitter_position: Vector3 = (
+		light_a_asset.to_global(
+			light_a_contract.get("emitter_local_position", Vector3.ZERO)
+		)
+		if light_a_asset != null
+		else Vector3.ZERO
+	)
 	assert_true.call(
 		light_a_asset != null
 		and light_a_asset.validate_contract()
-		and bool((light_a_asset.get_contract_summary() as Dictionary).get("lit_enabled", false))
-		and light_a.light_energy > 0.0,
-		"Lit fixture keeps an imported physical body plus an authored bright/emissive lit surface while the emitter is on"
+		and bool(light_a_contract.get("lit_enabled", false))
+		and bool(light_a_contract.get("emitter_inside_lit_surface", false))
+		and int(light_a_contract.get("collision_shape_count", 0)) >= 3
+		and int(light_a_contract.get("collision_layer", 0)) == 1
+		and light_a.get_emitter() != null
+		and light_a.get_emitter().light_energy > 0.0
+		and light_a.get_emitter_global_position().distance_to(
+			expected_emitter_position
+		) < 0.001
+		and light_a.get_emitter_global_position().distance_to(
+			light_a.global_position
+		) > 0.15,
+		"Fixture asset authors the real emitter inside its bright glass instead of emitting from the mapper origin, and owns solid world collision"
+	)
+
+	var player_collision := player.get_node("CollisionShape3D") as CollisionShape3D
+	var overlap_query := PhysicsShapeQueryParameters3D.new()
+	overlap_query.shape = player_collision.shape
+	var probe_player_transform := Transform3D(
+		Basis.IDENTITY,
+		Vector3(3.2, 0.0, 0.95)
+	)
+	overlap_query.transform = probe_player_transform * player_collision.transform
+	overlap_query.collision_mask = player.collision_mask
+	overlap_query.collide_with_bodies = true
+	overlap_query.collide_with_areas = false
+	var overlap_hits: Array[Dictionary] = (
+		world.get_world_3d().direct_space_state.intersect_shape(
+			overlap_query,
+			32
+		)
+	)
+	var hits_lamp_fixture: bool = false
+	for hit: Dictionary in overlap_hits:
+		var collider := hit.get("collider") as Node
+		if (
+			collider != null
+			and light_a_asset != null
+			and light_a_asset.is_ancestor_of(collider)
+		):
+			hits_lamp_fixture = true
+			break
+	assert_true.call(
+		hits_lamp_fixture,
+		"The real player collision shape overlaps the lamp's authored solid body at contact distance, so lamps physically block the player"
 	)
 
 	var light_events: Array[Dictionary] = []
@@ -131,7 +185,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not bool(off_asset_summary.get("lit_enabled", true))
 		and bool(off_asset_summary.get("lit_surface_visible", false))
 		and not bool(off_asset_summary.get("lit_surface_emission_enabled", true))
-		and is_zero_approx(light_a.light_energy),
+		and is_zero_approx(light_a.light_energy)
+		and light_a.get_emitter() != null
+		and is_zero_approx(light_a.get_emitter().light_energy),
 		"Turning a lamp off leaves its model/dark glass visible while removing emissive appearance and the actual light emitter"
 	)
 
@@ -233,7 +289,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and restored_asset.visible
 		and not bool(restored_asset_summary.get("lit_enabled", true))
 		and bool(restored_asset_summary.get("lit_surface_visible", false))
-		and is_zero_approx(restored_a.light_energy),
+		and is_zero_approx(restored_a.light_energy)
+		and restored_a.get_emitter() != null
+		and is_zero_approx(restored_a.get_emitter().light_energy),
 		"Quickload of an OFF lamp restores dark visible fixture presentation and zero emitter energy rather than hiding the object"
 	)
 

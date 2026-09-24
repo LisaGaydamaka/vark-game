@@ -1015,3 +1015,7 @@ Mapper-facing ordinary switched lighting uses semantic `control_id` groups: Tren
 ## Light fixture ON/OFF presentation — LOCKED
 
 Ordinary lamps, street lamps, candles, torches, and similar light-bearing objects remain present as world objects when switched off or extinguished. A reusable light-fixture asset separates the always-visible imported body from designated lit-surface geometry. ON makes those surfaces use their authored bright/emissive state and enables the actual light emitter; OFF disables emitter energy and changes those surfaces to their authored dark or hidden-off state without hiding the fixture body. A candle asset may hide only its flame surface when off; a street-lamp asset may keep its glass visible but dark. Gameplay exposure, emitter state, lit-surface state, and save/load all derive from the same semantic light state.
+
+## Light fixture emitter/collision ownership — LOCKED
+
+The mapper origin places the light fixture object; it is not assumed to be the physical light-emission point. Every ordinary light-bearing fixture asset owns an explicit `EmitterAnchor` positioned inside its luminous glass/flame/bulb region, and `VarkGameplayLight` places its child light emitter and gameplay-exposure origin at that anchor. The fixture also owns solid authored collision that remains active in both ON and OFF states, so lamps and similar physical fixtures block the player. Gameplay exposure excludes only that fixture's own collision from emitter-to-player visibility rays to avoid self-occlusion; other world geometry still occludes normally.
