@@ -330,7 +330,7 @@ func is_supported_by(body: CollisionObject3D) -> bool:
 		or not is_instance_valid(body)
 	):
 		return false
-	return _find_support_collider() == body
+	return _find_support_rid() == body.get_rid()
 
 
 func get_collision_world_bottom_y() -> float:
@@ -768,15 +768,15 @@ func _shape_overlaps_body_at_transform(body_transform: Transform3D, other_body: 
 
 
 func _has_support() -> bool:
-	return _find_support_collider() != null
+	return _find_support_rid().is_valid()
 
 
-func _find_support_collider() -> CollisionObject3D:
+func _find_support_rid() -> RID:
 	if prop_collision == null or prop_collision.shape == null or not is_inside_tree():
-		return null
+		return RID()
 	var box: BoxShape3D = prop_collision.shape as BoxShape3D
 	if box == null:
-		return null
+		return RID()
 	var half: Vector3 = box.size * 0.5
 	var inset: float = clampf(support_probe_inset, 0.0, 1.0)
 	var x: float = half.x * inset
@@ -803,9 +803,9 @@ func _find_support_collider() -> CollisionObject3D:
 		if not hit.is_empty():
 			var normal: Vector3 = hit.get("normal", Vector3.UP)
 			if normal.y >= minimum_support_normal_y:
-				var collider := hit.get("collider", null) as CollisionObject3D
-				if collider != null:
-					return collider
+				var rid_value: Variant = hit.get("rid")
+				if rid_value is RID and rid_value.is_valid():
+					return rid_value
 
 	var support_query := PhysicsShapeQueryParameters3D.new()
 	support_query.shape = prop_collision.shape
@@ -821,14 +821,17 @@ func _find_support_collider() -> CollisionObject3D:
 		support_query
 	)
 	if rest_info.is_empty():
-		return null
+		return RID()
 	var rest_normal: Vector3 = rest_info.get("normal", Vector3.ZERO)
 	if (
 		rest_normal.length_squared() <= 0.000001
 		or rest_normal.normalized().y < minimum_support_normal_y
 	):
-		return null
-	return rest_info.get("collider", null) as CollisionObject3D
+		return RID()
+	var rest_rid_value: Variant = rest_info.get("rid")
+	if rest_rid_value is RID and rest_rid_value.is_valid():
+		return rest_rid_value
+	return RID()
 
 
 func _set_world_presentation_enabled(enabled: bool) -> void:
