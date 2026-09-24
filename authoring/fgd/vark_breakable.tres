@@ -10,7 +10,7 @@ description = "Explicit authored breakable/effect responder. Only this configure
 class_properties = Dictionary[String, Variant]({
 "persistent_id": "",
 "content_id": "breakable",
-"accepted_effect_id": &"impact",
+"accepted_effect_id": "impact",
 "break_threshold": 1.5,
 "visual_model_path": "",
 "collision_size": Vector3(0.6, 0.6, 0.6),
