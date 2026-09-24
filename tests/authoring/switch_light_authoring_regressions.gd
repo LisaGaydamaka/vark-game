@@ -39,7 +39,7 @@ func run(root: Node, assert_true: Callable) -> void:
 		and light_props.has("starts_on")
 		and light_props.has("gameplay_strength")
 		and light_props.has("omni_range")
-		and light_props.has("fixture_model_path")
+		and light_props.has("fixture_asset_path")
 		and light_props.has("direct_interaction")
 		and switch_props.has("switch_id")
 		and switch_props.has("control_id")
@@ -97,8 +97,8 @@ func run(root: Node, assert_true: Callable) -> void:
 			and lights[0].persistent_id == "pid-light-a"
 			and lights[1].persistent_id == "pid-light-b"
 			and not lights[1].starts_on
-			and str(lights[0].fixture_model_path)
-				== "res://assets/models/lights/wall_lamp.obj"
+			and str(lights[0].fixture_asset_path)
+				== "res://assets/light_assets/WallLamp.tscn"
 			and str(switches[0].base_model_path)
 				== "res://assets/models/switches/wall_switch_plate.obj"
 		)
@@ -123,7 +123,7 @@ func _probe_entities() -> String:
 		"\"starts_on\" \"1\"",
 		"\"gameplay_strength\" \"1.25\"",
 		"\"omni_range\" \"6.0\"",
-		"\"fixture_model_path\" \"res://assets/models/lights/wall_lamp.obj\"",
+		"\"fixture_asset_path\" \"res://assets/light_assets/WallLamp.tscn\"",
 		"}",
 		"// Phase 6.5 gameplay-light probe B",
 		"{",
