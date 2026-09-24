@@ -1642,7 +1642,7 @@ The author-facing bus deliberately exposes only:
 - `subscribe(event_name, handler)` / `unsubscribe(...)` for synchronous consequence handlers participating in the current semantic drain;
 - `emit(event_name, detached_payload)` for mission-defined or promoted semantic facts, still subject to the current `PLAYING` lifecycle/session boundary;
 - `get_known_event_names()` as useful documented vocabulary for proven facts such as gameplay sound, pickup collection, door/container/light/switch changes, breakage, guard communication/alarm, objective-completion request, mission-exit request, and mission completion;
-- `get_recent_trace()` as a bounded detached diagnostic history containing sequence, name, payload, current session identity, handler count, and the stable-boundary pass that processed the event.
+- `get_recent_trace()` as a bounded detached diagnostic history containing sequence, name, payload, current session identity, handler count, and the controlled consequence pass that processed the event.
 
 This wrapper does **not** expose private subsystem signals, mutable gameplay Nodes, a scheduler, arbitrary delayed callbacks, or an alternate mutation path. Mission-defined event names remain permitted; payloads still fail closed on live `Object`/`Callable`/`Signal`/`RID` values. The existing FIFO order, re-entrant append, late controlled physics drain, synchronous-handler acknowledgement, lifecycle gating, replacement-world isolation, stable-boundary publication, and runaway-cascade guard remain authoritative inside `WorldSession`.
 
