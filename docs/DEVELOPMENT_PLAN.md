@@ -1675,7 +1675,7 @@ Save capture stores only mission-scope key/value truth under the detached `missi
 
 **Manual:** none required for this architecture-only step. No player-facing behavior is intended.
 
-## 7.3 Objective system `[~]`
+## 7.3 Objective system `[x]`
 
 Extend the accepted Phase 3.10 owner instead of introducing a second objective authority. One `VarkSimpleObjectiveState` still owns route objective truth, exit gating/counters, mission-complete truth, save state, and public objective/exit queries; 7.3 generalizes that same owner to multiple declared objectives.
 
@@ -1701,13 +1701,35 @@ Objective Lab now declares one required active route objective, one initially in
 
 **Automated:** accepted on corrected objective-lifecycle implementation head `0dececd840b536339d142f12f6aed610f6ccc0b2` by GitHub Actions Test run #476. The Objectives suite retains the Phase 3.10 early-exit, required-objective completion, exactly-once `mission.completed`, unknown-query, and semantic-trigger proofs while additionally proving declared inactive/active optional objectives, controlled activation/failure/completion, ordered detached `objective.state_changed` events, and optional non-gating. The initial run exposed that the established `objective_completion_count` specifically meant primary route-objective completion; the fix-forward preserves that meaning instead of counting optional completions. Existing Integrated Slice/Application semantic snapshot restore, save compatibility, event, gameplay, authoring, movement, and the full regression suite remained green; the run ended with `ALL TEST SUITES PASSED`.
 
-**Manual:** user/playtester. Development Launch → **Objective Lab**. EXIT should still be locked until the required OBJECTIVE is complete. OPTIONAL START should turn the optional bonus from INACTIVE to ACTIVE; OPTIONAL COMPLETE should then make it COMPLETE. Optional state must not determine whether EXIT unlocks. The development status label should make required/optional states readable, and the original required OBJECTIVE → EXIT completion flow must remain intact.
+**Manual:** accepted — user/playtester. After green exact-head run #477, the user reported the extended Objective Lab flow all good: required EXIT gating remained intact while OPTIONAL START/OPTIONAL COMPLETE exposed the optional lifecycle without taking exit authority.
 
-## 7.4 Small data rule system `[ ]`
+## 7.4 Small data rule system `[~]`
 
-Support event → conditions → actions for common declarative behavior. No general-purpose language features.
+`MissionDefinition.mission_rule_declarations` now owns a deliberately small declarative grammar. Each rule contains exactly `rule_id`, `event_name`, `conditions`, and `actions`. Rule IDs are stable authored diagnostic identity; duplicate/blank IDs and blank source event names fail definition validation.
 
-Delayed/long-running rules are explicit semantic stages/timing state rather than hidden suspended callbacks/coroutines.
+The supported conditions are intentionally finite:
+
+- `event_payload_equals { key, value }` — compare one detached literal against the triggering event payload;
+- `fact_equals { key, value }` — compare one typed literal against an already-declared `MissionFacts` key.
+
+The supported actions are intentionally finite:
+
+- `set_fact { key, value }` — queue the existing typed mission-fact mutation request;
+- `emit_event { event_name, payload }` — append one detached semantic event through the existing world-owned event bus.
+
+This is enough to express common event → conditions → actions reactions and to request existing objective/door/etc. semantic behavior by emitting their public request events. There is no expression language, arithmetic, loops, arbitrary method calls, Node access, callback storage, script snippets, reflection, implicit entity mutation, or author-facing scheduler.
+
+`VarkMissionRules` is one stateless world-lifetime rule layer owned by `WorldSession`. It subscribes to authored source events through the existing `VarkMissionEventBus`, evaluates current event payload + typed fact truth synchronously during that same controlled semantic drain, and **queues** actions back into the existing event cascade. A matching rule therefore cannot mutate durable truth before the current controlled consequence pass reaches its queued actions.
+
+7.4 deliberately does not define one-shot/repeat policy, cross-rule priority, rule persistence, delayed actions, or long-running behavior; those remain Phase 7.6. The current 7.4 rules are immediate/stateless every-match reactions. If content needs delay or multi-step progress before 7.6, that progress must be explicit semantic fact/objective stage driven by later ordinary gameplay events—not an `await`, timer continuation, hidden coroutine, or suspended callback.
+
+Rule validation cross-checks fact conditions/actions against the already-declared typed facts and rejects unknown facts or wrong literal types. `emit_event` payloads must be detached rule data. Unsupported condition/action kinds fail closed instead of growing the grammar opportunistically.
+
+**Done when:** valid rule declarations build with one world-scoped rule owner; invalid unknown-fact/arbitrary-action/duplicate-ID/wrong-type declarations fail MissionDefinition validation; fact and event-payload conditions can independently prevent a match; a matching rule does not mutate before the controlled consequence pass; one matched rule can queue both a typed fact change and detached semantic event through the existing cascade; handler-local event mutation cannot alter authored rule data; the stateless rule layer introduces no hidden save section/continuation state; teardown invalidates it with the old world; and existing event/fact/save/gameplay regressions remain green.
+
+**Automated:** pending exact-head post-push validation. The focused Application regression must prove declaration validation, world ownership, condition misses, controlled-match timing, `set_fact` + `emit_event` action delivery, detached authored payload behavior, absence of hidden rule save state, and teardown invalidation. Existing semantic cascade/runaway guard and typed-fact suites remain the compatibility barrier for dispatcher and mutation semantics.
+
+**Manual:** none required for this architecture-only grammar step. Phase 8 will provide the first player-facing authored-rule proof.
 
 ## 7.5 Provisional VarkMissionScript API `[ ]`
 
