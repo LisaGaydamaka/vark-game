@@ -1675,9 +1675,33 @@ Save capture stores only mission-scope key/value truth under the detached `missi
 
 **Manual:** none required for this architecture-only step. No player-facing behavior is intended.
 
-## 7.3 Objective system `[ ]`
+## 7.3 Objective system `[~]`
 
-Active/completed/failed, optional/dynamic objective support.
+Extend the accepted Phase 3.10 owner instead of introducing a second objective authority. One `VarkSimpleObjectiveState` still owns route objective truth, exit gating/counters, mission-complete truth, save state, and public objective/exit queries; 7.3 generalizes that same owner to multiple declared objectives.
+
+Each authored `objective_declarations` entry contains exactly `objective_id`, `text`, `optional`, and `initial_state`. The primary legacy `objective_id` must still be present. Initial state is `active` or `inactive`; runtime objective state is one of `inactive`, `active`, `complete`, or `failed`.
+
+Supported transitions remain explicit semantic consequences:
+
+- `objective.activate_requested { objective_id }`: inactive → active;
+- `objective.complete_requested { objective_id }`: active → complete;
+- `objective.fail_requested { objective_id }`: active → failed;
+- each real transition appends one detached `objective.state_changed { objective_id, from_state, to_state, optional }`;
+- terminal/invalid/idempotent transition requests do not manufacture extra changes.
+
+"Dynamic" in this phase means a declared inactive objective can become active later through the semantic event path. 7.3 does not add arbitrary runtime-created objective definitions; Phase 8 can pull that forward only if a real mission requires it.
+
+Exit gating is derived from objective ownership, not mirrored mission facts: every non-optional objective must be complete. Optional objectives may remain inactive, active, complete, or failed without blocking route completion. A failed required objective keeps the exit locked but does not yet invent a universal mission-failure transition; mission fail conditions remain later rule/content work.
+
+The existing single-objective contract remains backward compatible. Empty declarations synthesize the original required active `objective_id`; existing `query_objective()`, `query_exit()`, objective-complete snapshots, exactly-once `mission.completed`, and Phase 3/4 save fixtures remain valid. New snapshots additionally carry the complete objective-state table plus activation/failure counters, while restore accepts the old eight-field single-objective snapshot form for compatibility.
+
+Objective Lab now declares one required active route objective, one initially inactive optional objective, and one initially active optional objective. It also exposes OPTIONAL START/OPTIONAL COMPLETE semantic trigger pads so dynamic activation is visible in the focused fixture.
+
+**Done when:** required/optional declarations build under one existing objective owner; public queries expose inactive/active/complete/failed plus optional state and still fail closed for unknown IDs; queued activation/failure/completion do not mutate before the controlled consequence pass; real transitions emit ordered detached `objective.state_changed` facts; optional completion/failure never becomes exit authority; the required objective alone can unlock the current lab exit; repeated/invalid terminal transitions are idempotent; the expanded semantic snapshot restores all objective states/counters without event replay while old single-objective snapshots remain accepted; existing Integrated Slice objective/save behavior stays green; and the user accepts the focused Objective Lab presentation/flow.
+
+**Automated:** pending exact-head post-push validation. The Objectives suite must retain the Phase 3.10 early-exit/required-completion/exactly-once mission-completion proof and additionally cover declared inactive/active optional objectives, controlled activation/failure/completion, ordered state-change events, and optional non-gating. Existing Application semantic snapshot coverage remains the compatibility barrier for save/restore ownership.
+
+**Manual:** user/playtester. Development Launch → **Objective Lab**. EXIT should still be locked until the required OBJECTIVE is complete. OPTIONAL START should turn the optional bonus from INACTIVE to ACTIVE; OPTIONAL COMPLETE should then make it COMPLETE. Optional state must not determine whether EXIT unlocks. The development status label should make required/optional states readable, and the original required OBJECTIVE → EXIT completion flow must remain intact.
 
 ## 7.4 Small data rule system `[ ]`
 
