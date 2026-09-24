@@ -11,6 +11,7 @@ const WorldEntityRegistry = preload(
 )
 const MissionRunState = preload("res://missions/mission_run_state.gd")
 const MissionEventBus = preload("res://missions/mission_event_bus.gd")
+const MissionFacts = preload("res://missions/mission_facts.gd")
 const SEMANTIC_EVENT_CASCADE_LIMIT: int = 256
 const SEMANTIC_EVENT_TRACE_LIMIT: int = 24
 const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000
@@ -43,6 +44,7 @@ var player: Node = null
 var entity_registry: RefCounted = null
 var mission_run_state: RefCounted = null
 var mission_event_bus: RefCounted = null
+var mission_facts: RefCounted = null
 var state: int = State.EMPTY
 var gameplay_time_seconds: float = 0.0
 
@@ -288,6 +290,22 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 		return _fail_restore(
 			"Current slice has no mission-script semantic state owner."
 		)
+
+	var fact_snapshot: Dictionary = (
+		world_state.get(
+			"mission_facts",
+			mission_facts.call("get_default_semantic_state")
+		) as Dictionary
+	)
+	if (
+		mission_facts == null
+		or not bool(mission_facts.call(
+			"apply_semantic_state",
+			fact_snapshot
+		))
+	):
+		return _fail_restore("Restore could not apply MissionFacts.")
+
 	var run_state_snapshot: Dictionary = world_state.get(
 		"mission_run_state",
 		{
@@ -374,6 +392,10 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 	if not comparable_expected.has("mission_run_state"):
 		comparable_expected["mission_run_state"] = (
 			restored_state.get("mission_run_state", {}) as Dictionary
+		).duplicate(true)
+	if not comparable_expected.has("mission_facts"):
+		comparable_expected["mission_facts"] = (
+			restored_state.get("mission_facts", {}) as Dictionary
 		).duplicate(true)
 	if restored_state != comparable_expected:
 		return _fail_restore(
@@ -471,6 +493,9 @@ func _capture_world_semantic_state() -> Dictionary:
 	var run_state_snapshot: Dictionary = {}
 	if mission_run_state != null:
 		run_state_snapshot = mission_run_state.call("capture_semantic_state")
+	var mission_fact_snapshot: Dictionary = {}
+	if mission_facts != null:
+		mission_fact_snapshot = mission_facts.call("capture_semantic_state")
 	return {
 		"object_existence": {
 			"authored_tombstones": tombstones,
@@ -479,6 +504,7 @@ func _capture_world_semantic_state() -> Dictionary:
 		"persistent_entities": persistent_snapshots,
 		"player": (player_snapshot as Dictionary).duplicate(true),
 		"semantic_owners": semantic_snapshots,
+		"mission_facts": mission_fact_snapshot.duplicate(true),
 		"mission_run_state": run_state_snapshot.duplicate(true),
 		"mission_script_state": {},
 	}
@@ -535,6 +561,17 @@ func _validate_world_state_structure(world_state: Dictionary) -> bool:
 		if persistent_id.is_empty() or tombstone_ids.has(persistent_id):
 			return _fail_restore("Authored tombstone IDs must be non-empty and unique.")
 		tombstone_ids[persistent_id] = true
+	if world_state.has("mission_facts"):
+		var fact_state_value: Variant = world_state.get("mission_facts")
+		if (
+			typeof(fact_state_value) != TYPE_DICTIONARY
+			or mission_facts == null
+			or not bool(mission_facts.call(
+				"validate_semantic_state",
+				fact_state_value
+			))
+		):
+			return _fail_restore("Semantic MissionFacts state is malformed.")
 	if world_state.has("mission_run_state"):
 		var run_state_value: Variant = world_state.get("mission_run_state")
 		if (
@@ -644,6 +681,36 @@ func get_last_semantic_event_error() -> String:
 
 func get_mission_event_bus() -> RefCounted:
 	return mission_event_bus
+
+
+func get_mission_facts() -> RefCounted:
+	return mission_facts
+
+
+func get_mission_fact(
+	key: StringName,
+	fallback: Variant = null
+) -> Variant:
+	if mission_facts == null:
+		return fallback
+	return mission_facts.call("get_value", key, fallback)
+
+
+func queue_mission_fact_set(key: StringName, value: Variant) -> bool:
+	if (
+		state != State.PLAYING
+		or mission_facts == null
+		or not bool(mission_facts.call("can_assign", key, value))
+	):
+		return false
+	return queue_semantic_gameplay_event(
+		session_id,
+		MissionFacts.FACT_SET_REQUESTED_EVENT_NAME,
+		{
+			"key": key,
+			"value": value,
+		}
+	)
 
 
 func get_recent_semantic_event_trace() -> Array[Dictionary]:
@@ -777,6 +844,24 @@ func build(
 	mission_event_bus = MissionEventBus.new()
 	if not bool(mission_event_bus.call("bind_to_session", self, session_id)):
 		push_error("WorldSession could not bind the author-facing mission event bus.")
+		teardown()
+		return false
+	mission_facts = MissionFacts.new()
+	var fact_declarations: Array[Dictionary] = []
+	if mission_definition != null:
+		fact_declarations = mission_definition.get("mission_fact_declarations")
+	if not bool(mission_facts.call("configure", fact_declarations)):
+		push_error(
+			"WorldSession mission fact configuration failed: %s"
+			% str(mission_facts.call("get_last_error"))
+		)
+		teardown()
+		return false
+	if not register_semantic_event_handler(
+		MissionFacts.FACT_SET_REQUESTED_EVENT_NAME,
+		Callable(self, "_on_mission_fact_set_requested")
+	):
+		push_error("WorldSession could not register the mission fact mutation handler.")
 		teardown()
 		return false
 	process_mode = Node.PROCESS_MODE_DISABLED
@@ -1006,6 +1091,7 @@ func teardown() -> void:
 	if mission_event_bus != null:
 		mission_event_bus.call("invalidate")
 		mission_event_bus = null
+	mission_facts = null
 	_reset_semantic_event_state()
 
 	if entity_registry != null:
@@ -1028,6 +1114,38 @@ func teardown() -> void:
 	_last_restore_error = ""
 	_restore_state_applied = false
 	state = State.EMPTY
+
+
+func _on_mission_fact_set_requested(event: Dictionary) -> bool:
+	if mission_facts == null:
+		return false
+	var payload: Dictionary = event.get("payload", {})
+	if (
+		payload.size() != 2
+		or not payload.has("key")
+		or not payload.has("value")
+	):
+		return false
+	var key := StringName(str(payload.get("key", "")).strip_edges())
+	var value: Variant = payload.get("value")
+	var result: Dictionary = mission_facts.call(
+		"set_value_controlled",
+		key,
+		value
+	)
+	if not bool(result.get("ok", false)):
+		return false
+	if not bool(result.get("changed", false)):
+		return true
+	return queue_semantic_gameplay_event(
+		session_id,
+		MissionFacts.FACT_CHANGED_EVENT_NAME,
+		{
+			"key": key,
+			"value": value,
+			"scope": mission_facts.call("get_scope", key),
+		}
+	)
 
 
 func _drain_semantic_gameplay_events() -> bool:
