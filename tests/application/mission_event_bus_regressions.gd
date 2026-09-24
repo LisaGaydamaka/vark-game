@@ -91,7 +91,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and int(session.call("get_stable_gameplay_boundary_serial")) == serial_before + 1
 		and trace_entry.get("name", &"") == &"mission.author_probe"
 		and int(trace_entry.get("handler_count", -1)) == 1
-		and int(trace_entry.get("boundary_serial", 0)) == serial_before + 1
+		and int(trace_entry.get("consequence_pass_serial", 0)) == serial_before + 1
 		and trace_nested.get("value", -1) == 7,
 		"7.1 author-facing trace records detached payload, handler count, sequence scope, and the stable-boundary pass that processed the event"
 	)
