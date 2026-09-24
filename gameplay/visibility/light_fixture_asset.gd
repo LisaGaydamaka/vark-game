@@ -7,6 +7,11 @@ extends Node3D
 # Ordinary world geometry remains on layer 1, so this helper cannot brighten
 # the room or become a second gameplay-light source.
 const FIXTURE_SELF_FILL_RENDER_LAYER: int = 1 << 19
+# Dedicated physics layer used only by gameplay-light visibility rays. The
+# player-facing solid collision stays coarse, while this occluder is generated
+# from the opaque fixture body mesh so semantic exposure follows rendered
+# fixture shadowing without treating glass as opaque.
+const EXPOSURE_OCCLUDER_PHYSICS_LAYER: int = 1 << 5
 
 
 @export var asset_id: StringName = &""
@@ -22,6 +27,7 @@ const FIXTURE_SELF_FILL_RENDER_LAYER: int = 1 << 19
 @onready var emitter_anchor: Marker3D = $EmitterAnchor
 @onready var fixture_fill: OmniLight3D = $EmitterAnchor/FixtureFill
 @onready var solid_body: StaticBody3D = $SolidBody
+@onready var exposure_occluder: StaticBody3D = $ExposureOccluder
 
 var _body_material: StandardMaterial3D = null
 var _body_authored_shading_mode: BaseMaterial3D.ShadingMode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
@@ -35,6 +41,7 @@ var _source_light_energy: float = 0.0
 
 func _ready() -> void:
 	_configure_render_layers()
+	_configure_exposure_occluder()
 	_localize_body_material()
 	_apply_lit_surface_material()
 	_configure_fixture_fill()
@@ -51,7 +58,11 @@ func validate_contract() -> bool:
 		and emitter_anchor != null
 		and fixture_fill != null
 		and solid_body != null
-		and _collision_shape_count() > 0
+		and exposure_occluder != null
+		and _collision_shape_count(solid_body) > 0
+		and _collision_shape_count(exposure_occluder) > 0
+		and exposure_occluder.collision_layer == EXPOSURE_OCCLUDER_PHYSICS_LAYER
+		and exposure_occluder.collision_mask == 0
 		and _is_imported_mesh(body_mesh.mesh)
 		and _is_imported_mesh(lit_surface_mesh.mesh)
 		and _emitter_is_inside_lit_surface()
@@ -132,7 +143,10 @@ func get_contract_summary() -> Dictionary:
 			else Vector3.ZERO
 		),
 		"emitter_inside_lit_surface": _emitter_is_inside_lit_surface(),
-		"collision_shape_count": _collision_shape_count(),
+		"collision_shape_count": _collision_shape_count(solid_body),
+		"exposure_occluder_shape_count": _collision_shape_count(exposure_occluder),
+		"exposure_occluder_layer": exposure_occluder.collision_layer if exposure_occluder != null else 0,
+		"exposure_occluder_mask": exposure_occluder.collision_mask if exposure_occluder != null else 0,
 		"collision_layer": (
 			solid_body.collision_layer
 			if solid_body != null
@@ -224,11 +238,11 @@ func get_contract_summary() -> Dictionary:
 	}
 
 
-func _collision_shape_count() -> int:
-	if solid_body == null:
+func _collision_shape_count(body: StaticBody3D) -> int:
+	if body == null:
 		return 0
 	var count: int = 0
-	for candidate: Node in solid_body.get_children():
+	for candidate: Node in body.get_children():
 		if candidate is CollisionShape3D:
 			var collision := candidate as CollisionShape3D
 			if collision.shape != null and not collision.disabled:
@@ -249,6 +263,22 @@ func _emitter_is_inside_lit_surface() -> bool:
 		* emitter_anchor.position
 	)
 	return lit_bounds.has_point(point_in_mesh_space)
+
+
+func _configure_exposure_occluder() -> void:
+	if exposure_occluder == null or body_mesh == null or body_mesh.mesh == null:
+		return
+	for child: Node in exposure_occluder.get_children():
+		child.free()
+	var collision := CollisionShape3D.new()
+	collision.name = "OpaqueBodyExposureShape"
+	var shape: ConcavePolygonShape3D = body_mesh.mesh.create_trimesh_shape()
+	shape.backface_collision = true
+	collision.shape = shape
+	collision.transform = exposure_occluder.transform.affine_inverse() * body_mesh.transform
+	exposure_occluder.collision_layer = EXPOSURE_OCCLUDER_PHYSICS_LAYER
+	exposure_occluder.collision_mask = 0
+	exposure_occluder.add_child(collision)
 
 
 func _configure_render_layers() -> void:
