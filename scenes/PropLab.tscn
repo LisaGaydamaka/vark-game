@@ -83,12 +83,12 @@ position = Vector3(2, 0.9, 0)
 prop_id = &"prop.lab.stack.upper"
 
 [node name="ObstructionDoor" parent="." instance=ExtResource("3_door")]
-position = Vector3(-3.5, 0, -2.4)
+position = Vector3(0, 0, -2.8)
 door_id = "prop.lab.obstruction"
 transition_seconds = 0.45
 
 [node name="DoorBlockerProp" parent="." instance=ExtResource("2_prop")]
-position = Vector3(-2.35, 0.35, -3.6)
+position = Vector3(2.2, 0.35, -2.8)
 prop_id = &"prop.lab.door_blocker"
 prop_variant = "tall_crate"
 visual_model_path = "res://assets/models/props/ordinary_crate_tall.obj"
