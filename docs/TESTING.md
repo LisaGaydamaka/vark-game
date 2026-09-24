@@ -624,6 +624,19 @@ Before mission logic or save capture depends on the path, prove:
 
 Do not freeze a broad event/scheduler framework; freeze only these semantics.
 
+Phase 7.1 promotes that same dispatcher through one world-scoped `VarkMissionEventBus`; it is a wrapper, not a replacement queue. The Application suite additionally proves:
+
+- one fresh bus belongs to one `WorldSession` lifetime, can subscribe during READY, but ordinary emission remains rejected until PLAYING;
+- the author-facing known-event vocabulary names representative proven semantic facts without exposing subsystem-private signals;
+- mission-defined event names may be emitted with detached value payloads through the same queue;
+- author emission from outside the controlled pass queues only; handlers run at the later consequence point and the stable boundary publishes afterward;
+- source mutation after emit and handler-local mutation cannot alter queued sibling/trace values;
+- nested author emission preserves the existing FIFO append contract;
+- a bounded recent trace records detached sequence/name/payload/session/handler-count/stable-pass data and remains available after a guarded semantic-drain failure for diagnosis;
+- live `Object`/`Callable`/`Signal`/`RID` payloads remain rejected by the underlying detached-value boundary;
+- teardown invalidates retained bus references and replacement creates a distinct fresh bus, preventing stale author code from targeting the new world.
+
+
 ## Semantic-state ownership fixture
 
 As mission facts/objectives/possession/statistics/vitality/campaign state appear, verify representative facts have one owner:
@@ -1262,12 +1275,12 @@ Automated contract:
 - **Mapper authoring:** Vark FGD exports `vark_breakable` with persistent/content identity, accepted effect, threshold, optional model path, collision dimensions, and fallback color.
 - **Fixture:** Development Launch → **Breakable Lab** contains one loose ordinary prop, one red configured breakable panel, and one ordinary nonbreakable door control.
 
-Manual acceptance — user/playtester, Development Launch → **Breakable Lab**:
+Manual acceptance: **accepted by user/playtester after exact-head run #438.** Development Launch → **Breakable Lab**:
 
-- [ ] Pick up the loose crate with F and F-throw it into the red panel. A sufficiently strong real impact breaks only the configured panel; it disappears/stops blocking.
-- [ ] Restart and try weak/gentle incidental contact or R release: clearly weak contact must not break the panel; a committed F throw should.
-- [ ] The ordinary door beside the panel remains an ordinary nonbreakable door and continues to open/close normally.
-- [ ] Movement, carried-Junk presentation/input ownership, prop physics, save/load, and unrelated interaction remain normal.
+- [x] Pick up the loose crate with F and F-throw it into the red panel. A sufficiently strong real impact breaks only the configured panel; it disappears/stops blocking.
+- [x] Restart and try weak/gentle incidental contact or R release: clearly weak contact must not break the panel; a committed F throw should.
+- [x] The ordinary door beside the panel remains an ordinary nonbreakable door and continues to open/close normally.
+- [x] Movement, carried-Junk presentation/input ownership, prop physics, save/load, and unrelated interaction remain normal.
 
 ## Save/load
 
