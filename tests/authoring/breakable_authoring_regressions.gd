@@ -77,7 +77,7 @@ func run(_root: Node, assert_true: Callable) -> void:
 		valid = (
 			target.persistent_id == "pid-breakable-panel"
 			and target.content_id == "breakable.authoring.panel"
-			and target.accepted_effect_id == &"impact"
+			and target.accepted_effect_id == "impact"
 			and is_equal_approx(target.break_threshold, 2.25)
 			and target.collision_size.is_equal_approx(Vector3(1.2, 1.4, 0.2))
 		)
