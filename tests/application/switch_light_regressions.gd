@@ -91,6 +91,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and bool(light_a_contract.get("emitter_inside_lit_surface", false))
 		and int(light_a_contract.get("collision_shape_count", 0)) >= 3
 		and int(light_a_contract.get("collision_layer", 0)) == 1
+		and int(light_a_contract.get("exposure_occluder_shape_count", 0)) == 1
+		and int(light_a_contract.get("exposure_occluder_layer", 0))
+			== VarkLightFixtureAsset.EXPOSURE_OCCLUDER_PHYSICS_LAYER
+		and int(light_a_contract.get("exposure_occluder_mask", -1)) == 0
 		and light_a.get_emitter() != null
 		and light_a.get_emitter().light_energy > 0.0
 		and light_a.get_emitter_global_position().distance_to(
@@ -114,7 +118,38 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			int(light_a_contract.get("lit_surface_layers", 0))
 			& VarkLightFixtureAsset.FIXTURE_SELF_FILL_RENDER_LAYER
 		) == 0,
-		"Fixture asset authors the real emitter inside its bright glass, solid world collision, and a private unshadowed self-fill that illuminates only the normally shaded fixture body"
+		"Fixture asset authors the real emitter inside its bright glass, solid world collision, opaque-mesh gameplay-exposure occlusion, and a private unshadowed self-fill that illuminates only the normally shaded fixture body"
+	)
+
+	var exposure_space: PhysicsDirectSpaceState3D = world.get_world_3d().direct_space_state
+	var emitter_position: Vector3 = light_a.get_emitter_global_position()
+	var fixture_shadow_sample: Dictionary = light_a.sample_gameplay_exposure(
+		emitter_position + Vector3(0.0, 0.0, -1.0),
+		exposure_space
+	)
+	var open_fixture_sample: Dictionary = light_a.sample_gameplay_exposure(
+		emitter_position + Vector3(0.9, 0.0, -1.0),
+		exposure_space
+	)
+	assert_true.call(
+		bool(fixture_shadow_sample.get("occluded", false))
+		and is_zero_approx(float(fixture_shadow_sample.get("contribution", -1.0)))
+		and not bool(open_fixture_sample.get("occluded", true))
+		and float(open_fixture_sample.get("contribution", 0.0)) > 0.0,
+		"Opaque lamp body geometry blocks gameplay exposure where the rendered fixture casts shadow without turning the whole fixture volume into an opaque box"
+	)
+	var self_fill_energy_before: float = float(light_a_contract.get("fixture_fill_energy", 0.0))
+	var saved_gameplay_strength: float = light_a.gameplay_strength
+	light_a.gameplay_strength = 0.0
+	var self_fill_only_sample: Dictionary = light_a.sample_gameplay_exposure(
+		emitter_position + Vector3(0.9, 0.0, -1.0),
+		exposure_space
+	)
+	light_a.gameplay_strength = saved_gameplay_strength
+	assert_true.call(
+		self_fill_energy_before > 0.0
+		and is_zero_approx(float(self_fill_only_sample.get("contribution", -1.0))),
+		"Fixture-only self-fill remains render-only and cannot contribute to gameplay exposure"
 	)
 
 	var extinguishable_asset := extinguishable.get_node_or_null(
