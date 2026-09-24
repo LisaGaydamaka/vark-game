@@ -2,10 +2,10 @@ class_name VarkMissionFacts
 extends RefCounted
 
 
-const TYPE_BOOL: StringName = &"bool"
-const TYPE_INT: StringName = &"int"
-const TYPE_FLOAT: StringName = &"float"
-const TYPE_STRING: StringName = &"string"
+const VALUE_TYPE_BOOL: StringName = &"bool"
+const VALUE_TYPE_INT: StringName = &"int"
+const VALUE_TYPE_FLOAT: StringName = &"float"
+const VALUE_TYPE_STRING: StringName = &"string"
 
 const SCOPE_MISSION: StringName = &"mission"
 const SCOPE_RUNTIME: StringName = &"runtime"
@@ -228,21 +228,21 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 
 static func _is_supported_type(fact_type: StringName) -> bool:
 	return (
-		fact_type == TYPE_BOOL
-		or fact_type == TYPE_INT
-		or fact_type == TYPE_FLOAT
-		or fact_type == TYPE_STRING
+		fact_type == VALUE_TYPE_BOOL
+		or fact_type == VALUE_TYPE_INT
+		or fact_type == VALUE_TYPE_FLOAT
+		or fact_type == VALUE_TYPE_STRING
 	)
 
 
 static func _value_matches_type(value: Variant, fact_type: StringName) -> bool:
 	match fact_type:
-		TYPE_BOOL:
+		VALUE_TYPE_BOOL:
 			return typeof(value) == TYPE_BOOL
-		TYPE_INT:
+		VALUE_TYPE_INT:
 			return typeof(value) == TYPE_INT
-		TYPE_FLOAT:
+		VALUE_TYPE_FLOAT:
 			return typeof(value) == TYPE_FLOAT
-		TYPE_STRING:
+		VALUE_TYPE_STRING:
 			return typeof(value) == TYPE_STRING
 	return false
