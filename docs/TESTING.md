@@ -1240,16 +1240,34 @@ Automated contract:
 - **Obstruction/support motion:** Prop Lab uses the real ordinary door. A settled ordinary prop in the leaf's side sweep latches the same physical obstruction path used by other bodies; removing it allows the same request to finish. A prop genuinely resting on the leaf's top edge is different: door motion releases that support into the ordinary unsupported rigid-body path, so the leaf can move and the crate falls instead of pinning the door. No alternate prop or door subsystem exists.
 - **Persistence:** existing Phase 4 semantic/transient restore regressions remain authoritative for carried Junk and moving/thrown props; authored model/collision configuration is reconstructed from mission content rather than duplicated into semantic snapshots.
 
-Manual acceptance — user/playtester, Development Launch → **Prop Lab**:
+Manual acceptance: **accepted by user/playtester after the top-supported-crate correction.** Development Launch → **Prop Lab**:
 
-- [ ] Standard and tall imported crate variants look physically aligned with their configured collision and otherwise obey the same prop behavior.
-- [ ] Edge-supported props and stacks remain motionless while supported; the player can stand/use stacked crates as climbing aids.
-- [ ] Removing a lower support makes the upper prop fall without exploding/scattering/tumbling.
-- [ ] Held ordinary props use the bottom-center carried-Junk presentation, cannot be freely rotated, suppress ordinary world/hand interaction centrally, and leave normal locomotion/traversal available.
-- [ ] F throw follows view and is materially stronger/louder than R gentle release; both remain top-up, move physically, and stop directly in stable rest without a visible orientation-correction phase.
-- [ ] Open the lab door, put a crate in its side swing, and close it: the door stops on the prop. Remove the crate and the same door completes closing.
-- [ ] Put/balance a crate on the door's top edge and operate the door: the door moves instead of remaining pinned; the crate releases from door support and falls/moves through ordinary prop physics.
-- [ ] Representative carried and moving prop quicksave/quickload behavior remains coherent.
+- [x] Standard and tall imported crate variants look physically aligned with their configured collision and otherwise obey the same prop behavior.
+- [x] Edge-supported props and stacks remain motionless while supported; the player can stand/use stacked crates as climbing aids.
+- [x] Removing a lower support makes the upper prop fall without exploding/scattering/tumbling.
+- [x] Held ordinary props use the bottom-center carried-Junk presentation, cannot be freely rotated, suppress ordinary world/hand interaction centrally, and leave normal locomotion/traversal available.
+- [x] F throw follows view and is materially stronger/louder than R gentle release; both remain top-up, move physically, and stop directly in stable rest without a visible orientation-correction phase.
+- [x] Open the lab door, put a crate in its side swing, and close it: the door stops on the prop. Remove the crate and the same door completes closing.
+- [x] Put/balance a crate on the door's top edge and operate the door: the door moves instead of remaining pinned; the crate releases from door support and falls/moves through ordinary prop physics.
+- [x] Representative carried and moving prop quicksave/quickload behavior remains coherent.
+
+## Configured breakables/effects (Phase 6.7)
+
+Automated contract:
+
+- **Explicit responder only:** `VarkConfiguredBreakable` owns `apply_gameplay_effect(effect_id, strength, source_position)`; ordinary doors/architecture do not expose that seam and therefore remain nonbreakable.
+- **Physical impact source:** the accepted ordinary-prop rigid-body contact path calls `receive_prop_impact()` on responders. The breakable translates real contact impulse magnitude into the `impact` effect; no global damage scan or universal destruction callback exists.
+- **Filtering/idempotence:** only the configured effect ID at or above the authored threshold can break the object. Wrong/sub-threshold effects do nothing; repeated effects after break produce no extra state transition/event.
+- **Persistence:** broken truth is captured as one detached bool under the object's stable authored persistent ID. Restore reconstructs collision/presentation without replaying `breakable.broken`.
+- **Mapper authoring:** Vark FGD exports `vark_breakable` with persistent/content identity, accepted effect, threshold, optional model path, collision dimensions, and fallback color.
+- **Fixture:** Development Launch → **Breakable Lab** contains one loose ordinary prop, one red configured breakable panel, and one ordinary nonbreakable door control.
+
+Manual acceptance — user/playtester, Development Launch → **Breakable Lab**:
+
+- [ ] Pick up the loose crate with F and F-throw it into the red panel. A sufficiently strong real impact breaks only the configured panel; it disappears/stops blocking.
+- [ ] Restart and try weak/gentle incidental contact or R release: clearly weak contact must not break the panel; a committed F throw should.
+- [ ] The ordinary door beside the panel remains an ordinary nonbreakable door and continues to open/close normally.
+- [ ] Movement, carried-Junk presentation/input ownership, prop physics, save/load, and unrelated interaction remain normal.
 
 ## Save/load
 
