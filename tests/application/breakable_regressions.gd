@@ -121,14 +121,19 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not target_mesh.visible,
 		"A real thrown ordinary-prop impact crosses the configured threshold and removes only the authored breakable's world obstruction/presentation"
 	)
+	var broken_payload: Dictionary = (
+		broken_events[0].get("payload", {})
+		if broken_events.size() == 1
+		else {}
+	)
 	assert_true.call(
 		broken_events.size() == 1
-		and str(broken_events[0].get("persistent_id", ""))
+		and str(broken_payload.get("persistent_id", ""))
 			== "breakable-lab-panel"
-		and str(broken_events[0].get("content_id", ""))
+		and str(broken_payload.get("content_id", ""))
 			== "breakable.lab.panel"
-		and broken_events[0].get("effect_id", &"") == &"impact"
-		and float(broken_events[0].get("strength", 0.0))
+		and broken_payload.get("effect_id", &"") == &"impact"
+		and float(broken_payload.get("strength", 0.0))
 			>= float(target.get("break_threshold")),
 		"Breakage emits one detached event carrying stable authored IDs plus the accepted effect/strength"
 	)
