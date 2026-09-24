@@ -10,6 +10,7 @@ const WorldEntityRegistry = preload(
 	"res://missions/persistence/world_entity_registry.gd"
 )
 const MissionRunState = preload("res://missions/mission_run_state.gd")
+const MissionEventBus = preload("res://missions/mission_event_bus.gd")
 const SEMANTIC_EVENT_CASCADE_LIMIT: int = 256
 const SEMANTIC_EVENT_TRACE_LIMIT: int = 24
 const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000
@@ -41,11 +42,13 @@ var world: Node = null
 var player: Node = null
 var entity_registry: RefCounted = null
 var mission_run_state: RefCounted = null
+var mission_event_bus: RefCounted = null
 var state: int = State.EMPTY
 var gameplay_time_seconds: float = 0.0
 
 var _semantic_event_queue: Array[Dictionary] = []
 var _semantic_event_handlers: Dictionary = {}
+var _semantic_event_trace: Array[Dictionary] = []
 var _semantic_event_draining: bool = false
 var _next_semantic_event_sequence: int = 1
 var _stable_gameplay_boundary_serial: int = 0
@@ -639,6 +642,14 @@ func get_last_semantic_event_error() -> String:
 	return _last_semantic_event_error
 
 
+func get_mission_event_bus() -> RefCounted:
+	return mission_event_bus
+
+
+func get_recent_semantic_event_trace() -> Array[Dictionary]:
+	return _semantic_event_trace.duplicate(true)
+
+
 func register_semantic_event_handler(
 	event_name: StringName,
 	handler: Callable
@@ -763,6 +774,11 @@ func build(
 	_last_restore_error = ""
 	_restore_state_applied = false
 	_reset_semantic_event_state()
+	mission_event_bus = MissionEventBus.new()
+	if not bool(mission_event_bus.call("bind_to_session", self, session_id)):
+		push_error("WorldSession could not bind the author-facing mission event bus.")
+		teardown()
+		return false
 	process_mode = Node.PROCESS_MODE_DISABLED
 
 	world = world_scene.instantiate()
@@ -987,6 +1003,9 @@ func teardown() -> void:
 
 	state = State.TEARING_DOWN
 	process_mode = Node.PROCESS_MODE_DISABLED
+	if mission_event_bus != null:
+		mission_event_bus.call("invalidate")
+		mission_event_bus = null
 	_reset_semantic_event_state()
 
 	if entity_registry != null:
@@ -1044,6 +1063,7 @@ func _drain_semantic_gameplay_events() -> bool:
 			trace.remove_at(0)
 
 		var handlers: Array = _semantic_event_handlers.get(event_name, []).duplicate()
+		_record_semantic_event_trace(event, handlers.size())
 		for handler_value: Variant in handlers:
 			var handler: Callable = handler_value
 			if not handler.is_valid():
@@ -1068,6 +1088,19 @@ func _drain_semantic_gameplay_events() -> bool:
 	return true
 
 
+func _record_semantic_event_trace(event: Dictionary, handler_count: int) -> void:
+	_semantic_event_trace.append({
+		"sequence": int(event.get("sequence", 0)),
+		"name": event.get("name", &""),
+		"payload": (event.get("payload", {}) as Dictionary).duplicate(true),
+		"session_id": int(event.get("session_id", 0)),
+		"handler_count": maxi(handler_count, 0),
+		"boundary_serial": _stable_gameplay_boundary_serial + 1,
+	})
+	while _semantic_event_trace.size() > SEMANTIC_EVENT_TRACE_LIMIT:
+		_semantic_event_trace.remove_at(0)
+
+
 func _fail_semantic_event_drain(message: String) -> bool:
 	_last_semantic_event_error = message
 	_semantic_event_queue.clear()
@@ -1079,6 +1112,7 @@ func _fail_semantic_event_drain(message: String) -> bool:
 func _reset_semantic_event_state() -> void:
 	_semantic_event_queue.clear()
 	_semantic_event_handlers.clear()
+	_semantic_event_trace.clear()
 	_semantic_event_draining = false
 	_next_semantic_event_sequence = 1
 	_stable_gameplay_boundary_serial = 0
