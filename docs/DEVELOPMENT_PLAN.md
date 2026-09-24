@@ -1731,13 +1731,27 @@ Rule validation cross-checks fact conditions/actions against the already-declare
 
 **Manual:** none required for this architecture-only grammar step. Phase 8 will provide the first player-facing authored-rule proof.
 
-## 7.5 Provisional VarkMissionScript API `[ ]`
+## 7.5 Provisional VarkMissionScript API `[~]`
 
-Provide narrow query/command APIs needed by the real mission. Avoid mutable global campaign/game-flow internals and arbitrary mutable Node access.
+`WorldSession` now owns one fresh `VarkMissionScript` per world lifetime. Mission-authored GDScript can resolve that surface from a node in the current world with `VarkMissionScript.resolve(node)`; teardown invalidates retained references and replacement creates a distinct instance.
 
-Query APIs may read supported semantic state. Mutation commands preserve the controlled gameplay boundary: when requested from `_process()`, an arbitrary signal, async continuation, or another out-of-pass context, queue/record the semantic command for the controlled gameplay pass instead of mutating private gameplay Nodes immediately. Prefer stable semantic IDs and detached typed values in the public surface.
+The provisional surface is deliberately limited to semantic/value ownership already proven before Phase 8:
 
-Document this as provisional/supportable. Phase 11 may stabilize only the world/gameplay mission surface proven by Phase 8–10; later campaign/narrative/application-flow surfaces remain provisional until exercised.
+- `query_fact()` / `get_fact()` expose declared typed mission-fact value/type/scope without exposing the `VarkMissionFacts` owner;
+- `query_objective()`, `query_objectives()`, and `query_exit()` return detached snapshots from the existing single objective owner when present;
+- `get_run_summary()` and `get_gameplay_time_seconds()` expose detached run statistics and current world simulation time;
+- `get_event_bus()` reuses the accepted author-facing event bus, while `emit_event()` is a convenience over that same semantic queue;
+- `set_fact()` and `activate_objective()` / `complete_objective()` / `fail_objective()` queue the existing typed fact/objective request events.
+
+The API does **not** expose `WorldSession.world`, arbitrary mutable Nodes, persistent/content registry lookup, private door/light/guard methods, campaign state, application/top-level flow, timers, deferred callbacks, reflection, or a second scheduler. If Phase 8 discovers a real special behavior that needs another supported command/query, extend this provisional surface only at that proven semantic seam rather than adding generic reach-through.
+
+Mutation timing remains the foundation contract: commands issued from `_process()`, arbitrary signal callbacks, resumed async code, or any other out-of-pass context can only queue semantic work. Durable truth changes during the later controlled consequence pass. Objective/fact/event identifiers and payloads remain stable semantic IDs plus detached typed values.
+
+**Done when:** one READY world owns an active resolvable provisional API while ordinary commands remain lifecycle-rejected until PLAYING; fact/objective/exit/run/time queries return detached value data and unknown semantic IDs fail closed; `_process()`, signal-callback, and resumed-async mutation calls demonstrably leave authoritative truth unchanged until the next controlled consequence pass; custom event emission reuses the existing detached FIFO event path; objective commands reuse the existing objective request events; the public surface exposes no arbitrary Node/entity/application reach-through; save capture gains no hidden mission-script/continuation state; teardown invalidates retained references and replacement creates a fresh API; and existing event/fact/rule/objective/save/application/gameplay regressions remain green.
+
+**Automated:** pending exact-head post-push validation. The focused Application regression must prove READY/PLAYING lifecycle gating, safe resolution/lifetime, detached fact/run/objective queries, no mutable entity/world reach-through, `_process()` + signal + async/out-of-pass command timing, detached custom event emission, queued objective activation, unchanged mission-script save state, teardown invalidation, and replacement isolation. The authoritative all-tests barrier remains the compatibility gate.
+
+**Manual:** none required for this architecture-only provisional surface. Phase 8.4 will provide the first player-facing/author-facing mission-specific GDScript proof.
 
 ## 7.6 Deterministic rule ordering and save state `[ ]`
 

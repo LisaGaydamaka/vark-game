@@ -13,6 +13,7 @@ const MissionRunState = preload("res://missions/mission_run_state.gd")
 const MissionEventBus = preload("res://missions/mission_event_bus.gd")
 const MissionFacts = preload("res://missions/mission_facts.gd")
 const MissionRules = preload("res://missions/mission_rules.gd")
+const MissionScript = preload("res://missions/mission_script.gd")
 const SEMANTIC_EVENT_CASCADE_LIMIT: int = 256
 const SEMANTIC_EVENT_TRACE_LIMIT: int = 24
 const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000
@@ -47,6 +48,7 @@ var mission_run_state: RefCounted = null
 var mission_event_bus: RefCounted = null
 var mission_facts: RefCounted = null
 var mission_rules: RefCounted = null
+var mission_script: RefCounted = null
 var state: int = State.EMPTY
 var gameplay_time_seconds: float = 0.0
 
@@ -693,6 +695,10 @@ func get_mission_rules() -> RefCounted:
 	return mission_rules
 
 
+func get_mission_script() -> RefCounted:
+	return mission_script
+
+
 func get_mission_fact(
 	key: StringName,
 	fallback: Variant = null
@@ -700,6 +706,73 @@ func get_mission_fact(
 	if mission_facts == null:
 		return fallback
 	return mission_facts.call("get_value", key, fallback)
+
+
+func query_mission_fact(key: StringName) -> Dictionary:
+	if mission_facts == null or not bool(mission_facts.call("has_fact", key)):
+		return {
+			"ok": false,
+			"key": key,
+			"error": "Unknown mission fact.",
+		}
+	return {
+		"ok": true,
+		"key": key,
+		"value": mission_facts.call("get_value", key, null),
+		"type": mission_facts.call("get_type", key),
+		"scope": mission_facts.call("get_scope", key),
+	}
+
+
+func query_mission_objective(objective_id: StringName) -> Dictionary:
+	var owner: Node = _find_mission_objective_owner()
+	if owner == null:
+		return {
+			"ok": false,
+			"objective_id": objective_id,
+			"error": "Mission has no unique objective owner.",
+		}
+	var result: Variant = owner.call("query_objective", objective_id)
+	if typeof(result) != TYPE_DICTIONARY:
+		return {
+			"ok": false,
+			"objective_id": objective_id,
+			"error": "Mission objective owner returned invalid query data.",
+		}
+	return (result as Dictionary).duplicate(true)
+
+
+func query_mission_objectives() -> Array[Dictionary]:
+	var owner: Node = _find_mission_objective_owner()
+	if owner == null:
+		return []
+	var value: Variant = owner.call("query_objectives")
+	if typeof(value) != TYPE_ARRAY:
+		return []
+	var result: Array[Dictionary] = []
+	for entry: Variant in value:
+		if typeof(entry) != TYPE_DICTIONARY:
+			return []
+		result.append((entry as Dictionary).duplicate(true))
+	return result
+
+
+func query_mission_exit(exit_id: StringName) -> Dictionary:
+	var owner: Node = _find_mission_objective_owner()
+	if owner == null:
+		return {
+			"ok": false,
+			"exit_id": exit_id,
+			"error": "Mission has no unique objective owner.",
+		}
+	var result: Variant = owner.call("query_exit", exit_id)
+	if typeof(result) != TYPE_DICTIONARY:
+		return {
+			"ok": false,
+			"exit_id": exit_id,
+			"error": "Mission objective owner returned invalid exit query data.",
+		}
+	return (result as Dictionary).duplicate(true)
 
 
 func queue_mission_fact_set(key: StringName, value: Variant) -> bool:
@@ -887,6 +960,16 @@ func build(
 		)
 		teardown()
 		return false
+	mission_script = MissionScript.new()
+	if not bool(mission_script.call(
+		"bind_to_session",
+		self,
+		session_id,
+		mission_event_bus
+	)):
+		push_error("WorldSession could not bind the provisional mission script API.")
+		teardown()
+		return false
 	process_mode = Node.PROCESS_MODE_DISABLED
 
 	world = world_scene.instantiate()
@@ -958,6 +1041,25 @@ func lookup_content_entity(content_id: String) -> Dictionary:
 	if entity_registry == null:
 		return _registry_unavailable_result()
 	return entity_registry.call("lookup_content_id", content_id)
+
+
+func _find_mission_objective_owner() -> Node:
+	if world == null:
+		return null
+	var nodes: Array[Node] = [world]
+	nodes.append_array(world.find_children("*", "", true, false))
+	var owner: Node = null
+	for candidate: Node in nodes:
+		if (
+			not candidate.has_method("query_objective")
+			or not candidate.has_method("query_objectives")
+			or not candidate.has_method("query_exit")
+		):
+			continue
+		if owner != null:
+			return null
+		owner = candidate
+	return owner
 
 
 func get_mission_run_summary() -> Dictionary:
@@ -1114,6 +1216,9 @@ func teardown() -> void:
 	if mission_rules != null:
 		mission_rules.call("shutdown")
 		mission_rules = null
+	if mission_script != null:
+		mission_script.call("invalidate")
+		mission_script = null
 	if mission_event_bus != null:
 		mission_event_bus.call("invalidate")
 		mission_event_bus = null

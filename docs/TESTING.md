@@ -682,6 +682,19 @@ Phase 7.4 small declarative mission rules add one stateless world-lifetime `Vark
 
 Do not add arithmetic, expressions, loops, arbitrary method calls, Node access, reflection, script snippets, delayed callbacks, timers, or `await` semantics to satisfy ordinary rule requests. Phase 7.6 owns repeat/one-shot policy, cross-rule ordering, delayed/staged semantics, and save state.
 
+Phase 7.5 adds one provisional world-lifetime `VarkMissionScript` surface over already-proven semantic owners. The Application suite must prove:
+
+- a world node resolves the current API without receiving the mutable world/session object, and teardown/replacement invalidates/replaces retained references;
+- READY queries are available but ordinary mutation commands still fail until PLAYING;
+- fact queries expose detached key/value/type/scope data; run summaries, gameplay time, objective collections, and exit/objective snapshots are value-owned;
+- unknown fact/objective IDs fail closed, and the API exposes no generic persistent/content registry lookup or mutable world getter;
+- `set_fact()` called from `_process()`, an arbitrary signal callback, and resumed async/out-of-pass code queues work only and cannot mutate fact truth before the controlled consequence pass;
+- `emit_event()` reuses the existing detached event bus/queue rather than dispatching directly;
+- objective activation/completion/failure commands use the existing semantic objective-request path rather than mutating the objective owner directly;
+- no independent `mission_script` save section, timer/coroutine continuation state, or alternate scheduler is introduced.
+
+Phase 8.4 owns the first real mission-specific GDScript use. Extend the provisional surface only when that representative content proves a new semantic query/command is required; do not add arbitrary Node access for convenience.
+
 ## Acoustic fixture
 
 Phase 3.6 currently prototypes an authored acoustic space/portal graph rather than radius-only or single-ray hearing.
