@@ -667,6 +667,21 @@ Phase 7.2 typed mission facts add one explicit world-scoped `VarkMissionFacts` o
 
 Mission facts must remain mission-defined semantic variables/latched meanings, not generic copies of door, actor, possession, objective, run-stat, or other subsystem-owned truth. No campaign-persistent fact storage exists before Phase 12.
 
+Phase 7.4 small declarative mission rules add one stateless world-lifetime `VarkMissionRules` layer configured from `MissionDefinition.mission_rule_declarations`. The Application suite must prove:
+
+- every rule contains exactly rule ID, source event name, conditions, and non-empty actions;
+- duplicate/blank rule IDs, blank event names, unsupported condition/action kinds, unknown fact references, wrong typed fact literals, and non-detached emit payloads fail definition validation;
+- the only 7.4 conditions are event-payload literal equality and typed mission-fact literal equality;
+- the only 7.4 actions are typed `set_fact` and detached `emit_event`;
+- condition misses produce no mutations or emitted actions;
+- a matching source event still has no durable action effect before the controlled consequence pass;
+- matched actions are appended through the existing semantic queue rather than directly mutating private owners;
+- handler-local mutation of an emitted event copy cannot mutate authored rule data;
+- 7.4 rules are intentionally stateless immediate reactions and contribute no rule-specific save section or suspended continuation state;
+- teardown invalidates the rule layer with the old world lifetime.
+
+Do not add arithmetic, expressions, loops, arbitrary method calls, Node access, reflection, script snippets, delayed callbacks, timers, or `await` semantics to satisfy ordinary rule requests. Phase 7.6 owns repeat/one-shot policy, cross-rule ordering, delayed/staged semantics, and save state.
+
 ## Acoustic fixture
 
 Phase 3.6 currently prototypes an authored acoustic space/portal graph rather than radius-only or single-ray hearing.
@@ -799,13 +814,13 @@ The focused **Objective Lab** and Objectives suite protect:
 - the Integrated Slice and Phase 4 semantic-save regression remain the cross-system barrier protecting the existing primary objective and quicksave/quickload behavior;
 - the Objective Lab status `Label3D` is still development presentation, not the final production objective HUD.
 
-Manual acceptance — user/playtester, Development Launch → **Objective Lab**:
+Manual acceptance: **accepted by user/playtester after exact-head run #477.** Development Launch → **Objective Lab**:
 
-- [ ] EXIT remains locked before the required OBJECTIVE is complete.
-- [ ] OPTIONAL START changes the bonus objective from INACTIVE to ACTIVE; OPTIONAL COMPLETE changes it to COMPLETE.
-- [ ] Optional objective state does not determine whether EXIT unlocks.
-- [ ] The status label clearly distinguishes the required objective and optional objective states.
-- [ ] Completing the required OBJECTIVE then entering EXIT still completes the route exactly once.
+- [x] EXIT remains locked before the required OBJECTIVE is complete.
+- [x] OPTIONAL START changes the bonus objective from INACTIVE to ACTIVE; OPTIONAL COMPLETE changes it to COMPLETE.
+- [x] Optional objective state does not determine whether EXIT unlocks.
+- [x] The status label clearly distinguishes the required objective and optional objective states.
+- [x] Completing the required OBJECTIVE then entering EXIT still completes the route exactly once.
 
 The Objectives suite owns deterministic objective lifecycle/exit semantics. Failures should distinguish declaration/state-transition logic, event timing/order, optional-vs-required gating, save compatibility, trigger emission, mission-completion duplication, and development presentation.
 
