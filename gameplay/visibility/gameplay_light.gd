@@ -207,7 +207,11 @@ func sample_gameplay_exposure(
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	if _fixture_asset != null:
+		# Exclude the coarse player collision around the luminous volume, but
+		# include the fixture's opaque-body exposure occluder so semantic
+		# exposure follows the metal/frame shadows seen by the renderer.
 		query.exclude = _fixture_asset.get_collision_rids()
+		query.collision_mask |= VarkLightFixtureAsset.EXPOSURE_OCCLUDER_PHYSICS_LAYER
 	var hit: Dictionary = space_state.intersect_ray(query)
 	var occluded: bool = not hit.is_empty()
 	var distance_weight: float = clampf(
