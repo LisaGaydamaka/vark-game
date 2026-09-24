@@ -13,7 +13,10 @@ const SWITCH_USED: StringName = &"switch.used"
 const BREAKABLE_BROKEN: StringName = &"breakable.broken"
 const NPC_LOCAL_WARNING: StringName = &"npc.local_warning"
 const NPC_ALARM_RAISED: StringName = &"npc.alarm_raised"
+const OBJECTIVE_ACTIVATE_REQUESTED: StringName = &"objective.activate_requested"
 const OBJECTIVE_COMPLETE_REQUESTED: StringName = &"objective.complete_requested"
+const OBJECTIVE_FAIL_REQUESTED: StringName = &"objective.fail_requested"
+const OBJECTIVE_STATE_CHANGED: StringName = &"objective.state_changed"
 const MISSION_EXIT_REQUESTED: StringName = &"mission.exit_requested"
 const MISSION_COMPLETED: StringName = &"mission.completed"
 const MISSION_FACT_CHANGED: StringName = &"mission.fact_changed"
@@ -110,7 +113,10 @@ func get_known_event_names() -> PackedStringArray:
 		str(BREAKABLE_BROKEN),
 		str(NPC_LOCAL_WARNING),
 		str(NPC_ALARM_RAISED),
+		str(OBJECTIVE_ACTIVATE_REQUESTED),
 		str(OBJECTIVE_COMPLETE_REQUESTED),
+		str(OBJECTIVE_FAIL_REQUESTED),
+		str(OBJECTIVE_STATE_CHANGED),
 		str(MISSION_EXIT_REQUESTED),
 		str(MISSION_COMPLETED),
 		str(MISSION_FACT_CHANGED),
