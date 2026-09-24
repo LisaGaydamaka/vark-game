@@ -1654,13 +1654,26 @@ Long-running reactions are still explicit semantic state advanced on future game
 
 **Manual:** none required for this architecture-only step. No player-facing control or feel changes are intended.
 
-## 7.2 Typed mission facts `[ ]`
+## 7.2 Typed mission facts `[~]`
 
-Define fact declarations with key, type, default, and scope. Reject invalid/unknown assignments where practical.
+`MissionDefinition` now owns explicit `mission_fact_declarations`. Every declaration contains exactly `key`, `type`, `default`, and `scope`; duplicate/blank keys, unsupported types/scopes, and default/type mismatches fail mission-definition validation before the world becomes authoritative.
 
-Mission facts represent genuinely mission-defined variables. Do not mirror door open state, actor life/awareness, possession, objective state, or other system-owned truth into generic facts unless the mission requires a separate derived/latched meaning.
+The supported value types are deliberately small: `bool`, `int`, `float`, and `string`. The only scopes before Phase 12 are:
 
-Before Phase 12 introduces the real `CampaignState`, fact scopes remain mission/runtime scopes only; do **not** use `MissionFacts` as a temporary owner for campaign-persistent truth that would later need migration.
+- `mission` — durable mission-defined truth captured in active-gameplay save state and restored into a fresh world;
+- `runtime` — current-world mission-defined working state that starts from its declared default on build/replacement/restore and is intentionally absent from save snapshots.
+
+`VarkMissionFacts` is one world-scoped semantic owner. Unknown or wrong-type assignment requests fail before they enter the semantic queue. Valid requests go through `WorldSession.queue_mission_fact_set()` and the existing `mission.fact_set_requested` semantic consequence path; the owner changes only during the controlled drain. A real change appends one detached `mission.fact_changed` fact carrying key/value/scope. Assigning the existing value is idempotent and emits no false change event.
+
+Mission facts represent genuinely mission-defined variables. They do not mirror door open state, actor life/awareness, possession, objective state, run statistics, or other system-owned truth unless a mission deliberately declares a separate derived/latched meaning with distinct semantics. There is no campaign scope; attempting to declare one fails closed rather than turning `MissionFacts` into temporary campaign storage.
+
+Save capture stores only mission-scope key/value truth under the detached `mission_facts` section. Runtime-scope values are reset from declarations in the fresh restore world. Missing pre-7.2 `mission_facts` sections resolve to the declaration defaults, preserving backward compatibility for existing missions whose declarations are empty; semantically incompatible authored declaration changes still belong under the existing `mission_content_revision` policy.
+
+**Done when:** valid typed declarations build from `MissionDefinition`; invalid duplicate/campaign/wrong-default declarations fail closed; one READY world exposes defaults but cannot mutate them through normal gameplay dispatch; unknown/wrong-type requests are rejected before queueing; valid requests become authoritative only at the controlled consequence pass and emit ordered `mission.fact_changed` facts; idempotent writes emit no false event; save capture includes only mission-scope facts; fresh restore reapplies mission-scope truth while runtime facts remain at defaults; malformed saved fact snapshots reject unknown/type-invalid data; teardown clears the owner; and existing event/save/application/gameplay regressions remain green.
+
+**Automated:** pending exact-head post-push validation. The focused Application regression must prove declaration validation, typed/default query behavior, controlled mutation ordering, change-event emission, idempotence, mission-vs-runtime save ownership, fresh-world restore behavior, malformed snapshot rejection, and teardown lifetime. Existing semantic snapshot/compatibility coverage remains the barrier for detached stable-boundary save behavior.
+
+**Manual:** none required for this architecture-only step. No player-facing behavior is intended.
 
 ## 7.3 Objective system `[ ]`
 
