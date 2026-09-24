@@ -24,6 +24,9 @@ const MissionEventBusRegressions = preload(
 const MissionFactsRegressions = preload(
 	"res://tests/application/mission_facts_regressions.gd"
 )
+const MissionRulesRegressions = preload(
+	"res://tests/application/mission_rules_regressions.gd"
+)
 const DoorRegressions = preload(
 	"res://tests/application/door_regressions.gd"
 )
@@ -133,6 +136,12 @@ func _run_tests() -> void:
 
 	var mission_facts_regressions: RefCounted = MissionFactsRegressions.new()
 	await mission_facts_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var mission_rules_regressions: RefCounted = MissionRulesRegressions.new()
+	await mission_rules_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)
