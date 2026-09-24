@@ -120,6 +120,35 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var extinguishable_asset := extinguishable.get_node_or_null(
 		"FixtureAnchor/WallLampAsset"
 	) as VarkLightFixtureAsset
+	var extinguishable_initial_summary: Dictionary = (
+		extinguishable_asset.get_contract_summary()
+		if extinguishable_asset != null
+		else {}
+	)
+	var extinguishable_body_albedo: Color = (
+		extinguishable_initial_summary.get(
+			"body_material_albedo",
+			Color()
+		) as Color
+	)
+	var extinguishable_body_cast_shadow: int = int(
+		extinguishable_initial_summary.get(
+			"body_cast_shadow",
+			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		)
+	)
+	var extinguishable_body_shading_mode: int = int(
+		extinguishable_initial_summary.get(
+			"body_material_shading_mode",
+			-1
+		)
+	)
+	var extinguishable_body_receive_shadow: bool = bool(
+		extinguishable_initial_summary.get(
+			"body_material_disable_receive_shadows",
+			false
+		)
+	)
 	var player_collision := player.get_node("CollisionShape3D") as CollisionShape3D
 	var overlap_query := PhysicsShapeQueryParameters3D.new()
 	overlap_query.shape = player_collision.shape
@@ -240,6 +269,45 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and extinguishable.is_interaction_highlighted(),
 		"Extinguishable mapper light exposes the same center-view interaction contract through its fixture proxy"
 	)
+	var highlighted_fixture: Dictionary = (
+		extinguishable_asset.get_contract_summary()
+		if extinguishable_asset != null
+		else {}
+	)
+	assert_true.call(
+		bool(highlighted_fixture.get("highlighted", false))
+		and int(highlighted_fixture.get(
+			"body_material_shading_mode",
+			-1
+		)) == BaseMaterial3D.SHADING_MODE_UNSHADED
+		and bool(highlighted_fixture.get(
+			"body_material_disable_receive_shadows",
+			false
+		))
+		and not bool(highlighted_fixture.get(
+			"body_material_emission_enabled",
+			true
+		))
+		and (
+			highlighted_fixture.get(
+				"body_material_albedo",
+				Color()
+			) as Color
+		).is_equal_approx(extinguishable_body_albedo)
+		and int(highlighted_fixture.get(
+			"body_cast_shadow",
+			-1
+		)) == extinguishable_body_cast_shadow
+		and int(highlighted_fixture.get(
+			"lit_surface_shading_mode",
+			-1
+		)) == BaseMaterial3D.SHADING_MODE_UNSHADED
+		and bool(highlighted_fixture.get(
+			"lit_surface_disable_receive_shadows",
+			false
+		)),
+		"Aimed-at lamp makes the entire fixture fullbright/no-received-shadow while preserving body albedo, non-emissive body material, and ordinary cast shadow"
+	)
 	_press_interact()
 	await _settle(tree, 2)
 	_release_interact()
@@ -250,6 +318,34 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and str(light_events[-1].get("light_id", "")) == "lab.extinguishable"
 		and str(light_events[-1].get("source_id", "")) == "direct",
 		"Direct extinguish turns off the same persistent gameplay-light truth instead of a separate visual-only state"
+	)
+	var released_highlight: Dictionary = (
+		extinguishable_asset.get_contract_summary()
+		if extinguishable_asset != null
+		else {}
+	)
+	assert_true.call(
+		not extinguishable.is_interaction_highlighted()
+		and not bool(released_highlight.get("highlighted", true))
+		and int(released_highlight.get(
+			"body_material_shading_mode",
+			-1
+		)) == extinguishable_body_shading_mode
+		and bool(released_highlight.get(
+			"body_material_disable_receive_shadows",
+			not extinguishable_body_receive_shadow
+		)) == extinguishable_body_receive_shadow
+		and (
+			released_highlight.get(
+				"body_material_albedo",
+				Color()
+			) as Color
+		).is_equal_approx(extinguishable_body_albedo)
+		and int(released_highlight.get(
+			"body_cast_shadow",
+			-1
+		)) == extinguishable_body_cast_shadow,
+		"Losing lamp interaction restores authored body shading immediately without changing its body color or cast-shadow behavior"
 	)
 
 	var generation: int = int(application.call("request_quicksave"))

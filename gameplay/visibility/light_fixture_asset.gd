@@ -23,6 +23,9 @@ const FIXTURE_SELF_FILL_RENDER_LAYER: int = 1 << 19
 @onready var fixture_fill: OmniLight3D = $EmitterAnchor/FixtureFill
 @onready var solid_body: StaticBody3D = $SolidBody
 
+var _body_material: StandardMaterial3D = null
+var _body_authored_shading_mode: BaseMaterial3D.ShadingMode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+var _body_authored_disable_receive_shadows: bool = false
 var _lit_material: StandardMaterial3D = null
 var _lit_enabled: bool = false
 var _highlighted: bool = false
@@ -32,6 +35,7 @@ var _source_light_energy: float = 0.0
 
 func _ready() -> void:
 	_configure_render_layers()
+	_localize_body_material()
 	_apply_lit_surface_material()
 	_configure_fixture_fill()
 	set_lit_enabled(_lit_enabled)
@@ -155,6 +159,22 @@ func get_contract_summary() -> Dictionary:
 			if body_standard != null
 			else -1
 		),
+		"body_material_disable_receive_shadows": (
+			body_standard.disable_receive_shadows
+			if body_standard != null
+			else false
+		),
+		"body_material_emission_enabled": (
+			body_standard.emission_enabled
+			if body_standard != null
+			else false
+		),
+		"body_cast_shadow": (
+			body_mesh.cast_shadow
+			if body_mesh != null
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		),
+		"highlighted": _highlighted,
 		"fixture_fill_energy": (
 			fixture_fill.light_energy
 			if fixture_fill != null
@@ -190,6 +210,16 @@ func get_contract_summary() -> Dictionary:
 			_lit_material.albedo_color
 			if _lit_material != null
 			else Color()
+		),
+		"lit_surface_shading_mode": (
+			_lit_material.shading_mode
+			if _lit_material != null
+			else -1
+		),
+		"lit_surface_disable_receive_shadows": (
+			_lit_material.disable_receive_shadows
+			if _lit_material != null
+			else false
 		),
 	}
 
@@ -234,6 +264,25 @@ func _configure_render_layers() -> void:
 		lit_surface_mesh.layers &= ~FIXTURE_SELF_FILL_RENDER_LAYER
 
 
+func _localize_body_material() -> void:
+	if body_mesh == null:
+		return
+	var authored := body_mesh.material_override as StandardMaterial3D
+	if authored == null:
+		return
+	# Highlight state is per runtime fixture instance. Duplicate the authored
+	# body material so aiming at one lamp never changes another lamp and so
+	# temporary fullbright feedback cannot mutate the source asset resource.
+	_body_material = authored.duplicate() as StandardMaterial3D
+	if _body_material == null:
+		return
+	_body_authored_shading_mode = _body_material.shading_mode
+	_body_authored_disable_receive_shadows = (
+		_body_material.disable_receive_shadows
+	)
+	body_mesh.material_override = _body_material
+
+
 func _apply_lit_surface_material() -> void:
 	# The fixture body deliberately keeps the materials authored/imported by
 	# the asset. Runtime ON/OFF state never owns or rewrites body albedo.
@@ -259,6 +308,22 @@ func _configure_fixture_fill() -> void:
 
 
 func _refresh_visuals() -> void:
+	# Interaction selection follows the same Thief-style contract as doors,
+	# containers, and pickups: preserve authored color/emission and ordinary
+	# cast-shadow behavior, but make every visible fixture surface fullbright
+	# and immune to received scene shadows while targeted.
+	if _body_material != null:
+		_body_material.shading_mode = (
+			BaseMaterial3D.SHADING_MODE_UNSHADED
+			if _highlighted
+			else _body_authored_shading_mode
+		)
+		_body_material.disable_receive_shadows = (
+			true
+			if _highlighted
+			else _body_authored_disable_receive_shadows
+		)
+
 	if _lit_material == null or lit_surface_mesh == null:
 		_configure_fixture_fill()
 		return
@@ -276,8 +341,6 @@ func _refresh_visuals() -> void:
 		if _lit_enabled
 		else 0.0
 	)
-	# Interaction feedback is intentionally confined to the authored lit
-	# surface. The rest of the fixture always remains normally PBR-shaded.
 	_lit_material.shading_mode = (
 		BaseMaterial3D.SHADING_MODE_UNSHADED
 		if _highlighted

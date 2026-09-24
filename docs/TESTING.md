@@ -1219,7 +1219,7 @@ Manual acceptance:
 - [ ] Center the imported wall switch; it highlights through normal F interaction.
 - [ ] Press F once: both room emitters disappear, the light gem/exposure drops, and the lever moves to OFF, but the lamp models/collision remain present with their glass/lit surfaces dark and non-emissive. The lamp frame/body base colors must not change with ON/OFF. When ON, the frame/body should be naturally shaded by lamp-origin/scene lighting rather than recolored or made emissive.
 - [ ] Press F again: both room lights and exposure return, and the lever moves to ON.
-- [ ] Walk into the separate right-hand lamp first: its housing must physically block the player. Then press F on its fixture: it directly extinguishes, its model/collision remain present, its lit surface becomes dark/non-emissive, and it no longer contributes emitted or gameplay light.
+- [ ] Walk into the separate right-hand lamp first: its housing must physically block the player. Aim at it before pressing F: the **entire lamp body + glass** must become fullbright/unshaded with no received scene shadows, like doors and other interactables; body base color/emission and ordinary cast shadow must not change. Aim away and the authored PBR shading must return. Then press F on its fixture: it directly extinguishes, its model/collision remain present, its lit surface becomes dark/non-emissive, and it no longer contributes emitted or gameplay light.
 - [ ] No Godot/editor wiring is required for mapper semantics: the lab's equivalent authoring relationship is only matching `control_id`.
 - [ ] Movement/look, range clearing, highlight, save/load, and unrelated interaction remain normal.
 ## Gameplay lighting
