@@ -235,10 +235,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		switch_handler
 	)
 
+	# The authored lamp has an opaque front cap, so the lab spawn at +Z is a
+	# deliberate fixture-shadow case after the exposure occlusion fix. Move to
+	# the open -Z side for the independent switch/exposure change assertion.
+	player.global_position = Vector3(0, 0, -2.0)
+	player.velocity = Vector3.ZERO
+	await _settle(tree, 3)
 	var baseline: float = float(exposure.sample_now().get("exposure", 0.0))
 	assert_true.call(
 		baseline > 0.10,
-		"Room gameplay lights contribute real stealth exposure before the switch is used"
+		"Room gameplay lights contribute real stealth exposure on an open emission path before the switch is used"
 	)
 
 	player.global_position = Vector3(0, 0, 3.0)
