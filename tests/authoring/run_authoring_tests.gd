@@ -25,6 +25,9 @@ const SwitchLightAuthoringRegressions = preload(
 const PropAuthoringRegressions = preload(
 	"res://tests/authoring/prop_authoring_regressions.gd"
 )
+const BreakableAuthoringRegressions = preload(
+	"res://tests/authoring/breakable_authoring_regressions.gd"
+)
 const PLAYGROUND_SOURCE_PATH: String = "res://missions/playground/mission.map"
 const PLAYGROUND_DEFINITION_PATH: String = "res://missions/playground/mission.tres"
 const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
@@ -58,6 +61,8 @@ func _run_tests() -> void:
 	switch_light_authoring.run(get_root(), Callable(self, "_assert_true"))
 	var prop_authoring: RefCounted = PropAuthoringRegressions.new()
 	prop_authoring.run(get_root(), Callable(self, "_assert_true"))
+	var breakable_authoring: RefCounted = BreakableAuthoringRegressions.new()
+	breakable_authoring.run(get_root(), Callable(self, "_assert_true"))
 	var content_validation_regressions: RefCounted = MissionContentValidationRegressions.new()
 	content_validation_regressions.run(get_root(), Callable(self, "_assert_true"))
 	var reimport_stability_regressions: RefCounted = ReimportStabilityRegressions.new()
