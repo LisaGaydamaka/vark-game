@@ -182,6 +182,8 @@ Phase 7.2 makes that owner explicit: `MissionDefinition` declares each mission f
 
 Phase 7.3 likewise keeps objective truth in one objective owner rather than mirroring it into mission facts. Declared objectives own their own inactive/active/complete/failed state plus optional/required meaning. Dynamic objective behavior in this phase is activation of an already-declared inactive objective, not runtime creation of a second ad-hoc state owner. Required-objective completion derives exit gating; optional state does not. Objective transitions enter through the same controlled semantic consequence path and publish detached state-change facts for later rules/scripts.
 
+Phase 7.4 adds only a small data-rule layer over those same owners. A rule may observe one semantic event, compare detached event literals and typed mission facts, then queue typed fact writes or another detached semantic event. Rules do not receive mutable Nodes or bypass the event/fact owners. The initial grammar is stateless and immediate; repeat/one-shot policy, cross-rule ordering, delayed/staged behavior, and rule save state remain Phase 7.6 rather than being hidden in callbacks, timers, or suspended coroutines.
+
 The canonical semantic simulation boundary is conceptually:
 
 ```text
