@@ -290,14 +290,19 @@ func _configure_collision_shape() -> bool:
 	var source_box := prop_collision.shape as BoxShape3D
 	if source_box == null:
 		return false
-	var box := source_box.duplicate() as BoxShape3D
-	if box == null:
-		return false
 	collision_size = Vector3(
 		maxf(absf(collision_size.x), 0.05),
 		maxf(absf(collision_size.y), 0.05),
 		maxf(absf(collision_size.z), 0.05)
 	)
+	# Preserve the accepted Phase 3 default physics resource exactly when the
+	# authored dimensions are unchanged. Only a real per-instance size variant
+	# needs a localized shape resource.
+	if source_box.size.is_equal_approx(collision_size):
+		return true
+	var box := source_box.duplicate() as BoxShape3D
+	if box == null:
+		return false
 	box.size = collision_size
 	prop_collision.shape = box
 	return true
