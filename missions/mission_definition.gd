@@ -2,11 +2,15 @@ class_name MissionDefinition
 extends Resource
 
 
+const MissionFacts = preload("res://missions/mission_facts.gd")
+
+
 @export var mission_id: StringName = &""
 @export var world_scene: PackedScene
 @export_file("*.map") var map_source_path: String = ""
 @export var player_start_selector: StringName = &""
 @export var mission_content_revision: int = 1
+@export var mission_fact_declarations: Array[Dictionary] = []
 
 
 func get_load_errors() -> PackedStringArray:
@@ -24,6 +28,12 @@ func get_load_errors() -> PackedStringArray:
 		errors.append("player_start_selector must not be empty.")
 	if mission_content_revision <= 0:
 		errors.append("mission_content_revision must be greater than zero.")
+
+	var fact_errors: PackedStringArray = MissionFacts.validate_declarations(
+		mission_fact_declarations
+	)
+	for fact_error: String in fact_errors:
+		errors.append(fact_error)
 
 	return errors
 
