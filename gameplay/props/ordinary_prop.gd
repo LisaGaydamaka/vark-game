@@ -19,6 +19,14 @@ const PROP_IMPACT_MAX_IMPULSE: float = 3.25
 
 const IMPACT_SOUND_KIND: StringName = &"prop.impact"
 
+const PROP_VARIANT_ORDINARY_CRATE: String = "ordinary_crate"
+const PROP_VARIANT_TALL_CRATE: String = "tall_crate"
+const PROP_VARIANT_TALL_MODEL_PATH: String = (
+	"res://assets/models/props/ordinary_crate_tall.obj"
+)
+const PROP_VARIANT_DEFAULT_COLLISION_SIZE: Vector3 = Vector3(0.6, 0.6, 0.6)
+const PROP_VARIANT_TALL_COLLISION_SIZE: Vector3 = Vector3(0.5, 0.7, 0.5)
+
 # Dedicated physics categories let an overlapping released prop ignore the
 # player without disabling collision with the world or other props.
 const COLLISION_LAYER_WORLD: int = 1 << 0
@@ -78,6 +86,7 @@ func _ready() -> void:
 	_ordinary_collision_mask = collision_mask
 	_world_session = _find_world_session()
 	global_transform = _top_up_transform(global_transform)
+	_apply_authored_variant_defaults()
 	if not _configure_collision_shape():
 		push_error("VarkOrdinaryProp requires a BoxShape3D collision shape.")
 
@@ -244,6 +253,17 @@ func set_interaction_highlighted(highlighted: bool) -> void:
 
 func is_interaction_highlighted() -> bool:
 	return _highlighted
+
+
+func _apply_authored_variant_defaults() -> void:
+	if not visual_model_path.strip_edges().is_empty():
+		return
+	if prop_variant.strip_edges() != PROP_VARIANT_TALL_CRATE:
+		return
+
+	visual_model_path = PROP_VARIANT_TALL_MODEL_PATH
+	if collision_size.is_equal_approx(PROP_VARIANT_DEFAULT_COLLISION_SIZE):
+		collision_size = PROP_VARIANT_TALL_COLLISION_SIZE
 
 
 func set_visual_model(model: Mesh) -> bool:

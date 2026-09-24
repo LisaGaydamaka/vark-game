@@ -10,8 +10,11 @@ description = "Reusable ordinary physical Junk prop. Model/variant/collision dim
 class_properties = Dictionary[String, Variant]({
 "persistent_id": "",
 "prop_id": &"prop",
-"prop_variant": "ordinary_crate",
-"visual_model_path": "res://assets/models/props/ordinary_crate.obj",
+"prop_variant": {
+"Standard crate": "ordinary_crate",
+"Tall crate": "tall_crate"
+},
+"visual_model_path": "",
 "collision_size": Vector3(0.6, 0.6, 0.6),
 "base_color": Color(0.42, 0.27, 0.12, 1),
 "throw_speed": 6.0,
@@ -22,9 +25,9 @@ class_properties = Dictionary[String, Variant]({
 class_property_descriptions = Dictionary[String, Variant]({
 "persistent_id": "Required stable authored identity for save/restore. Moving the prop or changing its compatible model must not replace this identity.",
 "prop_id": "Required unique semantic prop/content ID.",
-"prop_variant": "Presentation/content label such as ordinary_crate or tall_crate. It does not select a separate gameplay subsystem.",
-"visual_model_path": "Godot res:// path to a compatible external Mesh. The shared OrdinaryProp gameplay/physics owner remains unchanged.",
-"collision_size": "Authored box collision dimensions in Vark meters. Keep these aligned with the compatible model's physical extents.",
+"prop_variant": ["Current proven reusable prop variant. Standard crate uses the shared scene defaults; Tall crate selects the compatible tall model and 0.5 0.7 0.5 collision default when visual_model_path is blank and collision_size is otherwise unchanged.", "ordinary_crate"],
+"visual_model_path": "Optional advanced Godot res:// Mesh override. Leave blank to use the selected prop_variant default; the shared OrdinaryProp gameplay/physics owner remains unchanged.",
+"collision_size": "Authored box collision dimensions in Vark meters. Known blank-path variants provide their compatible default; explicit custom model overrides should set this deliberately.",
 "base_color": "Default prop-surface tint used by the current low-fi presentation/highlight path.",
 "throw_speed": "Forward launch speed used by carried-Junk F throw.",
 "impact_sound_strength": "Relative semantic gameplay-sound strength for physical impacts.",

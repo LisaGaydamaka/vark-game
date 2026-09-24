@@ -13,6 +13,12 @@ const USE_SOUND_KIND: StringName = &"door.use"
 const FRAME_COLLIDER_GROUP: StringName = &"vark_door_frame"
 const TOP_SUPPORTED_BODY_EPSILON: float = 0.025
 
+const OPENING_VARIANT_ORDINARY: String = "ordinary"
+const OPENING_VARIANT_NARROW: String = "narrow"
+const OPENING_VARIANT_NARROW_MODEL_PATH: String = (
+	"res://assets/models/doors/ordinary_door_leaf_narrow.obj"
+)
+
 
 @export var persistent_id: String = ""
 @export var door_id: String = "door"
@@ -56,6 +62,7 @@ func _ready() -> void:
 	_material = StandardMaterial3D.new()
 	door_mesh.material_override = _material
 
+	_apply_authored_variant_defaults()
 	var configured_visual: Mesh = visual_model
 	if visual_model_path.strip_edges().is_empty():
 		if not _apply_visual_model(configured_visual, true):
@@ -239,6 +246,13 @@ func set_interaction_highlighted(highlighted: bool) -> void:
 
 func is_interaction_highlighted() -> bool:
 	return _highlighted
+
+
+func _apply_authored_variant_defaults() -> void:
+	if not visual_model_path.strip_edges().is_empty():
+		return
+	if opening_variant.strip_edges() == OPENING_VARIANT_NARROW:
+		visual_model_path = OPENING_VARIANT_NARROW_MODEL_PATH
 
 
 func set_visual_model(model: Mesh) -> bool:

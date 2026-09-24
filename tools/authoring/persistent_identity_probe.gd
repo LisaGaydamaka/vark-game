@@ -12,6 +12,14 @@ const VARK_POINT_CLASSNAMES: Array[String] = [
 	"vark_marker",
 	"vark_exit",
 ]
+const VARK_MODEL_BACKED_CLASSNAMES: Array[String] = [
+	"vark_opening",
+	"vark_prop",
+]
+const VARK_MODEL_VARIANT_CHOICE_MARKERS: Array[String] = [
+	"opening_variant(choices)",
+	"prop_variant(choices)",
+]
 
 
 func _initialize() -> void:
@@ -137,6 +145,20 @@ func _sync_trenchbroom_config() -> bool:
 				% classname
 			)
 			return false
+	for classname: String in VARK_MODEL_BACKED_CLASSNAMES:
+		if not fgd_text.contains(classname):
+			push_error(
+				"Exported Vark FGD is missing required model-backed entity class: %s"
+				% classname
+			)
+			return false
+	for marker: String in VARK_MODEL_VARIANT_CHOICE_MARKERS:
+		if not fgd_text.contains(marker):
+			push_error(
+				"Exported Vark FGD is missing the Phase 8 mapper variant choice: %s"
+				% marker
+			)
+			return false
 
 	var game_config_text: String = FileAccess.get_file_as_string(game_config_path)
 	if not _validate_trenchbroom_material_config(config, game_config_text):
@@ -148,6 +170,11 @@ func _sync_trenchbroom_config() -> bool:
 	print("The exported Vark FGD declares persistent_id, optional content_id, and the minimal Phase-2 point vocabulary:")
 	for classname: String in VARK_POINT_CLASSNAMES:
 		print("  ", classname)
+	print("Phase 8 model-backed mapper entities and variant choices are present:")
+	for classname: String in VARK_MODEL_BACKED_CLASSNAMES:
+		print("  ", classname)
+	for marker: String in VARK_MODEL_VARIANT_CHOICE_MARKERS:
+		print("  ", marker)
 	print("The exported Vark material config resolves PNGs under textures/ with no palette dependency.")
 	print("Close/reopen TrenchBroom before continuing so it reloads the updated game configuration.")
 	return true

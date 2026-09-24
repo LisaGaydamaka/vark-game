@@ -10,8 +10,11 @@ description = "Reusable ordinary door/openable-window archetype. Gameplay identi
 class_properties = Dictionary[String, Variant]({
 "persistent_id": "",
 "door_id": "",
-"opening_variant": "ordinary",
-"visual_model_path": "res://assets/models/doors/ordinary_door_leaf.obj",
+"opening_variant": {
+"Ordinary opening": "ordinary",
+"Narrow opening": "narrow"
+},
+"visual_model_path": "",
 "base_color": Color(0.34, 0.20, 0.10, 1),
 "transition_seconds": 0.55,
 "open_angle_degrees": 90.0,
@@ -24,8 +27,8 @@ class_properties = Dictionary[String, Variant]({
 class_property_descriptions = Dictionary[String, Variant]({
 "persistent_id": "Required stable authored identity for save/restore. Moving or changing the visual model must not replace this identity.",
 "door_id": "Required unique semantic opening address consumed by acoustics, NPC navigation, events, and mission logic.",
-"opening_variant": "Presentation/content label such as wooden, metal, ornate, or window_like. It does not select a separate gameplay subsystem.",
-"visual_model_path": "Godot res:// path to a compatible external Mesh. The shared OrdinaryDoor scene/collision/gameplay owner remains unchanged.",
+"opening_variant": ["Current proven reusable opening variant. Ordinary uses the shared scene model; Narrow selects the compatible narrow external leaf when visual_model_path is blank. Both remain the same gameplay archetype.", "ordinary"],
+"visual_model_path": "Optional advanced Godot res:// Mesh override. Leave blank to use the selected opening_variant default; the shared OrdinaryDoor scene/collision/gameplay owner remains unchanged.",
 "base_color": "Default door-surface tint used by the current low-fi presentation/highlight path.",
 "transition_seconds": "Seconds for a complete physical open/close transition.",
 "open_angle_degrees": "Yaw angle of the fully open leaf relative to its authored closed transform.",

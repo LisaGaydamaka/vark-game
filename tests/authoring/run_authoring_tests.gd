@@ -5,6 +5,10 @@ const WorldSession = preload("res://application/world_session.gd")
 const PersistentIdSource = preload("res://tools/authoring/persistent_id_source.gd")
 const PersistentIdentityProbe = preload("res://tools/authoring/persistent_identity_probe.gd")
 const PlaygroundReimportProbe = preload("res://tools/authoring/playground_reimport_probe.gd")
+const MapperWorkflowProbe = preload("res://tools/authoring/mapper_workflow_probe.gd")
+const MapperWorkflowRegressions = preload(
+	"res://tests/authoring/mapper_workflow_regressions.gd"
+)
 const ReimportStabilityRegressions = preload(
 	"res://tests/authoring/reimport_stability_regressions.gd"
 )
@@ -52,6 +56,10 @@ func _run_tests() -> void:
 		PlaygroundReimportProbe != null,
 		"Mapper-facing Playground reimport verifier parses under pinned Godot"
 	)
+	_assert_true(
+		MapperWorkflowProbe != null,
+		"Mapper-facing Phase 8 workflow verifier parses under pinned Godot"
+	)
 	_assert_vark_trenchbroom_identity_property()
 	_assert_vark_trenchbroom_material_config()
 	_assert_vark_runtime_identity_wiring()
@@ -61,6 +69,8 @@ func _run_tests() -> void:
 	switch_light_authoring.run(get_root(), Callable(self, "_assert_true"))
 	var prop_authoring: RefCounted = PropAuthoringRegressions.new()
 	prop_authoring.run(get_root(), Callable(self, "_assert_true"))
+	var mapper_workflow: RefCounted = MapperWorkflowRegressions.new()
+	await mapper_workflow.run(get_root(), Callable(self, "_assert_true"))
 	var breakable_authoring: RefCounted = BreakableAuthoringRegressions.new()
 	breakable_authoring.run(get_root(), Callable(self, "_assert_true"))
 	var content_validation_regressions: RefCounted = MissionContentValidationRegressions.new()
@@ -537,7 +547,7 @@ func _assert_vark_opening_authoring_path() -> void:
 			found != null
 			and found is AnimatableBody3D
 			and str(found.call("get_content_id")) == "door.authoring_probe"
-			and str(found.get("opening_variant")) == "ornate"
+			and str(found.get("opening_variant")) == "narrow"
 			and str(found.get("visual_model_path"))
 				== "res://assets/models/doors/ordinary_door_leaf_narrow.obj"
 			and bool(found.get("starts_locked"))
@@ -566,7 +576,7 @@ func _opening_probe_entity() -> String:
 		"\"angle\" \"180\"",
 		"\"persistent_id\" \"pid-opening-probe\"",
 		"\"door_id\" \"door.authoring_probe\"",
-		"\"opening_variant\" \"ornate\"",
+		"\"opening_variant\" \"narrow\"",
 		"\"visual_model_path\" \"res://assets/models/doors/ordinary_door_leaf_narrow.obj\"",
 		"\"transition_seconds\" \"0.8\"",
 		"\"starts_locked\" \"1\"",

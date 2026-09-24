@@ -1807,9 +1807,23 @@ The mission uses real TrenchBroom geometry/entities, multiple routes where pract
 
 Full polished results UI remains Phase 13; Phase 8 must consume the real semantic `MissionRunState` rather than create a temporary scraper/counter system.
 
-## 8.1 Mapper workflow proof `[ ]`
+## 8.1 Mapper workflow proof `[~]`
 
-A mapper should not need hand-edits in generated output. The ordinary workflow includes placing/configuring model-backed gameplay entities and selecting compatible reusable model variants without editing core gameplay scenes/code.
+The first Phase 8 authoring proof stays on the existing source/import ownership path rather than creating the real mission content prematurely. The ordinary mapper workflow is now:
+
+- place the existing `vark_opening` / `vark_prop` point entities in TrenchBroom and configure semantic fields there;
+- choose the currently proven compatible `opening_variant` / `prop_variant` from real FGD `choices` fields rather than typing an arbitrary presentation label;
+- leave `visual_model_path` blank for those known variants so the shared `OrdinaryDoor` / `OrdinaryProp` owner resolves the compatible external model automatically; the Tall crate choice also resolves its proven compatible collision dimensions when the collision remains at the shared default;
+- retain `visual_model_path` and `collision_size` as explicit advanced overrides for future compatible/custom assets, so this proof does not turn current variants into separate gameplay scenes or remove the existing external-model seam;
+- let the existing persistent-ID source repair write only authoritative `.map` source, reload TrenchBroom after any repair write, and never hand-edit generated FuncGodot/Godot output.
+
+`tools/authoring/mapper_workflow_probe.gd` is a read-only verifier for the ignored mapper workspace. It builds the actual saved `.map` through the project-owned Vark FuncGodot settings and checks one semantic proof opening (`door_id = phase8.workflow.door`) plus one proof prop (`prop_id = phase8.workflow.prop`). The probe verifies the selected Narrow/Tall choices resolved onto the existing production gameplay owners, compatible model paths/collision, valid persistent identity, and no source rewrite.
+
+**Done when:** project-owned Vark FGD exports mapper-visible choices for the proven ordinary/narrow opening and standard/tall prop variants while preserving optional raw model-path overrides; a real mapper-style `.map` build can select Narrow/Tall only through authored entity properties and resolves the compatible production model/collision defaults on the shared gameplay scenes; the workflow requires no Godot scene/code/generated-output edit; existing explicit model/collision overrides still work; persistent identity remains source-owned/fail-closed; the read-only proof does not rewrite source; existing authoring/application/gameplay regressions remain green; and a Windows mapper/user confirms the actual TrenchBroom UI/save/repair/verify workflow.
+
+**Automated:** pending exact-head post-push validation. The Authoring suite must prove the FGD choice/default schema, retained optional model-path override, source containing variant keys but no generated-scene/model-override/collision keys, real FuncGodot construction, Narrow/Tall compatible model/collision resolution, valid persistent identity, read-only verification, and continued compatibility with the existing explicit opening/prop override regressions. The authoritative all-tests barrier remains the compatibility gate.
+
+**Manual:** required — Windows mapper/user with TrenchBroom 2026.2 using the Vark game configuration. Follow the focused Phase 8.1 procedure in `docs/TESTING.md`: refresh config, reset the ignored workspace, place/configure the proof opening and prop using the visible variant choice controls only, save, run existing ID repair/reload if needed, then run the read-only mapper-workflow verifier. Report whether the choices were usable, the verifier passed, and no core/generated file hand-edit was needed.
 
 ## 8.2 Reimport proof `[ ]`
 

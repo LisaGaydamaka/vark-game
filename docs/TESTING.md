@@ -1134,6 +1134,52 @@ Expected: no output. If a diff remains, report it rather than hand-normalizing o
 
 The completed Windows run satisfied these cases. The first round trip exposed only TrenchBroom normalization of repository-added descriptive comments; entity data, identities, transforms, and brush geometry were unchanged. The tracked Playground map was then committed in TrenchBroom's save-normalized form and the stale comment-dependent authoring assertion was removed. Exact-head CI returned green, and the accepted rerun preserved the IDs and moved/restored start behavior while ending with an empty `git diff -- missions/playground/mission.map`; the mapper never hand-edited `persistent_id`.
 
+## Phase 8.1 mapper workflow proof — automated implemented, mapper acceptance pending
+
+The continuous Authoring suite now protects the ordinary model-backed mapper route rather than only isolated entity imports:
+
+- `vark_opening.opening_variant` exports TrenchBroom choices for the currently proven Ordinary/Narrow variants; `vark_prop.prop_variant` exports Standard/Tall crate choices;
+- `visual_model_path` remains a blank-by-default free string override, preserving the existing compatible/custom external-model seam rather than restricting mappers to a fixed catalog;
+- with that override blank, the Narrow opening resolves the proven narrow leaf model on the same `OrdinaryDoor.tscn` owner; the Tall crate resolves the proven tall model plus compatible `0.5 0.7 0.5` collision on the same `OrdinaryProp.tscn` owner when collision dimensions remain at the shared default;
+- a disposable real-map fixture contains only semantic IDs + the selected variant keys (no generated scene references, model-path key, or collision-size key), then builds through `authoring/vark_map_settings.tres`;
+- the read-only `tools/authoring/mapper_workflow_probe.gd` verifies the resulting production owners, resolved compatible assets, persistent identity, and byte-for-byte unchanged `.map` source;
+- the older Phase 6 opening/prop authoring regressions still exercise explicit `visual_model_path` / collision overrides, so the convenience choice path does not replace that advanced authoring seam.
+
+Focused manual acceptance requires a **Windows mapper/user with TrenchBroom 2026.2 (`Build v2026.2 Release Win64`)**. This is intentionally a real editor-workflow check; headless CI proves the exported schema and import result but cannot certify that the property controls are understandable/usable in the supported mapper UI.
+
+1. Pull the final 8.1 `test` head. Close TrenchBroom.
+2. From project root refresh and validate the installed Vark GameConfig/FGD:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- sync-config
+```
+
+Expected: the command reports `vark_opening`, `vark_prop`, `opening_variant(choices)`, and `prop_variant(choices)`, then instructs you to reopen TrenchBroom.
+3. Reset only the ignored proof workspace:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- reset
+```
+
+4. Reopen TrenchBroom with the **Vark** game configuration and explicitly open `tests/authoring/workspace/mission.map`.
+5. Place one `vark_opening`. Set `door_id = phase8.workflow.door`. Confirm `opening_variant` is a choice/dropdown field, choose **Narrow opening**, and leave `visual_model_path` blank. Do not type a `persistent_id`.
+6. Place one `vark_prop`. Set `prop_id = phase8.workflow.prop`. Confirm `prop_variant` is a choice/dropdown field, choose **Tall crate**, leave `visual_model_path` blank, and leave `collision_size` at its shared default. Do not type a `persistent_id`.
+7. Save the map, then run:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- repair
+```
+
+If repair says it changed source, **reload/reopen the map before any further edit/save**. This preserves the accepted external-repair synchronization rule.
+8. With the repaired/reloaded workspace saved, close TrenchBroom or leave it open without further edits and run:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/mapper_workflow_probe.gd
+```
+
+Expected: `Phase 8.1 mapper workflow proof passed.` The opening reports `variant=narrow` with the narrow door OBJ; the prop reports `variant=tall_crate`, the tall crate OBJ, and collision `(0.5, 0.7, 0.5)`. The verifier reports that the `.map` source was unchanged.
+9. Report whether both variant fields were normal mapper-visible choices, the verifier passed, and you needed no hand-edit in generated output, `OrdinaryDoor.tscn`, `OrdinaryProp.tscn`, or their gameplay scripts. Do not commit the ignored workspace.
+
 ---
 
 # Player manual regression checklist
