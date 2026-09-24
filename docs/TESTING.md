@@ -1086,6 +1086,7 @@ The completed Windows run satisfied these cases. The first round trip exposed on
 ## Loot, keys, possession, and run stats (Phase 6.3)
 
 - **Fixture:** Development Launch → **Loot/Key Lab** uses the production Application/WorldSession/Player path, the real ordinary locked door, and authored persistent collectible instances backed by reusable imported item models. Representative key/loot model bounds are asserted so the removed 55 cm placeholder block cannot return silently.
+- **Forgiving aim:** tiny collectibles author a larger invisible `Area3D` interaction proxy on dedicated physics layer 5. Generic mission sensor Areas remain ignored, the visible/solid item size is unchanged, and real bodies in front still block selection.
 - **Possession:** key and mission-item pickups grant only semantic possession IDs. Door/mission queries use `Player.has_semantic_possession(id)`; 6.3 adds no inventory selection/equip/menu behavior.
 - **Run stats:** one session-owned `VarkMissionRunState` records `loot_count` and `loot_value`. Collected loot does not remain as a physical carried object or a second possession counter.
 - **Authored removal:** collection unregisters the authored persistent entity and records its stable persistent ID in `object_existence.authored_tombstones`. Save validation requires unique non-empty string IDs and still rejects non-empty `runtime_entities`.
@@ -1096,7 +1097,7 @@ Manual acceptance:
 
 - [ ] F5 → Development Launch → **Loot/Key Lab**.
 - [ ] Before collecting the key, inspect the closed locked door from both sides and up close. The leaf meets both frame sides, the header, and the floor exactly; there is no visible slit between the closed door and its frame.
-- [ ] Confirm the key and two loot objects look like plausibly scaled imported objects, not identical oversized blocks. Center **KEY · key.lab** and press **F** once. It disappears; the status changes to **KEY key.lab: OWNED**. Holding F does not repeat collection.
+- [ ] Confirm the key and two loot objects look like plausibly scaled imported objects, not identical oversized blocks. Aim slightly beside/around the small object: the forgiving invisible interaction box should make it easy to highlight without visibly enlarging it. Center **KEY · key.lab** and press **F** once. It disappears; the status changes to **KEY key.lab: OWNED**. Holding F does not repeat collection.
 - [ ] Approach the locked door and press **F**. The same ordinary door unlocks and opens fully because the player owns `key.lab`; the flush frame must not stop or latch the moving leaf, and no inventory menu or explicit key-selection step appears.
 - [ ] Collect **LOOT · 25** and **LOOT · 75**. Each disappears and the status reaches **LOOT: 2 items / 100 value**.
 - [ ] Looking away/out of range clears highlight normally; walking, sprinting, crouching, jumping, and mouse look remain unchanged.

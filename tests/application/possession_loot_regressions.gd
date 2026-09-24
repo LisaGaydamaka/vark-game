@@ -90,6 +90,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and (loot75_asset.get("visual_size", Vector3.ZERO) as Vector3).length() < 0.30,
 		"6.3 key and loot presentation uses realistically scaled imported item models"
 	)
+	var key_collision_size: Vector3 = key_asset.get("collision_size", Vector3.ZERO)
+	var key_interaction_size: Vector3 = key_asset.get("interaction_size", Vector3.ZERO)
+	var loot_interaction_size: Vector3 = loot25_asset.get("interaction_size", Vector3.ZERO)
+	assert_true.call(
+		key_interaction_size.x >= key_collision_size.x * 1.8
+		and key_interaction_size.y >= key_collision_size.y * 2.5
+		and loot_interaction_size.x >= 0.28
+		and loot_interaction_size.y >= 0.26,
+		"Tiny imported collectibles keep their real size but expose a materially larger interaction-only aim proxy"
+	)
 
 	assert_true.call(
 		launched
@@ -121,13 +131,20 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"6.3 pickup consequences use the existing detached semantic event route"
 	)
 
-	# The authored key starts exactly on the player's center-view line and within range.
+	# Deliberately aim 11 cm beside the key center. This misses the real 14 cm
+	# physical key box (7 cm half-width) but remains inside its invisible proxy.
+	player.global_position = Vector3(0.11, 0.0, 4.0)
+	player.rotation.y = 0.0
+	player.velocity = Vector3.ZERO
+	(player.get_node("Head") as Node3D).rotation.x = 0.0
 	await _settle(tree, 2)
 	var key_target: Dictionary = player.call("get_interaction_semantic_state")
+	var key_target_debug: Dictionary = player.call("get_interaction_debug_summary")
 	assert_true.call(
 		bool(key.call("is_interaction_highlighted"))
-		and key_target.get("target_name", "") == "Key",
-		"6.3 fixture places the authored key on the production exact center-view selector before collection"
+		and key_target.get("target_name", "") == "Key"
+		and key_target_debug.get("hit_class", "") == "Area3D",
+		"Off-center aim that misses the tiny key's solid collision still selects it through the non-solid interaction proxy"
 	)
 	_press_interact()
 	await _settle(tree, 2)

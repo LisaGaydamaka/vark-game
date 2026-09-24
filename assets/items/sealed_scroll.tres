@@ -7,5 +7,7 @@ asset_id = &"sealed_scroll"
 visual_model = ExtResource("2_model")
 collision_size = Vector3(0.20, 0.06, 0.08)
 collision_offset = Vector3(0, 0.025, 0)
+interaction_size = Vector3(0.32, 0.18, 0.18)
+interaction_offset = Vector3(0, 0.06, 0)
 label_offset = Vector3(0, 0.13, 0)
 base_color = Color(0.67, 0.52, 0.32, 1)

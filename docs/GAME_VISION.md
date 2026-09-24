@@ -456,6 +456,8 @@ Loot is an abstract collected resource once taken.
 
 Before collection, loot, keys, and small mission items use reusable **imported item models** through the shared collectible gameplay archetype. The imported asset defines the visible object and authored collision/scale; the gameplay archetype defines interaction, highlight, semantic kind/value/ID, collection, persistence, and tombstone behavior. There is no universal generated pickup block used as ordinary content.
 
+Small items may use an authored **larger invisible interaction proxy** than their visible/solid bounds so center-view selection is forgiving at ordinary play distance. This proxy is interaction-only: it does not enlarge the rendered object, player collision, physical obstruction, vision cover, or generic sensor participation, and real blocking geometry in front still wins selection.
+
 When collected, the world object disappears and its value/count or semantic possession is recorded as appropriate.
 
 Its meaning between missions—score, purchasing power, objective resource, campaign resource, etc.—is content policy.

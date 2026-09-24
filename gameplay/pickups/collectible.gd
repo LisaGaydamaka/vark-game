@@ -16,6 +16,8 @@ const KIND_LOOT: StringName = &"loot"
 @export var asset: VarkCollectibleAsset
 
 @onready var pickup_collision: CollisionShape3D = $CollisionShape3D
+@onready var interaction_proxy: Area3D = $InteractionProxy
+@onready var interaction_collision: CollisionShape3D = $InteractionProxy/CollisionShape3D
 @onready var pickup_mesh: MeshInstance3D = $MeshInstance3D
 @onready var pickup_label: Label3D = $Label3D
 
@@ -27,6 +29,7 @@ var _material: StandardMaterial3D = null
 func _ready() -> void:
 	add_to_group(&"vark_interactable")
 	pickup_collision.shape = pickup_collision.shape.duplicate()
+	interaction_collision.shape = interaction_collision.shape.duplicate()
 	_material = StandardMaterial3D.new()
 	pickup_mesh.material_override = _material
 	pickup_label.text = display_label
@@ -95,6 +98,8 @@ func mark_collected_for_tombstone() -> bool:
 	_highlighted = false
 	collision_layer = 0
 	collision_mask = 0
+	interaction_proxy.collision_layer = 0
+	interaction_proxy.collision_mask = 0
 	if pickup_mesh != null:
 		pickup_mesh.visible = false
 	if pickup_label != null:
@@ -114,6 +119,11 @@ func _apply_asset() -> bool:
 		return false
 	box.size = asset.collision_size
 	pickup_collision.position = asset.collision_offset
+	var interaction_box := interaction_collision.shape as BoxShape3D
+	if interaction_box == null:
+		return false
+	interaction_box.size = asset.interaction_size
+	interaction_collision.position = asset.interaction_offset
 	pickup_label.position = asset.label_offset
 	return true
 

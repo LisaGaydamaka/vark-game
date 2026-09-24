@@ -3,6 +3,8 @@ extends RefCounted
 
 
 const INTERACTABLE_GROUP: StringName = &"vark_interactable"
+const INTERACTION_PROXY_GROUP: StringName = &"vark_interaction_proxy"
+const INTERACTION_PROXY_LAYER: int = 1 << 4
 
 const SELECTION_UNAVAILABLE: StringName = &"unavailable"
 const SELECTION_INVALID_VIEW: StringName = &"invalid_view"
@@ -28,6 +30,7 @@ var _last_selection_debug: Dictionary = {
 	"candidate_name": "",
 	"max_range": 0.0,
 	"areas_ignored": true,
+	"interaction_proxy_areas_enabled": true,
 }
 
 
@@ -114,32 +117,51 @@ func _select_target() -> Node:
 	if direction.length_squared() <= 0.000001:
 		_record_selection(SELECTION_INVALID_VIEW)
 		return null
+	var end_position: Vector3 = origin + direction * max_range
+	var space_state := player.get_world_3d().direct_space_state
 
-	var query := PhysicsRayQueryParameters3D.create(
-		origin,
-		origin + direction * max_range
-	)
-	query.exclude = [player.get_rid()]
-	# Generic trigger/sensor Areas are not physical cover and must not steal the
-	# center-view first hit from a real world object behind them. Current ordinary
-	# interaction targets are physical bodies; a future Area-based interaction
-	# would need an explicit targeting seam rather than making every mission sensor
-	# participate in world selection.
-	query.collide_with_areas = false
-	query.collide_with_bodies = true
+	# Physical bodies remain the authoritative blocker/ordinary-target ray.
+	var body_query := PhysicsRayQueryParameters3D.create(origin, end_position)
+	body_query.exclude = [player.get_rid()]
+	body_query.collide_with_areas = false
+	body_query.collide_with_bodies = true
+	var body_hit: Dictionary = space_state.intersect_ray(body_query)
 
-	var hit: Dictionary = (
-		player.get_world_3d().direct_space_state.intersect_ray(query)
-	)
-	if hit.is_empty():
+	# Tiny collectibles may expose a larger, non-solid aim proxy. Only the
+	# dedicated interaction-proxy layer participates here; arbitrary mission
+	# sensor Areas remain invisible to world interaction.
+	var proxy_query := PhysicsRayQueryParameters3D.create(origin, end_position)
+	proxy_query.exclude = [player.get_rid()]
+	proxy_query.collision_mask = INTERACTION_PROXY_LAYER
+	proxy_query.collide_with_areas = true
+	proxy_query.collide_with_bodies = false
+	var proxy_hit: Dictionary = space_state.intersect_ray(proxy_query)
+
+	var chosen_hit: Dictionary = body_hit
+	var proxy_collider := proxy_hit.get("collider", null) as Node
+	if (
+		not proxy_hit.is_empty()
+		and proxy_collider != null
+		and proxy_collider.is_in_group(INTERACTION_PROXY_GROUP)
+	):
+		var proxy_position: Vector3 = proxy_hit.get("position", end_position)
+		var proxy_distance: float = origin.distance_to(proxy_position)
+		var body_distance: float = INF
+		if not body_hit.is_empty():
+			body_distance = origin.distance_to(
+				body_hit.get("position", end_position)
+			)
+		# A real wall/container/door in front still wins. The aim proxy only
+		# widens selection where it is the nearest interaction surface.
+		if proxy_distance <= body_distance + 0.0001:
+			chosen_hit = proxy_hit
+
+	if chosen_hit.is_empty():
 		_record_selection(SELECTION_NO_HIT)
 		return null
 
-	var collider: Node = hit.get("collider") as Node
-	var hit_position: Vector3 = hit.get(
-		"position",
-		origin + direction * max_range
-	)
+	var collider: Node = chosen_hit.get("collider") as Node
+	var hit_position: Vector3 = chosen_hit.get("position", end_position)
 	var hit_distance: float = origin.distance_to(hit_position)
 	var candidate: Node = _find_interactable(collider)
 	if candidate == null:
@@ -190,7 +212,6 @@ func _select_target() -> Node:
 	)
 	return candidate
 
-
 func _find_interactable(collider: Node) -> Node:
 	var candidate: Node = collider
 	while candidate != null:
@@ -214,6 +235,7 @@ func _record_selection(
 		"candidate_name": _node_debug_name(candidate),
 		"max_range": max_range,
 		"areas_ignored": true,
+		"interaction_proxy_areas_enabled": true,
 	}
 
 

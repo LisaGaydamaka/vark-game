@@ -7,5 +7,7 @@ asset_id = &"brass_key"
 visual_model = ExtResource("2_model")
 collision_size = Vector3(0.14, 0.06, 0.02)
 collision_offset = Vector3(-0.005, 0, 0)
+interaction_size = Vector3(0.28, 0.18, 0.14)
+interaction_offset = Vector3(-0.005, 0.02, 0)
 label_offset = Vector3(0, 0.11, 0)
 base_color = Color(0.72, 0.62, 0.18, 1)
