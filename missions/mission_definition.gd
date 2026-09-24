@@ -3,6 +3,7 @@ extends Resource
 
 
 const MissionFacts = preload("res://missions/mission_facts.gd")
+const MissionRules = preload("res://missions/mission_rules.gd")
 
 
 @export var mission_id: StringName = &""
@@ -11,6 +12,7 @@ const MissionFacts = preload("res://missions/mission_facts.gd")
 @export var player_start_selector: StringName = &""
 @export var mission_content_revision: int = 1
 @export var mission_fact_declarations: Array[Dictionary] = []
+@export var mission_rule_declarations: Array[Dictionary] = []
 
 
 func get_load_errors() -> PackedStringArray:
@@ -34,6 +36,13 @@ func get_load_errors() -> PackedStringArray:
 	)
 	for fact_error: String in fact_errors:
 		errors.append(fact_error)
+
+	var rule_errors: PackedStringArray = MissionRules.validate_declarations(
+		mission_rule_declarations,
+		mission_fact_declarations
+	)
+	for rule_error: String in rule_errors:
+		errors.append(rule_error)
 
 	return errors
 
