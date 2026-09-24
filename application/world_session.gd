@@ -12,6 +12,7 @@ const WorldEntityRegistry = preload(
 const MissionRunState = preload("res://missions/mission_run_state.gd")
 const MissionEventBus = preload("res://missions/mission_event_bus.gd")
 const MissionFacts = preload("res://missions/mission_facts.gd")
+const MissionRules = preload("res://missions/mission_rules.gd")
 const SEMANTIC_EVENT_CASCADE_LIMIT: int = 256
 const SEMANTIC_EVENT_TRACE_LIMIT: int = 24
 const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000
@@ -45,6 +46,7 @@ var entity_registry: RefCounted = null
 var mission_run_state: RefCounted = null
 var mission_event_bus: RefCounted = null
 var mission_facts: RefCounted = null
+var mission_rules: RefCounted = null
 var state: int = State.EMPTY
 var gameplay_time_seconds: float = 0.0
 
@@ -687,6 +689,10 @@ func get_mission_facts() -> RefCounted:
 	return mission_facts
 
 
+func get_mission_rules() -> RefCounted:
+	return mission_rules
+
+
 func get_mission_fact(
 	key: StringName,
 	fallback: Variant = null
@@ -862,6 +868,23 @@ func build(
 		Callable(self, "_on_mission_fact_set_requested")
 	):
 		push_error("WorldSession could not register the mission fact mutation handler.")
+		teardown()
+		return false
+	mission_rules = MissionRules.new()
+	var rule_declarations: Array[Dictionary] = []
+	if mission_definition != null:
+		rule_declarations = mission_definition.get("mission_rule_declarations")
+	if not bool(mission_rules.call(
+		"configure",
+		self,
+		mission_event_bus,
+		mission_facts,
+		rule_declarations
+	)):
+		push_error(
+			"WorldSession mission rule configuration failed: %s"
+			% str(mission_rules.call("get_last_error"))
+		)
 		teardown()
 		return false
 	process_mode = Node.PROCESS_MODE_DISABLED
@@ -1088,6 +1111,9 @@ func teardown() -> void:
 
 	state = State.TEARING_DOWN
 	process_mode = Node.PROCESS_MODE_DISABLED
+	if mission_rules != null:
+		mission_rules.call("shutdown")
+		mission_rules = null
 	if mission_event_bus != null:
 		mission_event_bus.call("invalidate")
 		mission_event_bus = null
