@@ -436,7 +436,8 @@ func _transition_objective(
 		OBJECTIVE_ACTIVE:
 			_objective_activation_count += 1
 		OBJECTIVE_COMPLETE:
-			_objective_completion_count += 1
+			if requested_id == objective_id:
+				_objective_completion_count += 1
 		OBJECTIVE_FAILED:
 			_objective_failure_count += 1
 
@@ -458,7 +459,8 @@ func _transition_objective(
 			OBJECTIVE_ACTIVE:
 				_objective_activation_count -= 1
 			OBJECTIVE_COMPLETE:
-				_objective_completion_count -= 1
+				if requested_id == objective_id:
+					_objective_completion_count -= 1
 			OBJECTIVE_FAILED:
 				_objective_failure_count -= 1
 		return false
