@@ -16,6 +16,7 @@ const NPC_ALARM_RAISED: StringName = &"npc.alarm_raised"
 const OBJECTIVE_COMPLETE_REQUESTED: StringName = &"objective.complete_requested"
 const MISSION_EXIT_REQUESTED: StringName = &"mission.exit_requested"
 const MISSION_COMPLETED: StringName = &"mission.completed"
+const MISSION_FACT_CHANGED: StringName = &"mission.fact_changed"
 
 
 var _session: Node = null
@@ -112,4 +113,5 @@ func get_known_event_names() -> PackedStringArray:
 		str(OBJECTIVE_COMPLETE_REQUESTED),
 		str(MISSION_EXIT_REQUESTED),
 		str(MISSION_COMPLETED),
+		str(MISSION_FACT_CHANGED),
 	])
