@@ -75,8 +75,7 @@ func configure(declarations: Array[Dictionary]) -> bool:
 	_last_error = ""
 	var errors: PackedStringArray = validate_declarations(declarations)
 	if not errors.is_empty():
-		_last_error = "
-".join(errors)
+		_last_error = "\n".join(errors)
 		return false
 
 	_declarations.clear()
