@@ -778,22 +778,36 @@ Phase 3.9 reuses the existing semantic acoustic authority rather than adding sub
 
 The Speech suite owns this fixture and should keep diagnostics for semantic queued/heard counts, active/remaining utterance lifetime, presentation update count, current propagated strength/threshold ratio, label visibility/alpha, and last event/live acoustic results so failures distinguish data, event timing, live acoustics, and presentation.
 
-## Simple objective/exit fixture
+## Objective system fixture
 
-Phase 3.10 proves only the semantic beginning/end seam needed by the future integrated slice:
+Phase 7.3 completes the accepted Phase 3.10 objective owner rather than adding a second authority.
 
-- **Objective Lab** launches through the normal Application → WorldSession → Player path;
-- one `VarkSimpleObjectiveState` owns `objective.route`, `exit.route`, objective completion, exit attempt/block counts, and route completion;
-- public `query_objective(id)` and `query_exit(id)` return detached semantic snapshots and fail closed for unknown IDs; consumers do not read the owner's private fields;
-- `VarkSemanticRouteTrigger` areas are intentionally dumb. The objective trigger queues `objective.complete_requested { objective_id }` once; the exit queues `mission.exit_requested { exit_id }` per entry. Trigger configuration contains semantic IDs only and has no objective/door/NPC reference;
-- the owner handles both requests in the ordinary controlled semantic consequence pass. An early exit attempt increments attempt/block state but cannot complete the mission;
-- after the objective event drains, the objective query reports `complete` and the exit query reports `unlocked`;
-- a later exit request changes route truth once and queues exactly one detached `mission.completed { objective_id, exit_id }` event during the same deterministic event cascade;
-- later exit requests remain idempotent: attempt count may increase, but `mission.completed` and mission-completion count must remain one;
-- the lab status `Label3D` is development presentation only. This proof does not establish production objective HUD, mission-rule authoring, save/restore, campaign facts, scoring, or mission transitions;
-- the existing authored `vark_exit` entity remains an addressable spatial/content endpoint only until a production mission proves the binding from authored exit content to this semantic contract.
+The focused **Objective Lab** and Objectives suite protect:
 
-The Objectives suite owns this fixture. Failures should distinguish trigger emission, stable-boundary event handling, objective query state, exit gating, completion-event duplication, and presentation status.
+- one `VarkSimpleObjectiveState` remains authoritative for objective states, exit gating/counters, mission-complete truth, save state, and detached public queries;
+- declarations contain exactly `objective_id`, `text`, `optional`, and `initial_state`; the legacy primary objective must be present; duplicate/blank IDs, blank text, non-bool optional flags, and invalid initial states fail closed;
+- runtime state vocabulary is `inactive`, `active`, `complete`, and `failed`;
+- dynamic support means a declared inactive objective may activate later through `objective.activate_requested`; arbitrary runtime-created objective definitions are not part of this phase;
+- `objective.complete_requested` and `objective.fail_requested` only transition active objectives to terminal states;
+- valid activation/completion/failure mutates only during the controlled semantic consequence pass and appends one detached `objective.state_changed { objective_id, from_state, to_state, optional }` event;
+- invalid, repeated, or terminal transition requests remain idempotent and do not emit false state changes;
+- every non-optional objective must be complete before the exit is unlocked; optional inactive/active/complete/failed state never becomes route-exit authority;
+- a failed required objective keeps the exit locked but does not create a universal mission-failure system;
+- the original early EXIT attempt is blocked and counted; completing the required route objective unlocks EXIT; the later exit emits exactly one detached `mission.completed`; repeated exit attempts do not duplicate mission completion;
+- public `query_objective(id)` reports text/optional/state plus active/complete/failed booleans and fails closed on unknown IDs; `query_exit(id)` reports unlocked/required-failed/mission-complete/counters;
+- new semantic snapshots preserve the complete declared objective-state table plus activation/completion/failure and exit/mission counters; restore is quiet and old eight-field single-objective snapshots remain accepted for compatibility;
+- the Integrated Slice and Phase 4 semantic-save regression remain the cross-system barrier protecting the existing primary objective and quicksave/quickload behavior;
+- the Objective Lab status `Label3D` is still development presentation, not the final production objective HUD.
+
+Manual acceptance — user/playtester, Development Launch → **Objective Lab**:
+
+- [ ] EXIT remains locked before the required OBJECTIVE is complete.
+- [ ] OPTIONAL START changes the bonus objective from INACTIVE to ACTIVE; OPTIONAL COMPLETE changes it to COMPLETE.
+- [ ] Optional objective state does not determine whether EXIT unlocks.
+- [ ] The status label clearly distinguishes the required objective and optional objective states.
+- [ ] Completing the required OBJECTIVE then entering EXIT still completes the route exactly once.
+
+The Objectives suite owns deterministic objective lifecycle/exit semantics. Failures should distinguish declaration/state-transition logic, event timing/order, optional-vs-required gating, save compatibility, trigger emission, mission-completion duplication, and development presentation.
 
 ## Save snapshot/restore transaction fixture
 
