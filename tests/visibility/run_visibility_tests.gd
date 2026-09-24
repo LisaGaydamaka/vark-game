@@ -158,7 +158,7 @@ func _assert_exposure_lab() -> void:
 		owner,
 		"FullMarker"
 	)
-	key_light.gameplay_enabled = false
+	key_light.set_enabled_state(false, false)
 	var disabled_full: Dictionary = await _sample_marker(
 		world,
 		player,
@@ -169,7 +169,7 @@ func _assert_exposure_lab() -> void:
 		disabled_full,
 		&"key"
 	)
-	key_light.gameplay_enabled = true
+	key_light.set_enabled_state(true, false)
 	var reenabled_full: Dictionary = await _sample_marker(
 		world,
 		player,

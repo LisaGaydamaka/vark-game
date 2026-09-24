@@ -1011,3 +1011,7 @@ Vark is ready to hand to mission creators when a developer who understands Godot
 # Switchable gameplay-light authoring — LOCKED
 
 Mapper-facing ordinary switched lighting uses semantic `control_id` groups: TrenchBroom `vark_gameplay_light` entities own persistent rendered/gameplay light truth, while `vark_switch` entities reference the same control ID and derive their presentation from the lights. Mappers do not wire Godot signals or NodePaths. Direct extinguish changes the same light state used by exposure and save/load.
+
+## Light fixture ON/OFF presentation — LOCKED
+
+Ordinary lamps, street lamps, candles, torches, and similar light-bearing objects remain present as world objects when switched off or extinguished. A reusable light-fixture asset separates the always-visible imported body from designated lit-surface geometry. ON makes those surfaces use their authored bright/emissive state and enables the actual light emitter; OFF disables emitter energy and changes those surfaces to their authored dark or hidden-off state without hiding the fixture body. A candle asset may hide only its flame surface when off; a street-lamp asset may keep its glass visible but dark. Gameplay exposure, emitter state, lit-surface state, and save/load all derive from the same semantic light state.

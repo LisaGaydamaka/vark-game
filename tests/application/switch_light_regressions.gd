@@ -61,6 +61,14 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and bool((switch.get_debug_summary() as Dictionary).get("group_on", false)),
 		"Two saved gameplay lights and one unsaved presentation switch share one mapper-authored control_id"
 	)
+	var light_a_asset := light_a.get_node_or_null("FixtureAnchor/WallLampAsset") as VarkLightFixtureAsset
+	assert_true.call(
+		light_a_asset != null
+		and light_a_asset.validate_contract()
+		and bool((light_a_asset.get_contract_summary() as Dictionary).get("lit_enabled", false))
+		and light_a.light_energy > 0.0,
+		"Lit fixture keeps an imported physical body plus an authored bright/emissive lit surface while the emitter is on"
+	)
 
 	var light_events: Array[Dictionary] = []
 	var switch_events: Array[Dictionary] = []
@@ -115,6 +123,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and int(switch_events[0].get("changed_light_count", 0)) == 2
 		and light_events.size() == 2,
 		"One F toggles every light sharing control_id, moves derived switch presentation, and changes actual gameplay exposure"
+	)
+	var off_asset_summary: Dictionary = light_a_asset.get_contract_summary()
+	assert_true.call(
+		light_a.visible
+		and light_a_asset.visible
+		and not bool(off_asset_summary.get("lit_enabled", true))
+		and bool(off_asset_summary.get("lit_surface_visible", false))
+		and not bool(off_asset_summary.get("lit_surface_emission_enabled", true))
+		and is_zero_approx(light_a.light_energy),
+		"Turning a lamp off leaves its model/dark glass visible while removing emissive appearance and the actual light emitter"
 	)
 
 	player.global_position = Vector3(3.2, 0, 2.45)
@@ -202,6 +220,21 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and float((restored_switch.get_debug_summary() as Dictionary).get("display_fraction", 1.0)) < 0.1
 		and int(restored_session.call("get_pending_semantic_event_count")) == 0,
 		"Quickload restores saved light state and a fresh switch derives the correct pose without replaying switch/light consequences"
+	)
+	var restored_asset := restored_a.get_node_or_null("FixtureAnchor/WallLampAsset") as VarkLightFixtureAsset
+	var restored_asset_summary: Dictionary = (
+		restored_asset.get_contract_summary()
+		if restored_asset != null
+		else {}
+	)
+	assert_true.call(
+		restored_a.visible
+		and restored_asset != null
+		and restored_asset.visible
+		and not bool(restored_asset_summary.get("lit_enabled", true))
+		and bool(restored_asset_summary.get("lit_surface_visible", false))
+		and is_zero_approx(restored_a.light_energy),
+		"Quickload of an OFF lamp restores dark visible fixture presentation and zero emitter energy rather than hiding the object"
 	)
 
 	_cleanup(application, tree)

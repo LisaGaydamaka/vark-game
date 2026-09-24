@@ -16,30 +16,31 @@ const INTERACTION_PROXY_LAYER: int = 1 << 4
 @export var gameplay_enabled: bool = true
 @export var starts_on: bool = true
 @export_flags_3d_physics var occlusion_mask: int = 1
-@export var fixture_model: Mesh
-@export var fixture_model_path: String = ""
-@export var fixture_color: Color = Color(0.32, 0.27, 0.18, 1.0)
+@export var fixture_asset_scene: PackedScene
+@export var fixture_asset_path: String = "res://assets/light_assets/WallLamp.tscn"
 @export var direct_interaction: String = DIRECT_NONE
 @export var interaction_size: Vector3 = Vector3(0.42, 0.42, 0.42)
 @export var interaction_offset: Vector3 = Vector3.ZERO
 @export var gameplay_sound_strength: float = 0.30
 
 var _world_session: Node = null
-var _fixture_mesh: MeshInstance3D = null
+var _fixture_anchor: Node3D = null
+var _fixture_asset: VarkLightFixtureAsset = null
 var _interaction_proxy: Area3D = null
 var _interaction_collision: CollisionShape3D = null
 var _highlighted: bool = false
-var _fixture_material: StandardMaterial3D = null
+var _configured_light_energy: float = 0.0
 
 
 func _ready() -> void:
 	add_to_group(&"vark_gameplay_light")
 	_world_session = _find_world_session()
-	_fixture_mesh = get_node_or_null("FixtureMesh") as MeshInstance3D
+	_fixture_anchor = get_node_or_null("FixtureAnchor") as Node3D
 	_interaction_proxy = get_node_or_null("InteractionProxy") as Area3D
 	_interaction_collision = get_node_or_null(
 		"InteractionProxy/CollisionShape3D"
 	) as CollisionShape3D
+	_configured_light_energy = maxf(light_energy, 0.0)
 	_configure_fixture()
 	_configure_interaction_proxy()
 	set_enabled_state(starts_on, false)
@@ -70,9 +71,9 @@ func set_enabled_state(
 	emit_event: bool = true,
 	source_id: String = ""
 ) -> bool:
-	var changed: bool = gameplay_enabled != enabled or visible != enabled
+	var changed: bool = gameplay_enabled != enabled
 	gameplay_enabled = enabled
-	visible = enabled
+	_apply_enabled_presentation()
 	_refresh_interaction_proxy()
 	if emit_event and changed:
 		_queue_state_changed(source_id)
@@ -114,13 +115,19 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	):
 		return false
 	gameplay_enabled = bool(snapshot["gameplay_enabled"])
-	visible = bool(snapshot["visible"])
+	var saved_visible: bool = bool(snapshot["visible"])
+	# Pre-6.5 saves represented OFF by hiding this OmniLight node. Preserve
+	# intentional hidden+enabled state, but migrate legacy hidden+disabled
+	# snapshots so the physical fixture remains visible while OFF.
+	visible = true if not gameplay_enabled and not saved_visible else saved_visible
+	_apply_enabled_presentation()
 	_refresh_interaction_proxy()
 	return true
 
 
 func reconcile_after_restore() -> bool:
 	_world_session = _find_world_session()
+	_apply_enabled_presentation()
 	_refresh_interaction_proxy()
 	_refresh_fixture_visual()
 	return true
@@ -135,6 +142,13 @@ func get_gameplay_debug_state() -> Dictionary:
 		"visible": visible,
 		"gameplay_strength": gameplay_strength,
 		"range_meters": maxf(omni_range, 0.0),
+		"emitter_energy": light_energy,
+		"fixture_present": _fixture_asset != null,
+		"fixture_lit": (
+			_fixture_asset.is_lit_enabled()
+			if _fixture_asset != null
+			else gameplay_enabled
+		),
 		"active": (
 			gameplay_enabled
 			and visible
@@ -194,22 +208,31 @@ func sample_gameplay_exposure(
 
 
 func _configure_fixture() -> void:
-	if _fixture_mesh == null:
+	if _fixture_anchor == null:
 		return
-	var resolved: Mesh = fixture_model
-	if not fixture_model_path.strip_edges().is_empty():
-		var path: String = fixture_model_path.strip_edges()
-		if ResourceLoader.exists(path):
-			var loaded: Resource = ResourceLoader.load(path)
-			if loaded is Mesh:
-				resolved = loaded as Mesh
-				fixture_model = resolved
-	_fixture_mesh.mesh = resolved
-	_fixture_material = StandardMaterial3D.new()
-	_fixture_material.roughness = 0.75
-	_fixture_mesh.material_override = _fixture_material
-	_refresh_fixture_visual()
+	for child: Node in _fixture_anchor.get_children():
+		child.queue_free()
+	_fixture_asset = null
 
+	var resolved: PackedScene = fixture_asset_scene
+	var path: String = fixture_asset_path.strip_edges()
+	if not path.is_empty() and ResourceLoader.exists(path):
+		var loaded: Resource = ResourceLoader.load(path)
+		if loaded is PackedScene:
+			resolved = loaded as PackedScene
+			fixture_asset_scene = resolved
+	if resolved == null:
+		return
+
+	var instance: Node = resolved.instantiate()
+	var asset := instance as VarkLightFixtureAsset
+	if asset == null:
+		instance.free()
+		return
+	_fixture_anchor.add_child(asset)
+	_fixture_asset = asset
+	_fixture_asset.set_lit_enabled(gameplay_enabled)
+	_fixture_asset.set_highlighted(_highlighted)
 
 func _configure_interaction_proxy() -> void:
 	if _interaction_collision != null:
@@ -239,17 +262,18 @@ func _refresh_interaction_proxy() -> void:
 
 
 func _refresh_fixture_visual() -> void:
-	if _fixture_material == null:
-		return
-	_fixture_material.albedo_color = fixture_color
-	_fixture_material.emission_enabled = false
-	_fixture_material.shading_mode = (
-		BaseMaterial3D.SHADING_MODE_UNSHADED
-		if _highlighted
-		else BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	)
-	_fixture_material.disable_receive_shadows = _highlighted
+	if _fixture_asset != null:
+		_fixture_asset.set_highlighted(_highlighted)
 
+
+func _apply_enabled_presentation() -> void:
+	# The semantic owner itself stays visible. OFF only removes emitted light
+	# and changes the fixture's authored lit surfaces (bright glass/flame/etc.).
+	# The physical lamp/candle model therefore never disappears just because
+	# its light is off.
+	light_energy = _configured_light_energy if gameplay_enabled else 0.0
+	if _fixture_asset != null:
+		_fixture_asset.set_lit_enabled(gameplay_enabled)
 
 func _queue_state_changed(source_id: StringName) -> void:
 	if _world_session == null:

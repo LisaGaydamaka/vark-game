@@ -1208,7 +1208,7 @@ If the user explicitly reopens player movement/traversal behavior, update automa
 ## Switchable/extinguishable gameplay lights (Phase 6.5)
 
 - **Mapper authoring:** Vark FGD exports `vark_gameplay_light` and `vark_switch`. Lights own persistent `gameplay_light_id` + `control_id`; switches reference only `control_id`. Authoring regression builds a temporary real `.map` with two lights and one switch and verifies FuncGodot instantiates the production scenes/properties.
-- **Single truth:** switch and direct-extinguish operations call the same `VarkGameplayLight.set_enabled_state()`, synchronizing rendered visibility and semantic exposure. Switch pose is derived and unsaved.
+- **Single truth:** switch and direct-extinguish operations call the same `VarkGameplayLight.set_enabled_state()`. ON/OFF synchronizes semantic exposure, actual light-emitter energy, and the reusable fixture asset's designated lit-surface appearance. OFF never hides the fixture body.
 - **Grouping:** all lights sharing a switch's `control_id` toggle together. Semantic `light.state_changed` and `switch.used` facts remain detached; use/extinguish sounds travel through gameplay sound.
 - **Persistence:** only lights persist state. Quickload restores off lights and a fresh switch derives the off pose without replaying consequences.
 - **Fixture:** Development Launch → **Switch/Light Lab** contains two grouped room lights, one imported wall switch, one directly extinguishable lamp, and the real gameplay-exposure/light-gem observer.
@@ -1217,9 +1217,9 @@ Manual acceptance:
 
 - [ ] F5 → Development Launch → **Switch/Light Lab**.
 - [ ] Center the imported wall switch; it highlights through normal F interaction.
-- [ ] Press F once: both room lights visibly turn off together, the light gem/exposure drops, and the lever moves to OFF.
+- [ ] Press F once: both room emitters disappear, the light gem/exposure drops, and the lever moves to OFF, but the lamp models remain visible with their glass/lit surfaces dark and non-emissive.
 - [ ] Press F again: both room lights and exposure return, and the lever moves to ON.
-- [ ] Walk to the separate right-hand lamp and press F on its fixture: it directly extinguishes and no longer contributes visual or gameplay light.
+- [ ] Walk to the separate right-hand lamp and press F on its fixture: it directly extinguishes, its model remains visible, its lit surface becomes dark/non-emissive, and it no longer contributes emitted or gameplay light.
 - [ ] No Godot/editor wiring is required for mapper semantics: the lab's equivalent authoring relationship is only matching `control_id`.
 - [ ] Movement/look, range clearing, highlight, save/load, and unrelated interaction remain normal.
 ## Gameplay lighting

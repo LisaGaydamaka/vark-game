@@ -1,0 +1,20 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://gameplay/visibility/light_fixture_asset.gd" id="1_asset"]
+[ext_resource type="ArrayMesh" path="res://assets/models/lights/wall_lamp.obj" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://assets/models/lights/wall_lamp_glass.obj" id="3_glass"]
+
+[node name="WallLampAsset" type="Node3D"]
+script = ExtResource("1_asset")
+asset_id = &"wall_lamp"
+body_color = Color(0.20, 0.16, 0.10, 1)
+lit_surface_off_color = Color(0.08, 0.07, 0.055, 1)
+lit_surface_on_color = Color(1, 0.72, 0.28, 1)
+lit_surface_emission_energy = 3.5
+lit_surface_visible_when_off = true
+
+[node name="BodyMesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_body")
+
+[node name="LitSurfaceMesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("3_glass")
