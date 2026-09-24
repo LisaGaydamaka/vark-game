@@ -1753,7 +1753,7 @@ Mutation timing remains the foundation contract: commands issued from `_process(
 
 **Manual:** none required for this architecture-only provisional surface. Phase 8.4 will provide the first player-facing/author-facing mission-specific GDScript proof.
 
-## 7.6 Deterministic rule ordering and save state `[~]`
+## 7.6 Deterministic rule ordering and save state `[x]`
 
 Rule ordering now stays inside the existing semantic event contract rather than adding a priority/scheduler layer:
 
@@ -1771,7 +1771,7 @@ Long-running or delayed mission behavior remains explicit facts/objective stages
 
 **Done when:** same-event rules deterministically evaluate in declaration order against trigger-time fact truth; queued actions appear in FIFO declaration/action order and complete before the stable boundary; omitted `repeat` retains legacy repeating behavior; explicit repeating rules can fire again while one-shot rules execute once; fired one-shot IDs are detached save truth; fresh restore suppresses already-fired one-shots without consequence replay while repeating rules continue; malformed/unknown saved rule IDs fail closed; pre-7.6 saves without a rule section resolve to default unfired state; teardown/replacement isolate rule state with the world lifetime; and existing event/fact/script/objective/save/gameplay regressions remain green.
 
-**Automated:** pending exact-head post-push validation. The focused Application regression must prove declaration-order evaluation/action FIFO ordering, trigger-time fact semantics across multiple same-source rules, repeat vs one-shot behavior, stable-boundary publication after the cascade, detached one-shot save state, malformed-state rejection, fresh restore/no replay, restored one-shot suppression, legacy no-`repeat` compatibility, and the full regression barrier.
+**Automated:** accepted on deterministic rule-state implementation head `b194bab98ce8e160c0e2d13f01f0a40d58b69c0d` by GitHub Actions Test run #491. The focused Application regression proves same-source declaration-order evaluation, authored action FIFO append order, trigger-time fact semantics despite earlier queued `set_fact`, legacy omitted-`repeat` compatibility, explicit repeat vs one-shot behavior, stable-boundary publication after the full cascade, detached fired-one-shot save state, unknown saved rule-ID rejection, fresh restore with no consequence replay, and restored one-shot suppression while repeating rules continue. The full barrier remained green with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`. Successful-run script-error signatures were unchanged from the preceding green run #490 and belong to existing deliberate failed-restore fixtures rather than 7.6.
 
 **Manual:** none required for this architecture-only ordering/persistence step. Phase 8.3 will provide the first player-facing authored-rule proof.
 
