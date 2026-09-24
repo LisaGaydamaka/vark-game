@@ -169,7 +169,7 @@ func capture_semantic_state() -> Dictionary:
 	var keys: Array = _declarations.keys()
 	keys.sort_custom(func(a: Variant, b: Variant) -> bool: return str(a) < str(b))
 	for key_value: Variant in keys:
-		var key := key_value as StringName
+		var key := StringName(str(key_value))
 		var declaration: Dictionary = _declarations[key]
 		if declaration.get("scope", &"") == SCOPE_MISSION:
 			result[str(key)] = _values[key]
@@ -181,7 +181,7 @@ func get_default_semantic_state() -> Dictionary:
 	var keys: Array = _declarations.keys()
 	keys.sort_custom(func(a: Variant, b: Variant) -> bool: return str(a) < str(b))
 	for key_value: Variant in keys:
-		var key := key_value as StringName
+		var key := StringName(str(key_value))
 		var declaration: Dictionary = _declarations[key]
 		if declaration.get("scope", &"") == SCOPE_MISSION:
 			result[str(key)] = declaration.get("default")
@@ -216,7 +216,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		return false
 
 	for key_value: Variant in _declarations.keys():
-		var key := key_value as StringName
+		var key := StringName(str(key_value))
 		var declaration: Dictionary = _declarations[key]
 		_values[key] = declaration.get("default")
 
