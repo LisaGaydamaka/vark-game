@@ -1654,7 +1654,7 @@ Long-running reactions are still explicit semantic state advanced on future game
 
 **Manual:** none required for this architecture-only step. No player-facing control or feel changes are intended.
 
-## 7.2 Typed mission facts `[~]`
+## 7.2 Typed mission facts `[x]`
 
 `MissionDefinition` now owns explicit `mission_fact_declarations`. Every declaration contains exactly `key`, `type`, `default`, and `scope`; duplicate/blank keys, unsupported types/scopes, and default/type mismatches fail mission-definition validation before the world becomes authoritative.
 
@@ -1671,7 +1671,7 @@ Save capture stores only mission-scope key/value truth under the detached `missi
 
 **Done when:** valid typed declarations build from `MissionDefinition`; invalid duplicate/campaign/wrong-default declarations fail closed; one READY world exposes defaults but cannot mutate them through normal gameplay dispatch; unknown/wrong-type requests are rejected before queueing; valid requests become authoritative only at the controlled consequence pass and emit ordered `mission.fact_changed` facts; idempotent writes emit no false event; save capture includes only mission-scope facts; fresh restore reapplies mission-scope truth while runtime facts remain at defaults; malformed saved fact snapshots reject unknown/type-invalid data; teardown clears the owner; and existing event/save/application/gameplay regressions remain green.
 
-**Automated:** pending exact-head post-push validation. The focused Application regression must prove declaration validation, typed/default query behavior, controlled mutation ordering, change-event emission, idempotence, mission-vs-runtime save ownership, fresh-world restore behavior, malformed snapshot rejection, and teardown lifetime. Existing semantic snapshot/compatibility coverage remains the barrier for detached stable-boundary save behavior.
+**Automated:** accepted on typed-mission-facts implementation head `9d5e92517a254be9ff11c8ba5adf1c084effe877` by GitHub Actions Test run #467. The focused Application regression proves valid declaration/default construction; duplicate key, campaign-scope, and default/type mismatch rejection; unknown/wrong-type assignment rejection before queueing; PLAYING-only controlled mutation; ordered detached `mission.fact_changed` emission; idempotent no-change writes; mission-scope-only save capture; fresh-world restore of mission truth with runtime facts reset to defaults; malformed saved fact rejection; and teardown lifetime cleanup. Existing semantic event, snapshot/restore, compatibility, application, gameplay, authoring, movement, and full regression suites remained green; the run ended with `ALL TEST SUITES PASSED`.
 
 **Manual:** none required for this architecture-only step. No player-facing behavior is intended.
 
