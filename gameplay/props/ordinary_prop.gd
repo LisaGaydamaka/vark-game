@@ -69,6 +69,7 @@ var _pending_launch_velocity: Vector3 = Vector3.ZERO
 var _pending_prop_impacts: Array[Dictionary] = []
 var _pending_external_impulse: Vector3 = Vector3.ZERO
 var _pending_player_push_velocity: Vector3 = Vector3.ZERO
+var _moving_support_source: CollisionObject3D = null
 
 
 func _ready() -> void:
@@ -322,6 +323,54 @@ func is_supported() -> bool:
 	return _has_support()
 
 
+func is_supported_by(body: CollisionObject3D) -> bool:
+	if (
+		_phase == PHASE_CARRIED_JUNK
+		or body == null
+		or not is_instance_valid(body)
+	):
+		return false
+	return _find_support_collider() == body
+
+
+func get_collision_world_bottom_y() -> float:
+	var box := prop_collision.shape as BoxShape3D if prop_collision != null else null
+	if box == null:
+		return global_position.y
+	var collision_transform: Transform3D = prop_collision.global_transform
+	var half: Vector3 = box.size * 0.5
+	var vertical_extent: float = (
+		absf(collision_transform.basis.x.y) * half.x
+		+ absf(collision_transform.basis.y.y) * half.y
+		+ absf(collision_transform.basis.z.y) * half.z
+	)
+	return collision_transform.origin.y - vertical_extent
+
+
+func release_from_moving_support(support_body: CollisionObject3D) -> bool:
+	if (
+		_phase != PHASE_SETTLED
+		or support_body == null
+		or not is_instance_valid(support_body)
+		or not is_supported_by(support_body)
+	):
+		return false
+	_begin_motion(MOTION_UNSUPPORTED, Vector3.ZERO)
+	_moving_support_source = support_body
+	return true
+
+
+func is_released_from_moving_support(support_body: CollisionObject3D) -> bool:
+	return (
+		_phase == PHASE_MOVING
+		and support_body != null
+		and is_instance_valid(support_body)
+		and _moving_support_source != null
+		and is_instance_valid(_moving_support_source)
+		and _moving_support_source == support_body
+	)
+
+
 func is_traversal_attachment_stable() -> bool:
 	# Long-lived catch/hang/corner attachments require an exact stationary prop.
 	# Mantle is short-lived and tracks its source collider transform separately.
@@ -381,6 +430,7 @@ func begin_carried_junk(holder: Node) -> bool:
 	_clear_pending_rigid_launch()
 	_clear_temporary_player_collision_ignore()
 	_clear_dynamic_contact_state()
+	_moving_support_source = null
 	_holder = holder
 	_phase = PHASE_CARRIED_JUNK
 	_motion_kind = MOTION_NONE
@@ -467,6 +517,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	_clear_pending_rigid_launch()
 	_clear_temporary_player_collision_ignore()
 	_clear_dynamic_contact_state()
+	_moving_support_source = null
 	_phase = phase
 	_motion_kind = motion_kind
 	global_transform = _top_up_transform(restored_transform)
@@ -514,6 +565,7 @@ func _stage_rigid_launch(
 	release_transform: Transform3D,
 	initial_velocity: Vector3
 ) -> void:
+	_moving_support_source = null
 	_phase = PHASE_MOVING
 	_motion_kind = motion_kind
 	_rest_contact_frames = 0
@@ -538,6 +590,7 @@ func _clear_pending_rigid_launch() -> void:
 
 
 func _begin_motion(motion_kind: StringName, initial_velocity: Vector3) -> void:
+	_moving_support_source = null
 	_phase = PHASE_MOVING
 	_motion_kind = motion_kind
 	global_transform = _top_up_transform(global_transform)
@@ -574,6 +627,7 @@ func _finish_dynamic_rest() -> void:
 	sleeping = true
 	_phase = PHASE_SETTLED
 	_motion_kind = MOTION_NONE
+	_moving_support_source = null
 	_rest_contact_frames = 0
 	_unsupported_frames = 0
 	_last_contact_count = 0
@@ -714,11 +768,15 @@ func _shape_overlaps_body_at_transform(body_transform: Transform3D, other_body: 
 
 
 func _has_support() -> bool:
+	return _find_support_collider() != null
+
+
+func _find_support_collider() -> CollisionObject3D:
 	if prop_collision == null or prop_collision.shape == null or not is_inside_tree():
-		return false
+		return null
 	var box: BoxShape3D = prop_collision.shape as BoxShape3D
 	if box == null:
-		return false
+		return null
 	var half: Vector3 = box.size * 0.5
 	var inset: float = clampf(support_probe_inset, 0.0, 1.0)
 	var x: float = half.x * inset
@@ -745,7 +803,9 @@ func _has_support() -> bool:
 		if not hit.is_empty():
 			var normal: Vector3 = hit.get("normal", Vector3.UP)
 			if normal.y >= minimum_support_normal_y:
-				return true
+				var collider := hit.get("collider", null) as CollisionObject3D
+				if collider != null:
+					return collider
 
 	var support_query := PhysicsShapeQueryParameters3D.new()
 	support_query.shape = prop_collision.shape
@@ -757,14 +817,18 @@ func _has_support() -> bool:
 	support_query.collide_with_areas = false
 	support_query.collide_with_bodies = true
 	support_query.margin = 0.001
-	var rest_info: Dictionary = get_world_3d().direct_space_state.get_rest_info(support_query)
-	if rest_info.is_empty():
-		return false
-	var rest_normal: Vector3 = rest_info.get("normal", Vector3.ZERO)
-	return (
-		rest_normal.length_squared() > 0.000001
-		and rest_normal.normalized().y >= minimum_support_normal_y
+	var rest_info: Dictionary = get_world_3d().direct_space_state.get_rest_info(
+		support_query
 	)
+	if rest_info.is_empty():
+		return null
+	var rest_normal: Vector3 = rest_info.get("normal", Vector3.ZERO)
+	if (
+		rest_normal.length_squared() <= 0.000001
+		or rest_normal.normalized().y < minimum_support_normal_y
+	):
+		return null
+	return rest_info.get("collider", null) as CollisionObject3D
 
 
 func _set_world_presentation_enabled(enabled: bool) -> void:
