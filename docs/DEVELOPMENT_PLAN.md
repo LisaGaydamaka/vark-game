@@ -1633,7 +1633,7 @@ The focused **Development Launch → Breakable Lab** contains one loose ordinary
 
 Goal: promote proven internal semantic contracts into a small mission logic system and a provisional script surface.
 
-## 7.1 Author-facing semantic event bus `[~]`
+## 7.1 Author-facing semantic event bus `[x]`
 
 Promote the already-proven world-owned semantic queue instead of introducing a second dispatcher. `WorldSession` owns one fresh `VarkMissionEventBus` per world lifetime; teardown invalidates retained bus references and replacement creates a distinct instance.
 
@@ -1650,7 +1650,7 @@ Long-running reactions are still explicit semantic state advanced on future game
 
 **Done when:** a READY world owns one bus but cannot emit ordinary semantic work until PLAYING; authors can subscribe before play, then emit a detached mission-defined fact that reaches handlers only at the controlled pass; source payload mutation and handler-local payload mutation cannot alter the queued/trace copies; nested author emission preserves FIFO append; the promoted known vocabulary contains representative current facts without private signals; trace history is detached/bounded/useful and survives a guarded failure for diagnosis; teardown invalidates a retained old bus; replacement creates a fresh isolated bus; existing internal event users and all save/stable-boundary regressions remain green.
 
-**Automated:** pending exact-head post-push validation. The focused Application regression must exercise the author-facing wrapper over the real `WorldSession`, including READY/PLAYING gating, known vocabulary, detached payload/trace behavior, mission-defined names, nested FIFO append, invalid live-object payload rejection, teardown invalidation, and replacement isolation. Existing Phase 3.2 semantic-event/cascade/stable-boundary regressions remain the compatibility barrier for the underlying dispatcher.
+**Automated:** accepted on author-facing event-bus implementation head `eb8e16efbb507181b4ef97f5b0ab0abf128a3ebe` by GitHub Actions Test run #451. The focused Application regression proves one world-scoped `VarkMissionEventBus`, READY subscription with PLAYING-only emission, representative known vocabulary, mission-defined event names, detached source/handler/trace values, nested FIFO append, live-object payload rejection, bounded diagnostic trace, teardown invalidation, and fresh replacement isolation. The existing Phase 3.2 regression additionally proves the trace remains available after the runaway-cascade guard fires without publishing a false stable boundary. Existing semantic-event ordering/lifecycle, save/stable-boundary, application, authoring, gameplay, and full regression suites remained green; the run ended with `ALL TEST SUITES PASSED`.
 
 **Manual:** none required for this architecture-only step. No player-facing control or feel changes are intended.
 
