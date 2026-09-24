@@ -178,6 +178,8 @@ Examples:
 
 Mission facts/rules may query or react to system-owned state, but should not create generic mirrors of state already authoritatively owned elsewhere unless a mission deliberately needs a separate latched/derived fact with distinct meaning. Before a real `CampaignState` exists, mission facts must not quietly become a second temporary owner for campaign-persistent truth.
 
+Phase 7.2 makes that owner explicit: `MissionDefinition` declares each mission fact by key, supported primitive type, default, and scope. The only pre-campaign scopes are `mission` and `runtime`. Mission scope is detached/saveable current-mission truth; runtime scope is current-world working state that resets from its declaration on replacement/restore and is not serialized. Unknown keys, wrong types, duplicate declarations, and any attempted campaign scope fail closed. Durable fact mutation enters through the existing semantic consequence queue; direct author callbacks do not bypass the controlled mutation boundary.
+
 The canonical semantic simulation boundary is conceptually:
 
 ```text
