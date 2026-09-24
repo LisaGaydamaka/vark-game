@@ -27,6 +27,9 @@ const PossessionLootRegressions = preload(
 const ContainerRegressions = preload(
 	"res://tests/application/container_regressions.gd"
 )
+const SwitchLightRegressions = preload(
+	"res://tests/application/switch_light_regressions.gd"
+)
 const PauseArbitrationRegressions = preload(
 	"res://tests/application/pause_arbitration_regressions.gd"
 )
@@ -127,6 +130,12 @@ func _run_tests() -> void:
 
 	var container_regressions: RefCounted = ContainerRegressions.new()
 	await container_regressions.run(
+		self,
+		Callable(self, "_assert_true")
+	)
+
+	var switch_light_regressions: RefCounted = SwitchLightRegressions.new()
+	await switch_light_regressions.run(
 		self,
 		Callable(self, "_assert_true")
 	)

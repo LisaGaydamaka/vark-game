@@ -1,0 +1,25 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://gameplay/visibility/gameplay_light.gd" id="1_light"]
+[ext_resource type="ArrayMesh" path="res://assets/models/lights/wall_lamp.obj" id="2_fixture"]
+
+[sub_resource type="BoxShape3D" id="InteractionShape"]
+size = Vector3(0.42, 0.42, 0.42)
+
+[node name="GameplayLight" type="OmniLight3D"]
+light_energy = 2.4
+omni_range = 5.0
+shadow_enabled = true
+script = ExtResource("1_light")
+fixture_model = ExtResource("2_fixture")
+fixture_model_path = "res://assets/models/lights/wall_lamp.obj"
+
+[node name="FixtureMesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_fixture")
+
+[node name="InteractionProxy" type="Area3D" parent="." groups=["vark_interaction_proxy"]]
+collision_layer = 0
+collision_mask = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="InteractionProxy"]
+shape = SubResource("InteractionShape")

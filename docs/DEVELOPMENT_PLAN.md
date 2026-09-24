@@ -1504,7 +1504,7 @@ Door snapshots now capture `phase`, `open_fraction`, `motion_blocked`, `locked`,
 
 **Manual:** accepted by the user on current 6.2 implementation/docs lineage after exact-head GitHub Actions run #366 was green. Door Lab preserved ordinary open/close, obstruction/reversal, highlighting and controls; locked and barred openings remained targetable but refused repeated F without opening.
 
-## 6.3 Loot, keys, minimal possession, and run-stat ownership `[~]`
+## 6.3 Loot, keys, minimal possession, and run-stat ownership `[x]`
 
 Collected loot becomes abstract recorded value/count.
 
@@ -1532,9 +1532,9 @@ The focused fixture is **Development Launch → Loot/Key Lab**. It contains the 
 
 **Automated:** accepted through interaction-proxy implementation head `e30fe3d219f83c99d569bd4c2cae4a0a525140a8` by GitHub Actions Test run #384. The authoritative Application suite preserved realistically scaled imported brass-key/gold-cup/silver-candlestick presentation, proved each tiny item can expose a materially larger non-solid interaction-only proxy, and deliberately aimed 11 cm beside the brass key so the center ray missed its real 14 cm physical box but still selected the key through the proxy. The existing generic sensor-Area pass also remained green, proving arbitrary sensors still do not steal selection. Collection, semantic possession, keyed-door unlock, 2 / 100 run stats, tombstones, generation-specific quicksave/quickload, and no consequence replay all remained green. The run ended with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`.
 
-**Manual:** the previously accepted 6.3 semantic interaction/door/loot behavior remains accepted. Because presentation was explicitly reopened, the remaining manual check is only that Loot/Key Lab now shows plausibly scaled imported key/loot objects (not oversized generic blocks) while the already-accepted F collection and door behavior remains intact.
+**Manual:** accepted by the user after the imported-item scale and forgiving interaction-proxy follow-up. The user confirmed the Loot/Key Lab presentation/aiming behavior was good on the run #385 lineage.
 
-## 6.4 Containers `[~]`
+## 6.4 Containers `[x]`
 
 Physical opening/exposed contents where appropriate. Ordinary cabinets, chests, drawers, and furniture-like containers use reusable imported model assets rather than requiring bespoke gameplay code per visual model.
 
@@ -1564,11 +1564,28 @@ Save ownership stays compositional. The container snapshot stores only mechanism
 
 **Automated:** accepted on imported-asset implementation head `abf4d770345dbfb4431987e23b73fd45ed2e9280` by GitHub Actions Test run #382. The authoritative Application suite proved all three container variants use imported body/mechanism asset scenes rather than generated furniture, enforced human-scale visual bounds relative to the 1.49 m player, enforced handheld imported collectible scale, proved closed-drawer occlusion, full-tray movement with a moving contents anchor, rear-lid and side-door hinge rotation from authored pivots/open poses, imported-loot collection, semantic events, and save/restore with child tombstones/no replay. Existing full regression coverage remained green; the run ended with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`.
 
-**Manual:** user/playtester. Development Launch → **Container Lab**. First judge scale against the player: drawer/chest should be ordinary small furniture and the cabinet should be normal furniture height, not door-sized blocks. Open the drawer with F: the complete tray (front, bottom, sides/back) must slide out about a normal drawer distance with its small imported cup/key visibly inside. Open the chest: the lid must rotate around its rear edge. Open the cabinet: the door must rotate around its side edge. Contents must remain inaccessible through closed geometry and become individually highlightable/takeable when exposed. Re-aim at an open container and F should close it. No container/inventory UI should appear.
+**Manual:** accepted by the user after the imported-model container replacement and collectible interaction-proxy follow-up. Scale, drawer/chest/cabinet motion, exposed contents, and normal interaction were confirmed good on the run #385 lineage.
 
-## 6.5 Switches and switchable/extinguishable lights `[ ]`
+## 6.5 Switches and switchable/extinguishable lights `[~]`
 
-Integrate with gameplay light state, sound/events, and saves.
+Integrate with gameplay light state, sound/events, saves, and the mapper-facing TrenchBroom workflow.
+
+The mapper contract is intentionally semantic rather than node-path based:
+
+- `vark_gameplay_light` is a TrenchBroom point entity backed by the real `VarkGameplayLight` scene. It owns `persistent_id`, unique `gameplay_light_id`, shared author-facing `control_id`, initial on/off state, gameplay exposure strength, rendered OmniLight range/energy/color/shadows, imported fixture model path, and optional direct extinguish interaction.
+- `vark_switch` is a TrenchBroom point entity backed by one reusable imported-model switch scene. It owns only `switch_id`, `control_id`, presentation/model paths, lever poses/timing, and use-sound strength. It is not a second persistent truth owner.
+- Any number of lights may share one `control_id`. A switch with the same `control_id` toggles the full group. Mappers do not wire Godot signals, NodePaths, or per-light target slots.
+- The saved gameplay-light objects remain the authoritative on/off state. Each switch derives its lever pose from those lights every runtime frame, so quickload/restart cannot restore a contradictory switch pose.
+- `VarkGameplayLight.set_enabled_state()` updates both rendered-light visibility and semantic gameplay exposure in one operation and emits detached `light.state_changed` facts. `vark_switch` uses that same operation and emits `switch.used`; direct extinguish uses the same operation with source `direct`.
+- A directly extinguishable light enables the existing dedicated non-solid interaction-proxy layer around its fixture. Ordinary non-interactable gameplay lights do not participate in center-view interaction.
+
+The focused **Development Launch → Switch/Light Lab** contains two persistent room lights sharing `control_id = lab.room`, one imported wall switch with the same control ID, and one separately persistent directly extinguishable lamp. The real gameplay-exposure/light-gem path makes the stealth consequence visible.
+
+**Done when:** the exported Vark TrenchBroom FGD exposes `vark_gameplay_light` and `vark_switch`; a real FuncGodot build of mapper-style source creates two lights and one switch with the authored IDs/control group/model properties and no Godot-side wiring; fresh F on the lab switch turns both room lights off together, changes actual gameplay exposure, moves the lever to the derived off pose, emits semantic state/use events, and does not create separate switch save state; fresh F on the extinguishable fixture turns off that same persistent gameplay-light truth; quicksave captures all three light states; deliberate post-save re-enable can diverge; quickload reconstructs all three lights off, derives the fresh switch pose from restored lights, and replays no switch/light consequences; existing exposure, interaction, persistence, authoring, and full regression suites stay green; and the user confirms the mapper/player-facing behavior.
+
+**Automated:** pending exact-head post-push validation.
+
+**Manual:** user/playtester. Development Launch → **Switch/Light Lab**. Stand facing the wall switch: it should highlight normally. Press F once; both room lights must visibly turn off together and the light gem/exposure must fall, while the imported lever moves to its off pose. Press F again to restore both. Walk to the separate right-hand lamp; aim at its fixture and press F to extinguish it directly. It must stop contributing visible/gameplay light through the same state, not leave a visually dark but gameplay-bright mismatch. Movement/look and ordinary interaction must remain normal.
 
 ## 6.6 Physical prop completion `[ ]`
 

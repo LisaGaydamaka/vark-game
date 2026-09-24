@@ -1,0 +1,264 @@
+extends RefCounted
+
+
+const ApplicationScene = preload("res://application/Application.tscn")
+const GameplayLight = preload("res://gameplay/visibility/gameplay_light.gd")
+const LightSwitch = preload("res://gameplay/visibility/light_switch.gd")
+const LAB_PATH: String = "res://scenes/SwitchLightLab.tscn"
+const TEST_SAVE_DIRECTORY: String = "user://vark_tests/phase65"
+
+
+func run(tree: SceneTree, assert_true: Callable) -> void:
+	_release_interact()
+	_cleanup_test_storage()
+	var application: Node = ApplicationScene.instantiate()
+	var coordinator: Node = application.get_node("SaveCoordinator")
+	coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
+	var labels: PackedStringArray = application.get("development_launch_labels")
+	var paths: PackedStringArray = application.get("development_launch_resource_paths")
+	assert_true.call(
+		labels.has("Switch/Light Lab") and paths.has(LAB_PATH),
+		"Application Development Launch exposes the 6.5 Switch/Light Lab"
+	)
+
+	application.set("development_launch_labels", PackedStringArray(["Switch/Light Lab"]))
+	application.set("development_launch_resource_paths", PackedStringArray([LAB_PATH]))
+	tree.get_root().add_child(application)
+	await tree.process_frame
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	await _settle(tree, 4)
+
+	var world := application.get("current_world") as Node3D
+	var player := application.get("current_player") as CharacterBody3D
+	var session := application.get("current_session") as Node
+	var exposure := world.get_node_or_null("GameplayExposure") as VarkGameplayExposure if world != null else null
+	var switch := world.get_node_or_null("RoomSwitch") as VarkLightSwitch if world != null else null
+	var light_a := world.get_node_or_null("RoomLightA") as VarkGameplayLight if world != null else null
+	var light_b := world.get_node_or_null("RoomLightB") as VarkGameplayLight if world != null else null
+	var extinguishable := world.get_node_or_null("ExtinguishableLamp") as VarkGameplayLight if world != null else null
+	assert_true.call(
+		launched and world != null and player != null and session != null
+		and exposure != null and switch != null
+		and light_a != null and light_b != null and extinguishable != null
+		and light_a.get_script() == GameplayLight
+		and switch.get_script() == LightSwitch,
+		"6.5 lab launches production player, switch, gameplay lights, exposure owner, and persistent world session"
+	)
+	if (
+		not launched or world == null or player == null or session == null
+		or exposure == null or switch == null or light_a == null
+		or light_b == null or extinguishable == null
+	):
+		_cleanup(application, tree)
+		return
+
+	assert_true.call(
+		light_a.control_id == &"lab.room"
+		and light_b.control_id == &"lab.room"
+		and switch.control_id == &"lab.room"
+		and light_a.is_enabled_state()
+		and light_b.is_enabled_state()
+		and bool((switch.get_debug_summary() as Dictionary).get("group_on", false)),
+		"Two saved gameplay lights and one unsaved presentation switch share one mapper-authored control_id"
+	)
+
+	var light_events: Array[Dictionary] = []
+	var switch_events: Array[Dictionary] = []
+	var light_handler: Callable = func(event: Dictionary) -> bool:
+		light_events.append((event.get("payload", {}) as Dictionary).duplicate(true))
+		return true
+	var switch_handler: Callable = func(event: Dictionary) -> bool:
+		switch_events.append((event.get("payload", {}) as Dictionary).duplicate(true))
+		return true
+	session.call(
+		"register_semantic_event_handler",
+		GameplayLight.STATE_CHANGED_EVENT_NAME,
+		light_handler
+	)
+	session.call(
+		"register_semantic_event_handler",
+		LightSwitch.USED_EVENT_NAME,
+		switch_handler
+	)
+
+	var baseline: float = float(exposure.sample_now().get("exposure", 0.0))
+	assert_true.call(
+		baseline > 0.10,
+		"Room gameplay lights contribute real stealth exposure before the switch is used"
+	)
+
+	player.global_position = Vector3(0, 0, 3.0)
+	player.rotation.y = 0.0
+	player.velocity = Vector3.ZERO
+	(player.get_node("Head") as Node3D).rotation.x = 0.0
+	await _settle(tree, 3)
+	var switch_target: Dictionary = player.call("get_interaction_semantic_state")
+	assert_true.call(
+		switch_target.get("target_name", "") == "RoomSwitch"
+		and switch.is_interaction_highlighted(),
+		"Mapper-style wall switch uses the ordinary center-view/F interaction path"
+	)
+	_press_interact()
+	await _settle(tree, 2)
+	_release_interact()
+	await _settle(tree, 16)
+
+	var switched_exposure: float = float(exposure.sample_now().get("exposure", 1.0))
+	var switch_debug: Dictionary = switch.get_debug_summary()
+	assert_true.call(
+		not light_a.is_enabled_state()
+		and not light_b.is_enabled_state()
+		and not bool(switch_debug.get("group_on", true))
+		and float(switch_debug.get("display_fraction", 1.0)) < 0.1
+		and switched_exposure < baseline * 0.35
+		and switch_events.size() == 1
+		and int(switch_events[0].get("changed_light_count", 0)) == 2
+		and light_events.size() == 2,
+		"One F toggles every light sharing control_id, moves derived switch presentation, and changes actual gameplay exposure"
+	)
+
+	player.global_position = Vector3(3.2, 0, 2.45)
+	player.rotation.y = 0.0
+	player.velocity = Vector3.ZERO
+	(player.get_node("Head") as Node3D).rotation.x = 0.0
+	await _settle(tree, 3)
+	var lamp_target: Dictionary = player.call("get_interaction_semantic_state")
+	assert_true.call(
+		lamp_target.get("target_name", "") == "ExtinguishableLamp"
+		and extinguishable.is_interaction_highlighted(),
+		"Extinguishable mapper light exposes the same center-view interaction contract through its fixture proxy"
+	)
+	_press_interact()
+	await _settle(tree, 2)
+	_release_interact()
+	await _settle(tree, 3)
+	assert_true.call(
+		not extinguishable.is_enabled_state()
+		and light_events.size() == 3
+		and light_events[-1].get("light_id", &"") == &"lab.extinguishable"
+		and light_events[-1].get("source_id", &"") == &"direct",
+		"Direct extinguish turns off the same persistent gameplay-light truth instead of a separate visual-only state"
+	)
+
+	var generation: int = int(application.call("request_quicksave"))
+	var snapshot: Dictionary = await _wait_for_quicksave(
+		coordinator,
+		tree,
+		generation,
+		120
+	)
+	var saved_entities: Dictionary = (
+		snapshot.get("session", {}).get("world_state", {}).get(
+			"persistent_entities",
+			{}
+		)
+	)
+	assert_true.call(
+		generation > 0
+		and not snapshot.is_empty()
+		and not bool((saved_entities.get(
+			"switch_light_lab.room_a",
+			{}
+		) as Dictionary).get("gameplay_enabled", true))
+		and not bool((saved_entities.get(
+			"switch_light_lab.room_b",
+			{}
+		) as Dictionary).get("gameplay_enabled", true))
+		and not bool((saved_entities.get(
+			"switch_light_lab.extinguishable",
+			{}
+		) as Dictionary).get("gameplay_enabled", true))
+		and not saved_entities.has("lab.room.switch"),
+		"Quicksave persists light truth only; derived switch presentation has no duplicate saved state"
+	)
+
+	light_a.set_enabled_state(true, false)
+	light_b.set_enabled_state(true, false)
+	extinguishable.set_enabled_state(true, false)
+	await _settle(tree, 4)
+	assert_true.call(
+		light_a.is_enabled_state()
+		and light_b.is_enabled_state()
+		and extinguishable.is_enabled_state(),
+		"Live light truth can deliberately diverge after the committed 6.5 snapshot"
+	)
+
+	var quickloaded: bool = bool(application.call("quickload_latest"))
+	await tree.process_frame
+	await _settle(tree, 8)
+	var restored_world := application.get("current_world") as Node3D
+	var restored_session := application.get("current_session") as Node
+	var restored_switch := restored_world.get_node_or_null("RoomSwitch") as VarkLightSwitch if restored_world != null else null
+	var restored_a := restored_world.get_node_or_null("RoomLightA") as VarkGameplayLight if restored_world != null else null
+	var restored_b := restored_world.get_node_or_null("RoomLightB") as VarkGameplayLight if restored_world != null else null
+	var restored_ext := restored_world.get_node_or_null("ExtinguishableLamp") as VarkGameplayLight if restored_world != null else null
+	assert_true.call(
+		quickloaded and restored_switch != null
+		and restored_a != null and restored_b != null and restored_ext != null
+		and not restored_a.is_enabled_state()
+		and not restored_b.is_enabled_state()
+		and not restored_ext.is_enabled_state()
+		and not bool((restored_switch.get_debug_summary() as Dictionary).get("group_on", true))
+		and float((restored_switch.get_debug_summary() as Dictionary).get("display_fraction", 1.0)) < 0.1
+		and int(restored_session.call("get_pending_semantic_event_count")) == 0,
+		"Quickload restores saved light state and a fresh switch derives the correct pose without replaying switch/light consequences"
+	)
+
+	_cleanup(application, tree)
+	_cleanup_test_storage()
+
+
+func _press_interact() -> void:
+	Input.action_press("interact")
+
+
+func _release_interact() -> void:
+	Input.action_release("interact")
+
+
+func _settle(tree: SceneTree, frames: int = 1) -> void:
+	for _index: int in frames:
+		await tree.physics_frame
+		await tree.process_frame
+
+
+func _wait_for_quicksave(
+	coordinator: Node,
+	tree: SceneTree,
+	generation: int,
+	max_frames: int
+) -> Dictionary:
+	for _index: int in max_frames:
+		var status: Dictionary = coordinator.call("get_request_status", generation)
+		if status.get("status", &"") == &"committed":
+			return coordinator.call("get_request_snapshot", generation)
+		if (
+			status.get("status", &"") == &"failed"
+			or status.get("status", &"") == &"cancelled"
+			or status.get("status", &"") == &"superseded"
+		):
+			return {}
+		await tree.physics_frame
+		await tree.process_frame
+	return {}
+
+
+func _cleanup(application: Node, tree: SceneTree) -> void:
+	_release_interact()
+	application.call("exit_current_world")
+	application.queue_free()
+	await tree.process_frame
+
+
+func _cleanup_test_storage() -> void:
+	var final_path: String = TEST_SAVE_DIRECTORY + "/quicksave.varksave"
+	for path: String in [
+		final_path,
+		final_path + ".new",
+		final_path + ".bak",
+	]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var absolute_dir: String = ProjectSettings.globalize_path(TEST_SAVE_DIRECTORY)
+	if DirAccess.dir_exists_absolute(absolute_dir):
+		DirAccess.remove_absolute(absolute_dir)

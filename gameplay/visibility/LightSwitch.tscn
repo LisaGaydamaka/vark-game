@@ -1,0 +1,30 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://gameplay/visibility/light_switch.gd" id="1_switch"]
+[ext_resource type="ArrayMesh" path="res://assets/models/switches/wall_switch_plate.obj" id="2_plate"]
+[ext_resource type="ArrayMesh" path="res://assets/models/switches/wall_switch_lever.obj" id="3_lever"]
+
+[sub_resource type="BoxShape3D" id="SwitchShape"]
+size = Vector3(0.26, 0.34, 0.12)
+
+[node name="LightSwitch" type="StaticBody3D"]
+collision_layer = 1
+collision_mask = 1
+script = ExtResource("1_switch")
+base_model = ExtResource("2_plate")
+base_model_path = "res://assets/models/switches/wall_switch_plate.obj"
+lever_model = ExtResource("3_lever")
+lever_model_path = "res://assets/models/switches/wall_switch_lever.obj"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0, 0.02)
+shape = SubResource("SwitchShape")
+
+[node name="BaseMesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_plate")
+
+[node name="LeverPivot" type="Node3D" parent="."]
+position = Vector3(0, 0, 0.055)
+
+[node name="LeverMesh" type="MeshInstance3D" parent="LeverPivot"]
+mesh = ExtResource("3_lever")

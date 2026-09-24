@@ -1007,3 +1007,7 @@ Vark is ready to hand to mission creators when a developer who understands Godot
 - active-gameplay saving/loading
 - persistent campaign facts
 - a later mission changed by a previous player choice
+
+# Switchable gameplay-light authoring — LOCKED
+
+Mapper-facing ordinary switched lighting uses semantic `control_id` groups: TrenchBroom `vark_gameplay_light` entities own persistent rendered/gameplay light truth, while `vark_switch` entities reference the same control ID and derive their presentation from the lights. Mappers do not wire Godot signals or NodePaths. Direct extinguish changes the same light state used by exposure and save/load.

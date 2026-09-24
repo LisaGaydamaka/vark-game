@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="PackedScene" path="res://gameplay/visibility/LightSwitch.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_switch"
+description = "Reusable imported-model light switch. Give it the same control_id as one or more vark_gameplay_light entities. Lever pose derives from light truth and is not saved separately."
+class_properties = Dictionary[String, Variant]({
+"switch_id": "switch",
+"control_id": "",
+"base_model_path": "res://assets/models/switches/wall_switch_plate.obj",
+"lever_model_path": "res://assets/models/switches/wall_switch_lever.obj",
+"off_rotation_degrees": -25.0,
+"on_rotation_degrees": 25.0,
+"transition_seconds": 0.18,
+"gameplay_sound_strength": 0.25,
+"angle": 180.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"switch_id": "Unique semantic ID used in switch.used events and light state-change source attribution.",
+"control_id": "Required author-facing control group. All vark_gameplay_light entities with this value toggle together.",
+"base_model_path": "Imported Mesh path for switch plate/body presentation.",
+"lever_model_path": "Imported Mesh path for moving switch lever presentation.",
+"off_rotation_degrees": "Authored lever X rotation when the controlled group is off.",
+"on_rotation_degrees": "Authored lever X rotation when the controlled group is on.",
+"transition_seconds": "Presentation interpolation time when the controlled group changes.",
+"gameplay_sound_strength": "Semantic switch-use sound strength.",
+"angle": "Initial TrenchBroom yaw."
+})
+auto_apply_to_matching_node_properties = true
+scene_file = ExtResource("2_scene")
+node_groups = Array[String](["vark_interactable", "vark_light_switch"])
