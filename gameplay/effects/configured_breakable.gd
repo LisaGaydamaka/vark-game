@@ -8,7 +8,7 @@ const BROKEN_EVENT_NAME: StringName = &"breakable.broken"
 
 @export var persistent_id: String = ""
 @export var content_id: String = "breakable"
-@export var accepted_effect_id: StringName = EFFECT_IMPACT
+@export var accepted_effect_id: String = "impact"
 @export var break_threshold: float = 1.5
 @export var visual_model_path: String = ""
 @export var collision_size: Vector3 = Vector3(0.6, 0.6, 0.6)
@@ -77,7 +77,7 @@ func apply_gameplay_effect(
 ) -> bool:
 	if (
 		_broken
-		or effect_id != accepted_effect_id
+		or str(effect_id) != accepted_effect_id
 		or not is_finite(strength)
 		or strength < maxf(break_threshold, 0.0)
 	):
