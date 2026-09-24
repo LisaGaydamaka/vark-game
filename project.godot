@@ -96,6 +96,7 @@ release_prop={
 3d_physics/layer_3="ordinary_prop"
 3d_physics/layer_4="ordinary_prop_player_overlap"
 3d_physics/layer_5="interaction_proxy"
+3d_physics/layer_6="gameplay_light_occluder"
 
 [physics]
 
