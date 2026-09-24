@@ -44,6 +44,10 @@ omni_range = 0.85
 shadow_enabled = false
 light_cull_mask = 524288
 
+[node name="ExposureOccluder" type="StaticBody3D" parent="."]
+collision_layer = 32
+collision_mask = 0
+
 [node name="SolidBody" type="StaticBody3D" parent="."]
 collision_layer = 1
 collision_mask = 0
