@@ -1775,7 +1775,7 @@ Long-running or delayed mission behavior remains explicit facts/objective stages
 
 **Manual:** none required for this architecture-only ordering/persistence step. Phase 8.3 will provide the first player-facing authored-rule proof.
 
-## 7.7 Mission logic debugger `[~]`
+## 7.7 Mission logic debugger `[x]`
 
 `WorldSession` now owns one read-only `VarkMissionLogicDebugger` per world lifetime. A developer/mission author can resolve it from a node in the current world with `VarkMissionLogicDebugger.resolve(node)` and inspect one detached snapshot instead of reaching through private owners.
 
@@ -1791,7 +1791,7 @@ Diagnostic history is bounded world-lifetime state only. It is not saved/restore
 
 **Done when:** a READY/PLAYING world exposes one resolvable read-only debugger; fact and rule inspection is detached and complete enough to understand current inputs/policy; deliberate payload and fact misses report condition/reason/expected/actual; successful and already-fired one-shot outcomes are distinguishable; rule evaluations correlate to the existing event sequence/consequence-pass trace so FIFO cascades can be reconstructed; histories are bounded; unknown rule inspection fails closed; no debugger state enters saves; teardown invalidates retained references and replacement starts fresh; and existing event/fact/rule/script/save/gameplay regressions remain green.
 
-**Automated:** pending exact-head post-push validation. The focused Application regression must prove detached fact/rule inspection, no mutation surface, payload/fact miss reasons, matched/one-shot-skipped outcomes, event-sequence and stable-pass correlation, direct rule inspection, bounded histories, absence from save truth, teardown invalidation, and replacement isolation. The authoritative all-tests barrier remains the compatibility gate.
+**Automated:** accepted on mission-logic-debugger implementation head `e9ba8325eb3493402bdd55695cc67333d5c3de9b` by GitHub Actions Test run #493. The focused Application regression proves detached fact/rule inspection, no mutation surface, closed failure for unknown rule IDs, payload/fact mismatch reasons with trigger-time expected/actual values, successful and already-fired one-shot outcomes, event-sequence + consequence-pass correlation with the existing FIFO event trace, direct per-rule inspection, bounded rule/event histories, absence from semantic save truth, teardown invalidation, and fresh replacement isolation. The full barrier ended with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`; successful-run script-error signatures were identical to the preceding green run #492 and remain existing deliberate failed-restore fixture noise rather than a 7.7 regression.
 
 **Manual:** none required for this architecture-only diagnostic surface. Phase 8.6 will use it against real authored mission problems and may expose presentation/workflow improvements without changing this semantic diagnostic contract.
 
