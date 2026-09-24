@@ -652,6 +652,21 @@ As mission facts/objectives/possession/statistics/vitality/campaign state appear
 
 Where a derived/latched mission fact intentionally duplicates information, test its distinct semantic meaning instead of treating it as the primary system state.
 
+Phase 7.2 typed mission facts add one explicit world-scoped `VarkMissionFacts` owner configured from `MissionDefinition.mission_fact_declarations`. The Application suite must prove:
+
+- declarations contain exactly key/type/default/scope and reject duplicate/blank keys, unsupported types/scopes, and default/type mismatches;
+- supported value types are bool/int/float/string only;
+- supported scopes before Phase 12 are mission and runtime only; campaign scope is rejected;
+- unknown or wrong-type writes fail before queueing;
+- valid writes enter the existing semantic event queue and do not mutate durable fact truth until the controlled consequence pass;
+- real changes emit one detached `mission.fact_changed` event in request order; assigning the current value emits no false change;
+- mission-scope values are present in detached stable-boundary save state, while runtime-scope values are absent;
+- fresh restore reapplies mission-scope truth and leaves runtime scope at declaration defaults;
+- malformed saved fact state with unknown/missing/wrong-type keys fails closed;
+- teardown destroys the owner with the old world lifetime.
+
+Mission facts must remain mission-defined semantic variables/latched meanings, not generic copies of door, actor, possession, objective, run-stat, or other subsystem-owned truth. No campaign-persistent fact storage exists before Phase 12.
+
 ## Acoustic fixture
 
 Phase 3.6 currently prototypes an authored acoustic space/portal graph rather than radius-only or single-ray hearing.
