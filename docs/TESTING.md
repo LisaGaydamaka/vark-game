@@ -709,6 +709,18 @@ Phase 7.6 makes rule ordering/repeat state explicit without introducing a second
 
 Do not add rule priority numbers, delayed actions, timers, callbacks, suspended `await` state, or serialized continuations in 7.6. Multi-step behavior remains explicit semantic fact/objective stages driven by later events.
 
+Phase 7.7 adds one read-only world-lifetime mission-logic debugger over the existing facts, rules, and semantic event trace. The Application suite must prove:
+
+- world nodes can resolve the current debugger, while the debugger exposes detached inspection only and no event/fact/rule mutation commands;
+- current fact rows include declaration type/scope/default plus current value, and rule rows retain authored declaration order/source/repeat/conditions/actions/one-shot-fired state;
+- bounded rule-evaluation diagnostics distinguish payload missing/mismatch, fact mismatch/unavailable, successful match/action queueing, already-fired one-shot suppression, and action-queue errors without changing gameplay behavior;
+- evaluation entries carry the triggering event sequence and consequence-pass serial so they can be correlated with the existing bounded event trace to reconstruct one FIFO cascade;
+- direct rule inspection includes the declaration, current fact view, recent evaluations for that rule, and recent occurrences of its source event; unknown IDs fail closed;
+- rule and event diagnostic histories remain bounded and reset with world lifetime;
+- debugger/evaluation history is diagnostic only, adds no save-state section, and teardown invalidates retained references before replacement.
+
+Phase 8.6 owns any workflow/presentation refinements exposed by debugging the real authored mission. Do not turn 7.7 into an editor plugin, alternate logger database, gameplay-history save system, or mutation console.
+
 ## Acoustic fixture
 
 Phase 3.6 currently prototypes an authored acoustic space/portal graph rather than radius-only or single-ray hearing.

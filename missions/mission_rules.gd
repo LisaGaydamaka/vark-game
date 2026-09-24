@@ -10,12 +10,16 @@ const CONDITION_FACT_EQUALS: StringName = &"fact_equals"
 const ACTION_SET_FACT: StringName = &"set_fact"
 const ACTION_EMIT_EVENT: StringName = &"emit_event"
 
+const DEBUG_EVALUATION_LIMIT: int = 48
+
 
 var _session: Node = null
 var _event_bus: RefCounted = null
 var _mission_facts: RefCounted = null
 var _rules_by_event: Dictionary = {}
+var _declaration_order: Array[Dictionary] = []
 var _subscriptions: Array[Dictionary] = []
+var _debug_evaluations: Array[Dictionary] = []
 var _rule_ids: Dictionary[String, bool] = {}
 var _one_shot_rule_ids: Dictionary[String, bool] = {}
 var _fired_one_shot_rule_ids: Dictionary[String, bool] = {}
@@ -118,6 +122,8 @@ func configure(
 	_event_bus = event_bus
 	_mission_facts = mission_facts
 	_rules_by_event.clear()
+	_declaration_order.clear()
+	_debug_evaluations.clear()
 	_rule_ids.clear()
 	_one_shot_rule_ids.clear()
 	_fired_one_shot_rule_ids.clear()
@@ -127,11 +133,14 @@ func configure(
 	_last_rule_id = &""
 	_last_event_name = &""
 
-	for declaration: Dictionary in declarations:
+	for declaration_index: int in declarations.size():
+		var declaration: Dictionary = declarations[declaration_index]
 		var rule: Dictionary = declaration.duplicate(true)
 		var rule_id: String = str(rule.get("rule_id", "")).strip_edges()
 		var repeats: bool = bool(rule.get("repeat", true))
 		rule["repeat"] = repeats
+		rule["_declaration_index"] = declaration_index
+		_declaration_order.append(rule)
 		_rule_ids[rule_id] = true
 		if not repeats:
 			_one_shot_rule_ids[rule_id] = true
@@ -173,6 +182,8 @@ func shutdown() -> void:
 				_event_bus.call("unsubscribe", event_name, handler)
 	_subscriptions.clear()
 	_rules_by_event.clear()
+	_declaration_order.clear()
+	_debug_evaluations.clear()
 	_rule_ids.clear()
 	_one_shot_rule_ids.clear()
 	_fired_one_shot_rule_ids.clear()
@@ -206,6 +217,26 @@ func get_debug_summary() -> Dictionary:
 		"fired_one_shot_rule_ids": _get_fired_one_shot_rule_ids(),
 		"last_error": _last_error,
 	}
+
+
+func get_debug_rules() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for rule: Dictionary in _declaration_order:
+		var rule_id: String = str(rule.get("rule_id", "")).strip_edges()
+		result.append({
+			"declaration_index": int(rule.get("_declaration_index", -1)),
+			"rule_id": StringName(rule_id),
+			"event_name": StringName(str(rule.get("event_name", ""))),
+			"repeat": bool(rule.get("repeat", true)),
+			"one_shot_fired": _fired_one_shot_rule_ids.has(rule_id),
+			"conditions": (rule.get("conditions", []) as Array).duplicate(true),
+			"actions": (rule.get("actions", []) as Array).duplicate(true),
+		})
+	return result
+
+
+func get_recent_evaluations() -> Array[Dictionary]:
+	return _debug_evaluations.duplicate(true)
 
 
 func capture_semantic_state() -> Dictionary:
@@ -285,27 +316,69 @@ func _on_event(event: Dictionary, subscribed_event_name: StringName) -> bool:
 		var rule_id: String = str(rule.get("rule_id", "")).strip_edges()
 		var repeats: bool = bool(rule.get("repeat", true))
 		if not repeats and _fired_one_shot_rule_ids.has(rule_id):
+			_record_debug_evaluation(
+				event,
+				rule,
+				&"skipped",
+				{
+					"reason": &"one_shot_already_fired",
+					"condition_index": -1,
+				},
+				0
+			)
 			continue
+
 		# Every same-source rule sees trigger-time fact state. Earlier rules may
 		# enqueue fact changes, but those changes remain later FIFO events and do
 		# not alter conditions for later declarations in this handler.
-		if not _conditions_match(rule, event):
+		var condition_result: Dictionary = _evaluate_conditions(rule, event)
+		if not bool(condition_result.get("matched", false)):
+			_record_debug_evaluation(
+				event,
+				rule,
+				&"condition_failed",
+				condition_result,
+				0
+			)
 			continue
-		if not _execute_actions(rule):
+
+		var action_result: Dictionary = _execute_actions(rule)
+		if not bool(action_result.get("ok", false)):
+			_record_debug_evaluation(
+				event,
+				rule,
+				&"error",
+				{
+					"reason": &"action_queue_failed",
+					"error": _last_error,
+					"condition_index": -1,
+				},
+				int(action_result.get("actions_queued", 0))
+			)
 			return false
 		_match_count += 1
 		_last_rule_id = StringName(rule_id)
 		_last_event_name = event_name
 		if not repeats:
 			_fired_one_shot_rule_ids[rule_id] = true
+		_record_debug_evaluation(
+			event,
+			rule,
+			&"matched",
+			{
+				"reason": &"conditions_matched",
+				"condition_index": -1,
+			},
+			int(action_result.get("actions_queued", 0))
+		)
 	return true
 
 
-func _conditions_match(rule: Dictionary, event: Dictionary) -> bool:
+func _evaluate_conditions(rule: Dictionary, event: Dictionary) -> Dictionary:
 	var conditions: Array = rule.get("conditions", [])
 	var payload: Dictionary = event.get("payload", {})
-	for condition_value: Variant in conditions:
-		var condition: Dictionary = condition_value
+	for condition_index: int in conditions.size():
+		var condition: Dictionary = conditions[condition_index]
 		var kind := StringName(str(condition.get("kind", "")))
 		var key := StringName(str(condition.get("key", "")).strip_edges())
 		var expected: Variant = condition.get("value")
@@ -315,29 +388,80 @@ func _conditions_match(rule: Dictionary, event: Dictionary) -> bool:
 					not payload.has(String(key))
 					and not payload.has(key)
 				):
-					return false
+					return {
+						"matched": false,
+						"reason": &"event_payload_missing",
+						"condition_index": condition_index,
+						"condition_kind": kind,
+						"key": key,
+						"expected": expected,
+						"actual": null,
+					}
 				var actual: Variant = (
 					payload[key]
 					if payload.has(key)
 					else payload[String(key)]
 				)
 				if actual != expected:
-					return false
+					return {
+						"matched": false,
+						"reason": &"event_payload_mismatch",
+						"condition_index": condition_index,
+						"condition_kind": kind,
+						"key": key,
+						"expected": expected,
+						"actual": actual,
+					}
 			CONDITION_FACT_EQUALS:
 				if (
 					_mission_facts == null
 					or not bool(_mission_facts.call("has_fact", key))
-					or _mission_facts.call("get_value", key, null) != expected
 				):
-					return false
+					return {
+						"matched": false,
+						"reason": &"fact_unavailable",
+						"condition_index": condition_index,
+						"condition_kind": kind,
+						"key": key,
+						"expected": expected,
+						"actual": null,
+					}
+				var actual: Variant = _mission_facts.call(
+					"get_value",
+					key,
+					null
+				)
+				if actual != expected:
+					return {
+						"matched": false,
+						"reason": &"fact_mismatch",
+						"condition_index": condition_index,
+						"condition_kind": kind,
+						"key": key,
+						"expected": expected,
+						"actual": actual,
+					}
 			_:
 				_last_error = "Unsupported mission-rule condition '%s'." % kind
-				return false
-	return true
+				return {
+					"matched": false,
+					"reason": &"unsupported_condition",
+					"condition_index": condition_index,
+					"condition_kind": kind,
+					"key": key,
+					"expected": expected,
+					"actual": null,
+				}
+	return {
+		"matched": true,
+		"reason": &"conditions_matched",
+		"condition_index": -1,
+	}
 
 
-func _execute_actions(rule: Dictionary) -> bool:
+func _execute_actions(rule: Dictionary) -> Dictionary:
 	var actions: Array = rule.get("actions", [])
+	var actions_queued: int = 0
 	for action_value: Variant in actions:
 		var action: Dictionary = action_value
 		var kind := StringName(str(action.get("kind", "")))
@@ -355,7 +479,10 @@ func _execute_actions(rule: Dictionary) -> bool:
 						"Mission rule '%s' could not queue set_fact '%s'."
 						% [str(rule.get("rule_id", "")), key]
 					)
-					return false
+					return {
+						"ok": false,
+						"actions_queued": actions_queued,
+					}
 			ACTION_EMIT_EVENT:
 				var event_name := StringName(
 					str(action.get("event_name", "")).strip_edges()
@@ -372,12 +499,59 @@ func _execute_actions(rule: Dictionary) -> bool:
 						"Mission rule '%s' could not emit '%s'."
 						% [str(rule.get("rule_id", "")), event_name]
 					)
-					return false
+					return {
+						"ok": false,
+						"actions_queued": actions_queued,
+					}
 			_:
 				_last_error = "Unsupported mission-rule action '%s'." % kind
-				return false
+				return {
+					"ok": false,
+					"actions_queued": actions_queued,
+				}
+		actions_queued += 1
 		_action_count += 1
-	return true
+	return {
+		"ok": true,
+		"actions_queued": actions_queued,
+	}
+
+
+func _record_debug_evaluation(
+	event: Dictionary,
+	rule: Dictionary,
+	status: StringName,
+	detail: Dictionary,
+	actions_queued: int
+) -> void:
+	var consequence_pass_serial: int = 0
+	if (
+		_session != null
+		and is_instance_valid(_session)
+		and _session.has_method("get_stable_gameplay_boundary_serial")
+	):
+		consequence_pass_serial = (
+			int(_session.call("get_stable_gameplay_boundary_serial")) + 1
+		)
+	var entry: Dictionary = {
+		"event_sequence": int(event.get("sequence", 0)),
+		"event_name": event.get("name", &""),
+		"rule_id": StringName(str(rule.get("rule_id", ""))),
+		"declaration_index": int(rule.get("_declaration_index", -1)),
+		"status": status,
+		"reason": detail.get("reason", &""),
+		"condition_index": int(detail.get("condition_index", -1)),
+		"condition_kind": detail.get("condition_kind", &""),
+		"key": detail.get("key", &""),
+		"expected": detail.get("expected", null),
+		"actual": detail.get("actual", null),
+		"actions_queued": maxi(actions_queued, 0),
+		"consequence_pass_serial": consequence_pass_serial,
+		"error": str(detail.get("error", "")),
+	}
+	_debug_evaluations.append(entry.duplicate(true))
+	while _debug_evaluations.size() > DEBUG_EVALUATION_LIMIT:
+		_debug_evaluations.remove_at(0)
 
 
 static func _validate_condition(

@@ -14,6 +14,7 @@ const MissionEventBus = preload("res://missions/mission_event_bus.gd")
 const MissionFacts = preload("res://missions/mission_facts.gd")
 const MissionRules = preload("res://missions/mission_rules.gd")
 const MissionScript = preload("res://missions/mission_script.gd")
+const MissionLogicDebugger = preload("res://missions/mission_logic_debugger.gd")
 const SEMANTIC_EVENT_CASCADE_LIMIT: int = 256
 const SEMANTIC_EVENT_TRACE_LIMIT: int = 24
 const STABLE_BOUNDARY_PHYSICS_PRIORITY: int = 1000
@@ -49,6 +50,7 @@ var mission_event_bus: RefCounted = null
 var mission_facts: RefCounted = null
 var mission_rules: RefCounted = null
 var mission_script: RefCounted = null
+var mission_logic_debugger: RefCounted = null
 var state: int = State.EMPTY
 var gameplay_time_seconds: float = 0.0
 
@@ -791,6 +793,10 @@ func get_mission_script() -> RefCounted:
 	return mission_script
 
 
+func get_mission_logic_debugger() -> RefCounted:
+	return mission_logic_debugger
+
+
 func get_mission_fact(
 	key: StringName,
 	fallback: Variant = null
@@ -1062,6 +1068,18 @@ func build(
 		push_error("WorldSession could not bind the provisional mission script API.")
 		teardown()
 		return false
+	mission_logic_debugger = MissionLogicDebugger.new()
+	if not bool(mission_logic_debugger.call(
+		"bind_to_session",
+		self,
+		session_id,
+		mission_event_bus,
+		mission_facts,
+		mission_rules
+	)):
+		push_error("WorldSession could not bind the mission logic debugger.")
+		teardown()
+		return false
 	process_mode = Node.PROCESS_MODE_DISABLED
 
 	world = world_scene.instantiate()
@@ -1305,6 +1323,9 @@ func teardown() -> void:
 
 	state = State.TEARING_DOWN
 	process_mode = Node.PROCESS_MODE_DISABLED
+	if mission_logic_debugger != null:
+		mission_logic_debugger.call("invalidate")
+		mission_logic_debugger = null
 	if mission_rules != null:
 		mission_rules.call("shutdown")
 		mission_rules = null

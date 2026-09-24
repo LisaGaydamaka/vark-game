@@ -1775,9 +1775,25 @@ Long-running or delayed mission behavior remains explicit facts/objective stages
 
 **Manual:** none required for this architecture-only ordering/persistence step. Phase 8.3 will provide the first player-facing authored-rule proof.
 
-## 7.7 Mission logic debugger `[ ]`
+## 7.7 Mission logic debugger `[~]`
 
-Provide rule/event/fact inspection sufficient to answer why a rule did/didn't fire and diagnose event cascades.
+`WorldSession` now owns one read-only `VarkMissionLogicDebugger` per world lifetime. A developer/mission author can resolve it from a node in the current world with `VarkMissionLogicDebugger.resolve(node)` and inspect one detached snapshot instead of reaching through private owners.
+
+The debugger combines the existing semantic sources of truth rather than creating another gameplay system:
+
+- current declared mission facts are shown as key/type/scope/default/current value;
+- rule declarations are shown in authored declaration order with source event, repeat policy, conditions/actions, and current one-shot-fired state;
+- `VarkMissionRules` keeps a bounded recent evaluation trace keyed by source event sequence + rule ID. Each evaluation says matched, skipped, condition-failed, or error; condition failures record the exact condition index/kind/key plus expected and trigger-time actual value/reason;
+- the existing bounded mission-event trace remains the cascade authority, including sequence, payload, handler count, and consequence-pass serial;
+- `inspect_rule(rule_id)` gathers the selected declaration, current fact view, that rule's recent evaluations, and recent occurrences of its source event so “the event never happened,” “payload/fact condition differed,” “one-shot already fired,” and “it matched and queued N actions” are distinguishable.
+
+Diagnostic history is bounded world-lifetime state only. It is not saved/restored, cannot emit events or mutate facts/rules, and retained debugger references invalidate at teardown. Replacement worlds start with fresh histories over their own semantic truth.
+
+**Done when:** a READY/PLAYING world exposes one resolvable read-only debugger; fact and rule inspection is detached and complete enough to understand current inputs/policy; deliberate payload and fact misses report condition/reason/expected/actual; successful and already-fired one-shot outcomes are distinguishable; rule evaluations correlate to the existing event sequence/consequence-pass trace so FIFO cascades can be reconstructed; histories are bounded; unknown rule inspection fails closed; no debugger state enters saves; teardown invalidates retained references and replacement starts fresh; and existing event/fact/rule/script/save/gameplay regressions remain green.
+
+**Automated:** pending exact-head post-push validation. The focused Application regression must prove detached fact/rule inspection, no mutation surface, payload/fact miss reasons, matched/one-shot-skipped outcomes, event-sequence and stable-pass correlation, direct rule inspection, bounded histories, absence from save truth, teardown invalidation, and replacement isolation. The authoritative all-tests barrier remains the compatibility gate.
+
+**Manual:** none required for this architecture-only diagnostic surface. Phase 8.6 will use it against real authored mission problems and may expose presentation/workflow improvements without changing this semantic diagnostic contract.
 
 **Phase gate:** ordinary mission reactions work without core edits, procedural behavior can live in GDScript without private reach-through or bypassing controlled semantic mutation, long-running behavior is saveable semantic state rather than runtime continuation state, mission facts have not become premature campaign storage, and the API is useful but explicitly provisional.
 
