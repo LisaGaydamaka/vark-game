@@ -175,6 +175,49 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"Removing the prop obstruction lets the same ordinary door finish closing"
 	)
 
+	var door_box := door_collision.shape as BoxShape3D
+	var closed_leaf_transform: Transform3D = door_collision.global_transform
+	var door_half: Vector3 = door_box.size * 0.5
+	var door_vertical_extent: float = (
+		absf(closed_leaf_transform.basis.x.y) * door_half.x
+		+ absf(closed_leaf_transform.basis.y.y) * door_half.y
+		+ absf(closed_leaf_transform.basis.z.y) * door_half.z
+	)
+	var door_top_y: float = closed_leaf_transform.origin.y + door_vertical_extent
+	door_blocker.global_position = Vector3(
+		closed_leaf_transform.origin.x,
+		door_top_y + blocker_box.size.y * 0.5,
+		closed_leaf_transform.origin.z
+	)
+	door_blocker.linear_velocity = Vector3.ZERO
+	await _settle_physics(tree, 3)
+	assert_true.call(
+		door_blocker.call("get_semantic_phase") == OrdinaryProp.PHASE_SETTLED
+		and bool(door_blocker.call("is_supported_by", obstruction_door)),
+		"A settled crate can use the top edge of the ordinary door as real support"
+	)
+	var top_supported_start_y: float = door_blocker.global_position.y
+	assert_true.call(
+		bool(obstruction_door.call("request_open", player)),
+		"Door accepts an open request while a crate rests on its top edge"
+	)
+	await _settle_physics(tree, 3)
+	assert_true.call(
+		float(obstruction_door.call("get_open_fraction")) > 0.0
+		and not bool(obstruction_door.call("is_motion_blocked"))
+		and door_blocker.call("get_motion_kind") == OrdinaryProp.MOTION_UNSUPPORTED
+		and not door_blocker.freeze,
+		"A top-supported crate yields into ordinary unsupported physics instead of pinning the door"
+	)
+	await _settle_physics(tree, 50)
+	assert_true.call(
+		obstruction_door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPEN
+		and not bool(obstruction_door.call("is_motion_blocked"))
+		and door_blocker.global_position.y < top_supported_start_y - 0.05
+		and not bool(door_blocker.call("is_supported_by", obstruction_door)),
+		"Door completes opening while the released top crate falls away under ordinary prop physics"
+	)
+
 	Input.action_press("interact")
 	await _settle_physics(tree)
 	Input.action_release("interact")
