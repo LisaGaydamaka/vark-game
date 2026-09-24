@@ -280,6 +280,22 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and str(session.call("get_last_semantic_event_error")).contains("cascade exceeded"),
 		"Development cascade guard reports and stops a self-sustaining semantic event loop instead of hanging the gameplay tick"
 	)
+	var runaway_trace: Array[Dictionary] = session.call(
+		"get_recent_semantic_event_trace"
+	)
+	var runaway_last: Dictionary = (
+		runaway_trace.back()
+		if not runaway_trace.is_empty()
+		else {}
+	)
+	assert_true.call(
+		runaway_trace.size() == WorldSession.SEMANTIC_EVENT_TRACE_LIMIT
+		and runaway_last.get("name", &"") == &"runaway.loop"
+		and int(runaway_last.get("handler_count", -1)) == 1
+		and int(runaway_last.get("consequence_pass_serial", 0))
+			== runaway_serial_before + 1,
+		"Guarded semantic cascade keeps the bounded recent trace available for author-facing diagnosis even though no stable boundary is published"
+	)
 	assert_true.call(
 		bool(session.call(
 			"unregister_semantic_event_handler",
