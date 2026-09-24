@@ -132,13 +132,22 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 	await _settle_physics(tree, 45)
 	var door_collision := obstruction_door.get_node("CollisionShape3D") as CollisionShape3D
-	var sweep_angle: float = deg_to_rad(float(obstruction_door.get("open_angle_degrees")) * 0.5)
-	var sweep_local: Vector3 = Basis(Vector3.UP, sweep_angle) * Vector3(
-		door_collision.position.x,
-		0.0,
-		door_collision.position.z
+	# The door root is already rotated to its current OPEN fraction. Rebuild the
+	# candidate root exactly as the production sweep does, relative to that
+	# current fraction, then place the blocker at the mid-sweep leaf center.
+	var current_fraction: float = float(obstruction_door.call("get_open_fraction"))
+	var target_fraction: float = 0.5
+	var delta_angle: float = deg_to_rad(
+		float(obstruction_door.get("open_angle_degrees"))
+		* (target_fraction - current_fraction)
 	)
-	var blocker_target: Vector3 = obstruction_door.to_global(sweep_local)
+	var candidate_root: Transform3D = obstruction_door.global_transform.rotated_local(
+		Vector3.UP,
+		delta_angle
+	)
+	var blocker_target: Vector3 = (
+		candidate_root * door_collision.transform
+	).origin
 	blocker_target.y = blocker_box.size.y * 0.5
 	door_blocker.global_position = blocker_target
 	door_blocker.linear_velocity = Vector3.ZERO
