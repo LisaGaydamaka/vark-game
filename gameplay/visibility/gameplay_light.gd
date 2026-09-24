@@ -4,14 +4,14 @@ extends OmniLight3D
 
 const STATE_CHANGED_EVENT_NAME: StringName = &"light.state_changed"
 const EXTINGUISH_SOUND_KIND: StringName = &"light.extinguish"
-const DIRECT_NONE: StringName = &"none"
-const DIRECT_EXTINGUISH: StringName = &"extinguish"
+const DIRECT_NONE: String = "none"
+const DIRECT_EXTINGUISH: String = "extinguish"
 const INTERACTION_PROXY_LAYER: int = 1 << 4
 
 
 @export var persistent_id: String = ""
-@export var gameplay_light_id: StringName = &"light"
-@export var control_id: StringName = &""
+@export var gameplay_light_id: String = "light"
+@export var control_id: String = ""
 @export_range(0.0, 4.0, 0.01) var gameplay_strength: float = 1.0
 @export var gameplay_enabled: bool = true
 @export var starts_on: bool = true
@@ -19,7 +19,7 @@ const INTERACTION_PROXY_LAYER: int = 1 << 4
 @export var fixture_model: Mesh
 @export var fixture_model_path: String = ""
 @export var fixture_color: Color = Color(0.32, 0.27, 0.18, 1.0)
-@export var direct_interaction: StringName = DIRECT_NONE
+@export var direct_interaction: String = DIRECT_NONE
 @export var interaction_size: Vector3 = Vector3(0.42, 0.42, 0.42)
 @export var interaction_offset: Vector3 = Vector3.ZERO
 @export var gameplay_sound_strength: float = 0.30
@@ -68,7 +68,7 @@ func is_enabled_state() -> bool:
 func set_enabled_state(
 	enabled: bool,
 	emit_event: bool = true,
-	source_id: StringName = &""
+	source_id: String = ""
 ) -> bool:
 	var changed: bool = gameplay_enabled != enabled or visible != enabled
 	gameplay_enabled = enabled

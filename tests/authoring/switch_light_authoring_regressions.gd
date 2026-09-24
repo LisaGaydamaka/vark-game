@@ -88,12 +88,12 @@ func run(root: Node, assert_true: Callable) -> void:
 	var valid: bool = lights.size() == 2 and switches.size() == 1
 	if valid:
 		valid = (
-			lights[0].gameplay_light_id == &"authoring.room.a"
-			and lights[1].gameplay_light_id == &"authoring.room.b"
-			and lights[0].control_id == &"authoring.room"
-			and lights[1].control_id == &"authoring.room"
-			and switches[0].control_id == &"authoring.room"
-			and switches[0].switch_id == &"authoring.room.switch"
+			lights[0].gameplay_light_id == "authoring.room.a"
+			and lights[1].gameplay_light_id == "authoring.room.b"
+			and lights[0].control_id == "authoring.room"
+			and lights[1].control_id == "authoring.room"
+			and switches[0].control_id == "authoring.room"
+			and switches[0].switch_id == "authoring.room.switch"
 			and lights[0].persistent_id == "pid-light-a"
 			and lights[1].persistent_id == "pid-light-b"
 			and not lights[1].starts_on

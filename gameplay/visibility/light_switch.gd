@@ -6,8 +6,8 @@ const USE_SOUND_KIND: StringName = &"switch.use"
 const USED_EVENT_NAME: StringName = &"switch.used"
 
 
-@export var switch_id: StringName = &"switch"
-@export var control_id: StringName = &""
+@export var switch_id: String = "switch"
+@export var control_id: String = ""
 @export var base_model: Mesh
 @export var base_model_path: String = ""
 @export var lever_model: Mesh

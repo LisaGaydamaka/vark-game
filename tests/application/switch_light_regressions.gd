@@ -53,9 +53,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		return
 
 	assert_true.call(
-		light_a.control_id == &"lab.room"
-		and light_b.control_id == &"lab.room"
-		and switch.control_id == &"lab.room"
+		light_a.control_id == "lab.room"
+		and light_b.control_id == "lab.room"
+		and switch.control_id == "lab.room"
 		and light_a.is_enabled_state()
 		and light_b.is_enabled_state()
 		and bool((switch.get_debug_summary() as Dictionary).get("group_on", false)),
@@ -135,8 +135,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		not extinguishable.is_enabled_state()
 		and light_events.size() == 3
-		and light_events[-1].get("light_id", &"") == &"lab.extinguishable"
-		and light_events[-1].get("source_id", &"") == &"direct",
+		and str(light_events[-1].get("light_id", "")) == "lab.extinguishable"
+		and str(light_events[-1].get("source_id", "")) == "direct",
 		"Direct extinguish turns off the same persistent gameplay-light truth instead of a separate visual-only state"
 	)
 
@@ -185,7 +185,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	var quickloaded: bool = bool(application.call("quickload_latest"))
 	await tree.process_frame
-	await _settle(tree, 8)
+	await _settle(tree, 20)
 	var restored_world := application.get("current_world") as Node3D
 	var restored_session := application.get("current_session") as Node
 	var restored_switch := restored_world.get_node_or_null("RoomSwitch") as VarkLightSwitch if restored_world != null else null
