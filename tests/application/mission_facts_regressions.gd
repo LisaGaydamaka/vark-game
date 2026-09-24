@@ -306,25 +306,25 @@ func _make_definition() -> Resource:
 	var declarations: Array[Dictionary] = [
 		{
 			"key": &"route_discovered",
-			"type": MissionFacts.TYPE_BOOL,
+			"type": MissionFacts.VALUE_TYPE_BOOL,
 			"default": false,
 			"scope": MissionFacts.SCOPE_MISSION,
 		},
 		{
 			"key": &"ritual_stage",
-			"type": MissionFacts.TYPE_INT,
+			"type": MissionFacts.VALUE_TYPE_INT,
 			"default": 0,
 			"scope": MissionFacts.SCOPE_MISSION,
 		},
 		{
 			"key": &"alarm_label",
-			"type": MissionFacts.TYPE_STRING,
+			"type": MissionFacts.VALUE_TYPE_STRING,
 			"default": "quiet",
 			"scope": MissionFacts.SCOPE_RUNTIME,
 		},
 		{
 			"key": &"search_scale",
-			"type": MissionFacts.TYPE_FLOAT,
+			"type": MissionFacts.VALUE_TYPE_FLOAT,
 			"default": 1.0,
 			"scope": MissionFacts.SCOPE_RUNTIME,
 		},
