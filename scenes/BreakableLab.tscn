@@ -1,0 +1,71 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="1_player"]
+[ext_resource type="PackedScene" path="res://gameplay/props/OrdinaryProp.tscn" id="2_prop"]
+[ext_resource type="PackedScene" path="res://gameplay/effects/ConfiguredBreakable.tscn" id="3_breakable"]
+[ext_resource type="PackedScene" path="res://gameplay/doors/OrdinaryDoor.tscn" id="4_door"]
+
+[sub_resource type="BoxShape3D" id="FloorShape"]
+size = Vector3(8, 0.2, 8)
+
+[sub_resource type="BoxMesh" id="FloorMesh"]
+size = Vector3(8, 0.2, 8)
+
+[sub_resource type="BoxShape3D" id="PedestalShape"]
+size = Vector3(0.9, 0.8, 0.9)
+
+[sub_resource type="BoxMesh" id="PedestalMesh"]
+size = Vector3(0.9, 0.8, 0.9)
+
+[sub_resource type="StandardMaterial3D" id="PedestalMaterial"]
+albedo_color = Color(0.28, 0.31, 0.34, 1)
+
+[node name="BreakableLab" type="Node3D"]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -30, 0)
+shadow_enabled = true
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+position = Vector3(0, 0, 3.1)
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("FloorShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("FloorMesh")
+
+[node name="PickupPedestal" type="StaticBody3D" parent="."]
+position = Vector3(0, 0.4, 1.2)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="PickupPedestal"]
+shape = SubResource("PedestalShape")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="PickupPedestal"]
+mesh = SubResource("PedestalMesh")
+material_override = SubResource("PedestalMaterial")
+
+[node name="ProjectileProp" parent="." instance=ExtResource("2_prop")]
+position = Vector3(0, 1.1, 1.2)
+prop_id = &"prop.breakable_lab.projectile"
+
+[node name="BreakablePanel" parent="." instance=ExtResource("3_breakable")]
+position = Vector3(0, 0.8, -0.25)
+persistent_id = "breakable-lab-panel"
+content_id = "breakable.lab.panel"
+break_threshold = 1.5
+collision_size = Vector3(1.2, 1.6, 0.2)
+base_color = Color(0.58, 0.24, 0.16, 1)
+
+[node name="OrdinaryDoorControl" parent="." instance=ExtResource("4_door")]
+position = Vector3(2.4, 0, -0.25)
+door_id = "breakable.lab.ordinary_door"
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(0, 2.7, 0.5)
+text = "6.7 BREAKABLE LAB\nF pick up the loose crate, then F throw it at the red panel\nOnly the configured panel breaks; the ordinary door is not damageable"
+billboard = 1
+font_size = 24
