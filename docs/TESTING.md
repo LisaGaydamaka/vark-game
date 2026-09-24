@@ -1237,7 +1237,7 @@ Automated contract:
 - **Mapper authoring:** Vark FGD exports `vark_prop`. The Authoring suite builds two real mapper-style props through FuncGodot and verifies stable IDs, variant labels, external model paths, collision dimensions, and tuning without variant-specific gameplay scenes.
 - **Support/climbing:** settled edge placements/stacks remain exact; a player can use the settled stack as real support; removing the lower support activates the upper prop through the existing unsupported rigid-body path.
 - **Carry/motion/noise:** existing Props coverage retains bottom-center carried-Junk presentation, central hand/world-interaction suppression, view-derived F throw and R gentle release, top-up rigid translation/rest, prop-to-prop/player disturbance, and semantic impact-sound strength ordering.
-- **Obstruction:** Prop Lab uses the real ordinary door. A settled ordinary prop in the leaf sweep latches the same physical obstruction path used by other bodies; removing it allows the same close request to finish. No prop-specific door behavior exists.
+- **Obstruction/support motion:** Prop Lab uses the real ordinary door. A settled ordinary prop in the leaf's side sweep latches the same physical obstruction path used by other bodies; removing it allows the same request to finish. A prop genuinely resting on the leaf's top edge is different: door motion releases that support into the ordinary unsupported rigid-body path, so the leaf can move and the crate falls instead of pinning the door. No alternate prop or door subsystem exists.
 - **Persistence:** existing Phase 4 semantic/transient restore regressions remain authoritative for carried Junk and moving/thrown props; authored model/collision configuration is reconstructed from mission content rather than duplicated into semantic snapshots.
 
 Manual acceptance — user/playtester, Development Launch → **Prop Lab**:
@@ -1247,7 +1247,8 @@ Manual acceptance — user/playtester, Development Launch → **Prop Lab**:
 - [ ] Removing a lower support makes the upper prop fall without exploding/scattering/tumbling.
 - [ ] Held ordinary props use the bottom-center carried-Junk presentation, cannot be freely rotated, suppress ordinary world/hand interaction centrally, and leave normal locomotion/traversal available.
 - [ ] F throw follows view and is materially stronger/louder than R gentle release; both remain top-up, move physically, and stop directly in stable rest without a visible orientation-correction phase.
-- [ ] Open the lab door, put a crate in its swing, and close it: the door stops on the prop. Remove the crate and the same door completes closing.
+- [ ] Open the lab door, put a crate in its side swing, and close it: the door stops on the prop. Remove the crate and the same door completes closing.
+- [ ] Put/balance a crate on the door's top edge and operate the door: the door moves instead of remaining pinned; the crate releases from door support and falls/moves through ordinary prop physics.
 - [ ] Representative carried and moving prop quicksave/quickload behavior remains coherent.
 
 ## Save/load
