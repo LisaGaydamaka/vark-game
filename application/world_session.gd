@@ -402,8 +402,24 @@ func apply_restore_world_state(world_state: Dictionary) -> bool:
 			restored_state.get("mission_facts", {}) as Dictionary
 		).duplicate(true)
 	if restored_state != comparable_expected:
+		var differing_sections: PackedStringArray = []
+		var section_keys: Array = comparable_expected.keys()
+		for key_value: Variant in restored_state.keys():
+			if not section_keys.has(key_value):
+				section_keys.append(key_value)
+		section_keys.sort_custom(
+			func(a: Variant, b: Variant) -> bool: return str(a) < str(b)
+		)
+		for key_value: Variant in section_keys:
+			if (
+				not comparable_expected.has(key_value)
+				or not restored_state.has(key_value)
+				or comparable_expected[key_value] != restored_state[key_value]
+			):
+				differing_sections.append(str(key_value))
 		return _fail_restore(
-			"Restored non-player semantic world state did not validate against the captured snapshot."
+			"Restored non-player semantic world state did not validate against the captured snapshot. Differing sections: %s."
+			% ", ".join(differing_sections)
 		)
 
 	_restore_state_applied = true

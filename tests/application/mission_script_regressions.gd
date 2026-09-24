@@ -310,7 +310,7 @@ func _make_definition() -> Resource:
 		"mission_content_revision",
 		PLAYGROUND_DEFINITION.get("mission_content_revision")
 	)
-	definition.set("mission_fact_declarations", [
+	var fact_declarations: Array[Dictionary] = [
 		{
 			"key": &"script_flag",
 			"type": MissionFacts.VALUE_TYPE_BOOL,
@@ -323,7 +323,8 @@ func _make_definition() -> Resource:
 			"default": 0,
 			"scope": MissionFacts.SCOPE_RUNTIME,
 		},
-	])
+	]
+	definition.set("mission_fact_declarations", fact_declarations)
 	return definition
 
 
