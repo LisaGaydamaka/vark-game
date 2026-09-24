@@ -11,6 +11,7 @@ const RESTRICTION_CHANGED_EVENT_NAME: StringName = &"door.restriction_changed"
 const ACCESS_DENIED_EVENT_NAME: StringName = &"door.access_denied"
 const USE_SOUND_KIND: StringName = &"door.use"
 const FRAME_COLLIDER_GROUP: StringName = &"vark_door_frame"
+const TOP_SUPPORTED_BODY_EPSILON: float = 0.025
 
 
 @export var persistent_id: String = ""
@@ -796,10 +797,14 @@ func _get_sweep_limited_fraction(next_fraction: float) -> float:
 	var probe_step: float = maxf(absf(obstacle_probe_step_degrees), 0.25)
 	var sample_count: int = maxi(1, ceili(sweep_degrees / probe_step))
 	var last_clear_fraction: float = _open_fraction
+	var yielding_top_supporters: Dictionary = {}
 	for sample_index: int in range(1, sample_count + 1):
 		var sample_weight: float = float(sample_index) / float(sample_count)
 		var sample_fraction: float = lerpf(_open_fraction, next_fraction, sample_weight)
-		var blocker: CollisionObject3D = _get_obstacle_at_fraction(sample_fraction)
+		var blocker: CollisionObject3D = _get_obstacle_at_fraction(
+			sample_fraction,
+			yielding_top_supporters
+		)
 		if blocker != null:
 			_motion_blocker = blocker
 			return last_clear_fraction
@@ -807,7 +812,10 @@ func _get_sweep_limited_fraction(next_fraction: float) -> float:
 	return next_fraction
 
 
-func _get_obstacle_at_fraction(sample_fraction: float) -> CollisionObject3D:
+func _get_obstacle_at_fraction(
+	sample_fraction: float,
+	yielding_top_supporters: Dictionary = {}
+) -> CollisionObject3D:
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = door_collision.shape
 	query.transform = _collision_transform_at_fraction(sample_fraction)
@@ -826,8 +834,51 @@ func _get_obstacle_at_fraction(sample_fraction: float) -> CollisionObject3D:
 		# that are not explicit frame members still stop the sweep normally.
 		if collider.is_in_group(FRAME_COLLIDER_GROUP):
 			continue
+		var collider_id: int = collider.get_instance_id()
+		if yielding_top_supporters.has(collider_id):
+			continue
+		if _try_yield_top_supported_body(collider, sample_fraction):
+			yielding_top_supporters[collider_id] = true
+			continue
 		return collider
 	return null
+
+
+func _try_yield_top_supported_body(
+	collider: CollisionObject3D,
+	sample_fraction: float
+) -> bool:
+	if (
+		not collider.has_method("get_collision_world_bottom_y")
+		or not collider.has_method("release_from_moving_support")
+	):
+		return false
+	var blocker_bottom_y: float = float(collider.call("get_collision_world_bottom_y"))
+	var leaf_top_y: float = _get_collision_top_y_at_fraction(sample_fraction)
+	if blocker_bottom_y < leaf_top_y - TOP_SUPPORTED_BODY_EPSILON:
+		return false
+	if (
+		collider.has_method("is_released_from_moving_support")
+		and bool(collider.call("is_released_from_moving_support", self))
+	):
+		return true
+	return bool(collider.call("release_from_moving_support", self))
+
+
+func _get_collision_top_y_at_fraction(sample_fraction: float) -> float:
+	var box := door_collision.shape as BoxShape3D
+	if box == null:
+		return _collision_transform_at_fraction(sample_fraction).origin.y
+	var collision_transform: Transform3D = _collision_transform_at_fraction(
+		sample_fraction
+	)
+	var half: Vector3 = box.size * 0.5
+	var vertical_extent: float = (
+		absf(collision_transform.basis.x.y) * half.x
+		+ absf(collision_transform.basis.y.y) * half.y
+		+ absf(collision_transform.basis.z.y) * half.z
+	)
+	return collision_transform.origin.y + vertical_extent
 
 
 func _collision_transform_at_fraction(sample_fraction: float) -> Transform3D:
