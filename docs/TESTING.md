@@ -1139,6 +1139,7 @@ The completed Windows run satisfied these cases. The first round trip exposed on
 The continuous Authoring suite now protects the ordinary model-backed mapper route rather than only isolated entity imports:
 
 - `vark_opening.opening_variant` exports TrenchBroom choices for the currently proven Ordinary/Narrow variants; `vark_prop.prop_variant` exports Standard/Tall crate choices;
+- `vark_prop.prop_id` is authored as an ordinary FGD string default so FuncGodot emits the mapper-visible `prop_id(string)` field; runtime `VarkOrdinaryProp.prop_id` remains `StringName`, and the real FuncGodot build regression proves the authored string still reaches that semantic runtime property correctly;
 - `visual_model_path` remains a blank-by-default free string override, preserving the existing compatible/custom external-model seam rather than restricting mappers to a fixed catalog;
 - with that override blank, the Narrow opening resolves the proven narrow leaf model on the same `OrdinaryDoor.tscn` owner; the Tall crate resolves the proven tall model plus compatible `0.5 0.7 0.5` collision on the same `OrdinaryProp.tscn` owner when collision dimensions remain at the shared default;
 - a disposable real-map fixture contains only semantic IDs + the selected variant keys (no generated scene references, model-path key, or collision-size key), then builds through `authoring/vark_map_settings.tres`;
@@ -1154,7 +1155,7 @@ Focused manual acceptance requires a **Windows mapper/user with TrenchBroom 2026
 godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- sync-config
 ```
 
-Expected: the command reports `vark_opening`, `vark_prop`, `opening_variant(choices)`, and `prop_variant(choices)`, then instructs you to reopen TrenchBroom.
+Expected: the command reports `vark_opening`, `vark_prop`, `opening_variant(choices)`, `prop_variant(choices)`, and `prop_id(string)`, then instructs you to reopen TrenchBroom.
 3. Reset only the ignored proof workspace:
 
 ```powershell
@@ -1163,7 +1164,7 @@ godot --headless --path . --script res://tools/authoring/persistent_identity_pro
 
 4. Reopen TrenchBroom with the **Vark** game configuration and explicitly open `tests/authoring/workspace/mission.map`.
 5. Place one `vark_opening`. Set `door_id = phase8.workflow.door`. Confirm `opening_variant` is a choice/dropdown field, choose **Narrow opening**, and leave `visual_model_path` blank. Do not type a `persistent_id`.
-6. Place one `vark_prop`. Set `prop_id = phase8.workflow.prop`. Confirm `prop_variant` is a choice/dropdown field, choose **Tall crate**, leave `visual_model_path` blank, and leave `collision_size` at its shared default. Do not type a `persistent_id`.
+6. Place one `vark_prop`. First confirm `prop_id` is present as a normal property in the entity property list, then set `prop_id = phase8.workflow.prop`. Confirm `prop_variant` is a choice/dropdown field, choose **Tall crate**, leave `visual_model_path` blank, and leave `collision_size` at its shared default. Do not type a `persistent_id`. If `prop_id` is still absent, stop and report it rather than adding a raw/custom key.
 7. Save the map, then run:
 
 ```powershell

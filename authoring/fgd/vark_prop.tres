@@ -9,7 +9,7 @@ classname = "vark_prop"
 description = "Reusable ordinary physical Junk prop. Model/variant/collision dimensions are authored configuration; carry, throw/release, support, impact/noise, obstruction, and save behavior stay on the shared OrdinaryProp gameplay owner."
 class_properties = Dictionary[String, Variant]({
 "persistent_id": "",
-"prop_id": &"prop",
+"prop_id": "prop",
 "prop_variant": {
 "Standard crate": "ordinary_crate",
 "Tall crate": "tall_crate"

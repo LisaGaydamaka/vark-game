@@ -20,6 +20,9 @@ const VARK_MODEL_VARIANT_CHOICE_MARKERS: Array[String] = [
 	"opening_variant(choices)",
 	"prop_variant(choices)",
 ]
+const VARK_REQUIRED_MAPPER_PROPERTY_MARKERS: Array[String] = [
+	"prop_id(string)",
+]
 
 
 func _initialize() -> void:
@@ -159,6 +162,13 @@ func _sync_trenchbroom_config() -> bool:
 				% marker
 			)
 			return false
+	for marker: String in VARK_REQUIRED_MAPPER_PROPERTY_MARKERS:
+		if not fgd_text.contains(marker):
+			push_error(
+				"Exported Vark FGD is missing required mapper property: %s"
+				% marker
+			)
+			return false
 
 	var game_config_text: String = FileAccess.get_file_as_string(game_config_path)
 	if not _validate_trenchbroom_material_config(config, game_config_text):
@@ -174,6 +184,9 @@ func _sync_trenchbroom_config() -> bool:
 	for classname: String in VARK_MODEL_BACKED_CLASSNAMES:
 		print("  ", classname)
 	for marker: String in VARK_MODEL_VARIANT_CHOICE_MARKERS:
+		print("  ", marker)
+	print("Required mapper-visible semantic properties are present:")
+	for marker: String in VARK_REQUIRED_MAPPER_PROPERTY_MARKERS:
 		print("  ", marker)
 	print("The exported Vark material config resolves PNGs under textures/ with no palette dependency.")
 	print("Close/reopen TrenchBroom before continuing so it reloads the updated game configuration.")

@@ -71,6 +71,8 @@ func run(root: Node, assert_true: Callable) -> void:
 			== OrdinaryDoor.OPENING_VARIANT_ORDINARY
 		and typeof(opening_properties.get("visual_model_path")) == TYPE_STRING
 		and str(opening_properties.get("visual_model_path", "sentinel")).is_empty()
+		and typeof(prop_properties.get("prop_id")) == TYPE_STRING
+		and str(prop_properties.get("prop_id", "")) == "prop"
 		and prop_choices.has("Standard crate")
 		and prop_choices.get("Standard crate")
 			== OrdinaryProp.PROP_VARIANT_ORDINARY_CRATE
@@ -84,7 +86,8 @@ func run(root: Node, assert_true: Callable) -> void:
 		and typeof(prop_properties.get("visual_model_path")) == TYPE_STRING
 		and str(prop_properties.get("visual_model_path", "sentinel")).is_empty()
 		and exported_fgd.contains("opening_variant(choices)")
-		and exported_fgd.contains("prop_variant(choices)"),
+		and exported_fgd.contains("prop_variant(choices)")
+		and exported_fgd.contains("prop_id(string)"),
 		"8.1 Vark FGD gives mappers explicit proven opening/prop variant choices while retaining blank optional model-path overrides on the shared gameplay scenes"
 	)
 
