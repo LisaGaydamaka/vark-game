@@ -10,7 +10,7 @@ const OrdinaryProp = preload("res://gameplay/props/ordinary_prop.gd")
 const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
 const WORKSPACE_PATH: String = "res://tests/authoring/workspace/mission.map"
 const PROOF_DOOR_ID: String = "phase8.workflow.door"
-const PROOF_PROP_ID: StringName = &"phase8.workflow.prop"
+const PROOF_PROP_ID: String = "phase8.workflow.prop"
 
 
 func _initialize() -> void:
@@ -47,7 +47,7 @@ func _run() -> void:
 	print(
 		"  prop:    id=%s persistent_id=%s variant=%s model=%s collision=%s"
 		% [
-			str(prop.get("prop_id", &"")),
+			str(prop.get("prop_id", "")),
 			str(prop.get("persistent_id", "")),
 			str(prop.get("prop_variant", "")),
 			str(prop.get("visual_model_path", "")),

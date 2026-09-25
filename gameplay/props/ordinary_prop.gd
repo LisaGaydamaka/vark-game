@@ -36,7 +36,7 @@ const COLLISION_LAYER_PROP_IGNORING_PLAYER: int = 1 << 3
 
 
 @export var persistent_id: String = ""
-@export var prop_id: StringName = &"prop"
+@export var prop_id: String = "prop"
 @export var prop_variant: String = "ordinary_crate"
 @export var visual_model: Mesh
 @export var visual_model_path: String = ""

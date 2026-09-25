@@ -1139,7 +1139,7 @@ The completed Windows run satisfied these cases. The first round trip exposed on
 The continuous Authoring suite now protects the ordinary model-backed mapper route rather than only isolated entity imports:
 
 - `vark_opening.opening_variant` exports TrenchBroom choices for the currently proven Ordinary/Narrow variants; `vark_prop.prop_variant` exports Standard/Tall crate choices;
-- `vark_prop.prop_id` is authored as an ordinary FGD string default so FuncGodot emits the mapper-visible `prop_id(string)` field; runtime `VarkOrdinaryProp.prop_id` remains `StringName`, and the real FuncGodot build regression proves the authored string still reaches that semantic runtime property correctly;
+- `vark_prop.prop_id` is an ordinary `String` on both the project-owned FGD resource and `VarkOrdinaryProp`, so FuncGodot emits mapper-visible `prop_id(string)` and can auto-apply it without a type mismatch; the prop's semantic content-ID API remains string-valued, so persistence/gameplay identity semantics are unchanged;
 - `visual_model_path` remains a blank-by-default free string override, preserving the existing compatible/custom external-model seam rather than restricting mappers to a fixed catalog;
 - with that override blank, the Narrow opening resolves the proven narrow leaf model on the same `OrdinaryDoor.tscn` owner; the Tall crate resolves the proven tall model plus compatible `0.5 0.7 0.5` collision on the same `OrdinaryProp.tscn` owner when collision dimensions remain at the shared default;
 - a disposable real-map fixture contains only semantic IDs + the selected variant keys (no generated scene references, model-path key, or collision-size key), then builds through `authoring/vark_map_settings.tres`;

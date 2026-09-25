@@ -76,14 +76,14 @@ func run(_root: Node, assert_true: Callable) -> void:
 	if valid:
 		valid = (
 			props[0].persistent_id == "pid-prop-standard"
-			and props[0].prop_id == &"authoring.prop.standard"
+			and props[0].prop_id == "authoring.prop.standard"
 			and props[0].prop_variant == "ordinary_crate"
 			and props[0].visual_model_path
 				== "res://assets/models/props/ordinary_crate.obj"
 			and props[0].collision_size.is_equal_approx(Vector3(0.6, 0.6, 0.6))
 			and is_equal_approx(props[0].throw_speed, 5.5)
 			and props[1].persistent_id == "pid-prop-tall"
-			and props[1].prop_id == &"authoring.prop.tall"
+			and props[1].prop_id == "authoring.prop.tall"
 			and props[1].prop_variant == "tall_crate"
 			and props[1].visual_model_path
 				== "res://assets/models/props/ordinary_crate_tall.obj"
