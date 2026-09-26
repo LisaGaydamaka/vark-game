@@ -307,7 +307,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		if guard != null else null
 	)
 	if awareness != null:
+		awareness.call("reset_reaction")
 		awareness.set_physics_process(false)
+	if guard != null:
+		guard.call("clear_awareness_navigation_target")
 	var patrol_lookup: Dictionary = {}
 	for patrol: Node in patrol_points:
 		patrol.set("wait_seconds", 0.05)
@@ -327,11 +330,20 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		guard.get_debug_summary()
 		if guard != null else {}
 	)
+	if not live_patrol_leg and guard != null:
+		print(
+			"8.4 Ledge City patrol diagnostics: ",
+			{
+				"guard_position": guard.global_position,
+				"summary": guard_summary,
+				"patrol_points": patrol_lookup.keys(),
+			}
+		)
 	assert_true.call(
 		began_playing
 		and live_patrol_leg
 		and str(guard_summary.get("last_error", "")).is_empty(),
-		"8.4 Ledge City live guard can traverse the authored boulevard patrol instead of failing later with a no-route runtime error"
+		"8.4 Ledge City isolated live guard can traverse the authored boulevard patrol instead of failing later with a no-route runtime error"
 	)
 
 	var summary: Dictionary = session.call("get_mission_run_summary")

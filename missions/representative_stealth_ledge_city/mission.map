@@ -2703,7 +2703,7 @@
 "prop_variant" "ordinary_crate"
 "collision_size" "0.6 0.6 0.6"
 "angle" "180"
-"origin" "45 150 10"
+"origin" "60 150 10"
 }
 {
 "classname" "vark_prop"
