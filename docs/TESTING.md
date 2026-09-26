@@ -1241,7 +1241,7 @@ The workspace itself is ignored and does not need to be committed or manually no
 
 Accepted Windows result: after the baseline snapshot, the mapper moved one ordinary brush plus the accepted opening/prop and saved. Persistent-ID repair reported no change and preserved both IDs with valid identity status. The Phase 8.2 verifier passed, confirming changed world geometry and proof transforms, fresh save ownership of both objects, restoration of the pre-edit semantic save into the edited world, and byte-for-byte unchanged mapper source.
 
-## Phase 8.3 authored rule proof — automated implemented, player acceptance pending
+## Phase 8.3 authored rule proof — automated accepted, player acceptance pending
 
 The representative `missions/rule_proof/mission.tres` is the first player-facing content proof of the Phase 7 rule/fact foundation:
 
