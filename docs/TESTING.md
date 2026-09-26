@@ -1241,6 +1241,21 @@ The workspace itself is ignored and does not need to be committed or manually no
 
 Accepted Windows result: after the baseline snapshot, the mapper moved one ordinary brush plus the accepted opening/prop and saved. Persistent-ID repair reported no change and preserved both IDs with valid identity status. The Phase 8.2 verifier passed, confirming changed world geometry and proof transforms, fresh save ownership of both objects, restoration of the pre-edit semantic save into the edited world, and byte-for-byte unchanged mapper source.
 
+## Phase 8.4 representative stealth mission — automated coverage
+
+The application suite builds `res://missions/representative_stealth/mission.tres` through the real `MissionDefinition` / `WorldSession` path and therefore imports its authoritative TrenchBroom `.map` with the production Vark FGD. The regression requires the package to reach `PLAYING`, waits for the real navigation bake, and count-checks the representative authored roles so removed or duplicated starts, exits, openings, guard/patrol points, container, pickups, props, lights, switch, or quiet/normal/loud surface volumes fail deterministically.
+
+The same proof verifies that the authored `window` presentation remains the shared ordinary-opening gameplay/save/navigation/acoustic spine, that the east opening is a real locked/key route, and that mission-start loot availability is latched as 2 pieces / 125 value before collection. Collecting one real loot item must change collected progress without changing that available total. Collecting the real ledger must flow through `pickup.collected` into declarative objective completion and `alarm.raise_requested`, then through the existing alarm channel and guard communication/awareness owners into search. The resulting objective/exit truth and four-field mission-run loot state must be save-envelope truth without end-of-mission scene scraping.
+
+Manual acceptance remains required for subjective/use-path behavior. From **Development Launch → Representative Stealth**, complete the mission twice:
+
+1. **West/window approach:** use the quiet carpet side; verify the route crate can materially assist reaching/mantling the raised window, the window opens as an ordinary physical opening and remains useful for passage/cover, light/darkness changes are readable, throwable-prop noise can provoke the guard's stop/orient/investigate/search behavior, typed speech is audible/readable when acoustically heard, and the ledger alarm produces a believable search before you return to the exit.
+2. **East/key approach:** open/search the chest, take the brass service key, cross the loud tile route, unlock/use the east door, take loot, steal the ledger, and return to the exit. Confirm the key route is materially distinct/useful rather than a cosmetic detour.
+
+Across those two runs also verify the center stone reads as normal relative to carpet/tile; guard patrol waits occur; optional loot/container interaction works; the objective completes only after the ledger; the exit is blocked before and allowed after the objective; ordinary quicksave/quickload restores a meaningful mid-mission state (including opening/light/container/guard/objective/loot state); and ordinary restart returns the mission to authored start state and mission-start loot availability. Report any route that is blocked, trivial/redundant, or fails to exercise its named system.
+
+---
+
 ## Phase 8.3 authored rule proof — accepted
 
 The representative `missions/rule_proof/mission.tres` is the first player-facing content proof of the Phase 7 rule/fact foundation:

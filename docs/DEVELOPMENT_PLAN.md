@@ -1878,7 +1878,7 @@ The intended player-visible result is deliberately simple: the mission starts wi
 
 **Manual:** accepted by user/playtester on the final 8.3 build. Development Launch → **Rule Proof** started with `OBJECTIVE INACTIVE` and the gameplay light on; the first **F** use on the labeled switch turned the light off and changed the status to `OBJECTIVE ACTIVE`; two further switch uses continued to toggle the light normally while the objective remained active without resetting or visibly replaying the authored mission reaction. No debugger/console mutation, generated-file edit, or mission-specific script was needed.
 
-## 8.4 Representative stealth mission construction `[ ]`
+## 8.4 Representative stealth mission construction `[~]`
 
 **Artifact:** one intentionally development-focused, non-canon 10–15 minute stealth mission used to stress real Vark authoring/gameplay architecture. Do not spend this phase polishing final story, setting or production art.
 
@@ -1895,6 +1895,8 @@ Extend semantic run-state only as needed now. At minimum own gameplay time, obje
 **Automated:** build/validate the real package/map through production paths, reach `PLAYING`, prove required IDs/roles/entities exist once, prove the window is an opening-path variant, prove mission-start available-loot accounting, and fail if representative content disappears/duplicates.
 
 **Manual:** required — user/playtester completes the mission at least twice through materially different approaches and validates route usefulness, darkness/surfaces/props/guards/loot/container/key/window/alarm/objective/save/restart behavior.
+
+**Current status:** implementation and deterministic regression coverage are checked in on `test`; keep this item `[~]` until the focused two-route user/playtester acceptance below is reported successful and post-push CI is green.
 
 ## 8.5 GDScript extension proof `[ ]`
 
