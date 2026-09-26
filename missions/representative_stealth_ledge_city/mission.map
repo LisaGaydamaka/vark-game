@@ -1440,12 +1440,12 @@
 }
 // west_route: archive_ledge_4
 {
-( -200 -555 410 ) ( -200 -554 410 ) ( -200 -555 411 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
-( -200 -555 410 ) ( -200 -555 411 ) ( -199 -555 410 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
-( -200 -555 410 ) ( -199 -555 410 ) ( -200 -554 410 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -145 -505 420 ) ( -145 -504 420 ) ( -144 -505 420 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -145 -505 420 ) ( -144 -505 420 ) ( -145 -505 421 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
-( -145 -505 420 ) ( -145 -505 421 ) ( -145 -504 420 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -200 -555 408 ) ( -200 -554 408 ) ( -200 -555 409 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -200 -555 408 ) ( -200 -555 409 ) ( -199 -555 408 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -200 -555 408 ) ( -199 -555 408 ) ( -200 -554 408 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -145 -505 418 ) ( -145 -504 418 ) ( -144 -505 418 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -145 -505 418 ) ( -144 -505 418 ) ( -145 -505 419 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -145 -505 418 ) ( -145 -505 419 ) ( -145 -504 418 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
 }
 // west_route: archive_window_sill
 {
@@ -2365,21 +2365,21 @@
 "persistent_id" "vark_ledge_city_archive04_to"
 "content_id" "ledge_city.archive04.to"
 "angle" "180"
-"origin" "-155 -520 420"
+"origin" "-155 -520 418"
 }
 {
 "classname" "vark_marker"
 "persistent_id" "vark_ledge_city_archive05_from"
 "content_id" "ledge_city.archive05.from"
 "angle" "180"
-"origin" "-155 -535 420"
+"origin" "-155 -505 418"
 }
 {
 "classname" "vark_marker"
 "persistent_id" "vark_ledge_city_archive05_to"
 "content_id" "ledge_city.archive05.to"
 "angle" "180"
-"origin" "-150 -520 448"
+"origin" "-150 -530 448"
 }
 {
 "classname" "vark_marker"
