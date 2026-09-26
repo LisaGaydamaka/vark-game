@@ -201,7 +201,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 vertical-city representative map builds exact authored role counts plus six authored altitude checkpoints"
 	)
 	var worldspawn := world.get_node_or_null(
-		"FuncGodotMap/entity_0"
+		"FuncGodotMap/entity_0_worldspawn"
 	) as StaticBody3D
 	assert_true.call(
 		_count_direct_collision_shapes(worldspawn) >= 100,
