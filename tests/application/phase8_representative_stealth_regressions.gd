@@ -113,6 +113,18 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		if locked_door != null
 		else {}
 	)
+	var south_light: VarkGameplayLight = (
+		_find_by_property(lights, "gameplay_light_id", "light.rep.south")
+		as VarkGameplayLight
+	)
+	var north_light: VarkGameplayLight = (
+		_find_by_property(lights, "gameplay_light_id", "light.rep.north")
+		as VarkGameplayLight
+	)
+	var east_light: VarkGameplayLight = (
+		_find_by_property(lights, "gameplay_light_id", "light.rep.east")
+		as VarkGameplayLight
+	)
 	var surface_variants: Array[String] = []
 	for surface: Node in surfaces:
 		surface_variants.append(str(surface.get("surface_variant")))
@@ -173,6 +185,47 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		surface_variants == ["carpet", "stone", "tile"],
 		"8.4 authoritative map builds quiet/normal/loud semantic surface variants as carpet/stone/tile"
+	)
+	var south_fixture := (
+		south_light.get_node_or_null("FixtureAnchor/StreetLampAsset")
+		as VarkLightFixtureAsset
+		if south_light != null
+		else null
+	)
+	var north_fixture := (
+		north_light.get_node_or_null("FixtureAnchor/StreetLampAsset")
+		as VarkLightFixtureAsset
+		if north_light != null
+		else null
+	)
+	var south_fixture_summary: Dictionary = (
+		south_fixture.get_contract_summary()
+		if south_fixture != null
+		else {}
+	)
+	assert_true.call(
+		south_light != null
+		and north_light != null
+		and east_light != null
+		and south_fixture != null
+		and north_fixture != null
+		and bool(south_fixture.validate_contract())
+		and south_fixture_summary.get("asset_id", &"") == &"street_lamp"
+		and str(south_fixture_summary.get("body_model_path", ""))
+			== "res://assets/models/lights/street_lamp.obj"
+		and str(south_fixture_summary.get("lit_surface_model_path", ""))
+			== "res://assets/models/lights/street_lamp_glass.obj",
+		"8.4 south/north authored lights use the reusable imported-model street-lamp fixture rather than three copies of the wall lamp"
+	)
+	assert_true.call(
+		is_equal_approx(south_light.get_emitter().omni_range, 13.0)
+		and is_equal_approx(south_light.get_emitter().light_energy, 3.4)
+		and is_equal_approx(north_light.get_emitter().omni_range, 14.0)
+		and is_equal_approx(north_light.get_emitter().light_energy, 4.0)
+		and is_equal_approx(east_light.get_emitter().omni_range, 9.5)
+		and is_equal_approx(east_light.get_emitter().light_energy, 3.0)
+		and east_light.is_in_group(&"vark_interactable"),
+		"8.4 mapper-authored light range/energy/direct-interaction values reconcile onto the live emitter after FuncGodot property application"
 	)
 
 	var initial_summary: Dictionary = session.call("get_mission_run_summary")

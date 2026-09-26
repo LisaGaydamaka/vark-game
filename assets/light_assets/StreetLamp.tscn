@@ -1,0 +1,66 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://gameplay/visibility/light_fixture_asset.gd" id="1_asset"]
+[ext_resource type="ArrayMesh" path="res://assets/models/lights/street_lamp.obj" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://assets/models/lights/street_lamp_glass.obj" id="3_glass"]
+
+[sub_resource type="StandardMaterial3D" id="BodyMaterial"]
+albedo_color = Color(0.10, 0.11, 0.12, 1)
+metallic = 0.45
+roughness = 0.62
+
+[sub_resource type="BoxShape3D" id="BaseShape"]
+size = Vector3(0.44, 0.12, 0.44)
+
+[sub_resource type="BoxShape3D" id="PoleShape"]
+size = Vector3(0.14, 1.93, 0.14)
+
+[sub_resource type="BoxShape3D" id="LanternShape"]
+size = Vector3(0.48, 0.56, 0.48)
+
+[node name="StreetLampAsset" type="Node3D"]
+script = ExtResource("1_asset")
+asset_id = &"street_lamp"
+lit_surface_off_color = Color(0.07, 0.075, 0.08, 1)
+lit_surface_on_color = Color(1, 0.78, 0.38, 1)
+lit_surface_emission_energy = 4.2
+lit_surface_visible_when_off = true
+self_fill_energy_scale = 0.35
+self_fill_range = 1.15
+
+[node name="BodyMesh" type="MeshInstance3D" parent="."]
+layers = 524289
+mesh = ExtResource("2_body")
+material_override = SubResource("BodyMaterial")
+
+[node name="LitSurfaceMesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("3_glass")
+
+[node name="EmitterAnchor" type="Marker3D" parent="."]
+position = Vector3(0, 2.32, 0)
+
+[node name="FixtureFill" type="OmniLight3D" parent="EmitterAnchor"]
+light_energy = 0.0
+omni_range = 1.15
+shadow_enabled = false
+light_cull_mask = 524288
+
+[node name="ExposureOccluder" type="StaticBody3D" parent="."]
+collision_layer = 32
+collision_mask = 0
+
+[node name="SolidBody" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Base" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, 0.06, 0)
+shape = SubResource("BaseShape")
+
+[node name="Pole" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, 1.085, 0)
+shape = SubResource("PoleShape")
+
+[node name="Lantern" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, 2.34, 0)
+shape = SubResource("LanternShape")

@@ -53,6 +53,18 @@ func _ready() -> void:
 	set_enabled_state(starts_on, false)
 
 
+func _func_godot_apply_properties(_properties: Dictionary) -> void:
+	# FuncGodot instantiates the shared scene before applying mapper fields.
+	# Reconcile all presentation/runtime configuration after those authored
+	# values land so range, energy, fixture choice, interaction and start state
+	# are the same truth the mapper authored.
+	_configured_light_energy = maxf(light_energy, 0.0)
+	_configure_fixture()
+	_sync_emitter_configuration()
+	_configure_interaction_proxy()
+	set_enabled_state(starts_on, false)
+
+
 func is_vark_persistent_entity() -> bool:
 	return not persistent_id.strip_edges().is_empty()
 
