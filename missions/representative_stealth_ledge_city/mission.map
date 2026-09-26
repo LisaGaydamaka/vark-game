@@ -2509,7 +2509,7 @@
 "fixture_asset_path" "res://assets/light_assets/StreetLamp.tscn"
 "direct_interaction" "none"
 "angle" "180"
-"origin" "0 550 0"
+"origin" "-56 550 0"
 }
 {
 "classname" "vark_gameplay_light"
@@ -2524,7 +2524,7 @@
 "fixture_asset_path" "res://assets/light_assets/StreetLamp.tscn"
 "direct_interaction" "none"
 "angle" "180"
-"origin" "0 300 0"
+"origin" "56 300 0"
 }
 {
 "classname" "vark_gameplay_light"
@@ -2539,7 +2539,7 @@
 "fixture_asset_path" "res://assets/light_assets/StreetLamp.tscn"
 "direct_interaction" "none"
 "angle" "180"
-"origin" "0 135 0"
+"origin" "-56 135 0"
 }
 {
 "classname" "vark_gameplay_light"
@@ -2554,7 +2554,7 @@
 "fixture_asset_path" "res://assets/light_assets/StreetLamp.tscn"
 "direct_interaction" "none"
 "angle" "180"
-"origin" "0 -90 0"
+"origin" "56 -90 0"
 }
 {
 "classname" "vark_gameplay_light"
@@ -2569,7 +2569,7 @@
 "fixture_asset_path" "res://assets/light_assets/StreetLamp.tscn"
 "direct_interaction" "none"
 "angle" "180"
-"origin" "0 -330 0"
+"origin" "-56 -330 0"
 }
 {
 "classname" "vark_gameplay_light"
@@ -2584,7 +2584,7 @@
 "fixture_asset_path" "res://assets/light_assets/StreetLamp.tscn"
 "direct_interaction" "none"
 "angle" "180"
-"origin" "0 -555 0"
+"origin" "56 -555 0"
 }
 {
 "classname" "vark_gameplay_light"

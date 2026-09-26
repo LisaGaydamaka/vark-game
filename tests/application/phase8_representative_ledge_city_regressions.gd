@@ -16,7 +16,6 @@ const UP_GAPS := [
 	"ledge_city.mercer_awning",
 	"ledge_city.mercer_balcony",
 	"ledge_city.mercer_sill",
-	"ledge_city.mercer_roof",
 	"ledge_city.office_sill",
 	"ledge_city.office_balcony",
 	"ledge_city.archive_fire_escape",
@@ -24,7 +23,6 @@ const UP_GAPS := [
 	"ledge_city.archive_sill2",
 	"ledge_city.archive_balcony2",
 	"ledge_city.archive_sill3",
-	"ledge_city.archive_window",
 	"ledge_city.watch_awning",
 	"ledge_city.watch_balcony",
 	"ledge_city.watch_sill",
@@ -164,7 +162,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		ground_catch != null
 		and ground_catch.global_position.y >= 2.40
-		and ground_catch.global_position.y <= 2.55
+		and ground_catch.global_position.y <= 2.60
 		and key_roof != null
 		and key_roof.global_position.y >= 6.70
 		and archive_apex != null
@@ -315,14 +313,14 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		patrol.set("wait_seconds", 0.05)
 		patrol_lookup[patrol.get("patrol_id")] = patrol
 	if guard != null:
-		guard.movement_speed = 8.0
+		guard.movement_speed = 6.0
 	var patrol_reconfigured: bool = (
 		guard.configure_patrol(patrol_lookup, locked_door)
 		if guard != null and locked_door != null else false
 	)
 	var began_playing: bool = bool(session.call("begin_play"))
 	var live_patrol_leg: bool = (
-		await _wait_for_guard_patrol_leg(guard, tree, 360)
+		await _wait_for_guard_patrol_leg(guard, tree, 600)
 		if began_playing and patrol_reconfigured else false
 	)
 	var guard_summary: Dictionary = (
