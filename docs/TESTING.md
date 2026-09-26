@@ -1031,7 +1031,7 @@ The checklist below is the broad integration pass for changes that could affect 
 
 A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit irrelevant global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
 
-When `Manual:` requires a specific kind of validator, name that role rather than treating every manual criterion as interchangeable. User/playtester, Windows operator, mapper, writer, cold author, and external developer are different acceptance roles. In particular, the implementing agent cannot self-certify the independent-human purpose of 8.8, 11.6, or 15.2; it prepares the workflow and the reported external result closes the criterion.
+When `Manual:` requires a specific kind of validator, name that role rather than treating every manual criterion as interchangeable. User/playtester, Windows operator, mapper, writer, cold author, and external developer are different acceptance roles. In particular, the implementing agent cannot self-certify the independent-human purpose of 8.8, 11.5, or 15.2; it prepares the workflow and the reported external result closes the criterion.
 
 ## Phase 2.3 mapper persistent-identity feasibility check — accepted
 
