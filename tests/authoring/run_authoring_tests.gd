@@ -6,8 +6,12 @@ const PersistentIdSource = preload("res://tools/authoring/persistent_id_source.g
 const PersistentIdentityProbe = preload("res://tools/authoring/persistent_identity_probe.gd")
 const PlaygroundReimportProbe = preload("res://tools/authoring/playground_reimport_probe.gd")
 const MapperWorkflowProbe = preload("res://tools/authoring/mapper_workflow_probe.gd")
+const Phase8ReimportProbe = preload("res://tools/authoring/phase8_reimport_probe.gd")
 const MapperWorkflowRegressions = preload(
 	"res://tests/authoring/mapper_workflow_regressions.gd"
+)
+const Phase8ReimportRegressions = preload(
+	"res://tests/authoring/phase8_reimport_regressions.gd"
 )
 const ReimportStabilityRegressions = preload(
 	"res://tests/authoring/reimport_stability_regressions.gd"
@@ -60,6 +64,10 @@ func _run_tests() -> void:
 		MapperWorkflowProbe != null,
 		"Mapper-facing Phase 8 workflow verifier parses under pinned Godot"
 	)
+	_assert_true(
+		Phase8ReimportProbe != null,
+		"Mapper-facing Phase 8 reimport/saveability verifier parses under pinned Godot"
+	)
 	_assert_vark_trenchbroom_identity_property()
 	_assert_vark_trenchbroom_material_config()
 	_assert_vark_runtime_identity_wiring()
@@ -71,6 +79,8 @@ func _run_tests() -> void:
 	prop_authoring.run(get_root(), Callable(self, "_assert_true"))
 	var mapper_workflow: RefCounted = MapperWorkflowRegressions.new()
 	await mapper_workflow.run(get_root(), Callable(self, "_assert_true"))
+	var phase8_reimport: RefCounted = Phase8ReimportRegressions.new()
+	await phase8_reimport.run(get_root(), Callable(self, "_assert_true"))
 	var breakable_authoring: RefCounted = BreakableAuthoringRegressions.new()
 	breakable_authoring.run(get_root(), Callable(self, "_assert_true"))
 	var content_validation_regressions: RefCounted = MissionContentValidationRegressions.new()

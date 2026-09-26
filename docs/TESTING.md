@@ -1183,6 +1183,62 @@ Expected: `Phase 8.1 mapper workflow proof passed.` The opening reports `variant
 
 Accepted Windows result: the refreshed FGD exposed `prop_id(string)` plus both variant choice fields; persistent-ID repair added IDs only to the authoritative ignored `.map` source and required a reload; the final read-only verifier passed with the Narrow opening resolving `ordinary_door_leaf_narrow.obj`, the Tall crate resolving `ordinary_crate_tall.obj` with collision `(0.5, 0.7, 0.5)`, and the source remaining unchanged. No generated output, gameplay scene, or gameplay script hand-edit was required.
 
+## Phase 8.2 reimport/saveability proof — automated implemented, mapper acceptance pending
+
+The continuous Authoring suite now extends the old Phase 2.8 point-entity reimport proof across real model-backed persistent owners and semantic save/restore:
+
+- a disposable mapper-style source adds the accepted 8.1 Narrow opening and Tall crate with fixed authored persistent IDs;
+- before editing, `Phase8ReimportProbe.capture_baseline()` builds that source through the production Playground wrapper, records source + world-brush geometry fingerprints and authored proof transforms, reaches a stable gameplay boundary, and captures a real semantic save containing both persistent owners;
+- the automated edited source moves one existing real world brush plus both proof entities without changing their persistent/content IDs;
+- verification requires valid identity with dry repair as a byte-for-byte no-op, rebuilds the edited source, proves both transforms and brush geometry changed while persistent IDs stayed stable, and captures a fresh save that still owns both objects;
+- a second fresh edited-world build then restores the **pre-edit** save envelope through normal `WorldSession.begin_restore_from_envelope → apply_restore_world_state → complete_restore`; exact persistent-owner recapture must match the baseline semantic snapshots;
+- the verifier rereads the edited `.map` afterward and requires it to be byte-for-byte unchanged.
+
+This proves technical identity/saveability continuity for benign authoring iteration under the same `mission_content_revision`. It does **not** claim every content edit is save-compatible; Phase 8.5 owns meaningful incompatible-content revision refusal.
+
+Focused manual acceptance requires a **Windows mapper/user with TrenchBroom 2026.2** and the accepted 8.1 ignored workspace.
+
+1. Pull the final 8.2 `test` head. Keep the existing `tests/authoring/workspace/mission.map` from the accepted 8.1 run. It must still contain:
+   - `door_id = phase8.workflow.door`
+   - `prop_id = phase8.workflow.prop`
+   - valid non-empty repaired `persistent_id` values on both.
+   If that workspace was deleted, reproduce the accepted 8.1 setup first.
+2. Close/reopen TrenchBroom and explicitly open `tests/authoring/workspace/mission.map` from disk so you are not editing a stale pre-repair document.
+3. From project root capture the pre-edit persistence baseline:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/phase8_reimport_probe.gd -- snapshot
+```
+
+Expected: `Phase 8.2 reimport baseline captured.` It prints the source hash, world-geometry hash, and the opening/prop persistent IDs.
+4. In TrenchBroom make exactly these ordinary edits without touching any identity/content property:
+   - select one existing world brush (the small raised reference block is suitable) and move it **+32 mapper units on X**;
+   - move the `phase8.workflow.door` opening **+32 mapper units on X**;
+   - move the `phase8.workflow.prop` prop **+32 mapper units on X**.
+   Save the map.
+5. Run the existing source-owned identity repair command:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/persistent_identity_probe.gd -- repair
+```
+
+Expected: **`No persistent-ID repair needed; valid source was left byte-for-byte unchanged.`** The same opening and prop persistent IDs printed by step 3 must remain. If repair writes any ID/change, stop and report it.
+6. Run the Phase 8.2 verifier:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/phase8_reimport_probe.gd -- verify
+```
+
+Expected: `Phase 8.2 reimport proof passed.` It must report preserved opening/prop IDs, changed world geometry, changed proof transforms, fresh save ownership, successful restoration of the pre-edit semantic save into the edited world, and unchanged mapper source.
+7. Send the full output from steps 5 and 6. Do not hand-edit generated Godot/FuncGodot output, gameplay scenes/scripts, or persistent IDs.
+8. After the result is recorded, the ignored baseline can be removed with:
+
+```powershell
+godot --headless --path . --script res://tools/authoring/phase8_reimport_probe.gd -- clear
+```
+
+The workspace itself is ignored and does not need to be committed or manually normalized for this proof.
+
 ---
 
 # Player manual regression checklist

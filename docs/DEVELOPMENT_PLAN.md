@@ -1825,9 +1825,23 @@ The first Phase 8 authoring proof stays on the existing source/import ownership 
 
 **Manual:** accepted on Windows with TrenchBroom 2026.2 after the `prop_id` fix. The mapper refreshed the installed Vark GameConfig/FGD and the sync probe confirmed `vark_opening`, `vark_prop`, `opening_variant(choices)`, `prop_variant(choices)`, and `prop_id(string)`. In the ignored workspace, the mapper placed/configured the proof opening and prop through normal entity properties, ran source-owned persistent-ID repair, reloaded the map after the repair write, and then ran the read-only mapper-workflow verifier. The verifier passed with `door_id = phase8.workflow.door` / `variant = narrow` resolving `ordinary_door_leaf_narrow.obj`, and `prop_id = phase8.workflow.prop` / `variant = tall_crate` resolving `ordinary_crate_tall.obj` with collision `(0.5, 0.7, 0.5)`; it also confirmed the `.map` source was unchanged. No generated output, gameplay scene, or gameplay script hand-edit was required.
 
-## 8.2 Reimport proof `[ ]`
+## 8.2 Reimport proof `[~]`
 
-Normal geometry/entity iteration preserves persistent IDs/saveability assumptions.
+Normal mapper iteration is now proven against the persistence boundary established earlier rather than only against imported transforms.
+
+`tools/authoring/phase8_reimport_probe.gd` uses the already-ignored mapper workspace and has three narrow commands:
+
+- `snapshot` captures the current source/brush-geometry fingerprints, the accepted 8.1 proof opening/prop persistent IDs + authored transforms, and one real stable-boundary semantic save envelope;
+- `verify` rebuilds the edited `.map`, requires world brush geometry plus both proof entity transforms to have changed, requires the same persistent IDs to resolve through the production registry, captures a fresh save containing both owners, and then restores the **pre-edit** semantic save into a fresh build of the edited world;
+- `clear` removes only the ignored binary baseline sidecar.
+
+The verifier does not repair or rewrite the mapper source. Identity must already be valid; an ordinary move/geometry edit must therefore require no persistent-ID repair. The pre-edit restore proof is intentionally limited to **identity/saveability continuity** under a benign reimport with the same mission revision: authored world geometry remains the edited content, while persistent semantic owner state resolves by stable ID. Phase 8.5 still owns proving that genuinely incompatible semantic/spatial mission edits bump `mission_content_revision` and refuse stale saves.
+
+**Done when:** a real mapper-style baseline containing the accepted 8.1 opening/prop can capture a stable semantic save; an ordinary brush edit plus ordinary movement of both model-backed entities rebuilds successfully without changing either authored persistent ID or requiring source repair; fresh save capture after reimport still contains both persistent owners; a pre-edit save resolves/restores through those same IDs in a fresh edited-world build; the verifier leaves `.map` source byte-for-byte unchanged; deterministic CI exercises the same real FuncGodot/WorldSession/save/restore path on a disposable map; existing Phase 2.8 reimport, 8.1 mapper, persistence, save/load, authoring, application, and gameplay regressions remain green; and a Windows mapper/user confirms the real TrenchBroom save/reimport workflow.
+
+**Automated:** pending exact-head post-push validation. The focused Authoring regression must create an 8.1-style baseline map, capture a real semantic save, shift one real world brush and both proof entities while preserving IDs, prove dry identity repair remains a no-op, rebuild through the production Playground wrapper, prove the same IDs and fresh save owners, restore the pre-edit envelope into the edited world, verify restored owner snapshots, and confirm the verifier never rewrites source. The authoritative all-tests barrier remains the compatibility gate.
+
+**Manual:** required — Windows mapper/user with TrenchBroom 2026.2. Start from the accepted 8.1 ignored workspace containing `phase8.workflow.door` and `phase8.workflow.prop`. Follow the focused Phase 8.2 procedure in `docs/TESTING.md`: snapshot the baseline, make one normal brush move plus move both proof entities without touching IDs, save, run identity repair expecting **no change**, then run the read-only reimport verifier. Report the full verifier output and whether TrenchBroom preserved both persistent IDs without any generated/core hand-edit.
 
 ## 8.3 Rule proof `[ ]`
 
