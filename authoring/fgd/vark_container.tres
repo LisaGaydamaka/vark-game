@@ -10,7 +10,7 @@ description = "Mapper-authored ordinary physical container using the shared Vark
 class_properties = Dictionary[String, Variant]({
 "persistent_id": "",
 "content_id": "",
-"container_id": "container",
+"container_id_name": "container",
 "container_variant": {"Wooden chest": "wooden_chest", "Desk drawer": "desk_drawer", "Tall cabinet": "tall_cabinet"},
 "transition_seconds": 0.45,
 "gameplay_sound_strength": 0.45,
@@ -20,7 +20,7 @@ class_properties = Dictionary[String, Variant]({
 class_property_descriptions = Dictionary[String, Variant]({
 "persistent_id": "Required stable authored identity for save/restore.",
 "content_id": "Author-facing semantic content ID.",
-"container_id": "Semantic container ID used by events/debugging.",
+"container_id_name": "Mapper string converted into the container's existing semantic container_id after FuncGodot applies properties.",
 "container_variant": "Shared imported-model container asset.",
 "transition_seconds": "Open/close presentation duration.",
 "gameplay_sound_strength": "Semantic use sound strength.",

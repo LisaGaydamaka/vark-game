@@ -10,6 +10,9 @@ const PATROL_POINT_GROUP: StringName = &"vark_patrol_point"
 const GUARD_GROUP: StringName = &"vark_guard"
 const GuardAwarenessScript = preload("res://gameplay/npc/guard_awareness.gd")
 const GuardCommunicationScript = preload("res://gameplay/npc/guard_communication.gd")
+const AcousticPropagationScript = preload(
+	"res://gameplay/acoustics/acoustic_propagation.gd"
+)
 const GuardSpeechLine = preload(
 	"res://missions/representative_stealth/guard_heard_noise.tres"
 )
@@ -18,7 +21,6 @@ const GuardSpeechLine = preload(
 @onready var player: CharacterBody3D = $Player
 @onready var func_map: FuncGodotMap = $FuncGodotMap
 @onready var navigation_region: NavigationRegion3D = $NavigationRegion3D
-@onready var acoustic_propagation: VarkAcousticPropagation = $AcousticPropagation
 @onready var gameplay_exposure: VarkGameplayExposure = $GameplayExposure
 @onready var exit_trigger: VarkSemanticRouteTrigger = $ExitTrigger
 
@@ -27,6 +29,7 @@ var selected_player_start: Node3D = null
 var navigation_ready: bool = false
 var navigation_rebuild_serial: int = 0
 var navigation_errors := PackedStringArray()
+var acoustic_propagation: VarkAcousticPropagation = null
 var _navigation_mesh: NavigationMesh = null
 var _guard: VarkGuard = null
 
@@ -47,6 +50,9 @@ func _ready() -> void:
 	func_map.build()
 	_apply_authored_player_start()
 	_apply_authored_exit()
+	acoustic_propagation = AcousticPropagationScript.new()
+	acoustic_propagation.name = "AcousticPropagation"
+	add_child(acoustic_propagation)
 	_configure_guard_runtime()
 	var acoustic_result: Dictionary = acoustic_propagation.configure(self)
 	if not bool(acoustic_result.get("ok", false)):

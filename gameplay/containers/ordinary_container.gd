@@ -21,6 +21,7 @@ const VARIANT_ASSET_PATHS: Dictionary = {
 @export var persistent_id: String = ""
 @export var content_id: String = ""
 @export var container_id: StringName = &""
+@export var container_id_name: String = ""
 @export var container_variant: String = "ordinary"
 @export var asset_scene: PackedScene
 @export var transition_seconds: float = 0.45
@@ -43,25 +44,29 @@ func _ready() -> void:
 	add_to_group(&"vark_interactable")
 	_world_session = _find_world_session()
 	_apply_authored_variant_defaults()
-	if asset_scene == null:
-		push_error("VarkOrdinaryContainer requires an authored container asset_scene.")
-		return
-	var instance: Node = asset_scene.instantiate()
-	asset_root.add_child(instance)
-	_asset = instance as VarkContainerAsset
-	if _asset == null or not _asset.validate_contract():
-		push_error(
-			"VarkOrdinaryContainer asset_scene must instantiate a valid VarkContainerAsset."
-		)
-		return
+	if asset_scene != null:
+		_instantiate_asset()
+	else:
+		call_deferred("_validate_asset_after_authoring")
 
-	_mechanism = _asset.get_mechanism()
-	_closed_mechanism_transform = _asset.get_closed_mechanism_transform()
-	_open_mechanism_transform = _asset.get_open_mechanism_transform()
-	_phase = PHASE_OPEN if starts_open else PHASE_CLOSED
-	_open_fraction = 1.0 if starts_open else 0.0
-	_sync_mechanism()
-	_refresh_visual()
+
+func _func_godot_apply_properties(_properties: Dictionary) -> void:
+	if not container_id_name.strip_edges().is_empty():
+		container_id = StringName(container_id_name.strip_edges())
+	_apply_authored_variant_defaults()
+	if asset_scene == null:
+		push_error("VarkOrdinaryContainer mapper properties did not resolve an asset_scene.")
+		return
+	if _asset == null:
+		_instantiate_asset()
+
+
+func _validate_asset_after_authoring() -> void:
+	if not is_inside_tree() or _asset != null:
+		return
+	_apply_authored_variant_defaults()
+	if asset_scene == null or not _instantiate_asset():
+		push_error("VarkOrdinaryContainer requires an authored container asset_scene.")
 
 
 func _physics_process(delta: float) -> void:
@@ -228,6 +233,32 @@ func _apply_authored_variant_defaults() -> void:
 	var loaded: Resource = ResourceLoader.load(asset_path)
 	if loaded is PackedScene:
 		asset_scene = loaded as PackedScene
+
+
+func _instantiate_asset() -> bool:
+	if _asset != null:
+		return true
+	if asset_scene == null:
+		return false
+	var instance: Node = asset_scene.instantiate()
+	asset_root.add_child(instance)
+	_asset = instance as VarkContainerAsset
+	if _asset == null or not _asset.validate_contract():
+		if is_instance_valid(instance):
+			instance.queue_free()
+		_asset = null
+		push_error(
+			"VarkOrdinaryContainer asset_scene must instantiate a valid VarkContainerAsset."
+		)
+		return false
+	_mechanism = _asset.get_mechanism()
+	_closed_mechanism_transform = _asset.get_closed_mechanism_transform()
+	_open_mechanism_transform = _asset.get_open_mechanism_transform()
+	_phase = PHASE_OPEN if starts_open else PHASE_CLOSED
+	_open_fraction = 1.0 if starts_open else 0.0
+	_sync_mechanism()
+	_refresh_visual()
+	return true
 
 
 func _sync_mechanism() -> void:

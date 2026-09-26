@@ -18,6 +18,7 @@ const VARIANT_ASSET_PATHS: Dictionary = {
 @export var persistent_id: String = ""
 @export var content_id: String = ""
 @export var pickup_kind: StringName = KIND_LOOT
+@export var pickup_kind_name: String = ""
 @export var pickup_variant: String = ""
 @export var loot_value: int = 0
 @export var display_label: String = "Collectible"
@@ -41,6 +42,28 @@ func _ready() -> void:
 	_material = StandardMaterial3D.new()
 	pickup_mesh.material_override = _material
 	pickup_label.text = display_label
+	_apply_authored_variant_defaults()
+	if asset != null:
+		if not _apply_asset():
+			push_error("VarkCollectible requires a valid imported VarkCollectibleAsset.")
+	else:
+		call_deferred("_validate_asset_after_authoring")
+	_refresh_visual()
+
+
+func _func_godot_apply_properties(_properties: Dictionary) -> void:
+	if not pickup_kind_name.strip_edges().is_empty():
+		pickup_kind = StringName(pickup_kind_name.strip_edges())
+	_apply_authored_variant_defaults()
+	pickup_label.text = display_label
+	if not _apply_asset():
+		push_error("VarkCollectible mapper properties did not resolve a valid asset.")
+	_refresh_visual()
+
+
+func _validate_asset_after_authoring() -> void:
+	if not is_inside_tree():
+		return
 	_apply_authored_variant_defaults()
 	if not _apply_asset():
 		push_error("VarkCollectible requires a valid imported VarkCollectibleAsset.")

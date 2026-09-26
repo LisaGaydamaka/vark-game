@@ -1,11 +1,10 @@
-[gd_scene load_steps=14 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://missions/representative_stealth/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://addons/func_godot/src/map/func_godot_map.gd" id="2_map"]
 [ext_resource type="Resource" path="res://authoring/vark_map_settings.tres" id="3_settings"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="4_player"]
 [ext_resource type="Script" path="res://gameplay/acoustics/acoustic_listener.gd" id="5_listener"]
-[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_propagation.gd" id="6_propagation"]
 [ext_resource type="Script" path="res://gameplay/visibility/gameplay_exposure.gd" id="7_exposure"]
 [ext_resource type="Script" path="res://gameplay/noise/player_footstep_emitter.gd" id="8_footsteps"]
 [ext_resource type="Script" path="res://gameplay/objectives/simple_objective_state.gd" id="9_objective"]
@@ -41,9 +40,6 @@ map_settings = ExtResource("3_settings")
 metadata/_custom_type_script = "uid://cwu5cf7a0awcd"
 
 [node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
-
-[node name="AcousticPropagation" type="Node" parent="."]
-script = ExtResource("6_propagation")
 
 [node name="GameplayExposure" type="Node3D" parent="."]
 script = ExtResource("7_exposure")
