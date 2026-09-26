@@ -14,17 +14,35 @@ const VARIANT_PROFILE_PATHS: Dictionary = {
 
 
 func _ready() -> void:
-	_apply_authored_variant_defaults()
 	add_to_group(&"vark_footstep_surface")
+	if surface_profile != null:
+		if not has_valid_surface_profile():
+			push_error(
+				"VarkFootstepSurface '%s' requires a valid SurfaceProfile."
+				% name
+			)
+	else:
+		call_deferred("_validate_profile_after_authoring")
+
+
+func _func_godot_apply_properties(_properties: Dictionary) -> void:
+	surface_profile = null
+	_apply_authored_variant_defaults()
+	if not has_valid_surface_profile():
+		push_error(
+			"VarkFootstepSurface mapper properties did not resolve a valid SurfaceProfile."
+		)
+
+
+func _validate_profile_after_authoring() -> void:
+	if not is_inside_tree():
+		return
+	_apply_authored_variant_defaults()
 	if not has_valid_surface_profile():
 		push_error(
 			"VarkFootstepSurface '%s' requires a valid SurfaceProfile."
 			% name
 		)
-
-
-func _func_godot_apply_properties(_properties: Dictionary) -> void:
-	_apply_authored_variant_defaults()
 
 
 func _apply_authored_variant_defaults() -> void:
