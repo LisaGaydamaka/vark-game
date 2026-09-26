@@ -45,3 +45,11 @@
 "switch_id" "phase8.rule.switch"
 "control_id" "phase8.rule.room"
 }
+// entity 4
+{
+"classname" "vark_exit"
+"persistent_id" "vark_phase8_rule_exit"
+"content_id" "exit.rule_proof"
+"angle" "180"
+"origin" "0 96 16"
+}
