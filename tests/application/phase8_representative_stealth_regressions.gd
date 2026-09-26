@@ -142,15 +142,25 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 authoritative map builds exact representative topology counts: start/exit/guard/patrol/container/props/lights/switch"
 	)
 	assert_true.call(
-		openings.size() == 2
-		and window != null
-		and str(window.get("opening_variant")) == "window"
+		openings.size() == 2,
+		"8.4 representative map builds exactly two ordinary-opening instances"
+	)
+	assert_true.call(
+		window != null
+		and str(window.get("opening_variant")) == "window",
+		"8.4 west route resolves the authored window presentation on OrdinaryDoor"
+	)
+	assert_true.call(
+		window != null
 		and str(window.get("visual_model_path"))
-			== "res://assets/models/doors/ordinary_window_leaf.obj"
-		and locked_door != null
+			== "res://assets/models/doors/ordinary_window_leaf.obj",
+		"8.4 west window presentation resolves the compatible shared window leaf model"
+	)
+	assert_true.call(
+		locked_door != null
 		and bool(access.get("locked", false))
 		and str(access.get("required_key_id", "")) == "key.service",
-		"8.4 representative routes use two ordinary-opening instances: window presentation west and locked/key door east"
+		"8.4 east route resolves the authored locked/key OrdinaryDoor restriction"
 	)
 	assert_true.call(
 		pickups.size() == 4
