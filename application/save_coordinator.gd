@@ -719,11 +719,18 @@ func _is_valid_world_state_structure(world_state: Dictionary) -> bool:
 			return false
 		var run: Dictionary = run_state
 		if (
-			run.size() != 2
+			(run.size() != 2 and run.size() != 4)
 			or typeof(run.get("loot_count", null)) != TYPE_INT
 			or typeof(run.get("loot_value", null)) != TYPE_INT
 			or int(run.get("loot_count", -1)) < 0
 			or int(run.get("loot_value", -1)) < 0
+		):
+			return false
+		if run.size() == 4 and (
+			typeof(run.get("loot_available_count", null)) != TYPE_INT
+			or typeof(run.get("loot_available_value", null)) != TYPE_INT
+			or int(run.get("loot_available_count", -1)) < 0
+			or int(run.get("loot_available_value", -1)) < 0
 		):
 			return false
 	return true
