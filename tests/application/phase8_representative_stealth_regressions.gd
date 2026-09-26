@@ -133,27 +133,36 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		starts.size() == 1
 		and exits.size() == 1
-		and openings.size() == 2
+		and guards.size() == 1
+		and patrol_points.size() == 2
+		and containers.size() == 1
+		and props.size() == 2
+		and lights.size() == 3
+		and switches.size() == 1,
+		"8.4 authoritative map builds exact representative topology counts: start/exit/guard/patrol/container/props/lights/switch"
+	)
+	assert_true.call(
+		openings.size() == 2
 		and window != null
 		and str(window.get("opening_variant")) == "window"
 		and str(window.get("visual_model_path"))
 			== "res://assets/models/doors/ordinary_window_leaf.obj"
 		and locked_door != null
 		and bool(access.get("locked", false))
-		and str(access.get("required_key_id", "")) == "key.service"
-		and guards.size() == 1
-		and patrol_points.size() == 2
-		and containers.size() == 1
-		and pickups.size() == 4
+		and str(access.get("required_key_id", "")) == "key.service",
+		"8.4 representative routes use two ordinary-opening instances: window presentation west and locked/key door east"
+	)
+	assert_true.call(
+		pickups.size() == 4
 		and loot_pickups.size() == 2
 		and pickup_roles.get("key.service", &"") == &"key"
 		and pickup_roles.get("mission.dev_stealth.ledger", &"")
-			== &"mission_item"
-		and props.size() == 2
-		and lights.size() == 3
-		and switches.size() == 1
-		and surface_variants == ["carpet", "stone", "tile"],
-		"8.4 authoritative map builds every required representative role exactly once/count-exact and the window is only an OrdinaryDoor presentation variant"
+			== &"mission_item",
+		"8.4 authoritative map builds four typed pickups: two loot, one key, and one mission item"
+	)
+	assert_true.call(
+		surface_variants == ["carpet", "stone", "tile"],
+		"8.4 authoritative map builds quiet/normal/loud semantic surface variants as carpet/stone/tile"
 	)
 
 	var initial_summary: Dictionary = session.call("get_mission_run_summary")
