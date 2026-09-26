@@ -241,6 +241,23 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and east_light.is_in_group(&"vark_interactable"),
 		"8.4 mapper-authored light range/energy/direct-interaction values reconcile onto the live emitter after FuncGodot property application"
 	)
+	var expected_warm_light := Color(1.0, 0.82, 0.58, 1.0)
+	var rendered_light_colors_are_valid: bool = true
+	for light: Node in lights:
+		var gameplay_light := light as VarkGameplayLight
+		if (
+			gameplay_light == null
+			or not gameplay_light.get_emitter().light_color.is_equal_approx(
+				expected_warm_light
+			)
+			or gameplay_light.get_emitter().light_color.get_luminance() < 0.5
+		):
+			rendered_light_colors_are_valid = false
+			break
+	assert_true.call(
+		rendered_light_colors_are_valid,
+		"8.4 all representative rendered emitters retain the luminous warm default instead of a near-black mapper color caused by 0-1 values being parsed as byte RGB"
+	)
 	var gold_loot: Node = _find_by_content_id(pickups, "loot.rep.gold")
 	assert_true.call(
 		window != null
