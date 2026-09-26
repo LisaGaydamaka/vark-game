@@ -23,7 +23,13 @@ func run(
 	)
 
 	_test_application_hotkey_mapping(application, assert_true)
-	_test_quicksave_hotkey_route(application, boundary, assert_true)
+	await _test_quicksave_quickload_hotkey_route(
+		tree,
+		application,
+		boundary,
+		assert_true
+	)
+	player = application.get("current_player") as Node
 
 	# Keep the live application player neutral while the standalone boundary
 	# probe manipulates global Input actions to verify frame semantics.
@@ -72,34 +78,109 @@ func _test_application_hotkey_mapping(
 	)
 
 
-func _test_quicksave_hotkey_route(
+func _test_quicksave_quickload_hotkey_route(
+	tree: SceneTree,
 	application: Node,
 	boundary: Node,
 	assert_true: Callable
 ) -> void:
+	const TEST_SAVE_DIRECTORY: String = "user://vark_tests/application_hotkeys"
+	_cleanup_hotkey_test_storage(TEST_SAVE_DIRECTORY)
 	var save_coordinator := application.get_node("SaveCoordinator") as Node
+	save_coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
 	save_coordinator.call("get_latest_committed_generation")
 	var before_generation: int = int(save_coordinator.get("_next_generation"))
-	var event := InputEventKey.new()
-	event.pressed = true
-	event.keycode = KEY_F5
-	boundary.call("route_input_event", event)
-	var status: Dictionary = save_coordinator.call(
-		"get_request_status",
-		before_generation
+	var save_event := InputEventKey.new()
+	save_event.pressed = true
+	save_event.keycode = KEY_F5
+	boundary.call("route_input_event", save_event)
+	var generation: int = before_generation
+	var snapshot: Dictionary = await _wait_for_save_commit(
+		tree,
+		save_coordinator,
+		generation,
+		120
 	)
 	assert_true.call(
-		int(save_coordinator.get("_next_generation")) == before_generation + 1
-		and status.get("status", &"") == &"pending"
-		and int(status.get("source_session_id", 0))
-			== int(application.call("get_current_session_id")),
-		"F5 routes through the application input boundary into the existing save coordinator for the active WorldSession"
+		not snapshot.is_empty()
+		and int(save_coordinator.get("_next_generation")) == generation + 1,
+		"F5 routes through the application input boundary into a committed quicksave"
 	)
-	save_coordinator.call(
-		"cancel_pending_for_session",
-		int(application.call("get_current_session_id")),
-		"Application hotkey regression cleanup."
+
+	var old_session_id: int = int(application.call("get_current_session_id"))
+	var load_event := InputEventKey.new()
+	load_event.pressed = true
+	load_event.keycode = KEY_F9
+	boundary.call("route_input_event", load_event)
+	assert_true.call(
+		int(application.call("get_current_session_id")) == old_session_id
+		and application.get("_pending_application_hotkey_operation") == &"quickload",
+		"F9 queues world replacement until after the input-dispatch stack unwinds"
 	)
+
+	var replaced: bool = false
+	for _index: int in 120:
+		await tree.process_frame
+		if int(application.call("get_current_session_id")) != old_session_id:
+			replaced = true
+			break
+	var restored_player := application.get("current_player") as Node
+	var restored_world := application.get("current_world") as Node
+	assert_true.call(
+		replaced
+		and restored_player != null
+		and restored_world != null
+		and restored_world.can_process()
+		and int(application.call("get_current_session_state")) == 4
+		and bool(boundary.get("gameplay_enabled"))
+		and bool(boundary.get("look_enabled"))
+		and boundary.get("current_player") == restored_player,
+		"Deferred F9 quickload replaces the session and returns to live gameplay/input instead of freezing the input callback"
+	)
+
+	save_coordinator.set(
+		"durable_save_directory",
+		VarkSaveCoordinator.DEFAULT_DURABLE_SAVE_DIRECTORY
+	)
+	_cleanup_hotkey_test_storage(TEST_SAVE_DIRECTORY)
+
+
+func _wait_for_save_commit(
+	tree: SceneTree,
+	save_coordinator: Node,
+	generation: int,
+	max_frames: int
+) -> Dictionary:
+	for _index: int in max_frames:
+		var status: Dictionary = save_coordinator.call(
+			"get_request_status",
+			generation
+		)
+		if status.get("status", &"") == &"committed":
+			return save_coordinator.call("get_request_snapshot", generation)
+		if status.get("status", &"") in [
+			&"failed",
+			&"cancelled",
+			&"superseded",
+		]:
+			return {}
+		await tree.physics_frame
+		await tree.process_frame
+	return {}
+
+
+func _cleanup_hotkey_test_storage(directory: String) -> void:
+	var final_path: String = directory + "/quicksave.varksave"
+	for path: String in [
+		final_path,
+		final_path + ".new",
+		final_path + ".bak",
+	]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var absolute_dir: String = ProjectSettings.globalize_path(directory)
+	if DirAccess.dir_exists_absolute(absolute_dir):
+		DirAccess.remove_absolute(absolute_dir)
 
 
 func _test_gameplay_frame_lifetime(

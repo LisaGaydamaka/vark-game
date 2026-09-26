@@ -71,6 +71,8 @@ var control_mode: int = ControlMode.MENU
 var look_sensitivity: float = DEFAULT_LOOK_SENSITIVITY
 
 var _last_session_id: int = 0
+var _pending_application_hotkey_operation: StringName = APPLICATION_HOTKEY_NONE
+var _pending_application_hotkey_session_id: int = 0
 
 
 func _ready() -> void:
@@ -98,6 +100,27 @@ func _on_application_input_received(event: InputEvent) -> void:
 	match command:
 		APPLICATION_HOTKEY_QUICKSAVE:
 			request_quicksave()
+		APPLICATION_HOTKEY_QUICKLOAD, APPLICATION_HOTKEY_RESTART:
+			if _pending_application_hotkey_operation != APPLICATION_HOTKEY_NONE:
+				return
+			_pending_application_hotkey_operation = command
+			_pending_application_hotkey_session_id = get_current_session_id()
+			call_deferred("_execute_deferred_application_hotkey")
+
+
+func _execute_deferred_application_hotkey() -> void:
+	var command: StringName = _pending_application_hotkey_operation
+	var source_session_id: int = _pending_application_hotkey_session_id
+	_pending_application_hotkey_operation = APPLICATION_HOTKEY_NONE
+	_pending_application_hotkey_session_id = 0
+	if (
+		command == APPLICATION_HOTKEY_NONE
+		or not is_current_session(source_session_id)
+		or control_mode != ControlMode.GAMEPLAY
+		or get_current_session_state() != WORLD_SESSION_SCRIPT.State.PLAYING
+	):
+		return
+	match command:
 		APPLICATION_HOTKEY_QUICKLOAD:
 			quickload_latest()
 		APPLICATION_HOTKEY_RESTART:
