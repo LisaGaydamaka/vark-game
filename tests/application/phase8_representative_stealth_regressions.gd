@@ -35,6 +35,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and Definition.get("mission_id") == &"phase8_representative_stealth"
 		and str(Definition.get("map_source_path"))
 			== "res://missions/representative_stealth/mission.map"
+		and int(Definition.get("mission_content_revision")) == 3
 		and rules.size() == 2,
 		"8.4 package owns valid map-backed load metadata and two small declarative reactions"
 	)
@@ -76,6 +77,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var switches: Array[Node] = []
 	var starts: Array[Node] = []
 	var exits: Array[Node] = []
+	var markers: Array[Node] = []
 	for node: Node in nodes:
 		if node.has_method("get_access_summary") and node.has_method(
 			"configure_navigation_traversal"
@@ -101,6 +103,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			starts.append(node)
 		if node.is_in_group(&"vark_mission_exit"):
 			exits.append(node)
+		if node.is_in_group(&"vark_semantic_marker"):
+			markers.append(node)
 
 	var window: Node = _find_by_property(openings, "door_id", WINDOW_ID)
 	var locked_door: Node = _find_by_property(
@@ -137,6 +141,36 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		_find_by_property(lights, "gameplay_light_id", "light.rep.archive")
 		as VarkGameplayLight
 	)
+	var south_mantle_marker: Node = _find_by_property(
+		markers,
+		"content_id",
+		"vertical.city.south_mantle"
+	)
+	var west_window_marker: Node = _find_by_property(
+		markers,
+		"content_id",
+		"vertical.city.west_window"
+	)
+	var west_roof_marker: Node = _find_by_property(
+		markers,
+		"content_id",
+		"vertical.city.west_roof"
+	)
+	var gold_roof_marker: Node = _find_by_property(
+		markers,
+		"content_id",
+		"vertical.city.gold_roof"
+	)
+	var east_key_marker: Node = _find_by_property(
+		markers,
+		"content_id",
+		"vertical.city.east_key_balcony"
+	)
+	var north_descent_marker: Node = _find_by_property(
+		markers,
+		"content_id",
+		"vertical.city.north_descent"
+	)
 	var surface_variants: Array[String] = []
 	for surface: Node in surfaces:
 		surface_variants.append(str(surface.get("surface_variant")))
@@ -162,8 +196,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and containers.size() == 1
 		and props.size() == 5
 		and lights.size() == 6
-		and switches.size() == 1,
-		"8.4 dense representative map builds exact authored role counts: start/exit/guard/patrol/container/props/lights/switch"
+		and switches.size() == 1
+		and markers.size() == 6,
+		"8.4 vertical-city representative map builds exact authored role counts plus six authored altitude checkpoints"
+	)
+	var worldspawn := world.get_node_or_null(
+		"FuncGodotMap/entity_0"
+	) as StaticBody3D
+	assert_true.call(
+		_count_direct_collision_shapes(worldspawn) >= 100,
+		"8.4 vertical city retains at least 100 independently climbable/occluding world brushes instead of collapsing back into a sparse flat compound"
 	)
 	assert_true.call(
 		openings.size() == 2,
@@ -261,10 +303,27 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var gold_loot: Node = _find_by_content_id(pickups, "loot.rep.gold")
 	assert_true.call(
 		window != null
-		and window.global_position.y >= 2.4
+		and window.global_position.y >= 4.3
 		and gold_loot != null
-		and gold_loot.global_position.y >= 5.4,
-		"8.4 west route authors real vertical progression: the ordinary-window crossing is raised and optional loot occupies the high upper route"
+		and gold_loot.global_position.y >= 9.0,
+		"8.4 west route reaches a genuinely high raised-window/rooftop line rather than a single low perch"
+	)
+	assert_true.call(
+		south_mantle_marker != null
+		and south_mantle_marker.global_position.y >= 0.6
+		and east_key_marker != null
+		and east_key_marker.global_position.y >= 3.1
+		and west_window_marker != null
+		and west_window_marker.global_position.y >= 4.3
+		and north_descent_marker != null
+		and north_descent_marker.global_position.y >= 5.2
+		and west_roof_marker != null
+		and west_roof_marker.global_position.y >= 7.3
+		and gold_roof_marker != null
+		and gold_roof_marker.global_position.y >= 9.0
+		and north_descent_marker.global_position.y
+			< west_roof_marker.global_position.y,
+		"8.4 city routes own several distinct authored elevation bands across mandatory street mantles, key balcony, raised window, rooftops and descent"
 	)
 
 	var initial_summary: Dictionary = session.call("get_mission_run_summary")
@@ -376,6 +435,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	session.call("teardown")
 	session.queue_free()
 	await tree.process_frame
+
+
+func _count_direct_collision_shapes(node: Node) -> int:
+	if node == null:
+		return 0
+	var count: int = 0
+	for child: Node in node.get_children():
+		if child is CollisionShape3D:
+			count += 1
+	return count
 
 
 func _find_by_property(

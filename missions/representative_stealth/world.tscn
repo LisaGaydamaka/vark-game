@@ -72,8 +72,8 @@ alarm_id = &"alarm.dev_stealth"
 audience_faction_id = &"guards"
 
 [node name="Instructions" type="Label3D" parent="."]
-position = Vector3(16.4, 2.7, 0)
-text = "8.4 REPRESENTATIVE STEALTH\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nWEST: quiet service passages; climb crates/platforms to the raised window and upper route.\nEAST: interconnected tile rooms; search the chest, take the brass key, unlock the east door.\nCENTER/NORTH: tight rooms, pillars and alcoves provide cover. The switch kills the north street lamps.\nF5 quicksave · F9 quickload · F10 restart."
+position = Vector3(16.6, 2.8, 0)
+text = "8.4 VERTICAL CITY\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nTHE STREETS ARE NOT FLAT: mantle rubble, stalls, stoops, ledges and balconies.\nWEST: climb to the raised window, cross the rooftops, reach the high gold, then descend into the archive quarter.\nEAST: climb the market/fire escape to the key balcony, descend, unlock the east gate, then vault the north street barriers.\nF5 quicksave · F9 quickload · F10 restart."
 billboard = 1
 font_size = 18
 outline_size = 7
