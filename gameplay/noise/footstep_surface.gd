@@ -2,16 +2,42 @@ class_name VarkFootstepSurface
 extends Area3D
 
 
+const VARIANT_PROFILE_PATHS: Dictionary = {
+	"stone": "res://gameplay/noise/profiles/stone.tres",
+	"carpet": "res://gameplay/noise/profiles/carpet.tres",
+	"tile": "res://gameplay/noise/profiles/tile.tres",
+}
+
+
+@export var surface_variant: String = "stone"
 @export var surface_profile: VarkSurfaceProfile
 
 
 func _ready() -> void:
+	_apply_authored_variant_defaults()
 	add_to_group(&"vark_footstep_surface")
 	if not has_valid_surface_profile():
 		push_error(
 			"VarkFootstepSurface '%s' requires a valid SurfaceProfile."
 			% name
 		)
+
+
+func _func_godot_apply_properties(_properties: Dictionary) -> void:
+	_apply_authored_variant_defaults()
+
+
+func _apply_authored_variant_defaults() -> void:
+	if surface_profile != null:
+		return
+	var profile_path: String = str(
+		VARIANT_PROFILE_PATHS.get(surface_variant.strip_edges(), "")
+	)
+	if profile_path.is_empty() or not ResourceLoader.exists(profile_path):
+		return
+	var loaded: Resource = ResourceLoader.load(profile_path)
+	if loaded is VarkSurfaceProfile:
+		surface_profile = loaded as VarkSurfaceProfile
 
 
 func contains_body(body: PhysicsBody3D) -> bool:

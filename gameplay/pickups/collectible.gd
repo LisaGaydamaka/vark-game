@@ -7,10 +7,18 @@ const KIND_KEY: StringName = &"key"
 const KIND_MISSION_ITEM: StringName = &"mission_item"
 const KIND_LOOT: StringName = &"loot"
 
+const VARIANT_ASSET_PATHS: Dictionary = {
+	"brass_key": "res://assets/items/brass_key.tres",
+	"gold_cup": "res://assets/items/gold_cup.tres",
+	"silver_candlestick": "res://assets/items/silver_candlestick.tres",
+	"sealed_scroll": "res://assets/items/sealed_scroll.tres",
+}
+
 
 @export var persistent_id: String = ""
 @export var content_id: String = ""
 @export var pickup_kind: StringName = KIND_LOOT
+@export var pickup_variant: String = ""
 @export var loot_value: int = 0
 @export var display_label: String = "Collectible"
 @export var asset: VarkCollectibleAsset
@@ -33,6 +41,7 @@ func _ready() -> void:
 	_material = StandardMaterial3D.new()
 	pickup_mesh.material_override = _material
 	pickup_label.text = display_label
+	_apply_authored_variant_defaults()
 	if not _apply_asset():
 		push_error("VarkCollectible requires a valid imported VarkCollectibleAsset.")
 	_refresh_visual()
@@ -107,6 +116,19 @@ func mark_collected_for_tombstone() -> bool:
 	_refresh_visual()
 	queue_free()
 	return true
+
+
+func _apply_authored_variant_defaults() -> void:
+	if asset != null:
+		return
+	var asset_path: String = str(
+		VARIANT_ASSET_PATHS.get(pickup_variant.strip_edges(), "")
+	)
+	if asset_path.is_empty() or not ResourceLoader.exists(asset_path):
+		return
+	var loaded: Resource = ResourceLoader.load(asset_path)
+	if loaded is VarkCollectibleAsset:
+		asset = loaded as VarkCollectibleAsset
 
 
 func _apply_asset() -> bool:

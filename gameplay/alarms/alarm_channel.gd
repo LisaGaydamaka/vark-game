@@ -3,6 +3,7 @@ extends Node
 
 
 const ALARM_EVENT_NAME: StringName = &"npc.alarm_raised"
+const ALARM_RAISE_REQUEST_EVENT_NAME: StringName = &"alarm.raise_requested"
 const WORLD_SESSION_STATE_PLAYING: int = 4
 
 @export var alarm_id: StringName = &""
@@ -14,6 +15,7 @@ var _evidence_position: Vector3 = Vector3.ZERO
 var _source_actor_id: String = ""
 var _raise_serial: int = 0
 var _last_error: String = ""
+var _request_handler_registered: bool = false
 
 
 func _ready() -> void:
@@ -24,6 +26,47 @@ func _ready() -> void:
 	elif _world_session == null:
 		_last_error = "Alarm channel requires a WorldSession ancestor."
 		push_error(_last_error)
+	else:
+		_request_handler_registered = bool(_world_session.call(
+			"register_semantic_event_handler",
+			ALARM_RAISE_REQUEST_EVENT_NAME,
+			Callable(self, "_on_alarm_raise_requested")
+		))
+		if not _request_handler_registered:
+			_last_error = "Alarm channel could not register alarm raise requests."
+			push_error(_last_error)
+
+
+func _exit_tree() -> void:
+	if (
+		_request_handler_registered
+		and _world_session != null
+		and is_instance_valid(_world_session)
+	):
+		_world_session.call(
+			"unregister_semantic_event_handler",
+			ALARM_RAISE_REQUEST_EVENT_NAME,
+			Callable(self, "_on_alarm_raise_requested")
+		)
+	_request_handler_registered = false
+
+
+func _on_alarm_raise_requested(event: Dictionary) -> bool:
+	var payload: Dictionary = event.get("payload", {})
+	if (
+		payload.size() != 3
+		or typeof(payload.get("alarm_id", null)) != TYPE_STRING_NAME
+		or typeof(payload.get("evidence_position", null)) != TYPE_VECTOR3
+		or typeof(payload.get("source_actor_id", null)) != TYPE_STRING
+	):
+		_last_error = "Alarm channel received a malformed alarm raise request."
+		return false
+	if payload.get("alarm_id", &"") != alarm_id:
+		return true
+	return raise_alarm(
+		payload.get("evidence_position", Vector3.ZERO),
+		str(payload.get("source_actor_id", ""))
+	)
 
 
 func raise_alarm(

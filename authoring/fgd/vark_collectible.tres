@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="PackedScene" path="res://gameplay/pickups/Collectible.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_collectible"
+description = "Mapper-authored ordinary collectible using one shared gameplay scene and reusable imported-model assets."
+class_properties = Dictionary[String, Variant]({
+"persistent_id": "",
+"content_id": "",
+"pickup_kind": {"Loot": "loot", "Key": "key", "Mission item": "mission_item"},
+"pickup_variant": {"Brass key": "brass_key", "Gold cup": "gold_cup", "Silver candlestick": "silver_candlestick", "Sealed scroll": "sealed_scroll"},
+"loot_value": 0,
+"display_label": "Collectible",
+"angle": 180.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"persistent_id": "Required stable authored identity for save tombstones.",
+"content_id": "Semantic pickup/possession ID.",
+"pickup_kind": "loot records value; key and mission_item grant semantic possession.",
+"pickup_variant": "Shared imported-model collectible asset.",
+"loot_value": "Run loot value. Use zero for keys and mission items.",
+"display_label": "Interaction label.",
+"angle": "Initial TrenchBroom yaw."
+})
+auto_apply_to_matching_node_properties = true
+scene_file = ExtResource("2_scene")
+node_groups = Array[String](["vark_collectible"])

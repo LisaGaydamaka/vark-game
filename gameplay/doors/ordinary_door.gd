@@ -15,8 +15,12 @@ const TOP_SUPPORTED_BODY_EPSILON: float = 0.025
 
 const OPENING_VARIANT_ORDINARY: String = "ordinary"
 const OPENING_VARIANT_NARROW: String = "narrow"
+const OPENING_VARIANT_WINDOW: String = "window"
 const OPENING_VARIANT_NARROW_MODEL_PATH: String = (
 	"res://assets/models/doors/ordinary_door_leaf_narrow.obj"
+)
+const OPENING_VARIANT_WINDOW_MODEL_PATH: String = (
+	"res://assets/models/doors/ordinary_window_leaf.obj"
 )
 
 
@@ -251,8 +255,11 @@ func is_interaction_highlighted() -> bool:
 func _apply_authored_variant_defaults() -> void:
 	if not visual_model_path.strip_edges().is_empty():
 		return
-	if opening_variant.strip_edges() == OPENING_VARIANT_NARROW:
-		visual_model_path = OPENING_VARIANT_NARROW_MODEL_PATH
+	match opening_variant.strip_edges():
+		OPENING_VARIANT_NARROW:
+			visual_model_path = OPENING_VARIANT_NARROW_MODEL_PATH
+		OPENING_VARIANT_WINDOW:
+			visual_model_path = OPENING_VARIANT_WINDOW_MODEL_PATH
 
 
 func set_visual_model(model: Mesh) -> bool:

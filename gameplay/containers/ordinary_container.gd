@@ -11,6 +11,12 @@ const PHASE_CLOSING: StringName = &"closing"
 const STATE_CHANGED_EVENT_NAME: StringName = &"container.state_changed"
 const USE_SOUND_KIND: StringName = &"container.use"
 
+const VARIANT_ASSET_PATHS: Dictionary = {
+	"wooden_chest": "res://assets/container_assets/WoodenChest.tscn",
+	"desk_drawer": "res://assets/container_assets/DeskDrawer.tscn",
+	"tall_cabinet": "res://assets/container_assets/TallCabinet.tscn",
+}
+
 
 @export var persistent_id: String = ""
 @export var content_id: String = ""
@@ -36,6 +42,7 @@ var _open_mechanism_transform: Transform3D = Transform3D.IDENTITY
 func _ready() -> void:
 	add_to_group(&"vark_interactable")
 	_world_session = _find_world_session()
+	_apply_authored_variant_defaults()
 	if asset_scene == null:
 		push_error("VarkOrdinaryContainer requires an authored container asset_scene.")
 		return
@@ -208,6 +215,19 @@ func reconcile_after_restore() -> bool:
 	_sync_mechanism()
 	_refresh_visual()
 	return true
+
+
+func _apply_authored_variant_defaults() -> void:
+	if asset_scene != null:
+		return
+	var asset_path: String = str(
+		VARIANT_ASSET_PATHS.get(container_variant.strip_edges(), "")
+	)
+	if asset_path.is_empty() or not ResourceLoader.exists(asset_path):
+		return
+	var loaded: Resource = ResourceLoader.load(asset_path)
+	if loaded is PackedScene:
+		asset_scene = loaded as PackedScene
 
 
 func _sync_mechanism() -> void:

@@ -1131,6 +1131,15 @@ func build(
 				)
 			teardown()
 			return false
+		var available_loot: Dictionary = _calculate_authored_start_loot()
+		if not bool(mission_run_state.call(
+			"configure_available_loot",
+			int(available_loot.get("count", -1)),
+			int(available_loot.get("value", -1))
+		)):
+			push_error("WorldSession could not latch authored mission-start loot totals.")
+			teardown()
+			return false
 
 	player = _find_session_player(world)
 	if player == null:
@@ -1151,6 +1160,36 @@ func lookup_content_entity(content_id: String) -> Dictionary:
 	if entity_registry == null:
 		return _registry_unavailable_result()
 	return entity_registry.call("lookup_content_id", content_id)
+
+
+func _calculate_authored_start_loot() -> Dictionary:
+	var count: int = 0
+	var value: int = 0
+	if world == null:
+		return {"count": count, "value": value}
+	var nodes: Array[Node] = [world]
+	nodes.append_array(world.find_children("*", "", true, false))
+	for candidate: Node in nodes:
+		if not candidate.has_method("get_collection_payload"):
+			continue
+		var payload_value: Variant = candidate.call("get_collection_payload")
+		if typeof(payload_value) != TYPE_DICTIONARY:
+			continue
+		var payload: Dictionary = payload_value
+		if payload.get("kind", &"") != &"loot":
+			continue
+		var persistent_id: String = str(
+			payload.get("persistent_id", "")
+		).strip_edges()
+		var loot_value: int = int(payload.get("loot_value", -1))
+		if persistent_id.is_empty() or loot_value < 0:
+			continue
+		count += 1
+		value += loot_value
+	return {
+		"count": count,
+		"value": value,
+	}
 
 
 func _find_mission_objective_owner() -> Node:
@@ -1178,7 +1217,11 @@ func get_mission_run_summary() -> Dictionary:
 			"loot_count": 0,
 			"loot_value": 0,
 		}
-	return mission_run_state.call("get_summary")
+	var summary: Dictionary = mission_run_state.call("get_summary")
+	if mission_definition != null:
+		summary["gameplay_time_seconds"] = gameplay_time_seconds
+		summary["objectives"] = query_mission_objectives()
+	return summary
 
 
 func get_authored_tombstones() -> Array[String]:

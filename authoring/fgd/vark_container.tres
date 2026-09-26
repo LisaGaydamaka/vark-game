@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDPointClass" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_point_class.gd" id="1_point"]
+[ext_resource type="PackedScene" path="res://gameplay/containers/OrdinaryContainer.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_point")
+classname = "vark_container"
+description = "Mapper-authored ordinary physical container using the shared VarkOrdinaryContainer behavior."
+class_properties = Dictionary[String, Variant]({
+"persistent_id": "",
+"content_id": "",
+"container_id": "container",
+"container_variant": {"Wooden chest": "wooden_chest", "Desk drawer": "desk_drawer", "Tall cabinet": "tall_cabinet"},
+"transition_seconds": 0.45,
+"gameplay_sound_strength": 0.45,
+"starts_open": false,
+"angle": 180.0
+})
+class_property_descriptions = Dictionary[String, Variant]({
+"persistent_id": "Required stable authored identity for save/restore.",
+"content_id": "Author-facing semantic content ID.",
+"container_id": "Semantic container ID used by events/debugging.",
+"container_variant": "Shared imported-model container asset.",
+"transition_seconds": "Open/close presentation duration.",
+"gameplay_sound_strength": "Semantic use sound strength.",
+"starts_open": "Initial semantic state.",
+"angle": "Initial TrenchBroom yaw."
+})
+auto_apply_to_matching_node_properties = true
+scene_file = ExtResource("2_scene")
+node_groups = Array[String](["vark_container"])
