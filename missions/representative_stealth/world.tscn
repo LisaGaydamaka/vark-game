@@ -13,10 +13,10 @@
 
 [sub_resource type="Environment" id="Environment_representative"]
 background_mode = 1
-background_color = Color(0.022, 0.026, 0.036, 1)
+background_color = Color(0.035, 0.040, 0.052, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.12, 0.13, 0.16, 1)
-ambient_light_energy = 0.36
+ambient_light_color = Color(0.16, 0.17, 0.20, 1)
+ambient_light_energy = 0.46
 
 [sub_resource type="BoxShape3D" id="ExitTriggerShape"]
 size = Vector3(2.0, 1.4, 2.0)
@@ -72,8 +72,8 @@ alarm_id = &"alarm.dev_stealth"
 audience_faction_id = &"guards"
 
 [node name="Instructions" type="Label3D" parent="."]
-position = Vector3(0, 2.7, 17.5)
-text = "8.4 REPRESENTATIVE STEALTH\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nWEST: quiet carpet + openable window; use the crate to help mantle.\nEAST: search the chest for the brass key, then cross loud tile to the locked door.\nUse the switch to darken the north hall. Props can distract the guard.\nF5 quicksave · F9 quickload · F10 restart."
+position = Vector3(16.4, 2.7, 0)
+text = "8.4 REPRESENTATIVE STEALTH\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nWEST: quiet service passages; climb crates/platforms to the raised window and upper route.\nEAST: interconnected tile rooms; search the chest, take the brass key, unlock the east door.\nCENTER/NORTH: tight rooms, pillars and alcoves provide cover. The switch kills the north street lamps.\nF5 quicksave · F9 quickload · F10 restart."
 billboard = 1
 font_size = 18
 outline_size = 7

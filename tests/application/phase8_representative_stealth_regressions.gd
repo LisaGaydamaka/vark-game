@@ -125,6 +125,18 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		_find_by_property(lights, "gameplay_light_id", "light.rep.east")
 		as VarkGameplayLight
 	)
+	var west_light: VarkGameplayLight = (
+		_find_by_property(lights, "gameplay_light_id", "light.rep.west")
+		as VarkGameplayLight
+	)
+	var center_light: VarkGameplayLight = (
+		_find_by_property(lights, "gameplay_light_id", "light.rep.center")
+		as VarkGameplayLight
+	)
+	var archive_light: VarkGameplayLight = (
+		_find_by_property(lights, "gameplay_light_id", "light.rep.archive")
+		as VarkGameplayLight
+	)
 	var surface_variants: Array[String] = []
 	for surface: Node in surfaces:
 		surface_variants.append(str(surface.get("surface_variant")))
@@ -148,10 +160,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and guards.size() == 1
 		and patrol_points.size() == 2
 		and containers.size() == 1
-		and props.size() == 2
-		and lights.size() == 3
+		and props.size() == 5
+		and lights.size() == 6
 		and switches.size() == 1,
-		"8.4 authoritative map builds exact representative topology counts: start/exit/guard/patrol/container/props/lights/switch"
+		"8.4 dense representative map builds exact authored role counts: start/exit/guard/patrol/container/props/lights/switch"
 	)
 	assert_true.call(
 		openings.size() == 2,
@@ -207,6 +219,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		south_light != null
 		and north_light != null
 		and east_light != null
+		and west_light != null
+		and center_light != null
+		and archive_light != null
 		and south_fixture != null
 		and north_fixture != null
 		and bool(south_fixture.validate_contract())
@@ -217,14 +232,22 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 south/north authored lights use the self-contained street-lamp fixture without depending on newly imported raw model files"
 	)
 	assert_true.call(
-		is_equal_approx(south_light.get_emitter().omni_range, 13.0)
-		and is_equal_approx(south_light.get_emitter().light_energy, 3.4)
-		and is_equal_approx(north_light.get_emitter().omni_range, 14.0)
-		and is_equal_approx(north_light.get_emitter().light_energy, 4.0)
-		and is_equal_approx(east_light.get_emitter().omni_range, 9.5)
-		and is_equal_approx(east_light.get_emitter().light_energy, 3.0)
+		is_equal_approx(south_light.get_emitter().omni_range, 9.0)
+		and is_equal_approx(south_light.get_emitter().light_energy, 4.5)
+		and is_equal_approx(north_light.get_emitter().omni_range, 11.0)
+		and is_equal_approx(north_light.get_emitter().light_energy, 5.0)
+		and is_equal_approx(east_light.get_emitter().omni_range, 8.5)
+		and is_equal_approx(east_light.get_emitter().light_energy, 3.8)
 		and east_light.is_in_group(&"vark_interactable"),
 		"8.4 mapper-authored light range/energy/direct-interaction values reconcile onto the live emitter after FuncGodot property application"
+	)
+	var gold_loot: Node = _find_by_content_id(pickups, "loot.rep.gold")
+	assert_true.call(
+		window != null
+		and window.global_position.y >= 2.4
+		and gold_loot != null
+		and gold_loot.global_position.y >= 5.4,
+		"8.4 west route authors real vertical progression: the ordinary-window crossing is raised and optional loot occupies the high upper route"
 	)
 
 	var initial_summary: Dictionary = session.call("get_mission_run_summary")
@@ -345,6 +368,16 @@ func _find_by_property(
 ) -> Node:
 	for node: Node in nodes:
 		if node.get(property_name) == expected:
+			return node
+	return null
+
+
+func _find_by_content_id(nodes: Array[Node], content_id: String) -> Node:
+	for node: Node in nodes:
+		if not node.has_method("get_collection_payload"):
+			continue
+		var payload: Dictionary = node.call("get_collection_payload")
+		if str(payload.get("content_id", "")) == content_id:
 			return node
 	return null
 

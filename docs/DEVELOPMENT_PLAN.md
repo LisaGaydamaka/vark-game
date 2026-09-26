@@ -1896,7 +1896,7 @@ Extend semantic run-state only as needed now. At minimum own gameplay time, obje
 
 **Manual:** required — user/playtester completes the mission at least twice through materially different approaches and validates route usefulness, darkness/surfaces/props/guards/loot/container/key/window/alarm/objective/save/restart behavior.
 
-**Current status:** implementation, deterministic regression coverage, and the user-facing F5 quicksave / F9 quickload / F10 restart controls are checked in on `test`. Post-push CI is green; keep this item `[~]` until the focused two-route user/playtester acceptance below is reported successful.
+**Current status:** implementation and deterministic regression coverage are checked in on `test`. Playtest correction now removes newly-added raw-model import-cache dependencies from the window/street-lamp presentations, defers F9/F10 world replacement outside input dispatch, and rebuilds the representative map at the same footprint as a dense multi-room/multi-passage compound with a raised west-window climb route, upper catwalk/perches, keyed east room chain, cover alcoves/pillars, and stronger readable lighting. Keep this item `[~]` until post-push CI and the revised focused two-route user/playtester acceptance below are successful.
 
 ## 8.5 GDScript extension proof `[ ]`
 
