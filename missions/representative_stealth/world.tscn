@@ -1,0 +1,84 @@
+[gd_scene load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://missions/representative_stealth/world.gd" id="1_world"]
+[ext_resource type="Script" path="res://addons/func_godot/src/map/func_godot_map.gd" id="2_map"]
+[ext_resource type="Resource" path="res://authoring/vark_map_settings.tres" id="3_settings"]
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="4_player"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_listener.gd" id="5_listener"]
+[ext_resource type="Script" path="res://gameplay/acoustics/acoustic_propagation.gd" id="6_propagation"]
+[ext_resource type="Script" path="res://gameplay/visibility/gameplay_exposure.gd" id="7_exposure"]
+[ext_resource type="Script" path="res://gameplay/noise/player_footstep_emitter.gd" id="8_footsteps"]
+[ext_resource type="Script" path="res://gameplay/objectives/simple_objective_state.gd" id="9_objective"]
+[ext_resource type="Script" path="res://gameplay/objectives/semantic_route_trigger.gd" id="10_trigger"]
+[ext_resource type="Script" path="res://gameplay/alarms/alarm_channel.gd" id="11_alarm"]
+
+[sub_resource type="Environment" id="Environment_representative"]
+background_mode = 1
+background_color = Color(0.012, 0.014, 0.02, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.075, 0.08, 0.10, 1)
+ambient_light_energy = 0.22
+
+[sub_resource type="BoxShape3D" id="ExitTriggerShape"]
+size = Vector3(2.0, 1.4, 2.0)
+
+[node name="RepresentativeStealth" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_representative")
+
+[node name="Player" parent="." instance=ExtResource("4_player")]
+
+[node name="SpeechListener" type="Node3D" parent="Player"]
+script = ExtResource("5_listener")
+listener_id = &"listener.dev_stealth.player"
+hearing_threshold = 0.18
+
+[node name="FuncGodotMap" type="Node3D" parent="."]
+script = ExtResource("2_map")
+map_settings = ExtResource("3_settings")
+metadata/_custom_type_script = "uid://cwu5cf7a0awcd"
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+
+[node name="AcousticPropagation" type="Node" parent="."]
+script = ExtResource("6_propagation")
+
+[node name="GameplayExposure" type="Node3D" parent="."]
+script = ExtResource("7_exposure")
+player_path = NodePath("../Player")
+
+[node name="FootstepEmitter" type="Node" parent="."]
+script = ExtResource("8_footsteps")
+player_path = NodePath("../Player")
+
+[node name="ObjectiveState" type="Node" parent="."]
+script = ExtResource("9_objective")
+objective_id = &"objective.dev_stealth.ledger"
+exit_id = &"exit.dev_stealth"
+objective_text = "Steal the sealed ledger, then return to the south exit."
+
+[node name="ExitTrigger" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 2
+script = ExtResource("10_trigger")
+event_name = &"mission.exit_requested"
+payload_key = &"exit_id"
+payload_id = &"exit.dev_stealth"
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ExitTrigger"]
+shape = SubResource("ExitTriggerShape")
+
+[node name="AlarmChannel" type="Node" parent="."]
+script = ExtResource("11_alarm")
+alarm_id = &"alarm.dev_stealth"
+audience_faction_id = &"guards"
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(0, 2.7, 17.5)
+text = "8.4 REPRESENTATIVE STEALTH\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nWEST: quiet carpet + openable window; use the crate to help mantle.\nEAST: search the chest for the brass key, then cross loud tile to the locked door.\nUse the switch to darken the north hall. Props can distract the guard.\nQuicksave / quickload / restart use normal application controls."
+billboard = 1
+font_size = 18
+outline_size = 7
+no_depth_test = true

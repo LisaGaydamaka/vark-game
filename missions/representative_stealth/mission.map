@@ -1,0 +1,384 @@
+// Game: Vark
+// Format: Valve
+// Phase 8.4 representative stealth mission — authoritative mapper source
+// entity 0
+{
+"mapversion" "220"
+"wad" ""
+"classname" "worldspawn"
+{
+( -704 -640 -8 ) ( -704 -639 -8 ) ( -704 -640 -7 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 -640 -8 ) ( -704 -640 -7 ) ( -703 -640 -8 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 -640 -8 ) ( -703 -640 -8 ) ( -704 -639 -8 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 704 640 0 ) ( 704 641 0 ) ( 705 640 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 704 640 0 ) ( 705 640 0 ) ( 704 640 1 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 704 640 0 ) ( 704 640 1 ) ( 704 641 0 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -712 -648 0 ) ( -712 -647 0 ) ( -712 -648 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -712 -648 0 ) ( -712 -648 1 ) ( -711 -648 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -712 -648 0 ) ( -711 -648 0 ) ( -712 -647 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -704 648 96 ) ( -704 649 96 ) ( -703 648 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -704 648 96 ) ( -703 648 96 ) ( -704 648 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 648 96 ) ( -704 648 97 ) ( -704 649 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( 704 -648 0 ) ( 704 -647 0 ) ( 704 -648 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 704 -648 0 ) ( 704 -648 1 ) ( 705 -648 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 704 -648 0 ) ( 705 -648 0 ) ( 704 -647 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 712 648 96 ) ( 712 649 96 ) ( 713 648 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 712 648 96 ) ( 713 648 96 ) ( 712 648 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 712 648 96 ) ( 712 648 97 ) ( 712 649 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -704 -648 0 ) ( -704 -647 0 ) ( -704 -648 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 -648 0 ) ( -704 -648 1 ) ( -703 -648 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 -648 0 ) ( -703 -648 0 ) ( -704 -647 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 704 -640 96 ) ( 704 -639 96 ) ( 705 -640 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 704 -640 96 ) ( 705 -640 96 ) ( 704 -640 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 704 -640 96 ) ( 704 -640 97 ) ( 704 -639 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -704 640 0 ) ( -704 641 0 ) ( -704 640 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 640 0 ) ( -704 640 1 ) ( -703 640 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 640 0 ) ( -703 640 0 ) ( -704 641 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 704 648 96 ) ( 704 649 96 ) ( 705 648 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 704 648 96 ) ( 705 648 96 ) ( 704 648 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 704 648 96 ) ( 704 648 97 ) ( 704 649 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -704 -8 0 ) ( -704 -7 0 ) ( -704 -8 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 -8 0 ) ( -704 -8 1 ) ( -703 -8 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -704 -8 0 ) ( -703 -8 0 ) ( -704 -7 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -340.8 8 96 ) ( -340.8 9 96 ) ( -339.8 8 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -340.8 8 96 ) ( -339.8 8 96 ) ( -340.8 8 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -340.8 8 96 ) ( -340.8 8 97 ) ( -340.8 9 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -299.2 -8 0 ) ( -299.2 -7 0 ) ( -299.2 -8 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -299.2 -8 0 ) ( -299.2 -8 1 ) ( -298.2 -8 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -299.2 -8 0 ) ( -298.2 -8 0 ) ( -299.2 -7 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 299.2 8 96 ) ( 299.2 9 96 ) ( 300.2 8 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 299.2 8 96 ) ( 300.2 8 96 ) ( 299.2 8 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 299.2 8 96 ) ( 299.2 8 97 ) ( 299.2 9 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( 340.8 -8 0 ) ( 340.8 -7 0 ) ( 340.8 -8 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 340.8 -8 0 ) ( 340.8 -8 1 ) ( 341.8 -8 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 340.8 -8 0 ) ( 341.8 -8 0 ) ( 340.8 -7 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 704 8 96 ) ( 704 9 96 ) ( 705 8 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 704 8 96 ) ( 705 8 96 ) ( 704 8 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 704 8 96 ) ( 704 8 97 ) ( 704 9 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -340.8 -8 0 ) ( -340.8 -7 0 ) ( -340.8 -8 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -340.8 -8 0 ) ( -340.8 -8 1 ) ( -339.8 -8 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -340.8 -8 0 ) ( -339.8 -8 0 ) ( -340.8 -7 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -299.2 8 24 ) ( -299.2 9 24 ) ( -298.2 8 24 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -299.2 8 24 ) ( -298.2 8 24 ) ( -299.2 8 25 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -299.2 8 24 ) ( -299.2 8 25 ) ( -299.2 9 24 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -340.8 -8 64 ) ( -340.8 -7 64 ) ( -340.8 -8 65 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -340.8 -8 64 ) ( -340.8 -8 65 ) ( -339.8 -8 64 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -340.8 -8 64 ) ( -339.8 -8 64 ) ( -340.8 -7 64 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -299.2 8 96 ) ( -299.2 9 96 ) ( -298.2 8 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -299.2 8 96 ) ( -298.2 8 96 ) ( -299.2 8 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -299.2 8 96 ) ( -299.2 8 97 ) ( -299.2 9 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( 299.2 -8 68 ) ( 299.2 -7 68 ) ( 299.2 -8 69 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 299.2 -8 68 ) ( 299.2 -8 69 ) ( 300.2 -8 68 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 299.2 -8 68 ) ( 300.2 -8 68 ) ( 299.2 -7 68 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 340.8 8 96 ) ( 340.8 9 96 ) ( 341.8 8 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 340.8 8 96 ) ( 341.8 8 96 ) ( 340.8 8 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 340.8 8 96 ) ( 340.8 8 97 ) ( 340.8 9 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -72 -350 0 ) ( -72 -349 0 ) ( -72 -350 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -72 -350 0 ) ( -72 -350 1 ) ( -71 -350 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -72 -350 0 ) ( -71 -350 0 ) ( -72 -349 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 72 -334 72 ) ( 72 -333 72 ) ( 73 -334 72 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 72 -334 72 ) ( 73 -334 72 ) ( 72 -334 73 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 72 -334 72 ) ( 72 -334 73 ) ( 72 -333 72 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -360 -420 0 ) ( -360 -419 0 ) ( -360 -420 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -360 -420 0 ) ( -360 -420 1 ) ( -359 -420 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -360 -420 0 ) ( -359 -420 0 ) ( -360 -419 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -320 -220 56 ) ( -320 -219 56 ) ( -319 -220 56 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -320 -220 56 ) ( -319 -220 56 ) ( -320 -220 57 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -320 -220 56 ) ( -320 -220 57 ) ( -320 -219 56 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( 320 -470 0 ) ( 320 -469 0 ) ( 320 -470 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 320 -470 0 ) ( 320 -470 1 ) ( 321 -470 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 320 -470 0 ) ( 321 -470 0 ) ( 320 -469 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 360 -270 56 ) ( 360 -269 56 ) ( 361 -270 56 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 360 -270 56 ) ( 361 -270 56 ) ( 360 -270 57 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 360 -270 56 ) ( 360 -270 57 ) ( 360 -269 56 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+{
+( -160 -570 0 ) ( -160 -569 0 ) ( -160 -570 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -160 -570 0 ) ( -160 -570 1 ) ( -159 -570 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -160 -570 0 ) ( -159 -570 0 ) ( -160 -569 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 160 -554 48 ) ( 160 -553 48 ) ( 161 -554 48 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 160 -554 48 ) ( 161 -554 48 ) ( 160 -554 49 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 160 -554 48 ) ( 160 -554 49 ) ( 160 -553 48 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+}
+// entity 1
+{
+"classname" "vark_player_start"
+"persistent_id" "vark_rep_start"
+"content_id" "default"
+"angle" "180"
+"origin" "0 560 36.8"
+}
+// entity 2
+{
+"classname" "vark_exit"
+"persistent_id" "vark_rep_exit"
+"content_id" "exit.dev_stealth"
+"angle" "180"
+"origin" "0 600 16"
+}
+// entity 3
+{
+"classname" "vark_opening"
+"persistent_id" "vark_rep_window"
+"door_id" "opening.window_west"
+"opening_variant" "window"
+"starts_locked" "0"
+"required_key_id" ""
+"starts_barred" "0"
+"transition_seconds" "0.55"
+"gameplay_sound_strength" "0.55"
+"angle" "0"
+"origin" "-340.8 0 24"
+}
+// entity 4
+{
+"classname" "vark_opening"
+"persistent_id" "vark_rep_locked_door"
+"door_id" "door.east_locked"
+"opening_variant" "ordinary"
+"starts_locked" "1"
+"required_key_id" "key.service"
+"starts_barred" "0"
+"transition_seconds" "0.55"
+"gameplay_sound_strength" "0.65"
+"angle" "0"
+"origin" "299.2 0 0"
+}
+// entity 5
+{
+"classname" "vark_patrol_point"
+"patrol_id" "patrol.rep.a"
+"wait_seconds" "3.0"
+"origin" "-260 -270 0"
+}
+// entity 6
+{
+"classname" "vark_patrol_point"
+"patrol_id" "patrol.rep.b"
+"wait_seconds" "4.0"
+"origin" "260 -270 0"
+}
+// entity 7
+{
+"classname" "vark_guard"
+"persistent_id" "vark_rep_guard"
+"content_id" "guard.dev_stealth"
+"guard_id" "guard.dev_stealth"
+"patrol_a_id" "patrol.rep.a"
+"patrol_b_id" "patrol.rep.b"
+"door_id" "door.east_locked"
+"movement_speed" "1.2"
+"door_use_distance" "2.0"
+"angle" "180"
+"origin" "-260 -270 0"
+}
+// entity 8
+{
+"classname" "vark_gameplay_light"
+"persistent_id" "vark_rep_light_south"
+"gameplay_light_id" "light.rep.south"
+"control_id" ""
+"starts_on" "1"
+"gameplay_strength" "0.65"
+"omni_range" "8.0"
+"light_energy" "2.0"
+"shadow_enabled" "1"
+"angle" "180"
+"origin" "0 320 70"
+}
+// entity 9
+{
+"classname" "vark_gameplay_light"
+"persistent_id" "vark_rep_light_north"
+"gameplay_light_id" "light.rep.north"
+"control_id" "security_north"
+"starts_on" "1"
+"gameplay_strength" "0.95"
+"omni_range" "9.0"
+"light_energy" "2.6"
+"shadow_enabled" "1"
+"angle" "180"
+"origin" "0 -300 70"
+}
+// entity 10
+{
+"classname" "vark_gameplay_light"
+"persistent_id" "vark_rep_light_east"
+"gameplay_light_id" "light.rep.east"
+"control_id" ""
+"starts_on" "1"
+"gameplay_strength" "0.80"
+"omni_range" "7.0"
+"light_energy" "2.2"
+"shadow_enabled" "1"
+"direct_interaction" "extinguish"
+"angle" "180"
+"origin" "420 -420 64"
+}
+// entity 11
+{
+"classname" "vark_switch"
+"switch_id" "switch.rep.security"
+"control_id" "security_north"
+"gameplay_sound_strength" "0.25"
+"angle" "180"
+"origin" "0 180 42"
+}
+// entity 12
+{
+"classname" "vark_container"
+"persistent_id" "vark_rep_chest"
+"content_id" "container.rep.key_cache"
+"container_id" "container.rep.key_cache"
+"container_variant" "wooden_chest"
+"starts_open" "0"
+"angle" "180"
+"origin" "420 300 0"
+}
+// entity 13
+{
+"classname" "vark_collectible"
+"persistent_id" "vark_rep_key"
+"content_id" "key.service"
+"pickup_kind" "key"
+"pickup_variant" "brass_key"
+"loot_value" "0"
+"display_label" "Brass service key"
+"angle" "180"
+"origin" "420 300 10"
+}
+// entity 14
+{
+"classname" "vark_collectible"
+"persistent_id" "vark_rep_loot_silver"
+"content_id" "loot.rep.silver"
+"pickup_kind" "loot"
+"pickup_variant" "silver_candlestick"
+"loot_value" "75"
+"display_label" "Silver candlestick"
+"angle" "180"
+"origin" "405 300 10"
+}
+// entity 15
+{
+"classname" "vark_collectible"
+"persistent_id" "vark_rep_loot_gold"
+"content_id" "loot.rep.gold"
+"pickup_kind" "loot"
+"pickup_variant" "gold_cup"
+"loot_value" "50"
+"display_label" "Gold cup"
+"angle" "180"
+"origin" "-500 -440 8"
+}
+// entity 16
+{
+"classname" "vark_collectible"
+"persistent_id" "vark_rep_ledger"
+"content_id" "mission.dev_stealth.ledger"
+"pickup_kind" "mission_item"
+"pickup_variant" "sealed_scroll"
+"loot_value" "0"
+"display_label" "Sealed ledger"
+"angle" "180"
+"origin" "0 -590 8"
+}
+// entity 17
+{
+"classname" "vark_prop"
+"persistent_id" "vark_rep_prop_route"
+"prop_id" "prop.rep.route_crate"
+"prop_variant" "ordinary_crate"
+"collision_size" "0.6 0.6 0.6"
+"angle" "180"
+"origin" "-330 92 10"
+}
+// entity 18
+{
+"classname" "vark_prop"
+"persistent_id" "vark_rep_prop_distraction"
+"prop_id" "prop.rep.distraction"
+"prop_variant" "ordinary_crate"
+"collision_size" "0.6 0.6 0.6"
+"angle" "180"
+"origin" "-100 230 10"
+}
+// entity 19
+{
+"classname" "vark_acoustic_space"
+"space_id" "space.rep.main"
+{
+( -690 -626 0 ) ( -690 -625 0 ) ( -690 -626 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -690 -626 0 ) ( -690 -626 1 ) ( -689 -626 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -690 -626 0 ) ( -689 -626 0 ) ( -690 -625 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 690 626 96 ) ( 690 627 96 ) ( 691 626 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 690 626 96 ) ( 691 626 96 ) ( 690 626 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 690 626 96 ) ( 690 626 97 ) ( 690 627 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+}
+// entity 20
+{
+"classname" "vark_footstep_surface"
+"surface_variant" "carpet"
+{
+( -690 -626 0 ) ( -690 -625 0 ) ( -690 -626 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -690 -626 0 ) ( -690 -626 1 ) ( -689 -626 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -690 -626 0 ) ( -689 -626 0 ) ( -690 -625 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -128 626 96 ) ( -128 627 96 ) ( -127 626 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -128 626 96 ) ( -127 626 96 ) ( -128 626 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -128 626 96 ) ( -128 626 97 ) ( -128 627 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+}
+// entity 21
+{
+"classname" "vark_footstep_surface"
+"surface_variant" "stone"
+{
+( -128 -626 0 ) ( -128 -625 0 ) ( -128 -626 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -128 -626 0 ) ( -128 -626 1 ) ( -127 -626 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -128 -626 0 ) ( -127 -626 0 ) ( -128 -625 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 128 626 96 ) ( 128 627 96 ) ( 129 626 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 128 626 96 ) ( 129 626 96 ) ( 128 626 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 128 626 96 ) ( 128 626 97 ) ( 128 627 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+}
+// entity 22
+{
+"classname" "vark_footstep_surface"
+"surface_variant" "tile"
+{
+( 128 -626 0 ) ( 128 -625 0 ) ( 128 -626 1 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 128 -626 0 ) ( 128 -626 1 ) ( 129 -626 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 128 -626 0 ) ( 129 -626 0 ) ( 128 -625 0 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 690 626 96 ) ( 690 627 96 ) ( 691 626 96 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 690 626 96 ) ( 691 626 96 ) ( 690 626 97 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 690 626 96 ) ( 690 626 97 ) ( 690 627 96 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+}

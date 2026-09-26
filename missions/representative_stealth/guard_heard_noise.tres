@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="VarkSpeechLine" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://gameplay/speech/speech_line.gd" id="1_line"]
+
+[resource]
+script = ExtResource("1_line")
+line_id = &"speech.dev_stealth.heard_noise"
+text = "Who's there?"
+sound_kind = &"speech.dev_stealth.heard_noise"
+gameplay_sound_strength = 0.72
+presentation_duration_seconds = 2.6

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="MissionDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://missions/mission_definition.gd" id="1_definition"]
+[ext_resource type="PackedScene" path="res://missions/representative_stealth/world.tscn" id="2_world"]
+
+[resource]
+script = ExtResource("1_definition")
+mission_id = &"phase8_representative_stealth"
+world_scene = ExtResource("2_world")
+map_source_path = "res://missions/representative_stealth/mission.map"
+player_start_selector = &"default"
+mission_content_revision = 1
+mission_rule_declarations = Array[Dictionary]([{"actions": [{"event_name": &"objective.complete_requested", "kind": &"emit_event", "payload": {"objective_id": &"objective.dev_stealth.ledger"}}], "conditions": [{"key": &"content_id", "kind": &"event_payload_equals", "value": "mission.dev_stealth.ledger"}, {"key": &"kind", "kind": &"event_payload_equals", "value": &"mission_item"}], "event_name": &"pickup.collected", "repeat": false, "rule_id": &"rule.dev_stealth.complete_ledger"}, {"actions": [{"event_name": &"alarm.raise_requested", "kind": &"emit_event", "payload": {"alarm_id": &"alarm.dev_stealth", "evidence_position": Vector3(0, 0.5, -16.5), "source_actor_id": "mission.ledger"}}], "conditions": [{"key": &"content_id", "kind": &"event_payload_equals", "value": "mission.dev_stealth.ledger"}], "event_name": &"pickup.collected", "repeat": false, "rule_id": &"rule.dev_stealth.raise_alarm"}])
