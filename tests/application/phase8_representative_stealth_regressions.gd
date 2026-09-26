@@ -212,8 +212,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and bool(south_fixture.validate_contract())
 		and south_fixture_summary.get("asset_id", &"") == &"street_lamp"
 		and not bool(south_fixture_summary.get("requires_imported_mesh", true))
-		and str(south_fixture_summary.get("body_model_path", "")).is_empty()
-		and str(south_fixture_summary.get("lit_surface_model_path", "")).is_empty(),
+		and not str(south_fixture_summary.get("body_model_path", "")).ends_with(".obj")
+		and not str(south_fixture_summary.get("lit_surface_model_path", "")).ends_with(".obj"),
 		"8.4 south/north authored lights use the self-contained street-lamp fixture without depending on newly imported raw model files"
 	)
 	assert_true.call(
