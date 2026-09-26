@@ -1,47 +1,90 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://gameplay/visibility/light_fixture_asset.gd" id="1_asset"]
-[ext_resource type="ArrayMesh" path="res://assets/models/lights/street_lamp.obj" id="2_body"]
-[ext_resource type="ArrayMesh" path="res://assets/models/lights/street_lamp_glass.obj" id="3_glass"]
 
 [sub_resource type="StandardMaterial3D" id="BodyMaterial"]
 albedo_color = Color(0.10, 0.11, 0.12, 1)
 metallic = 0.45
 roughness = 0.62
 
+[sub_resource type="CylinderMesh" id="PoleMesh"]
+top_radius = 0.075
+bottom_radius = 0.095
+height = 2.15
+radial_segments = 10
+rings = 1
+
+[sub_resource type="CylinderMesh" id="BaseMesh"]
+top_radius = 0.24
+bottom_radius = 0.30
+height = 0.14
+radial_segments = 10
+rings = 1
+
+[sub_resource type="CylinderMesh" id="CapMesh"]
+top_radius = 0.18
+bottom_radius = 0.28
+height = 0.20
+radial_segments = 10
+rings = 1
+
+[sub_resource type="SphereMesh" id="GlassMesh"]
+radius = 0.22
+height = 0.38
+radial_segments = 12
+rings = 6
+
 [sub_resource type="BoxShape3D" id="BaseShape"]
-size = Vector3(0.44, 0.12, 0.44)
+size = Vector3(0.60, 0.14, 0.60)
 
-[sub_resource type="BoxShape3D" id="PoleShape"]
-size = Vector3(0.14, 1.93, 0.14)
+[sub_resource type="CylinderShape3D" id="PoleShape"]
+radius = 0.095
+height = 2.15
 
-[sub_resource type="BoxShape3D" id="LanternShape"]
-size = Vector3(0.48, 0.56, 0.48)
+[sub_resource type="SphereShape3D" id="LanternShape"]
+radius = 0.24
+
+[sub_resource type="CylinderShape3D" id="CapShape"]
+radius = 0.28
+height = 0.20
 
 [node name="StreetLampAsset" type="Node3D"]
 script = ExtResource("1_asset")
 asset_id = &"street_lamp"
+requires_imported_mesh = false
 lit_surface_off_color = Color(0.07, 0.075, 0.08, 1)
 lit_surface_on_color = Color(1, 0.78, 0.38, 1)
-lit_surface_emission_energy = 4.2
+lit_surface_emission_energy = 4.4
 lit_surface_visible_when_off = true
 self_fill_energy_scale = 0.35
-self_fill_range = 1.15
+self_fill_range = 1.10
 
 [node name="BodyMesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.145, 0)
 layers = 524289
-mesh = ExtResource("2_body")
+mesh = SubResource("PoleMesh")
+material_override = SubResource("BodyMaterial")
+
+[node name="BaseMesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.07, 0)
+mesh = SubResource("BaseMesh")
+material_override = SubResource("BodyMaterial")
+
+[node name="CanopyMesh" type="MeshInstance3D" parent="."]
+position = Vector3(0, 2.62, 0)
+mesh = SubResource("CapMesh")
 material_override = SubResource("BodyMaterial")
 
 [node name="LitSurfaceMesh" type="MeshInstance3D" parent="."]
-mesh = ExtResource("3_glass")
+position = Vector3(0, 2.40, 0)
+mesh = SubResource("GlassMesh")
 
 [node name="EmitterAnchor" type="Marker3D" parent="."]
-position = Vector3(0, 2.32, 0)
+position = Vector3(0, 2.40, 0)
 
 [node name="FixtureFill" type="OmniLight3D" parent="EmitterAnchor"]
 light_energy = 0.0
-omni_range = 1.15
+omni_range = 1.10
 shadow_enabled = false
 light_cull_mask = 524288
 
@@ -54,13 +97,17 @@ collision_layer = 1
 collision_mask = 0
 
 [node name="Base" type="CollisionShape3D" parent="SolidBody"]
-position = Vector3(0, 0.06, 0)
+position = Vector3(0, 0.07, 0)
 shape = SubResource("BaseShape")
 
 [node name="Pole" type="CollisionShape3D" parent="SolidBody"]
-position = Vector3(0, 1.085, 0)
+position = Vector3(0, 1.145, 0)
 shape = SubResource("PoleShape")
 
 [node name="Lantern" type="CollisionShape3D" parent="SolidBody"]
-position = Vector3(0, 2.34, 0)
+position = Vector3(0, 2.40, 0)
 shape = SubResource("LanternShape")
+
+[node name="Canopy" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, 2.62, 0)
+shape = SubResource("CapShape")

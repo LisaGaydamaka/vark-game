@@ -15,6 +15,7 @@ const EXPOSURE_OCCLUDER_PHYSICS_LAYER: int = 1 << 5
 
 
 @export var asset_id: StringName = &""
+@export var requires_imported_mesh: bool = true
 @export var lit_surface_off_color: Color = Color(0.10, 0.09, 0.07, 1.0)
 @export var lit_surface_on_color: Color = Color(1.0, 0.72, 0.28, 1.0)
 @export_range(0.0, 16.0, 0.1) var lit_surface_emission_energy: float = 3.0
@@ -63,8 +64,13 @@ func validate_contract() -> bool:
 		and _collision_shape_count(exposure_occluder) > 0
 		and exposure_occluder.collision_layer == EXPOSURE_OCCLUDER_PHYSICS_LAYER
 		and exposure_occluder.collision_mask == 0
-		and _is_imported_mesh(body_mesh.mesh)
-		and _is_imported_mesh(lit_surface_mesh.mesh)
+		and (
+			not requires_imported_mesh
+			or (
+				_is_imported_mesh(body_mesh.mesh)
+				and _is_imported_mesh(lit_surface_mesh.mesh)
+			)
+		)
 		and _emitter_is_inside_lit_surface()
 		and (
 			body_mesh.layers & FIXTURE_SELF_FILL_RENDER_LAYER
@@ -127,6 +133,7 @@ func get_contract_summary() -> Dictionary:
 	var body_standard := body_material as StandardMaterial3D
 	return {
 		"asset_id": asset_id,
+		"requires_imported_mesh": requires_imported_mesh,
 		"body_model_path": (
 			body_mesh.mesh.resource_path
 			if body_mesh != null and body_mesh.mesh != null

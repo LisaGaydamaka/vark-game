@@ -164,9 +164,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 	assert_true.call(
 		window != null
-		and str(window.get("visual_model_path"))
-			== "res://assets/models/doors/ordinary_window_leaf.obj",
-		"8.4 west window presentation resolves the compatible shared window leaf model"
+		and str(window.get("visual_model_path")).is_empty()
+		and window.call("get_visual_model") is BoxMesh,
+		"8.4 west window presentation is a self-contained compatible Mesh on the shared OrdinaryDoor spine and does not require a newly imported raw model"
 	)
 	assert_true.call(
 		locked_door != null
@@ -211,11 +211,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and north_fixture != null
 		and bool(south_fixture.validate_contract())
 		and south_fixture_summary.get("asset_id", &"") == &"street_lamp"
-		and str(south_fixture_summary.get("body_model_path", ""))
-			== "res://assets/models/lights/street_lamp.obj"
-		and str(south_fixture_summary.get("lit_surface_model_path", ""))
-			== "res://assets/models/lights/street_lamp_glass.obj",
-		"8.4 south/north authored lights use the reusable imported-model street-lamp fixture rather than three copies of the wall lamp"
+		and not bool(south_fixture_summary.get("requires_imported_mesh", true))
+		and str(south_fixture_summary.get("body_model_path", "")).is_empty()
+		and str(south_fixture_summary.get("lit_surface_model_path", "")).is_empty(),
+		"8.4 south/north authored lights use the self-contained street-lamp fixture without depending on newly imported raw model files"
 	)
 	assert_true.call(
 		is_equal_approx(south_light.get_emitter().omni_range, 13.0)

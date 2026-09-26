@@ -19,9 +19,7 @@ const OPENING_VARIANT_WINDOW: String = "window"
 const OPENING_VARIANT_NARROW_MODEL_PATH: String = (
 	"res://assets/models/doors/ordinary_door_leaf_narrow.obj"
 )
-const OPENING_VARIANT_WINDOW_MODEL_PATH: String = (
-	"res://assets/models/doors/ordinary_window_leaf.obj"
-)
+const WINDOW_PRESENTATION_SIZE: Vector3 = Vector3(1.30, 2.08, 0.10)
 
 
 @export var persistent_id: String = ""
@@ -103,9 +101,11 @@ func _func_godot_apply_properties(_properties: Dictionary) -> void:
 		var requested_path: String = visual_model_path
 		if not set_visual_model_from_path(requested_path):
 			push_error(
-				"VarkOrdinaryDoor mapper properties could not load visual_model_path '%s'."
+				"VarkOrdinaryDoor mapper properties could not load explicit visual_model_path '%s'."
 				% requested_path
 			)
+	elif opening_variant.strip_edges() == OPENING_VARIANT_WINDOW:
+		_apply_visual_model(visual_model, false)
 	_sync_derived_state()
 
 
@@ -278,7 +278,12 @@ func _apply_authored_variant_defaults() -> void:
 		OPENING_VARIANT_NARROW:
 			visual_model_path = OPENING_VARIANT_NARROW_MODEL_PATH
 		OPENING_VARIANT_WINDOW:
-			visual_model_path = OPENING_VARIANT_WINDOW_MODEL_PATH
+			# The development window variant is deliberately self-contained.
+			# It must not depend on a newly-added raw imported source file being
+			# present in Godot's local import cache before FuncGodot builds.
+			var window_mesh := BoxMesh.new()
+			window_mesh.size = WINDOW_PRESENTATION_SIZE
+			visual_model = window_mesh
 
 
 func set_visual_model(model: Mesh) -> bool:
