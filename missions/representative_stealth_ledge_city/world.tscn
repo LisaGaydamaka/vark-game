@@ -73,7 +73,7 @@ audience_faction_id = &"guards"
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(16.7, 2.8, 0)
-text = "8.4 LEDGE CITY — BOULEVARD VARIANT\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nTHE MAIN BOULEVARD, CROSS STREET, ALLEYS AND BUILDING ROOMS ARE ALL REAL NAVIGABLE SPACE.\nWEST: use awnings/fire escapes, jump the cross street and service alley, then climb the Archive facade to its high window.\nEAST: enter/climb the Watchmaker, take the archive key, descend the rear fire escape, unlock the Archive front door, then climb its internal stairwell.\nF5 quicksave · F9 quickload · F10 restart."
+text = "8.4 LEDGE CITY — COMPACT STREET VARIANT\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nNARROW STREET, CROSS STREET, REAR ALLEYS AND SMALL INTERIOR CORRIDORS FORM ONE DENSE CITY BLOCK.\nCLIMB NORMAL CITY FABRIC: CARTS, CRATES, STALL CANOPIES, AWNINGS, BALCONIES, WINDOW SILLS, CORNICES AND TILTED ROOFS.\nWEST: climb Mercer/Survey architecture to the Archive high window. EAST: climb the Watchmaker roof room for the key, descend behind it, unlock the Archive and use its stairs.\nF5 quicksave · F9 quickload · F10 restart."
 billboard = 1
 font_size = 18
 outline_size = 7

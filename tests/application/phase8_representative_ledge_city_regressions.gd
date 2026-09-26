@@ -13,21 +13,22 @@ const LEDGE_LABEL := "Representative Stealth — Ledge City"
 const LEDGE_PATH := "res://missions/representative_stealth_ledge_city/mission.tres"
 
 const UP_GAPS := [
-	"ledge_city.mercer01",
-	"ledge_city.mercer02",
-	"ledge_city.mercer03",
-	"ledge_city.office01",
-	"ledge_city.office02",
-	"ledge_city.office03",
-	"ledge_city.archive01",
-	"ledge_city.archive02",
-	"ledge_city.archive03",
-	"ledge_city.archive04",
-	"ledge_city.archive05",
-	"ledge_city.watch01",
-	"ledge_city.watch02",
-	"ledge_city.watch03",
-	"ledge_city.watch04",
+	"ledge_city.mercer_awning",
+	"ledge_city.mercer_balcony",
+	"ledge_city.mercer_sill",
+	"ledge_city.mercer_roof",
+	"ledge_city.office_sill",
+	"ledge_city.office_balcony",
+	"ledge_city.archive_fire_escape",
+	"ledge_city.archive_balcony1",
+	"ledge_city.archive_sill2",
+	"ledge_city.archive_balcony2",
+	"ledge_city.archive_sill3",
+	"ledge_city.archive_window",
+	"ledge_city.watch_awning",
+	"ledge_city.watch_balcony",
+	"ledge_city.watch_sill",
+	"ledge_city.watch_roof",
 ]
 const LATERAL_GAPS := [
 	"ledge_city.cross_street",
@@ -61,7 +62,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"mission.tres",
 			"mission.map"
 		)
-		and int(Definition.get("mission_content_revision")) == 2,
+		and int(Definition.get("mission_content_revision")) == 3,
 		"8.4 Ledge City owns a distinct MissionDefinition/save identity and authoritative mapper source"
 	)
 
@@ -138,11 +139,11 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and props.size() == 5
 		and lights.size() == 8
 		and switches.size() == 1
-		and openings.size() == 6
+		and openings.size() == 7
 		and pickups.size() == 4
-		and markers.size() >= 35
-		and _count_direct_collision_shapes(worldspawn) >= 140,
-		"8.4 Ledge City preserves representative gameplay roles inside an organized boulevard, accessible building interiors and architectural traversal network"
+		and markers.size() >= 39
+		and _count_direct_collision_shapes(worldspawn) >= 230,
+		"8.4 Ledge City preserves representative gameplay roles inside a dense compact street block with accessible rooms and architectural traversal"
 	)
 
 	var ground_catch: Node = _find_by_property(
@@ -165,10 +166,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and ground_catch.global_position.y >= 2.40
 		and ground_catch.global_position.y <= 2.55
 		and key_roof != null
-		and key_roof.global_position.y >= 6.90
+		and key_roof.global_position.y >= 6.70
 		and archive_apex != null
-		and archive_apex.global_position.y >= 14.20,
-		"8.4 Ledge City starts above ordinary standing reach, reaches the Watchmaker roof room and ends inside a fourteen-metre Archive upper room"
+		and archive_apex.global_position.y >= 12.40,
+		"8.4 Ledge City starts above ordinary standing reach, reaches the Watchmaker roof room and still carries the objective high into the Archive"
 	)
 
 	var upward_gaps_valid: bool = true
@@ -192,7 +193,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			to_marker.global_position
 		)
 		if (
-			rise < 0.90
+			rise < 0.70
 			or rise > 1.10
 			or horizontal_gap < 0.70
 			or horizontal_gap > 2.25
@@ -226,7 +227,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			from_marker.global_position,
 			to_marker.global_position
 		)
-		if rise > 0.05 or horizontal_gap < 1.60 or horizontal_gap > 2.40:
+		if rise > 0.25 or horizontal_gap < 1.40 or horizontal_gap > 3.10:
 			lateral_gaps_valid = false
 			break
 	assert_true.call(
@@ -252,7 +253,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		window != null
 		and str(window.get("opening_variant")) == "window"
-		and window.global_position.y >= 13.9
+		and window.global_position.y >= 12.4
 		and locked_door != null
 		and bool(access.get("locked", false))
 		and str(access.get("required_key_id", "")) == "key.service",
@@ -273,6 +274,18 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and pickup_roles.get("mission.dev_stealth.ledger", &"")
 			== &"mission_item",
 		"8.4 Ledge City retains the representative key/loot/objective content contract"
+	)
+
+	var source: String = FileAccess.get_file_as_string(
+		"res://missions/representative_stealth_ledge_city/mission.map"
+	)
+	assert_true.call(
+		source.count("// sloped_roof:") >= 12
+		and source.count("// street_item:") >= 20
+		and source.count("// door_fit:") >= 7
+		and not source.contains("// west_route:")
+		and not source.contains("// east_route:"),
+		"8.4 Ledge City uses tilted roofs and ordinary street/architectural objects for traversal, with exact-fit door headers and no dedicated route-platform brush class"
 	)
 
 	var nav_ready: bool = await _wait_for_navigation(world, tree)
