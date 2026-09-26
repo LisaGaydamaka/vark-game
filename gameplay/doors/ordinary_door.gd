@@ -90,6 +90,25 @@ func _ready() -> void:
 	_sync_derived_state()
 
 
+func _func_godot_apply_properties(_properties: Dictionary) -> void:
+	# FuncGodot instantiates the shared scene before applying mapper properties.
+	# Reconcile mapper-authored start truth and presentation after those writes
+	# instead of leaving _ready()-derived defaults authoritative.
+	_closed_rotation_y = rotation.y
+	_locked = starts_locked
+	_barred = starts_barred
+	if visual_model_path.strip_edges().is_empty():
+		_apply_authored_variant_defaults()
+	if not visual_model_path.strip_edges().is_empty():
+		var requested_path: String = visual_model_path
+		if not set_visual_model_from_path(requested_path):
+			push_error(
+				"VarkOrdinaryDoor mapper properties could not load visual_model_path '%s'."
+				% requested_path
+			)
+	_sync_derived_state()
+
+
 func _physics_process(delta: float) -> void:
 	if _phase != PHASE_OPENING and _phase != PHASE_CLOSING:
 		return
