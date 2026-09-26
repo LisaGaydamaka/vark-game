@@ -36,4 +36,4 @@ class_property_descriptions = Dictionary[String, Variant]({
 })
 auto_apply_to_matching_node_properties = true
 scene_file = ExtResource("2_scene")
-node_groups = Array[String](["vark_interactable", "vark_prop"])
+node_groups = Array[String](["vark_interactable"])

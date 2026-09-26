@@ -91,7 +91,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			guards.append(node)
 		if node.is_in_group(&"vark_patrol_point"):
 			patrol_points.append(node)
-		if node.is_in_group(&"vark_prop"):
+		if node is VarkOrdinaryProp:
 			props.append(node)
 		if node.is_in_group(&"vark_gameplay_light"):
 			lights.append(node)
