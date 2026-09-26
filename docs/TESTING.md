@@ -1183,7 +1183,7 @@ Expected: `Phase 8.1 mapper workflow proof passed.` The opening reports `variant
 
 Accepted Windows result: the refreshed FGD exposed `prop_id(string)` plus both variant choice fields; persistent-ID repair added IDs only to the authoritative ignored `.map` source and required a reload; the final read-only verifier passed with the Narrow opening resolving `ordinary_door_leaf_narrow.obj`, the Tall crate resolving `ordinary_crate_tall.obj` with collision `(0.5, 0.7, 0.5)`, and the source remaining unchanged. No generated output, gameplay scene, or gameplay script hand-edit was required.
 
-## Phase 8.2 reimport/saveability proof — automated implemented, mapper acceptance pending
+## Phase 8.2 reimport/saveability proof — accepted
 
 The continuous Authoring suite now extends the old Phase 2.8 point-entity reimport proof across real model-backed persistent owners and semantic save/restore:
 
@@ -1238,6 +1238,30 @@ godot --headless --path . --script res://tools/authoring/phase8_reimport_probe.g
 ```
 
 The workspace itself is ignored and does not need to be committed or manually normalized for this proof.
+
+Accepted Windows result: after the baseline snapshot, the mapper moved one ordinary brush plus the accepted opening/prop and saved. Persistent-ID repair reported no change and preserved both IDs with valid identity status. The Phase 8.2 verifier passed, confirming changed world geometry and proof transforms, fresh save ownership of both objects, restoration of the pre-edit semantic save into the edited world, and byte-for-byte unchanged mapper source.
+
+## Phase 8.3 authored rule proof — automated implemented, player acceptance pending
+
+The representative `missions/rule_proof/mission.tres` is the first player-facing content proof of the Phase 7 rule/fact foundation:
+
+- `missions/rule_proof/mission.map` provides a real `vark_player_start`, saved `vark_gameplay_light`, and `vark_switch` through the ordinary mapper/import path;
+- `world.tscn` reuses the existing mission-map wrapper and generic `VarkSimpleObjectiveState`; it contains labels only, with **no mission-specific GDScript**;
+- the definition declares one mission-scope bool `security_cut`, initially false;
+- one one-shot rule matches the real `switch.used` payload only when `phase8.rule.switch` turns the controlled group off and queues `set_fact(security_cut, true)`;
+- the second one-shot rule matches the resulting `mission.fact_changed` for that key/value plus the typed fact condition and emits `objective.activate_requested` for `objective.security_cut`;
+- deterministic coverage proves the light's own on/off state can change immediately at interaction while fact/objective truth waits for the controlled consequence pass; the semantic trace then orders `switch.used → mission.fact_set_requested → mission.fact_changed → objective.activate_requested → objective.state_changed`;
+- repeat toggles do not replay either one-shot; stable save captures the latched fact, fired-rule IDs, generic objective state, and saved light state; fresh restore reapplies that truth with no replay, after which the switch still controls light normally while the restored rules remain suppressed.
+
+Focused player acceptance:
+
+1. Pull the final 8.3 `test` head and run the project normally.
+2. From **Development Launch**, select **Rule Proof**.
+3. Confirm the right-side status text starts with **OBJECTIVE INACTIVE**. The wall switch in front of the player is labeled **RULE SWITCH — F** and the room gameplay light starts on.
+4. Aim at the switch and press **F** once.
+5. Confirm the room gameplay light turns off and, after the ordinary semantic consequence step, the status text changes to **OBJECTIVE ACTIVE** with the security-cut objective text.
+6. Press **F** twice more on the same switch: first turn the light on, then off again. Confirm the light continues to toggle normally but the objective remains active; there is no second activation/reset or other duplicated mission reaction.
+7. Report whether the initial inactive state, first-use activation, and repeat-toggle behavior all matched. No console/debugger command or file edit is part of this acceptance.
 
 ---
 

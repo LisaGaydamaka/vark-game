@@ -1,0 +1,58 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://missions/playground/world.gd" id="1_world"]
+[ext_resource type="Script" path="res://addons/func_godot/src/map/func_godot_map.gd" id="2_map"]
+[ext_resource type="Resource" path="res://authoring/vark_map_settings.tres" id="3_settings"]
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="4_player"]
+[ext_resource type="Script" path="res://gameplay/objectives/simple_objective_state.gd" id="5_objective"]
+
+[sub_resource type="Environment" id="Environment_rule"]
+background_mode = 1
+background_color = Color(0.015, 0.015, 0.02, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.12, 0.12, 0.14, 1)
+
+[node name="RuleProof" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_rule")
+
+[node name="Player" parent="." instance=ExtResource("4_player")]
+
+[node name="FuncGodotMap" type="Node3D" parent="."]
+script = ExtResource("2_map")
+map_settings = ExtResource("3_settings")
+metadata/_custom_type_script = "uid://cwu5cf7a0awcd"
+
+[node name="ObjectiveState" type="Node" parent="."]
+script = ExtResource("5_objective")
+objective_id = &"objective.security_cut"
+exit_id = &"exit.rule_proof"
+objective_text = "Security lights cut. The dark route is now available."
+status_label_path = NodePath("../StatusLabel")
+objective_declarations = Array[Dictionary]([{"initial_state": &"inactive", "objective_id": &"objective.security_cut", "optional": false, "text": "Security lights cut. The dark route is now available."}])
+
+[node name="StatusLabel" type="Label3D" parent="."]
+position = Vector3(3.0, 2.15, 0.8)
+text = "OBJECTIVE INACTIVE"
+billboard = 1
+font_size = 22
+outline_size = 7
+no_depth_test = true
+
+[node name="SwitchLabel" type="Label3D" parent="."]
+position = Vector3(0, 1.95, 1.45)
+text = "RULE SWITCH — F"
+billboard = 1
+font_size = 18
+outline_size = 6
+no_depth_test = true
+
+[node name="Instructions" type="Label3D" parent="."]
+position = Vector3(-3.0, 2.45, 1.0)
+text = "8.3 RULE PROOF\nUse F on the wall switch.\nThe real switch.used event must latch security_cut, then a second data rule activates the objective.\nNo mission-specific GDScript is involved."
+billboard = 1
+font_size = 18
+outline_size = 7
+no_depth_test = true

@@ -1,0 +1,47 @@
+// Game: Vark
+// Format: Valve
+// Generator: Vark Phase 8.3 authored rule proof
+// entity 0
+{
+"mapversion" "220"
+"wad" ""
+"classname" "worldspawn"
+// brush 0
+{
+( -128 -128 -16 ) ( -128 -127 -16 ) ( -128 -128 -15 ) zebra/zebra16x16 [ 0 -1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -128 -128 -16 ) ( -128 -128 -15 ) ( -127 -128 -16 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( -128 -128 -16 ) ( -127 -128 -16 ) ( -128 -127 -16 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 128 128 0 ) ( 128 129 0 ) ( 129 128 0 ) zebra/zebra16x16 [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 128 128 0 ) ( 129 128 0 ) ( 128 128 1 ) zebra/zebra16x16 [ -1 0 0 0 ] [ 0 0 -1 0 ] 0 1 1
+( 128 128 0 ) ( 128 128 1 ) ( 128 129 0 ) zebra/zebra16x16 [ 0 1 0 0 ] [ 0 0 -1 0 ] 0 1 1
+}
+}
+// entity 1
+{
+"classname" "vark_player_start"
+"persistent_id" "vark_phase8_rule_player_start"
+"content_id" "default"
+"angle" "0"
+"origin" "0 -96 36.8"
+}
+// entity 2
+{
+"classname" "vark_gameplay_light"
+"origin" "0 0 70"
+"persistent_id" "vark_phase8_rule_light"
+"gameplay_light_id" "phase8.rule.light"
+"control_id" "phase8.rule.room"
+"starts_on" "1"
+"gameplay_strength" "0.9"
+"light_energy" "3.0"
+"omni_range" "5.0"
+"fixture_asset_path" "res://assets/light_assets/WallLamp.tscn"
+}
+// entity 3
+{
+"classname" "vark_switch"
+"origin" "0 -48 42"
+"angle" "180"
+"switch_id" "phase8.rule.switch"
+"control_id" "phase8.rule.room"
+}

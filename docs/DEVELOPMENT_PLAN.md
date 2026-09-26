@@ -1825,7 +1825,7 @@ The first Phase 8 authoring proof stays on the existing source/import ownership 
 
 **Manual:** accepted on Windows with TrenchBroom 2026.2 after the `prop_id` fix. The mapper refreshed the installed Vark GameConfig/FGD and the sync probe confirmed `vark_opening`, `vark_prop`, `opening_variant(choices)`, `prop_variant(choices)`, and `prop_id(string)`. In the ignored workspace, the mapper placed/configured the proof opening and prop through normal entity properties, ran source-owned persistent-ID repair, reloaded the map after the repair write, and then ran the read-only mapper-workflow verifier. The verifier passed with `door_id = phase8.workflow.door` / `variant = narrow` resolving `ordinary_door_leaf_narrow.obj`, and `prop_id = phase8.workflow.prop` / `variant = tall_crate` resolving `ordinary_crate_tall.obj` with collision `(0.5, 0.7, 0.5)`; it also confirmed the `.map` source was unchanged. No generated output, gameplay scene, or gameplay script hand-edit was required.
 
-## 8.2 Reimport proof `[~]`
+## 8.2 Reimport proof `[x]`
 
 Normal mapper iteration is now proven against the persistence boundary established earlier rather than only against imported transforms.
 
@@ -1841,11 +1841,26 @@ The verifier does not repair or rewrite the mapper source. Identity must already
 
 **Automated:** accepted on reimport/saveability implementation head `e4694ed368036e754f26e19ec75118b8fd6273cc` by GitHub Actions Test run #501. The focused Authoring regression reads the tracked Playground source, composes the accepted 8.1-style opening/prop baseline, captures stable proof identities plus a real stable-boundary semantic save, shifts one real world brush and both proof entities without changing IDs, verifies dry identity repair is still a no-op, rebuilds through the production Playground wrapper, proves both persistent owners remain present in a fresh save, restores the pre-edit envelope into a fresh edited-world build, verifies exact restored persistent-owner snapshots, and confirms the verifier leaves edited mapper source byte-for-byte unchanged. All six 8.2 assertions passed; the same run ended with `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, and `ALL TEST SUITES PASSED`. Successful-run script-error signatures were identical to the preceding green run #500 and remain existing deliberate failed-restore fixture noise rather than an 8.2 regression.
 
-**Manual:** required — Windows mapper/user with TrenchBroom 2026.2. Start from the accepted 8.1 ignored workspace containing `phase8.workflow.door` and `phase8.workflow.prop`. Follow the focused Phase 8.2 procedure in `docs/TESTING.md`: snapshot the baseline, make one normal brush move plus move both proof entities without touching IDs, save, run identity repair expecting **no change**, then run the read-only reimport verifier. Report the full verifier output and whether TrenchBroom preserved both persistent IDs without any generated/core hand-edit.
+**Manual:** accepted on Windows with TrenchBroom 2026.2. Starting from the accepted 8.1 ignored workspace, the mapper captured the Phase 8.2 baseline, moved one world brush plus both proof entities, saved, and ran source-owned identity repair. Repair reported `No persistent-ID repair needed; valid source was left byte-for-byte unchanged.` with both accepted opening/prop IDs preserved and `missing=0, duplicate=0`. The read-only verifier then passed: world geometry and both proof transforms changed, fresh save capture retained both persistent owners, the pre-edit semantic save restored into the reimported world, and the mapper source remained byte-for-byte unchanged.
 
-## 8.3 Rule proof `[ ]`
+## 8.3 Rule proof `[~]`
 
-Common logic uses the small data rule grammar.
+A real development mission package at `missions/rule_proof/` now provides the first player-facing authored-rule proof without adding mission-specific GDScript.
+
+The map is ordinary TrenchBroom/FuncGodot content: one player start, one saved gameplay light, and one reusable switch. The world reuses the existing mission-map wrapper plus the generic objective owner/status presentation. `MissionDefinition` owns the common mission logic:
+
+- mission fact `security_cut: bool` is a **latched mission meaning**, not a mirror of the switch/light's current subsystem-owned state;
+- one one-shot rule observes the real `switch.used` event for `phase8.rule.switch` turning the controlled light group off and queues `security_cut = true`;
+- a second one-shot rule observes the resulting `mission.fact_changed` event, confirms the typed fact is true, and emits the existing `objective.activate_requested` semantic command for `objective.security_cut`;
+- no arithmetic, arbitrary calls, Node reach-through, timers, delayed callbacks, or script snippets are added to the data grammar.
+
+The intended player-visible result is deliberately simple: the mission starts with the rule objective visibly **INACTIVE**; using the real switch turns the room light off immediately through light ownership, then the controlled semantic consequence pass latches the mission fact and changes the generic objective display to **ACTIVE**. Later switch toggles continue to control the light but cannot replay the one-shot mission consequences.
+
+**Done when:** the Rule Proof is launchable through the normal Development Launch MissionDefinition path; its authoritative `.map` supplies the real switch/light/player content; its common mission reaction is represented entirely by declared fact/rule data and generic semantic owners rather than mission-specific GDScript; immediate switch-owned light state remains distinct from delayed controlled rule consequences; the authored FIFO chain is `switch.used → mission.fact_set_requested → mission.fact_changed → objective.activate_requested → objective.state_changed`; both rules fire once, repeated switch use does not reactivate the objective, stable save captures the mission fact + fired rule IDs + objective/light state, restore reapplies them without consequence replay, and post-restore switch use remains ordinary while one-shots stay suppressed; existing rule/fact/objective/light/save/application/gameplay regressions remain green; and a user/playtester confirms the visible switch-to-objective behavior in the launched mission.
+
+**Automated:** pending exact-head post-push validation. The focused Application regression must prove the curated launch target and valid MissionDefinition, real imported switch/light content, inactive/default starting state, immediate-vs-controlled timing, exact semantic cascade ordering, latched fact + active objective + one-shot rule state, no replay on repeated use, stable save truth, fresh restore without replay, and restored one-shot suppression.
+
+**Manual:** required — user/playtester. Launch **Rule Proof** from Development Launch. Confirm the status begins `OBJECTIVE INACTIVE`; use **F** on the labeled wall switch; confirm the gameplay light turns off and the status becomes `OBJECTIVE ACTIVE`; then toggle the switch on and off once more and confirm ordinary light control still works while the objective remains active rather than replaying/restarting. No debugger, console mutation, generated-file edit, or mission-specific script is needed.
 
 ## 8.4 GDScript extension proof `[ ]`
 
