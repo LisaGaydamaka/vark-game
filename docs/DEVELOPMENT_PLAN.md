@@ -46,7 +46,7 @@ Manual:
 
 These may live directly in the item or be inherited unambiguously from its phase gate, `TESTING.md`, or `FOUNDATION_CONTRACT.md`. Confirm the three acceptance lines before implementation begins or as part of the implementation patch rather than deciding completion after the code already exists. If a check is not warranted, say so explicitly. `[x]` is allowed only after required automated checks pass and required user validation is accepted.
 
-When `Manual:` requires a specific kind of validator, name that role rather than treating every manual criterion as interchangeable. User/playtester, Windows operator, mapper, writer, cold author, and external developer are different acceptance roles. In particular, the implementing agent cannot self-certify the independent-human purpose of 8.7, 11.6, or 15.2; it prepares the workflow and the reported external result closes the criterion.
+When `Manual:` requires a specific kind of validator, name that role rather than treating every manual criterion as interchangeable. User/playtester, Windows operator, mapper, writer, cold author, and external developer are different acceptance roles. In particular, the implementing agent cannot self-certify the independent-human purpose of 8.8, 11.6, or 15.2; it prepares the workflow and the reported external result closes the criterion.
 
 ---
 
@@ -1751,7 +1751,7 @@ Mutation timing remains the foundation contract: commands issued from `_process(
 
 **Automated:** accepted on stabilized provisional mission-script implementation head `f41b755d066a83849b045c4f48a02df9e1980763` by GitHub Actions Test run #489. The focused Application regression proves READY/PLAYING lifecycle gating, safe world-node resolution and lifetime invalidation, detached typed fact/run/objective/exit queries, no generic mutable entity/world reach-through, `_process()` + arbitrary signal + resumed async/out-of-pass mutation requests remaining non-authoritative until the controlled consequence pass, detached custom event emission through the existing bus, queued objective activation through the existing request event, no independent mission-script/continuation save state, and fresh replacement isolation. The same full barrier kept event/fact/rule/objective/save/restore, awareness, gameplay, authoring, movement, and all other regression suites green; the run ended with `ALL TEST SUITES PASSED`. The fix-forward also retained section/persistent-ID restore mismatch diagnostics for future save-state failures without altering successful restore semantics.
 
-**Manual:** none required for this architecture-only provisional surface. Phase 8.4 will provide the first player-facing/author-facing mission-specific GDScript proof.
+**Manual:** none required for this architecture-only provisional surface. Phase 8.5 will provide the first player-facing/author-facing mission-specific GDScript proof.
 
 ## 7.6 Deterministic rule ordering and save state `[x]`
 
@@ -1793,7 +1793,7 @@ Diagnostic history is bounded world-lifetime state only. It is not saved/restore
 
 **Automated:** accepted on mission-logic-debugger implementation head `e9ba8325eb3493402bdd55695cc67333d5c3de9b` by GitHub Actions Test run #493. The focused Application regression proves detached fact/rule inspection, no mutation surface, closed failure for unknown rule IDs, payload/fact mismatch reasons with trigger-time expected/actual values, successful and already-fired one-shot outcomes, event-sequence + consequence-pass correlation with the existing FIFO event trace, direct per-rule inspection, bounded rule/event histories, absence from semantic save truth, teardown invalidation, and fresh replacement isolation. The full barrier ended with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`; successful-run script-error signatures were identical to the preceding green run #492 and remain existing deliberate failed-restore fixture noise rather than a 7.7 regression.
 
-**Manual:** none required for this architecture-only diagnostic surface. Phase 8.6 will use it against real authored mission problems and may expose presentation/workflow improvements without changing this semantic diagnostic contract.
+**Manual:** none required for this architecture-only diagnostic surface. Phase 8.7 will use it against real authored mission problems and may expose presentation/workflow improvements without changing this semantic diagnostic contract.
 
 **Phase gate:** ordinary mission reactions work without core edits, procedural behavior can live in GDScript without private reach-through or bypassing controlled semantic mutation, long-running behavior is saveable semantic state rather than runtime continuation state, mission facts have not become premature campaign storage, and the API is useful but explicitly provisional.
 
@@ -1835,7 +1835,7 @@ Normal mapper iteration is now proven against the persistence boundary establish
 - `verify` rebuilds the edited `.map`, requires world brush geometry plus both proof entity transforms to have changed, requires the same persistent IDs to resolve through the production registry, captures a fresh save containing both owners, and then restores the **pre-edit** semantic save into a fresh build of the edited world;
 - `clear` removes only the ignored binary baseline sidecar.
 
-The verifier does not repair or rewrite the mapper source. Identity must already be valid; an ordinary move/geometry edit must therefore require no persistent-ID repair. The pre-edit restore proof is intentionally limited to **identity/saveability continuity** under a benign reimport with the same mission revision: authored world geometry remains the edited content, while persistent semantic owner state resolves by stable ID. Phase 8.5 still owns proving that genuinely incompatible semantic/spatial mission edits bump `mission_content_revision` and refuse stale saves.
+The verifier does not repair or rewrite the mapper source. Identity must already be valid; an ordinary move/geometry edit must therefore require no persistent-ID repair. The pre-edit restore proof is intentionally limited to **identity/saveability continuity** under a benign reimport with the same mission revision: authored world geometry remains the edited content, while persistent semantic owner state resolves by stable ID. Phase 8.6 still owns proving that genuinely incompatible semantic/spatial mission edits bump `mission_content_revision` and refuse stale saves.
 
 **Done when:** a real mapper-style baseline containing the accepted 8.1 opening/prop can capture a stable semantic save; an ordinary brush edit plus ordinary movement of both model-backed entities rebuilds successfully without changing either authored persistent ID or requiring source repair; fresh save capture after reimport still contains both persistent owners; a pre-edit save resolves/restores through those same IDs in a fresh edited-world build; the verifier leaves `.map` source byte-for-byte unchanged; deterministic CI exercises the same real FuncGodot/WorldSession/save/restore path on a disposable map; existing Phase 2.8 reimport, 8.1 mapper, persistence, save/load, authoring, application, and gameplay regressions remain green; and a Windows mapper/user confirms the real TrenchBroom save/reimport workflow.
 
@@ -1862,284 +1862,635 @@ The intended player-visible result is deliberately simple: the mission starts wi
 
 **Manual:** accepted by user/playtester on the final 8.3 build. Development Launch → **Rule Proof** started with `OBJECTIVE INACTIVE` and the gameplay light on; the first **F** use on the labeled switch turned the light off and changed the status to `OBJECTIVE ACTIVE`; two further switch uses continued to toggle the light normally while the objective remained active without resetting or visibly replaying the authored mission reaction. No debugger/console mutation, generated-file edit, or mission-specific script was needed.
 
-## 8.4 GDScript extension proof `[ ]`
+## 8.4 Representative stealth mission construction `[ ]`
 
-One unusual behavior proves the provisional mission API without expanding the data grammar into a language.
+Build the actual Phase-8 mission promised by this phase. The 8.1–8.3 proof fixtures remain useful regression content, but they are **not** a substitute for this mission.
 
-Until runtime-created persistence is proven, mission scripts may manipulate authored persistent objects through supported commands and create genuinely transient effects/objects. If a script-created gameplay object must survive save/load, pull the minimum runtime-persistence proof forward.
+The mission must be one dedicated `MissionDefinition` package with authoritative TrenchBroom `.map` source and ordinary reusable gameplay owners. It should target roughly 10–15 minutes for a first informed playthrough and contain, at minimum:
 
-Do not rely on suspended `await`/timer continuation as saveable mission behavior; save-relevant progress is explicit semantic state. Prove an out-of-pass script command is queued/applied through the supported semantic boundary rather than mutating gameplay immediately.
+- one valid player start and mission exit;
+- at least two meaningfully different useful approaches through the space, not merely two adjacent doorways;
+- real model-backed opening/door content plus at least one locked/key-gated interaction and a viable alternate route;
+- darkness/light interaction using the proven gameplay-light path, including at least one switchable/extinguishable light state that matters to stealth;
+- quiet/normal/loud authored surfaces used in traversal rather than decorative-only patches;
+- throwable ordinary props, with at least one placement where a prop can be used as traversal/route assistance or a deliberate distraction;
+- at least one guard with a patrol containing wait points, plus investigation/search behavior that the player can actually provoke and evade;
+- typed audible NPC speech through the existing speech path;
+- loot, at least one container/furniture interaction, and semantic mission-run accounting through `MissionRunState` rather than a mission-local counter;
+- one objective/exit relationship and at least one declarative mission reaction using the Phase-7/8.3 fact/rule path;
+- restart and ordinary quicksave/quickload available through the production application path.
 
-## 8.5 Save/load proof `[ ]`
+Do not add a new subsystem merely to make the mission look complete. If existing systems cannot author or express a required piece cleanly, record the concrete gap for 8.5–8.7 rather than bypassing ownership with mission-local core edits.
 
-Representative save points restore from one detached stable-boundary snapshot.
+**Done when:** the dedicated mission loads through Development Launch as a real `MissionDefinition`; all required authored references/IDs validate; the mission can be played from start to successful exit using the existing production systems; at least two useful routes are actually viable; the required stealth/interaction/loot/guard/light/surface/prop/objective content is present; mission-run loot/stat truth comes from semantic owners; no generated output or core gameplay file must be hand-edited to author ordinary content; and any remaining authoring/API/debug gaps are explicitly identified rather than hidden.
 
-Exercise real `mission_content_revision` refusal by changing authoritative mission metadata. Include at least one incompatibility that is semantically/spatially meaningful rather than only faking a serialized number.
+**Automated:** add a focused mission-content regression that loads the real package, validates `MissionDefinition` + persistent/content IDs + required roles, builds the authoritative `.map` through the production wrapper, reaches `PLAYING`, resolves the key authored semantic references, proves the mission-run owner and objective/exit owners are present, and fails if required representative entities disappear or duplicate. Keep subjective route quality/pacing out of deterministic assertions.
 
-Also exercise an intentionally incompatible **global saved-state semantic interpretation** through `save_format_version`, not only a byte-layout failure.
+**Manual:** required — user/playtester. Play the real mission end-to-end at least twice using materially different approaches. Confirm it feels like a small stealth mission rather than a lab, the alternate route is genuinely useful, darkness/surfaces/props/guards/loot/objective interactions all matter in ordinary play, restart/quicksave/quickload remain usable, and note concrete authoring/gameplay friction for later Phase-8 items.
 
-## 8.6 Authoring/debug feedback `[ ]`
+## 8.5 GDScript extension proof `[ ]`
 
-Fix tooling/diagnostics gaps exposed by building the mission.
+Use the real 8.4 mission to prove **one** genuinely unusual behavior through the provisional `VarkMissionScript` API without expanding the declarative rule grammar into a programming language.
 
-## 8.7 Cold-author review `[ ]`
+The selected behavior must be named explicitly in the implementation patch and must satisfy all of these criteria: it is useful in the real mission; expressing it in the small rule grammar would require inappropriate general control flow/object manipulation; it can use supported semantic queries/commands rather than private Node reach-through; and any save-relevant progress can be represented as explicit facts/objective/stage state rather than a suspended coroutine/timer continuation. Prefer a need actually exposed by 8.4. If no real need exists, use the smallest representative scripted sequence that still exercises these boundaries and document why it is intentionally script-owned.
 
-Have a Godot/TrenchBroom-capable developer unfamiliar with the relevant Vark internals make a small edit/addition through the intended workflow.
+Script commands requested outside the controlled consequence pass must queue through the existing semantic boundary. Authored persistent objects may be manipulated only through supported commands/events. Genuinely transient script-created presentation/effects may exist without persistence; if the chosen behavior creates a gameplay object that must survive save/load, pull forward only the minimum runtime-persistence proof instead of silently making it non-saveable.
 
-**Phase gate:** a real small stealth mission exposes genuine production problems; ordinary content is authorable through intended tools; run statistics/results draw from semantic ownership rather than temporary scraping; unsupported global/mission save compatibility fails safely; runtime-persistent scripted objects cannot bypass persistence; supported script mutation cannot bypass the semantic boundary; and the workflow makes sense to a second developer.
+**Done when:** one real mission behavior exists only in mission-specific GDScript; the script resolves only the supported provisional API; out-of-pass mutation is queued rather than immediate; save-relevant progress is explicit semantic state; teardown/replacement invalidates stale script/API references; no private core reach-through or arbitrary rule-language expansion is introduced; and the behavior is understandable in ordinary play.
+
+**Automated:** exercise the real scripted behavior through its production event/API path, prove the immediate state does not mutate before the controlled consequence pass, prove the queued consequence then applies in FIFO order, prove the explicit progress state captures/restores without replaying resolved consequences, and prove stale retained API/script references cannot affect a replacement world.
+
+**Manual:** required — user/playtester. Trigger the scripted behavior in the 8.4 mission, confirm its visible result and any staged progression are coherent, save/load at the documented representative point if the behavior has save-relevant progress, and confirm no duplicate/replayed consequence appears after load.
+
+## 8.6 Representative save/load and compatibility proof `[ ]`
+
+Exercise save/load against the **real Phase-8 mission**, not another generic save fixture. Phase 4 already proved the general transaction; this item proves that the representative authored mission obeys it under real mission content.
+
+Use representative save points that cover the semantic states actually present in the mission. At minimum include: a guard investigation/search state, a door or other explicit long-running semantic transition if present, a post-loot/objective/rule state, and the save-relevant 8.5 scripted stage when applicable. The exact set may expand if 8.4 introduces another important state, but do not invent unrelated systems only for coverage.
+
+Compatibility coverage must include a **meaningful mission-content incompatibility** derived from the real mission: change authoritative semantic/spatial content in a way that would make an old snapshot unsafe, bump `mission_content_revision`, and prove the old save is refused before destructive world replacement. The test may derive a disposable candidate from tracked mission source; it must not pretend that merely changing a serialized integer is a content edit.
+
+Also exercise the global `save_format_version` semantic gate with a structurally valid legacy/incompatible semantic fixture. Do not bump the shipping format version solely to manufacture a test when no actual global semantic change occurred; the fixture must document the incompatible interpretation it represents and prove the current loader refuses it before restore.
+
+**Done when:** every required representative save point round-trips through one detached stable-boundary snapshot with no consequence replay; the real mission's rule/script/objective/run-state truth restores coherently; a meaningful mission-content revision mismatch fails closed before replacement; an incompatible global semantic version fails closed; and ordinary current-version/current-revision saves still load after those rejection tests.
+
+**Automated:** add focused real-mission save/restore coverage for the named states, exact pending-event suppression at resume, mission-content revision refusal based on a substantive disposable mission edit, global semantic-version refusal, and failure safety proving the currently valid world/save state is not destroyed by an incompatible candidate.
+
+**Manual:** required — user/playtester for normal-play save feel only. Quicksave/quickload at the documented mission points, including during active stealth pressure, and confirm position/world/guard/objective/loot/script state feels coherent. Compatibility-refusal internals are automated and do not require the user to hand-edit saves.
+
+## 8.7 Authoring/debug gap closure `[ ]`
+
+Close only the concrete workflow, validation, and diagnostic gaps exposed while building/debugging 8.4–8.6. This is **not** a license for speculative tooling or a second editor framework.
+
+At the start of this item, enumerate the observed gaps in this roadmap entry or implementation notes. Classify each as: authoring friction, validation failure quality, missing read-only diagnostic, documentation/workflow confusion, or genuine API gap. Fix the smallest root cause. If no material gap remains, this item may be completed as a documented audit with no manufactured code change.
+
+Build on the existing persistent-identity tools, mission logic debugger, event trace, registry diagnostics, perception/acoustic/nav debug surfaces, and TrenchBroom workflow rather than reimplementing them.
+
+**Done when:** every material Phase-8 gap has either a concrete fix or an explicit deferral with rationale; mapper/runtime errors identify the authored source/semantic owner clearly enough to act on; no diagnostic path mutates gameplay truth; and ordinary mission iteration no longer requires undocumented core/generated-file workarounds.
+
+**Automated:** every deterministic bug/tooling fix receives regression coverage on the production path it protects; deliberately invalid representative content produces the intended actionable failure where practical; the full barrier remains green. If the audit finds no code defect, automated acceptance is the existing relevant validation suites plus a documented no-gap result.
+
+**Manual:** required when the fixes change mapper/debug workflow — user/mapper repeats the exact previously troublesome action and confirms the issue is resolved. `Manual: none` is allowed only when the audit/fixes are wholly machine-verifiable and no human workflow changed.
+
+## 8.8 Cold-author review `[ ]`
+
+Have a Godot/TrenchBroom-capable developer who is unfamiliar with the relevant Vark internals make a small but real modification through the intended workflow without core-gameplay assistance.
+
+The cold-author task must start from a clean checkout plus the documented Vark TrenchBroom setup and require at least: one geometry edit/addition; one reusable model-backed gameplay entity or light; one semantic content edit such as loot/objective/rule/patrol configuration; normal persistent-ID workflow; build/validation; and launching the modified mission. The reviewer may read project docs and normal tooltips/errors, but should not be coached through private implementation details or asked to edit generated Godot output/core scenes/scripts.
+
+**Done when:** the reviewer completes the task using intended source files/tools, can explain where ordinary spatial vs semantic configuration belongs, encounters no undocumented mandatory core edit, and reports the workflow/friction. Any blocking flaw is fixed and the relevant portion of the cold task is repeated before Phase 8 closes.
+
+**Automated:** no substitute for the independent-human purpose. Normal CI/content validation must remain green for any fixes resulting from the review.
+
+**Manual:** required — independent cold author, not the implementing agent and not merely the usual playtester role. Record whether the task succeeded, what documentation/tooling was insufficient, and whether any core/generated-file workaround was attempted.
+
+**Phase gate:** one actual 10–15 minute stealth mission, not only proof labs, has exercised the authoring stack; ordinary content is authorable through intended tools; one procedural behavior proves the provisional script API without bypassing controlled mutation; representative save/load and compatibility refusal work on the real mission; run statistics/results data comes from semantic ownership rather than temporary scraping; concrete authoring/debug problems have been closed or explicitly deferred; runtime-persistent scripted objects cannot silently bypass persistence; and an independent developer can make a small mission change through the documented workflow.
 
 ---
 
 # Phase 9 — Bodies and combat prototype
 
-Goal: establish the four-playstyle foundation while combat remains TARGET until play proves it.
+Goal: establish the four-playstyle foundation while combat remains TARGET until play proves it. Reuse the existing crude hostility/life-state/input/event/save boundaries; do not build a parallel combat architecture.
 
-## 9.1 Bodies and life-state completion `[ ]`
+## 9.1 Body handling and body discovery `[ ]`
 
-Complete conscious/unconscious/dead behavior, carry/hide, body discovery hooks, and save state.
+Complete the LOCKED conscious/unconscious/dead body contract on the existing persistent actor identity. Add player carry/drop/place/hide behavior for unconscious/dead actors, explicit mobility modifiers while carrying, and a semantic body-discovery hook that perception/mission logic/statistics can observe.
 
-The body remains the same persistent actor identity. Body-carry movement restrictions are explicit gameplay modifiers, not changes to unencumbered controller behavior.
+Do not reimplement life states or replace the existing guard actor with a corpse entity. Body carry must use central hand/action ownership and must not change accepted unencumbered locomotion behavior.
 
-## 9.2 Stealth knockout prototype `[ ]`
+**Done when:** the same persistent guard identity transitions to unconscious/dead body state, can be picked up/carried/dropped/hidden, cannot navigate/act while a body, restores coherently through save/load, and body discovery emits one semantic observation suitable for awareness/mission/stat owners without hard-coding a universal mission failure.
 
-Held/released fist behavior in valid stealth context.
+**Automated:** cover identity preservation, hand/input suppression, movement modifier application/removal, save/restore while body-carried and after drop, no duplicate actor/corpse identity, discovery event de-duplication, and teardown/replacement isolation.
 
-Losing combat-input ownership while a hold/release takedown is armed cancels the gesture; resume requires a fresh initiating press.
+**Manual:** required — user/playtester validates carry/drop/hide feel and that the mobility penalty is noticeable but does not make body carrying unusable.
 
-## 9.3 Stealth kill prototype `[ ]`
+## 9.2 Combat intent and prototype loadout seam `[ ]`
 
-Held/released knife behavior in valid stealth context with the same cancellation rule.
+Extend the existing gameplay-input boundary for combat gestures before implementing combat feel. Attack must expose the pressed/held/released semantics needed by takedowns, and block must expose its required held/edge semantics through the same application-owned domain/cancellation rules.
 
-## 9.4 Block/parry/stagger prototype `[ ]`
+Phase 9 may use a **small prototype combat-mode/loadout seam** (`unarmed`, `knife`, `blunt`) supplied by development content/fixture configuration so individual combat behaviors can be tested before Phase 10 inventory exists. This is not a second inventory system: no quantities, item UI, campaign persistence, purchasing, or separate input polling. Phase 10 may later drive the same combat-use semantic choice from real inventory ownership.
 
-Implement the TARGET grammar only far enough to evaluate it. Combat uses the proven gameplay-intent tick semantics for pressed/held/released/block intent rather than a second polling path.
+**Done when:** combat input is tick-framed through the existing boundary; attack/block gesture state clears on domain loss/pause/world replacement and requires a fresh initiating press after resume; hand occupancy from carried Junk/body suppresses hand combat centrally; and development fixtures can select the intended prototype combat mode without adding general inventory.
 
-Stagger/attack timing uses world simulation time.
+**Automated:** protect one-tick edges, held/released lifetime, cancellation on domain loss, stale-input suppression, current-world ownership, carry/body hand suppression, and preservation of accepted locomotion/look behavior.
 
-## 9.5 Lethal/nonlethal direct combat and vitality ownership `[ ]`
+**Manual:** none for feel yet; later combat items own player-facing validation.
 
-Implement knife/blunt follow-up behavior and guard attack loop using the **smallest real semantic vitality/damage ownership needed by combat**, including player health/damage and any actor damage state that must survive save/load.
+## 9.3 Stealth knockout prototype `[ ]`
 
-Do not create a temporary Phase 9 health/damage path that Phase 10 effects must replace. Phase 10 may generalize healing/gas/water/fire/explosion/tool effects around this proven vitality/damage boundary, but ordinary combat damage remains the same semantic ownership.
+Replace the crude press-to-knockout compatibility behavior with the TARGET hold/release fist takedown in `unarmed` mode.
 
-## 9.6 Required combat validation `[ ]`
+The valid stealth context must be an explicit predicate over real semantic state: target is a conscious eligible ordinary NPC, within the takedown range/angle, the player's hands are available, and the target is not currently in a state that counts as having detected/engaged the player. Exact angle/range/readiness timing are TARGET tuning values, not LOCKED until playtest.
 
-Playtest one guard, two guards, corridor, open room, lethal assault, nonlethal assault, stealth-failure transition, and retreat/break contact. Revise the TARGET grammar if needed. Combat becomes LOCKED only after user acceptance.
+**Done when:** holding attack arms the takedown only in valid context; releasing while still valid produces one semantic knockout through the existing actor life-state path; losing context or combat-input ownership cancels the armed gesture; invalid/repeated releases do nothing; and the same actor becomes the ordinary unconscious body from 9.1.
 
-## 9.7 Combat perception/noise/body integration `[ ]`
+**Automated:** cover arm/release/cancel edges, context loss, pause/domain loss, stale release suppression, one semantic life-state transition, awareness/noise integration hooks, and save truth after the knockout.
 
-Combat creates appropriate gameplay noise, awareness, bodies, run statistics, semantic events, vitality/damage state, and save state through the existing contracts.
+**Manual:** required — user/playtester tunes/read-validates range, behind/unaware readability, hold/release feel, and transition into body interaction.
 
-**Phase gate:** all four broad styles are genuinely possible enough to evaluate without replacing gameplay-input timing, controlled semantic mutation, actor identity, event timing, gameplay time, vitality/damage ownership, or persistence ownership.
+## 9.4 Stealth kill prototype `[ ]`
+
+Add the TARGET knife stealth kill using the same 9.2 gesture/context foundation in `knife` mode rather than a separate attack path.
+
+**Done when:** the same valid stealth-context rules and cancellation behavior apply; release produces one semantic transition to `dead`; the persistent actor becomes the ordinary dead body; lethal/nonlethal outcome identity is visible to statistics/mission logic; and no inventory system is invented merely to select the knife in Phase 9.
+
+**Automated:** mirror the takedown gesture/cancellation coverage, prove dead rather than unconscious life state, single consequence/stat hook, persistence, and body interaction compatibility.
+
+**Manual:** required — user/playtester validates stealth-kill readability/feel and that lethal/nonlethal choices are clearly distinguishable.
+
+## 9.5 Vitality/damage ownership and guard attack loop `[ ]`
+
+Establish the **smallest real semantic vitality/damage ownership** before block/parry/direct-combat tuning. This moves the old 9.5 responsibility earlier because real incoming attacks cannot be evaluated coherently without a player damage owner.
+
+Player vitality and any guard damage accumulation required by direct combat must be semantic save truth owned by the relevant actor/player system. Ordinary combat damage uses controlled semantic events/commands and the same life-state actor identity; Phase 10 effects will extend this boundary rather than replace it.
+
+Add the smallest ordinary guard attack loop needed for later defense tests: approach/attack opportunity, telegraphed attack timing in gameplay simulation time, one controlled damage consequence on an unblocked hit, and coherent cancellation when actor/world/input ownership makes the attack invalid.
+
+**Done when:** player damage/health and required guard damage state have one owner each, survive save/load, a guard can perform a repeatable ordinary attack through semantic timing/consequence ownership, unblocked impact changes vitality exactly once, and no temporary combat-only health path exists.
+
+**Automated:** cover damage ownership/validation, save round-trip, gameplay-time attack timing/pause, no wall-clock advancement, one-hit consequence ordering, dead/unconscious attacker suppression, world replacement isolation, and failure on malformed vitality state.
+
+**Manual:** required — user/playtester checks attack telegraph/readability and that a single guard's baseline attack cadence is understandable enough for defense prototyping. Exact balance remains TARGET.
+
+## 9.6 Block/parry/stagger prototype `[ ]`
+
+Implement the TARGET defense grammar on top of 9.2 input and 9.5 real attack/vitality ownership:
+
+- held block stops ordinary blockable damage while valid;
+- a fresh block press inside a short pre-impact window parries;
+- successful parry produces one semantic stagger on the attacker;
+- stagger duration uses gameplay simulation time;
+- losing combat-input ownership cancels held/armed defense state and requires fresh input after resume.
+
+**Done when:** ordinary guard attacks can be unblocked, blocked, or parried through the same attack consequence path; parry timing is deterministic in gameplay time; stagger suppresses/changes the attacker's combat availability without replacing actor awareness/life state; and save/load uses an explicit direct/reconstruct/normalize policy for any active stagger/timing state.
+
+**Automated:** deterministic timing-window boundary tests, block/parry exclusivity, damage suppression, one stagger consequence, gameplay-time pause behavior, input-domain cancellation, and save/restore policy.
+
+**Manual:** required — user/playtester evaluates block readability, parry timing, stagger duration, and whether one-guard defense feels learnable. Values stay TARGET.
+
+## 9.7 Direct lethal/nonlethal combat prototype `[ ]`
+
+Complete the TARGET direct-combat grammar using the already-proven input/vitality/block/parry/stagger owners.
+
+A non-staggered ordinary NPC may defend against normal knife/blunt attacks. Knife against a valid staggered NPC can produce lethal resolution; blunt against a valid staggered NPC produces nonlethal damage/progress and eventually knockout according to TARGET tuning. Do not bypass vitality/life-state ownership with weapon-local kill counters.
+
+**Done when:** both lethal and nonlethal direct assault are possible against the same ordinary guard; defender/parry/stagger/vitality/life-state interactions are coherent; retreat can break physical contact without erasing awareness; and all combat state required after save/load has explicit semantic ownership/policy.
+
+**Automated:** cover defended attacks, stagger openings, lethal resolution, multi-hit nonlethal progress, life-state transitions, save round-trip, and no duplicate damage/consequences across restore.
+
+**Manual:** required — user/playtester evaluates one-guard lethal/nonlethal assault and identifies tuning/grammar problems without treating TARGET numbers as frozen.
+
+## 9.8 Required combat validation `[ ]`
+
+Playtest the full TARGET grammar before locking it. Required scenarios: one guard, two guards, tight corridor, open room, actively attacking enemies, lethal assault, nonlethal assault, stealth failure into open combat, and retreat/break contact.
+
+Revise 9.3–9.7 behavior/tuning if the target grammar fails these scenarios. This item may legitimately require multiple user loops; do not mark combat LOCKED merely because deterministic tests pass.
+
+**Done when:** the user accepts a coherent combat grammar for the required scenarios, one guard is manageable, two are materially harder, escape remains viable, lethal/nonlethal routes both work, and any rejected TARGET rule has been revised in code/docs/tests.
+
+**Automated:** regression suites protect objective invariants after each tuning revision but do not encode subjective timing/feel as permanent values unless explicitly accepted.
+
+**Manual:** required — user/playtester; all named scenarios must be exercised. Combat becomes LOCKED only after this acceptance.
+
+## 9.9 Combat perception/noise/body/stat/save integration `[ ]`
+
+Close the Phase-9 integration after the combat grammar is accepted. Combat must produce appropriate gameplay noise/awareness, body discovery opportunities, semantic mission-run statistics, life/vitality save truth, and reusable events through existing owners.
+
+**Done when:** attacks/blocks/impacts generate the intended semantic sound/awareness consequences; kills/knockouts/detections significant to results are recorded once by semantic owners; bodies from combat use 9.1 behavior; save/load during/after representative combat restores coherent actor/vitality/awareness/body state without replay; and no combat subsystem has its own parallel event/time/persistence path.
+
+**Automated:** integrated combat→noise→awareness, combat→life/body, combat→statistics, representative save/restore, duplicate-consequence suppression, and mission/world replacement coverage.
+
+**Manual:** required — user/playtester performs one representative stealth-to-combat-to-retreat sequence and confirms sound/AI/body/stat outcomes are believable and consistent with accepted combat.
+
+**Phase gate:** all four broad styles are genuinely possible enough to evaluate; bodies are ordinary persistent actor states; real vitality/damage ownership exists before effect generalization; combat uses the established gameplay-input, controlled semantic event, gameplay-time, perception, statistics, and save boundaries; and the TARGET combat grammar has explicit user acceptance rather than being frozen by implementation alone.
 
 ---
 
 # Phase 10 — Inventory, effects, and complete gameplay vertical slice
 
-Goal: prove Vark's main gameplay grammar together before broad platform generalization.
+Goal: add real usable inventory and runtime-created gameplay on top of Phase 6 possession and Phase 9 vitality, then prove the whole gameplay grammar in one complete slice.
 
-## 10.1 Inventory framework `[ ]`
+## 10.1 Inventory ownership, selection, quantities, and one real consumable `[ ]`
 
-Build selectable/usable inventory on top of Phase 6 possession rather than replacing it.
+Build the core Thief-style selectable/usable inventory on top of existing semantic possession instead of replacing it. Keep carried Junk separate.
 
-Add selection/use for real consumables, thrown tools, projectiles, deployables, area effects, and mission items.
+The first implementation must establish one authoritative inventory owner, stable item type IDs/data, quantities where appropriate, deterministic selection/order, use/consume semantics, save state, and central hand/input availability. Include keys/mission items as non-consumable semantic holdings plus **one real usable consumable** (preferably a healing item now that Phase 9 vitality exists) so the framework is exercised by gameplay rather than only data.
 
-When the first runtime-created object must survive save/load, implement only the minimum runtime-persistence representation:
+Do not add projectiles/deployables/area effects or runtime-object persistence to this item; 10.2–10.3 own those expansions.
 
-- runtime persistent identity;
-- stable semantic type/spawn provenance sufficient to recreate it;
-- semantic state.
+**Done when:** inventory can own/select/use the representative items; quantity/consumption is semantic save truth; ordinary key/mission possession remains compatible; item use respects hand/input ownership; carried Junk remains distinct; and Phase 9 combat/vitality does not gain a second item-specific truth path.
 
-The saved type/provenance identifier must not be a fragile class/scene filename accident. Unknown saved types fail clearly. Restored runtime identities are reserved so later runtime-created objects cannot reuse/collide with them; a UUID-like strategy is sufficient and no global spawn framework is required.
+**Automated:** item ID/type validation, selection/order, quantity mutation, consume-once behavior, healing through the real vitality boundary, hand/domain suppression, save/restore, unknown item failure, and compatibility with existing key/loot possession.
 
-## 10.2 Reusable effect grammar `[ ]`
+**Manual:** required — user/playtester validates basic selection/use feedback and that inventory does not interfere with carried Junk or ordinary interaction.
 
-Extend the **already-real Phase 9 vitality/damage ownership** with damage/heal/gas/water/fire/explosion-like effects only to the degree real items/content need them. Do not replace ordinary combat health/damage semantics with a second effect-owned truth.
+## 10.2 Representative thrown tool and runtime-persistent identity `[ ]`
 
-## 10.3 Scripted NPC routines `[ ]`
+Introduce the first real runtime-created gameplay object through **one representative thrown tool** (for example a noise-making throwable) so runtime persistence is proven by actual content rather than a generic spawn framework.
 
-Conversations, sitting/sleeping/operating, routine interruptions/resumption where required by the slice. Save-relevant routine progress and already-resolved choices are semantic state, not a coroutine stack or rerolled restore-time decision.
+The runtime object needs: a collision-safe runtime persistent ID; a stable semantic type/provenance ID that is not a scene/class filename accident; creation through the current world/session lifetime; explicit semantic state sufficient to recreate it; and restored-ID reservation so a later runtime spawn cannot collide with restored identity.
 
-## 10.4 Complete representative slice `[ ]`
+Because ordinary gameplay saving is allowed, include a save while the tool is active/in flight or otherwise not yet resolved. Choose and document its direct-restore/reconstruct/normalize policy; consumed inventory must not reappear while the corresponding active tool silently disappears or duplicates.
 
-One segment combines stealth, combat, bodies, interaction, mission logic, save/load, inventory, and any real runtime-persistent objects.
+**Done when:** using the inventory item creates exactly one runtime object and consumes the correct inventory quantity; save/load during its active state reconstructs the documented gameplay truth; unknown runtime type IDs fail closed; duplicate/restored ID collisions are rejected; and a post-restore new spawn receives a distinct identity.
 
-Exercise the provisional mission API against combat/body/inventory/effect needs and correct bad boundaries now.
+**Automated:** runtime type registry/provenance validation, ID uniqueness/reservation, active-transient save/restore, inventory↔runtime-object exactly-once coupling, unknown type refusal, teardown cleanup, and post-restore spawn non-collision.
 
-If the slice contains runtime-created transient gameplay such as a projectile in flight, thrown tool, arming deployable, timed grenade, or active area effect, include at least one save during that active transient and prove its explicit direct-restore/reconstruct/normalize policy. Do not let consumed inventory/ammo restore into a world where the corresponding active effect silently vanished or duplicated.
+**Manual:** required — user/playtester throws/uses the tool, quicksaves while it is active, quickloads, and confirms there is neither a duplicated inventory item nor a missing/duplicated world effect.
 
-After restoring persistent runtime-created objects, create another runtime object and prove its identity cannot collide with restored identities.
+## 10.3 Reusable gameplay-effect grammar `[ ]`
 
-## 10.5 Performance checks `[ ]`
+Generalize only the effects demanded by real Phase-9/10 content. Extend the **already-real Phase-9 vitality/damage ownership** rather than replacing it.
 
-Measure perception, acoustics, lighting, rule traffic, nav, **synchronous detached snapshot-capture cost**, encoded size/write time separately, and runtime-persistent overhead present. Record reference environment.
+At minimum prove two distinct effect families through real content: the 10.1 heal/vitality effect and one additional representative tool/world effect selected by the slice (for example gas, water, fire, explosion, or a non-vitality utility effect). Effect descriptors may carry typed parameters but must not become an unrestricted scripting language.
 
-Do not weaken snapshot coherence to remove a capture hitch; optimize state/copying if measurement proves capture expensive.
+**Done when:** multiple items/world sources can route through one small typed effect surface; ordinary combat damage/healing still resolves through the same vitality owner; effect source/target attribution is sufficient for semantic events/statistics; save policy for any long-running effect is explicit; and unsupported effect IDs fail clearly.
 
-**Phase gate:** Vark's gameplay identity exists as one integrated vertical slice; every persistence case and active runtime transient present is proven; runtime identities remain unique across restore plus later spawn; possession extends naturally into inventory; Phase 10 effects extend rather than replace Phase 9 vitality/damage ownership; and the provisional world/gameplay mission API has survived the complete gameplay grammar.
+**Automated:** effect validation/dispatch, combat-vitality compatibility, one non-vitality/area effect, source attribution, save/restore policy where applicable, and unsupported/malformed effect failure.
+
+**Manual:** required only for player-visible effect readability/feel; user validates the chosen representative effects in the slice.
+
+## 10.4 One interruptible scripted NPC routine `[ ]`
+
+Prove NPC routine content with **one** representative authored routine rather than implementing a universal schedule system. The routine must have at least two meaningful stages (for example patrol ↔ sit/sleep/operate), can be interrupted by existing investigation/combat awareness, and resumes or resolves according to explicit semantic state.
+
+Save-relevant routine stage/progress and already-resolved choices are semantic data. Do not serialize a coroutine stack, animation callback, or reroll the routine choice on restore.
+
+**Done when:** one real NPC routine starts from authored content, visibly performs its stages, yields to awareness/combat, resumes or resolves deterministically, and round-trips save/load without duplicate actions or hidden continuations.
+
+**Automated:** stage transitions, interruption priority, gameplay-time timing, save/restore of explicit progress, no replay, and teardown isolation.
+
+**Manual:** required — user/playtester confirms the routine reads as intentional behavior and interruption/resumption feels believable.
+
+## 10.5 Complete representative gameplay slice `[ ]`
+
+Build one integrated segment combining stealth, combat, bodies, interaction, mission logic/script, save/load, inventory, the representative runtime-persistent tool, effects, NPC routine, objectives, loot/statistics, and multiple routes.
+
+Exercise the provisional mission API against the complete grammar and correct accidental boundaries now. If another runtime-created transient appears, document and test its save policy rather than assuming the 10.2 tool covers every class.
+
+**Done when:** the slice is playable end-to-end through stealth, lethal combat, nonlethal combat, and mixed-tool approaches; all present persistence cases have explicit owners/policies; runtime identities remain unique across restore + later spawn; inventory naturally drives existing combat/effect semantics; and no subsystem requires a duplicate input/event/time/save path.
+
+**Automated:** integrated smoke/content validation plus cross-system regressions for representative stealth→combat, inventory→runtime tool/effect, body/statistics, mission logic, active transient restore, and post-restore runtime identity uniqueness.
+
+**Manual:** required — user/playtester completes the slice using at least two substantially different playstyles and specifically tests one save/load while an active runtime transient exists.
+
+## 10.6 Performance/reference baseline `[ ]`
+
+Measure the complete slice before production API stabilization. Record the exact supported Windows x64 reference environment and measure: frame/runtime cost for perception, acoustics, lighting/exposure, rules/events, nav, combat, runtime-persistent objects; **synchronous detached snapshot-capture cost**; encoded save size; and durable write time separately.
+
+Do not weaken snapshot coherence to hide a capture hitch. Optimize state collection/copying only when measurement proves a material problem.
+
+**Done when:** repeatable measurement commands/scenarios and the reference environment are documented; baseline numbers are recorded; any obvious regression-level bottleneck has either been fixed or explicitly carried into Phase 14; and no correctness contract was weakened for performance.
+
+**Automated:** deterministic micro/perf counters where stable enough plus regression guards for egregious cost/size growth when practical. CI is not treated as the Windows performance reference.
+
+**Manual:** required — Windows operator runs the documented reference measurement and records results.
+
+**Phase gate:** Vark's gameplay identity exists as one integrated vertical slice; real inventory extends Phase-6 possession without replacing carried Junk; Phase-10 effects extend Phase-9 vitality/damage ownership; at least one runtime-persistent object and one active-transient save policy are proven with unique IDs across restore + later spawn; NPC routine state is explicit; the provisional world/gameplay mission API has survived the complete grammar; and a measured reference baseline exists before stabilization.
 
 ---
 
 # Phase 11 — Generalize proven world/gameplay systems for production
 
-Goal: extract stable **world/gameplay mission APIs** from patterns the complete gameplay slice actually used.
+## 11.1 Stabilize proven world/gameplay APIs `[ ]`
 
-## 11.1 Stabilize world/gameplay production APIs `[ ]`
+Audit the provisional/supportable world/gameplay surfaces actually used by Phases 8–10. Promote only interfaces with real repeated use; remove/rename/correct accidental abstractions rather than preserving bad shapes for prototype compatibility.
 
-Promote only interfaces proven by Phase 8 and Phase 9–10 world/gameplay integrations from provisional/supportable status.
+Campaign/narrative/application-flow extension surfaces remain provisional until Phases 12–13 exercise them.
 
-Campaign/narrative/application-flow extension surfaces are **not** declared production-stable here; Phases 12–13 must exercise them first.
+**Done when:** the promoted API list is explicit, each promoted call/event/type has at least two real use sites or one compelling cross-system use, deprecated prototype-only surfaces are removed/migrated, private core reach-through is absent from ordinary mission content, and ownership/lifetime/error contracts are documented.
 
-Remove/correct accidental abstractions rather than preserving bad Phase 7 shapes for prototype compatibility.
+**Automated:** full regression plus focused compatibility tests for promoted APIs, stale-world rejection, malformed requests, and teardown/replacement ownership.
 
-## 11.2 Vark TrenchBroom entity library `[ ]`
+**Manual:** none unless an API change alters authoring workflow; then the affected mapper/scripter workflow must be rechecked.
 
-Promote ordinary entities/fields proven in real mission authoring, including the stable model/variant-facing fields needed for reusable model-backed doors/openings, containers/furniture, props, and other ordinary modeled world objects. Do not expose fragile imported mesh hierarchy as gameplay API.
+## 11.2 Vark TrenchBroom entity/preset library `[ ]`
 
-## 11.3 Validation suite `[ ]`
+Promote the ordinary mapper-facing entities/fields proven by real mission authoring into a clear ready-to-place library. This is where the mapper should see meaningful choices such as ordinary/tall crate and compatible door/opening variants instead of reconstructing common objects from raw fields.
 
-Add duplicate IDs, missing references, impossible configuration, detectable revision-policy errors, unsupported runtime-persistence type IDs when applicable, and real production errors discovered during mission building.
+Include only proven ordinary roles/fields: player start/exit/markers, model-backed openings/doors, props, proven container/furniture forms, gameplay lights/switches, guard/patrol authoring, pickups/loot/keys, surfaces, and any other Phase-8–10 entity that survived real use. Keep advanced compatible model/collision overrides available where proven, but do not expose imported mesh hierarchy as gameplay API.
 
-## 11.4 Debug tooling `[ ]`
+**Done when:** common objects can be placed/configured from TrenchBroom without Godot core-scene edits; preset/variant labels map to compatible shared gameplay archetypes; identity/source ownership remains intact; and the catalog is documented from the mapper's perspective.
 
-Perception, acoustics, nav, entity lookup, mission rules, objectives, semantic state ownership, and save-state inspection.
+**Automated:** FGD/config export/schema checks plus representative real-map builds for every promoted category/variant and compatibility override path.
+
+**Manual:** required — mapper/user builds a small room using only the promoted library and confirms the object palette/properties are understandable and no common object requires manual scene construction.
+
+## 11.3 Production content-validation suite `[ ]`
+
+Consolidate validation for errors actually encountered by Phases 8–10: duplicate/missing IDs, missing/wrong-role references, impossible configuration, invalid variant/model combinations, rule/fact/objective mistakes, revision-policy errors detectable statically, unsupported runtime-persistence type IDs/provenance, and other proven authoring failures.
+
+**Done when:** common invalid content fails before `READY`/shipping build with source-oriented actionable diagnostics; valid representative missions remain accepted; and the validator does not encode subjective design/tuning as errors.
+
+**Automated:** deliberate invalid fixtures for every supported error class plus valid real-mission controls.
+
+**Manual:** none unless error presentation is changed in mapper-facing workflow; then a mapper confirms the diagnostic points to the actionable source.
+
+## 11.4 Debug-tooling audit and closure `[ ]`
+
+Audit and close the remaining diagnostic gaps instead of pretending debug tooling starts here. Build on existing mission-rule debugger/event trace, registry/identity tools, perception/acoustics/nav/exposure debug surfaces, save-state inspection, and Phase-8 gap closure.
+
+Required production-useful coverage: perception/awareness, acoustics, nav/door traversal, entity lookup/identity, mission facts/rules/objectives, semantic ownership/events, vitality/combat where needed, runtime-persistent objects, and save-state/compatibility inspection.
+
+**Done when:** each major proven gameplay owner has a read-only way to answer 'what does the system currently believe and why?' without mutating state, histories are bounded, stale-world references invalidate, and no duplicate diagnostic truth store exists.
+
+**Automated:** parser/lifetime/no-mutation/bounded-history coverage for new tooling plus the existing relevant diagnostic regressions.
+
+**Manual:** developer/mapper spot-checks the tools against one real mission problem if any new presentation/workflow was added.
 
 ## 11.5 Mission template `[ ]`
 
-Create a template only after the first proper mission shows what a real mission needs.
+Create a template only from the needs proven by the proper Phase-8 mission and complete Phase-10 slice. It must not contain hidden editor-local/generated state or copy mission-specific content accidentally.
+
+**Done when:** a fresh mission package can be created from the template with its own IDs/definition/map, passes validation, launches, and makes clear where map source, semantic definition/rules, optional script, and ordinary assets belong.
+
+**Automated:** instantiate/copy a disposable template mission in CI, assign new semantic identity, validate/build/enter play, and prove no copied persistent/content IDs collide with the source template.
+
+**Manual:** required — mapper/developer creates one tiny mission from the template using only documented steps.
 
 ## 11.6 Second cold-author test `[ ]`
 
-Have another developer create/substantially modify a small mission using the generalized world/gameplay APIs/template.
+Have another developer create or substantially modify a small mission using the stabilized APIs, entity library, validation, debug tools, and template.
 
-**Phase gate:** reusable world/gameplay systems represent proven Vark patterns, not hypothetical engine features; their production API has survived the complete gameplay slice; and a non-author can use the workflow. Campaign/narrative/application extension stability remains to be proven.
+The task must include spatial editing, at least one guard/perception element, model-backed world content, objective/rule logic, inventory/tool or combat-relevant content from the complete slice, validation, and a playable launch. No core gameplay modification is part of ordinary success.
+
+**Done when:** the cold author completes the task without private implementation coaching, can diagnose at least one intentional authoring error using production tools, and reports no blocking undocumented core-edit dependency. Any blocking gap is fixed and retested before Phase 11 closes.
+
+**Automated:** normal CI/validation for resulting fixes; no automated substitute for the independent-human test.
+
+**Manual:** required — independent developer unfamiliar with relevant Vark internals.
+
+**Phase gate:** reusable world/gameplay systems represent proven Vark patterns rather than hypothetical engine features; the complete gameplay slice has exercised them; common objects are ready-to-place through the mapper workflow; production validation/debugging are actionable; and a non-author can create meaningful content. Campaign/narrative/application extension stability remains intentionally unproven.
 
 ---
 
 # Phase 12 — Campaign and narrative layer
 
-Goal: support multi-mission consequences and writer-facing production.
+## 12.1 Typed durable CampaignState `[ ]`
 
-## 12.1 CampaignState `[ ]`
+Introduce an application-owned authoritative `CampaignState` for facts that persist **between** missions. It is separate from mission-local `VarkMissionFacts` and must not become a mutable global catch-all for current world runtime state.
 
-Introduce the authoritative owner for campaign-persistent facts, separate from mission-local state. Campaign state must not become a mutable global catch-all for mission runtime state, and Phase 7 mission facts must not be retroactively treated as its storage layer.
+Use an explicit typed schema/defaults/validation comparable in discipline to mission facts. Define one durable serialized snapshot owner and clear application-lifetime mutation APIs; mission worlds consume campaign-derived inputs rather than directly owning/mutating the durable object.
 
-## 12.2 Cross-mission variation `[ ]`
+**Done when:** campaign facts have typed declared identity/default/value, durable save/load, application ownership across world replacement, no accidental storage of mission runtime owners, and invalid/unknown campaign data fails clearly.
 
-Later mission setup may alter NPCs, routes, objectives, security, resources, dialogue, and other authored starting conditions from campaign facts.
+**Automated:** lifecycle isolation, typed validation, durable round-trip, malformed/unknown fact rejection, and proof that mission-local fact mutation does not silently mutate campaign state.
 
-## 12.3 Writer workflow `[ ]`
+**Manual:** none for this ownership-only step.
 
-Stable text IDs/data for world-space NPC dialogue, briefings, subtitles, and narrative content.
+## 12.2 One meaningful cross-mission variation `[ ]`
 
-## 12.4 First-person sequences `[ ]`
+Prove campaign consequence with **two real missions** and one clearly player-visible prior-choice effect. Choose the smallest meaningful content variation supported by the missions (for example guard/security presence, route/entrance availability, objective setup, resources, or dialogue). Do not build every possible variation type.
 
-Input ownership, camera control, actor actions/dialogue, exceptional save restrictions where appropriate, safe return to gameplay.
+Resolve the later mission's starting configuration from CampaignState before play and keep the resolved start stable for that run.
 
-Save-relevant sequence progress is explicit semantic state if arbitrary restoration is supported; suspended animation/coroutine state is not durable truth.
+**Done when:** completing/choosing the relevant condition in mission A changes campaign truth and mission B visibly starts differently; the variation is authored through supported content/API rather than core conditionals; restarting mission B preserves its resolved variant; unrelated campaign facts do not leak into mission-local state.
 
-## 12.5 Narrative save/campaign integration and completion transaction `[ ]`
+**Automated:** two campaign-state variants launch mission B with deterministic differing semantic setup, restart consistency, validation of missing/invalid variation references, and world-lifetime isolation.
 
-An in-mission save reconstructs the same campaign-derived mission variant that existed when captured, not whatever campaign state happens to be current at load time.
+**Manual:** required — user/playtester completes/sets both branches and confirms the later mission difference is clear and meaningful.
 
-Choose the smallest explicit representation proven by content: relevant campaign snapshot/input or a resolved mission-start configuration/revision.
+## 12.3 Writer text/data workflow `[ ]`
 
-Mission completion advances campaign state **exactly once**. Applying mission results/consequences and committing the new durable campaign snapshot is one application-owned completion transaction; retry/crash/re-entry must not apply the same completion consequences twice.
+Create the smallest stable writer-facing text-data workflow for typed world-space dialogue, briefings, subtitles/sequence text, objective/narrative strings, and other narrative content actually used by the two-mission proof.
 
-An in-mission save is tied to the campaign/mission-start instance it came from. Once campaign progression has durably advanced past that mission instance, an old in-mission save must not silently resume against the advanced campaign state. The implementation may invalidate/delete that quicksave on successful completion or refuse it using the saved campaign/run baseline identity—choose the smallest proven policy when this flow exists.
+Text uses stable semantic IDs/data resources rather than NodePaths or duplicated inline script constants. Keep localization-friendly identity separation where cheap, but do not build a full localization product unless required.
 
-Exercise and stabilize the campaign/narrative extension API only after these real flows prove it.
+**Done when:** a writer can find/edit/add representative dialogue + briefing text without touching gameplay code; missing/duplicate text IDs fail clearly; runtime speakers/sequences/objectives resolve the intended text; and text identity survives scene refactors.
 
-**Phase gate:** two missions demonstrate a meaningful prior-choice consequence; in-mission save recreates the same campaign-derived starting variant; mission completion advances campaign state exactly once and leaves no ambiguous stale-save/advanced-campaign combination; and campaign/narrative extension boundaries are proven rather than guessed.
+**Automated:** text-ID uniqueness/reference validation and representative runtime resolution.
+
+**Manual:** required — writer/user edits one dialogue/briefing entry through the intended workflow and confirms the change appears in game without code edits.
+
+## 12.4 First-person sequence proof `[ ]`
+
+Implement one real first-person in-mission sequence using the established input/world/session ownership: temporary gameplay-input restriction, camera/player-control policy, actor actions and typed dialogue, explicit completion/cancellation, then safe return to ordinary gameplay.
+
+The sequence's save policy must be explicit. If arbitrary mid-sequence save is supported, save-relevant stage/progress is semantic state; suspended animation/coroutine continuation is not durable truth. If saving is exceptionally disallowed during the short sequence, that restriction must be narrow, visible, and justified rather than becoming a checkpoint policy.
+
+**Done when:** the sequence enters/exits without orphaning input/camera/world ownership, cannot leak stale callbacks across restart/load/transition, dialogue/actor actions resolve through supported APIs, and its documented save policy is coherent.
+
+**Automated:** input-domain ownership, stale-work cancellation, stage/event ordering, restore/restart behavior per chosen policy, and return-to-play invariants.
+
+**Manual:** required — user/playtester validates first-person presentation, control handoff, readability, and the chosen save behavior.
+
+## 12.5 Campaign-derived mission save provenance `[ ]`
+
+An in-mission save must reconstruct the **same campaign-derived starting variant** that existed when the run began, not whatever CampaignState happens to contain later.
+
+Choose the smallest explicit representation proven by 12.2 content: either the relevant campaign input snapshot or a resolved mission-start configuration/revision/baseline identity. Store enough provenance in the save to rebuild/validate the same run without copying arbitrary campaign globals into mission state.
+
+**Done when:** save/load of both mission-B variants recreates the same starting variant even after live CampaignState is deliberately changed; incompatible/missing campaign/run baseline metadata fails closed before destructive restore; and restart within the current run uses the resolved run baseline rather than rereading changed campaign truth.
+
+**Automated:** variant A/B quicksave round-trips with mutated live campaign state, provenance validation/refusal, restart consistency, and no campaign-owner mutation during restore.
+
+**Manual:** none beyond the later integrated campaign playthrough.
+
+## 12.6 Exactly-once mission completion transaction `[ ]`
+
+Mission completion must apply mission results/consequences and commit the new durable CampaignState **exactly once** through one application-owned completion transaction.
+
+Define an explicit mission/run completion identity so retry, duplicate exit events, crash/re-entry simulation, or UI re-entry cannot apply the same consequence twice. Results/statistics consumed by the transaction come from semantic mission owners, not temporary scene scraping.
+
+**Done when:** a successful mission completion produces one durable campaign advancement + one results snapshot; duplicate completion attempts are idempotently rejected/recognized; a failure before durable commit does not leave half-applied campaign truth; and a completed run cannot mutate the destroyed world afterward.
+
+**Automated:** duplicate/reentrant completion, simulated pre/post-commit failure boundaries, durable reload after completion, results integrity, and world/session teardown ordering.
+
+**Manual:** required only for end-to-end flow presentation once Phase 13 UI consumes it.
+
+## 12.7 Stale in-mission save policy and campaign/narrative integration `[ ]`
+
+Resolve the remaining ambiguity between an advanced campaign and an old in-mission quicksave. Choose the smallest proven policy: invalidate/delete the run's quicksave on successful completion, or retain it but refuse it through saved campaign/run-baseline identity. Do not allow silent resume of an already-completed old run against advanced campaign state.
+
+Then exercise the combined two-mission flow: briefing/text → mission variant → optional sequence → save/load → completion transaction → campaign consequence → next mission variant.
+
+**Done when:** the stale-save policy is explicit and user-understandable; no valid application state mixes an advanced durable campaign with a silently resumable obsolete run; the two-mission narrative/campaign path survives restart/relaunch; and the campaign/narrative extension API surfaces actually needed by content are identified for later stabilization.
+
+**Automated:** stale-save refusal/deletion, durable relaunch/Continue candidate integrity, exactly-once progression across process-owner recreation, and two-mission integration.
+
+**Manual:** required — user/playtester runs the representative two-mission flow and confirms prior-choice consequence, save/load continuity, completion progression, and stale-save behavior make sense.
+
+**Phase gate:** two missions demonstrate a meaningful prior-choice consequence; writer/sequence workflows are usable; in-mission save recreates the same campaign-derived run variant; mission completion advances durable campaign state exactly once; stale in-mission saves cannot silently contradict advanced campaign state; and campaign/narrative extension boundaries have been exercised rather than guessed.
 
 ---
 
 # Phase 13 — Player-facing product flow and application API completion
 
-Goal: convert developer functionality into complete player-facing flow and finish application-level extension boundaries.
-
 ## 13.1 Finalized quicksave/quickload UX `[ ]`
 
-F5/F9 work during ordinary gameplay with understandable feedback/error handling while retaining source-session-bound stable capture, latest-committed-slot semantics, and transactional replacement.
+Turn the already-proven save transaction into final ordinary-game feedback while retaining source-session-bound stable capture, latest-committed-slot semantics, compatibility refusal, and transactional replacement.
 
-Define visible behavior for rapid/repeated save/load requests, a save request cancelled by world transition before capture, save-in-progress cases, and attempts to load an in-mission save whose campaign/run baseline is no longer valid after durable mission completion. Application operations must not race.
+Define visible behavior for: successful F5/F9, rapid/repeated save/load requests, a save cancelled by world transition before capture, save-in-progress/load-in-progress ownership, incompatible/corrupt save, and an in-mission save invalid under the Phase-12 campaign/run baseline policy.
+
+**Done when:** F5/F9 during ordinary gameplay produce clear non-blocking status/error feedback, application operations cannot race, invalid/stale saves explain why they cannot load, and no UX path changes underlying save truth/ordering.
+
+**Automated:** application operation/state-machine coverage for every named outcome plus feedback state lifecycle.
+
+**Manual:** required — user validates feedback clarity and repeated rapid save/load behavior on Windows.
 
 ## 13.2 Main menu / Continue / New Game `[ ]`
 
-Connect real persistence/campaign flow. `Continue` chooses a coherent durable state rather than ambiguously mixing an advanced campaign snapshot with a stale in-mission quicksave.
+Connect the real durable CampaignState and valid in-mission save policy. `Continue` must choose one coherent durable state rather than ambiguously combining an advanced campaign snapshot with a stale quicksave.
 
-## 13.3 Pause/objectives/map/inventory/settings `[ ]`
+**Done when:** New Game creates/reset the intended campaign baseline, Continue deterministically selects the valid continuation (current in-mission run when valid, otherwise campaign progression entry), no valid state offers an obsolete run, and menu actions cannot race world operations.
 
-Complete presentation around Phase 1 input/simulation/gameplay-time ownership rather than inventing a second pause policy.
+**Automated:** new campaign/reset, valid quicksave Continue, post-completion Continue, stale/corrupt save handling, durable process restart, and operation exclusion.
 
-## 13.4 Mission results/statistics `[ ]`
+**Manual:** required — user exercises New Game/Continue before, during, and after one mission completion.
 
-Build final presentation over the semantic `MissionRunState`/statistics owner already exercised by gameplay: loot, kills, knockouts, detections/alerts, objectives, time, and mission-specific stats.
+## 13.3 Pause, objectives, and settings presentation completion `[ ]`
 
-## 13.5 Failure/death/recovery flow `[ ]`
+Complete the existing pause/settings ownership and add final objectives presentation around the established mission/objective APIs. Do not invent a second pause/input-time policy.
 
-Return to valid load/recovery state without checkpoint-only design.
+**Done when:** pause reliably owns input/simulation/UI, settings that are actually supported persist/apply coherently, active/completed/failed/optional objectives are readable, and returning to play restores correct world/input state.
 
-**Phase gate:** complete intended player flow is usable without developer shortcuts, campaign/narrative/application-flow extension boundaries and exactly-once progression have been exercised, and the whole production extension surface may now be treated as stable where proven.
+**Automated:** pause/input/time ownership, settings persistence/application, objective view-model state, and world replacement/menu transitions.
+
+**Manual:** required — user validates readability/navigation and no pause/resume control leakage.
+
+## 13.4 Inventory presentation `[ ]`
+
+Build final player-facing inventory selection/use UI over the Phase-10 inventory owner. The UI does not become a second inventory store and must coexist with carried Junk/body hand ownership.
+
+**Done when:** item selection, quantities, usable/unusable state, keys/mission items, and use feedback reflect semantic inventory truth; mouse/keyboard/controller focus ownership does not leak gameplay actions; and save/load/menu transitions rebuild UI from owner state.
+
+**Automated:** UI↔owner synchronization, selection/use routing, disabled-hand states, stale-view rebuild after restore/world replacement, and input-domain isolation.
+
+**Manual:** required — user validates selection speed/readability in stealth/combat contexts.
+
+## 13.5 Mission map presentation — `OPEN` `[ ]`
+
+The product requires a mission map, but its exact presentation/data source is not yet LOCKED. Resolve this with a focused spike rather than silently choosing a complex map subsystem.
+
+Before implementation, compare the smallest viable options supported by real mission content (for example an authored static/annotated map versus a simple derived top-down representation) and choose one with the user. Do not require live omniscient geometry/NPC tracking unless explicitly adopted.
+
+**Done when:** one accepted map presentation can be opened/closed through normal UI input ownership, represents the mission clearly enough for navigation, has an explicit authored/generated source-of-truth policy, and does not leak hidden gameplay information beyond the adopted design.
+
+**Automated:** only objective UI/input/source validation appropriate to the chosen design.
+
+**Manual:** required — user chooses/accepts the map presentation and validates usefulness on a representative mission.
+
+## 13.6 Mission results/statistics `[ ]`
+
+Build final results presentation over semantic `MissionRunState`/statistics already produced by gameplay: loot collected/available, kills, knockouts, detections/significant alerts, objectives, mission time, and mission-specific stats.
+
+**Done when:** results are a detached snapshot of the completed run used by the Phase-12 completion transaction, no destroyed scene is scraped, totals reconcile with gameplay semantic owners, and returning/continuing campaign flow cannot mutate already-presented results.
+
+**Automated:** statistic aggregation/invariants, completion snapshot detachment, duplicate-completion idempotence, and UI view-model reconstruction.
+
+**Manual:** required — user checks a known playthrough's results against what actually happened.
+
+## 13.7 Failure/death/recovery flow `[ ]`
+
+Define final player death/failure recovery without checkpoint-only design. Recovery must choose among valid durable states already supported by the application (latest valid quicksave, campaign/menu state, or explicit restart) and must respect campaign/run baseline compatibility.
+
+**Done when:** player death/failure cannot leave a half-alive session/input owner; recovery options are understandable; invalid/stale saves are not offered as successful recovery; restart/load/menu choices use existing transactional world replacement; and no automatic checkpoint system is introduced.
+
+**Automated:** death/failure transition ownership, valid/invalid recovery candidate selection, load/restart/menu replacement, and stale-save/campaign compatibility.
+
+**Manual:** required — user validates death/failure feedback and recovery choices in a mission with and without a valid quicksave.
+
+**Phase gate:** the complete intended player flow is usable without developer shortcuts; save/menu/pause/objective/inventory/map/results/death UX consumes the established semantic/application owners rather than duplicating them; campaign/narrative/application-flow boundaries and exactly-once progression have been exercised; and only the extension surfaces proven by this complete flow are candidates for final stabilization.
 
 ---
 
 # Phase 14 — Production scaling and replacement architecture
 
-Goal: prove systems at representative content scale and allow art/audio replacement without gameplay rewrites.
+## 14.1 Art replacement hardening `[ ]`
 
-## 14.1 Art replacement paths `[ ]`
+Prove at production scale that models/textures/animations/HUD/menu assets can be replaced without changing gameplay rules. This hardens seams already proven by model-backed doors/props/lights; it is not the first asset-replacement proof.
 
-Models/textures/animations/HUD/menu assets can be replaced without changing gameplay rules. This phase hardens production replacement at scale; it is **not** the first proof of model-backed world objects. Doors/openable windows, containers/furniture, and representative props must already have used replaceable external 3D model presentation through their earlier gameplay/authoring proofs.
+**Done when:** representative world objects/characters/UI can swap final-quality assets while semantic identity, collision/interaction ownership, save state, light/exposure rules, and authored variants remain unchanged; fragile imported hierarchy is not gameplay API.
 
-## 14.2 Audio replacement paths `[ ]`
+**Automated:** resource/variant validation and representative replacement fixtures where deterministic.
 
-Final audio can replace placeholders without altering semantic gameplay noise.
+**Manual:** required — artist/user spot-checks final replacement workflow and visual/collision alignment.
+
+## 14.2 Audio replacement hardening `[ ]`
+
+Replace representative placeholder audio while preserving semantic gameplay-noise identity/strength/propagation.
+
+**Done when:** final audio asset swaps do not change AI-hearing/gameplay-noise truth, positional playback remains useful, and missing/bad audio references fail without corrupting semantic sound events.
+
+**Automated:** semantic sound invariance and asset-reference validation.
+
+**Manual:** required — user validates positional/readability mix without changing gameplay hearing balance.
 
 ## 14.3 Representative-scale production mission `[ ]`
 
-Build a much larger mission to stress real content volume.
+Build a substantially larger mission to stress real content volume. Before implementation, record target content counts relative to the Phase-10 slice (area/rooms, guards, lights, doors, props, loot, acoustic zones, rules/events, runtime objects) and make the mission materially larger across the systems that actually drive cost.
+
+Do not choose arbitrary huge counts unrelated to intended game content; the target should approximate a plausible production mission while being at least a clear multi-fold stress increase over the vertical slice for key systems.
+
+**Done when:** the mission is playable end-to-end through normal tooling, validates without core-edit workarounds, stresses all major world/gameplay systems concurrently, and exposes any scale-specific authoring/runtime problems for 14.4–14.5.
+
+**Automated:** content-validation/load smoke plus deterministic scale counters and targeted regressions for failures discovered.
+
+**Manual:** required — user/playtester validates that the large mission remains playable and representative rather than a synthetic benchmark room.
 
 ## 14.4 Performance budgets and optimization `[ ]`
 
-Profile on a recorded supported reference environment:
+Profile the 14.3 mission on a recorded supported Windows reference environment. Before optimization, set explicit acceptable budgets/targets for frame time and the expensive subsystems actually observed.
 
-- NPC vision/hearing;
-- acoustic graph/portals;
-- gameplay exposure;
-- nav;
-- mission events/rules;
-- synchronous save snapshot capture;
-- encoded save size/durable-write time;
-- prop support checks.
+Measure at least: NPC vision/hearing, acoustic graph/portals, gameplay exposure, nav, mission events/rules, combat where active, runtime persistence, synchronous save snapshot capture, encoded save size/durable-write time, and prop support checks.
 
-Optimize proven bottlenecks without weakening semantic correctness.
+Optimize proven bottlenecks without weakening semantic correctness or stable-boundary snapshot coherence.
 
-## 14.5 Build/content validation `[ ]`
+**Done when:** repeatable captures show the representative mission meets the adopted budgets or every remaining miss is explicitly accepted/scoped; optimizations retain behavioral regressions; and budget/reference-environment data is documented.
 
-Production validation catches common authoring errors before shipping.
+**Automated:** micro/perf regression guards only where stable; full deterministic correctness suite remains the gate for optimization changes.
 
-**Phase gate:** architecture holds under representative mission complexity/content volume.
+**Manual:** required — Windows operator records final reference measurements; user validates no obvious gameplay/visual regression from optimization.
+
+## 14.5 Shipping-oriented build/content validation `[ ]`
+
+Extend production validation with common scale/shipping errors discovered through 14.1–14.4: missing replacement assets, broken references/variants, duplicate IDs, unsupported persistence types, invalid campaign/text content, budget-threatening pathological authoring detectable statically, and other real production mistakes.
+
+**Done when:** a clean production content validation command catches the supported error classes before shipping/export, reports source-oriented diagnostics, and passes the representative-scale mission.
+
+**Automated:** invalid fixture coverage for every production validation rule plus the full real-content validation command in CI where practical.
+
+**Manual:** none unless the validator has target-specific Windows/export behavior; then Windows operator confirms it.
+
+**Phase gate:** architecture and tooling hold under representative mission complexity/content volume; asset/audio replacement does not alter gameplay semantics; adopted performance budgets are measured on a supported reference environment; and common production authoring failures are caught before shipping.
 
 ---
 
 # Phase 15 — Final external handoff
 
-Goal: verify the platform is usable by someone who did not build its internals.
-
 ## 15.1 Production template/docs `[ ]`
 
-Document only workflows/extension points that survived production use.
+Document only workflows and extension points that survived production use. Consolidate mapper, mission logic/script, inventory/effect, campaign/narrative, save compatibility, validation/debug, asset replacement, build/test, and troubleshooting workflows without duplicating living sources of truth.
+
+**Done when:** a fresh developer can follow the docs from checkout/tool setup through creating/validating/running content, understands source vs generated ownership and supported extension boundaries, and no documented command/path is stale.
+
+**Automated:** documentation link/path/command checks where practical plus clean-checkout CI.
+
+**Manual:** required — someone other than the primary implementer follows the setup/create/run path before 15.2.
 
 ## 15.2 External mapper/scripter test `[ ]`
 
-A developer familiar with Godot/TrenchBroom but not Vark internals builds a small mission.
+A developer familiar with Godot/TrenchBroom but not Vark internals builds a small mission using the production template/docs. The brief must require ordinary mapping plus one special scripted behavior through the supported mission API, at least one guard/stealth interaction, ordinary model-backed objects/lights, objective/exit logic, and validation/run.
+
+The external creator may use documented APIs/tools and normal diagnostics, but ordinary success must not require modifying core gameplay, generated FuncGodot output, private WorldSession internals, or undocumented asset hierarchy.
+
+**Done when:** the external creator completes the playable task, can debug at least one intentional content mistake using supported tooling, and independently identifies the correct extension path for the special scripted behavior.
+
+**Automated:** normal CI/content validation for the produced/fixed content; no automated substitute for the external-human purpose.
+
+**Manual:** required — external developer unfamiliar with Vark internals.
 
 ## 15.3 Handoff gap fixes `[ ]`
 
-Fix unclear APIs, missing validation, undocumented ownership, or tooling problems discovered by the external creator.
+Fix unclear APIs, missing validation, undocumented ownership, template problems, or tooling gaps actually discovered by 15.2. Do not invent cleanup work to justify the step; if the external test exposes no material gap, record that result and complete the item without a manufactured refactor.
 
-**Phase gate:** a new creator can build ordinary Vark content without modifying core gameplay and can add special scripted content through supported APIs.
+**Done when:** every blocking/significant handoff issue has a root-cause fix or explicit accepted deferral, docs/template/tooling match the final behavior, and the external creator can repeat the previously blocked operation successfully.
+
+**Automated:** regression/validation coverage for deterministic fixes plus full CI.
+
+**Manual:** required only for externally observed workflow problems — the external creator or equivalent cold developer repeats the affected task.
+
+**Phase gate:** a new creator can build ordinary Vark content without modifying core gameplay, can add special scripted content through supported APIs, can diagnose common mistakes with documented tools, and the production handoff no longer depends on private tribal knowledge.
 
 ---
 
@@ -2241,22 +2592,18 @@ Subjective feel remains user playtest territory.
 
 # Immediate recommended sequence
 
-1. Complete the current 3.6 acoustic propagation micro-proof through exact-head automated validation plus focused Windows playtest/TrenchBroom mapper acceptance before moving to 3.7.
-2. Phase 3 interaction/event/sound contracts + controlled semantic mutation + true stable gameplay boundary.
-3. Phase 3 door/prop/acoustic/nav/light proofs and integrated stealth slice + actor identity proof.
-4. Phase 4 source-session-bound detached snapshot capture + coherent view pose + save-slot ordering + resolved-choice restore + simplest proven transactional restore topology + global/mission compatibility policy.
-5. Phase 4 crude hostile compatibility.
-6. Phase 5 harden stealth, preserving resolved AI choices through save/load.
-7. Phase 6 minimal possession + semantic `MissionRunState` + removed-authored persistence.
-8. Phase 7–8 mission logic/provisional script API + first proper mission; mission-local fact scopes only; supported commands preserve controlled mutation; explicit semantic long-running state; pull runtime persistence forward only if real content needs it.
-9. early cold-author review.
-10. Phase 9 establish real vitality/damage ownership while prototyping combat.
-11. Phase 10 inventory/effects extend that vitality boundary + stable runtime IDs + active-runtime-transient save proof + complete vertical slice.
-12. Phase 11 stabilize **world/gameplay** production APIs only.
-13. Phase 12 prove/stabilize campaign/narrative boundaries + exactly-once durable mission completion.
-14. Phase 13 complete player flow/application boundaries and final extension-surface stabilization, including coherent Continue/stale-save behavior.
-15. production scaling/handoff.
-
+1. **8.4** build the actual 10–15 minute representative stealth mission from already-proven ordinary systems; record concrete gaps instead of bypassing them.
+2. **8.5** prove one genuinely unusual mission-specific GDScript behavior through the provisional semantic API.
+3. **8.6** exercise representative real-mission save/load plus meaningful mission-revision and global semantic-version refusal.
+4. **8.7** close only the concrete authoring/validation/debug gaps exposed by the mission.
+5. **8.8** run the independent cold-author modification test before declaring Phase 8 complete.
+6. **Phase 9** finish body handling, establish combat input/loadout and real vitality/damage ownership **before** block/parry/direct-combat tuning, then validate the TARGET grammar with the required scenario matrix.
+7. **Phase 10** add real inventory, prove one runtime-persistent thrown tool + active-transient save policy, extend effects around Phase-9 vitality, prove one interruptible NPC routine, and integrate everything in the complete slice.
+8. **Phase 11** stabilize only the world/gameplay APIs and mapper presets proven by Phases 8–10; then validate with a second cold author.
+9. **Phase 12** add typed durable campaign state, one real cross-mission consequence, writer/sequence workflow, run-provenance saving, exactly-once completion, and stale-save policy.
+10. **Phase 13** finish player-facing save/menu/pause/objective/inventory/map/results/death flow; keep the exact mission-map presentation OPEN until its focused user decision.
+11. **Phase 14** harden asset/audio replacement, stress a representative-scale mission, adopt/measured performance budgets, and close shipping validation.
+12. **Phase 15** produce final docs/template, run the external mapper/scripter handoff, and fix only gaps that handoff actually exposes.
 The most important sequencing rules are:
 
 > **Do not build the reusable immersive-sim platform first and hope Vark fits it later. Build Vark in playable slices and let the platform emerge from proven needs.**

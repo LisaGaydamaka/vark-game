@@ -693,7 +693,7 @@ Phase 7.5 adds one provisional world-lifetime `VarkMissionScript` surface over a
 - objective activation/completion/failure commands use the existing semantic objective-request path rather than mutating the objective owner directly;
 - no independent `mission_script` save section, timer/coroutine continuation state, or alternate scheduler is introduced.
 
-Phase 8.4 owns the first real mission-specific GDScript use. Extend the provisional surface only when that representative content proves a new semantic query/command is required; do not add arbitrary Node access for convenience.
+Phase 8.5 owns the first real mission-specific GDScript use. Extend the provisional surface only when that representative content proves a new semantic query/command is required; do not add arbitrary Node access for convenience.
 
 Phase 7.6 makes rule ordering/repeat state explicit without introducing a second scheduler. The Application suite must prove:
 
@@ -719,7 +719,7 @@ Phase 7.7 adds one read-only world-lifetime mission-logic debugger over the exis
 - rule and event diagnostic histories remain bounded and reset with world lifetime;
 - debugger/evaluation history is diagnostic only, adds no save-state section, and teardown invalidates retained references before replacement.
 
-Phase 8.6 owns any workflow/presentation refinements exposed by debugging the real authored mission. Do not turn 7.7 into an editor plugin, alternate logger database, gameplay-history save system, or mutation console.
+Phase 8.7 owns any workflow/presentation refinements exposed by debugging the real authored mission. Do not turn 7.7 into an editor plugin, alternate logger database, gameplay-history save system, or mutation console.
 
 ## Acoustic fixture
 
@@ -1031,7 +1031,7 @@ The checklist below is the broad integration pass for changes that could affect 
 
 A focused agent handoff must collectively cover every unresolved `Manual:` acceptance criterion for the roadmap item. “Focused” means omit irrelevant global checks; it does not mean skip required acceptance cases. A generic user response such as `works` accepts only the cases that were actually included in the handoff.
 
-When `Manual:` requires a specific kind of validator, name that role rather than treating every manual criterion as interchangeable. User/playtester, Windows operator, mapper, writer, cold author, and external developer are different acceptance roles. In particular, the implementing agent cannot self-certify the independent-human purpose of 8.7, 11.6, or 15.2; it prepares the workflow and the reported external result closes the criterion.
+When `Manual:` requires a specific kind of validator, name that role rather than treating every manual criterion as interchangeable. User/playtester, Windows operator, mapper, writer, cold author, and external developer are different acceptance roles. In particular, the implementing agent cannot self-certify the independent-human purpose of 8.8, 11.6, or 15.2; it prepares the workflow and the reported external result closes the criterion.
 
 ## Phase 2.3 mapper persistent-identity feasibility check — accepted
 
@@ -1194,7 +1194,7 @@ The continuous Authoring suite now extends the old Phase 2.8 point-entity reimpo
 - a second fresh edited-world build then restores the **pre-edit** save envelope through normal `WorldSession.begin_restore_from_envelope → apply_restore_world_state → complete_restore`; exact persistent-owner recapture must match the baseline semantic snapshots;
 - the verifier rereads the edited `.map` afterward and requires it to be byte-for-byte unchanged.
 
-This proves technical identity/saveability continuity for benign authoring iteration under the same `mission_content_revision`. It does **not** claim every content edit is save-compatible; Phase 8.5 owns meaningful incompatible-content revision refusal.
+This proves technical identity/saveability continuity for benign authoring iteration under the same `mission_content_revision`. It does **not** claim every content edit is save-compatible; Phase 8.6 owns meaningful incompatible-content revision refusal.
 
 Focused manual acceptance requires a **Windows mapper/user with TrenchBroom 2026.2** and the accepted 8.1 ignored workspace.
 
