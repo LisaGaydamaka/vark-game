@@ -13,25 +13,25 @@ const LEDGE_LABEL := "Representative Stealth — Ledge City"
 const LEDGE_PATH := "res://missions/representative_stealth_ledge_city/mission.tres"
 
 const UP_GAPS := [
-	"ledge_city.w00",
-	"ledge_city.w01",
-	"ledge_city.w02",
-	"ledge_city.w03",
-	"ledge_city.w04",
-	"ledge_city.w06",
-	"ledge_city.w07",
-	"ledge_city.w08",
-	"ledge_city.w09",
-	"ledge_city.w11",
-	"ledge_city.w12",
-	"ledge_city.e00",
-	"ledge_city.e01",
-	"ledge_city.e02",
-	"ledge_city.e03",
+	"ledge_city.mercer01",
+	"ledge_city.mercer02",
+	"ledge_city.mercer03",
+	"ledge_city.office01",
+	"ledge_city.office02",
+	"ledge_city.office03",
+	"ledge_city.archive01",
+	"ledge_city.archive02",
+	"ledge_city.archive03",
+	"ledge_city.archive04",
+	"ledge_city.archive05",
+	"ledge_city.watch01",
+	"ledge_city.watch02",
+	"ledge_city.watch03",
+	"ledge_city.watch04",
 ]
 const LATERAL_GAPS := [
-	"ledge_city.w05",
-	"ledge_city.w10",
+	"ledge_city.cross_street",
+	"ledge_city.service_alley",
 ]
 
 
@@ -61,7 +61,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"mission.tres",
 			"mission.map"
 		)
-		and int(Definition.get("mission_content_revision")) == 1,
+		and int(Definition.get("mission_content_revision")) == 2,
 		"8.4 Ledge City owns a distinct MissionDefinition/save identity and authoritative mapper source"
 	)
 
@@ -136,13 +136,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and patrol_points.size() == 2
 		and containers.size() == 1
 		and props.size() == 5
-		and lights.size() == 6
+		and lights.size() == 8
 		and switches.size() == 1
-		and openings.size() == 2
+		and openings.size() == 6
 		and pickups.size() == 4
 		and markers.size() >= 35
-		and _count_direct_collision_shapes(worldspawn) >= 105,
-		"8.4 Ledge City preserves representative gameplay roles while adding a dense independent traversal-stress city"
+		and _count_direct_collision_shapes(worldspawn) >= 140,
+		"8.4 Ledge City preserves representative gameplay roles inside an organized boulevard, accessible building interiors and architectural traversal network"
 	)
 
 	var ground_catch: Node = _find_by_property(
@@ -165,10 +165,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and ground_catch.global_position.y >= 2.40
 		and ground_catch.global_position.y <= 2.55
 		and key_roof != null
-		and key_roof.global_position.y >= 6.30
+		and key_roof.global_position.y >= 6.90
 		and archive_apex != null
-		and archive_apex.global_position.y >= 14.0,
-		"8.4 Ledge City starts above ordinary standing reach and escalates through a high key roof to a fourteen-metre archive apex"
+		and archive_apex.global_position.y >= 14.20,
+		"8.4 Ledge City starts above ordinary standing reach, reaches the Watchmaker roof room and ends inside a fourteen-metre Archive upper room"
 	)
 
 	var upward_gaps_valid: bool = true
@@ -194,7 +194,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		if (
 			rise < 0.90
 			or rise > 1.10
-			or horizontal_gap < 0.80
+			or horizontal_gap < 0.70
 			or horizontal_gap > 2.25
 		):
 			upward_gaps_valid = false
@@ -252,11 +252,11 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	assert_true.call(
 		window != null
 		and str(window.get("opening_variant")) == "window"
-		and window.global_position.y >= 6.7
+		and window.global_position.y >= 13.9
 		and locked_door != null
 		and bool(access.get("locked", false))
 		and str(access.get("required_key_id", "")) == "key.service",
-		"8.4 Ledge City keeps the high window bypass and distinct locked/key street gate"
+		"8.4 Ledge City keeps the Archive high-window bypass and distinct locked/key front-door route"
 	)
 
 	var pickup_roles: Dictionary = {}
@@ -276,14 +276,51 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	var nav_ready: bool = await _wait_for_navigation(world, tree)
-	assert_true.call(
-		nav_ready
-		and (world.get("navigation_errors") as PackedStringArray).is_empty(),
-		"8.4 Ledge City dense rooftop geometry still produces valid street-level guard navigation and opening links"
+	var authored_patrol_path: bool = (
+		_has_navigation_path_between_patrol_points(
+			world,
+			patrol_points
+		)
+		if nav_ready else false
 	)
 	assert_true.call(
-		bool(session.call("begin_play")),
-		"8.4 Ledge City reaches PLAYING through the normal lifecycle"
+		nav_ready
+		and authored_patrol_path
+		and (world.get("navigation_errors") as PackedStringArray).is_empty(),
+		"8.4 Ledge City only becomes navigation-ready when the organized boulevard contains a real path between both authored patrol endpoints"
+	)
+
+	var guard := guards[0] as VarkGuard if guards.size() == 1 else null
+	var awareness: Node = (
+		guard.get_node_or_null("Awareness")
+		if guard != null else null
+	)
+	if awareness != null:
+		awareness.set_physics_process(false)
+	var patrol_lookup: Dictionary = {}
+	for patrol: Node in patrol_points:
+		patrol.set("wait_seconds", 0.05)
+		patrol_lookup[patrol.get("patrol_id")] = patrol
+	if guard != null:
+		guard.movement_speed = 8.0
+	var patrol_reconfigured: bool = (
+		guard.configure_patrol(patrol_lookup, locked_door)
+		if guard != null and locked_door != null else false
+	)
+	var began_playing: bool = bool(session.call("begin_play"))
+	var live_patrol_leg: bool = (
+		await _wait_for_guard_patrol_leg(guard, tree, 360)
+		if began_playing and patrol_reconfigured else false
+	)
+	var guard_summary: Dictionary = (
+		guard.get_debug_summary()
+		if guard != null else {}
+	)
+	assert_true.call(
+		began_playing
+		and live_patrol_leg
+		and str(guard_summary.get("last_error", "")).is_empty(),
+		"8.4 Ledge City live guard can traverse the authored boulevard patrol instead of failing later with a no-route runtime error"
 	)
 
 	var summary: Dictionary = session.call("get_mission_run_summary")
@@ -296,6 +333,61 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	session.call("teardown")
 	session.queue_free()
 	await tree.process_frame
+
+
+func _has_navigation_path_between_patrol_points(
+	world: Node3D,
+	patrol_points: Array[Node]
+) -> bool:
+	if world == null or patrol_points.size() != 2:
+		return false
+	var point_by_id: Dictionary = {}
+	for patrol: Node in patrol_points:
+		point_by_id[str(patrol.get("patrol_id"))] = patrol
+	var patrol_a := point_by_id.get("patrol.rep.a") as Node3D
+	var patrol_b := point_by_id.get("patrol.rep.b") as Node3D
+	if patrol_a == null or patrol_b == null:
+		return false
+	var map: RID = world.get_world_3d().navigation_map
+	var start: Vector3 = NavigationServer3D.map_get_closest_point(
+		map,
+		patrol_a.global_position
+	)
+	var target: Vector3 = NavigationServer3D.map_get_closest_point(
+		map,
+		patrol_b.global_position
+	)
+	var query := NavigationPathQueryParameters3D.new()
+	query.map = map
+	query.start_position = start
+	query.target_position = target
+	query.metadata_flags = (
+		NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
+	)
+	var result := NavigationPathQueryResult3D.new()
+	NavigationServer3D.query_path(query, result)
+	return (
+		result.path.size() >= 2
+		and result.path[result.path.size() - 1].distance_to(target) <= 0.5
+	)
+
+
+func _wait_for_guard_patrol_leg(
+	guard: VarkGuard,
+	tree: SceneTree,
+	max_frames: int
+) -> bool:
+	if guard == null:
+		return false
+	for _frame_index: int in max_frames:
+		var summary: Dictionary = guard.get_debug_summary()
+		if int(summary.get("patrol_leg_count", 0)) >= 1:
+			return true
+		if not str(summary.get("last_error", "")).is_empty():
+			return false
+		await tree.physics_frame
+		await tree.process_frame
+	return int(guard.get_debug_summary().get("patrol_leg_count", 0)) >= 1
 
 
 func _count_direct_collision_shapes(node: Node) -> int:

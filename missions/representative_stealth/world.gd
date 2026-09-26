@@ -318,6 +318,13 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 			navigation_errors.append(
 				str(_guard.get_debug_summary().get("last_error", ""))
 			)
+		elif not _validate_guard_patrol_navigation(
+			navigation_map,
+			patrol_points
+		):
+			navigation_errors.append(
+				"Representative mission guard patrol endpoints do not share a usable navigation path."
+			)
 
 	if not navigation_errors.is_empty():
 		_report_navigation_errors()
@@ -326,6 +333,48 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 	navigation_rebuild_serial += 1
 	navigation_ready = true
 	navigation_rebuilt.emit(navigation_rebuild_serial)
+
+
+func _validate_guard_patrol_navigation(
+	navigation_map: RID,
+	patrol_points: Dictionary
+) -> bool:
+	if _guard == null or not navigation_map.is_valid():
+		return false
+	var patrol_a := patrol_points.get(_guard.patrol_a_id) as Node3D
+	var patrol_b := patrol_points.get(_guard.patrol_b_id) as Node3D
+	if patrol_a == null or patrol_b == null:
+		return false
+
+	var start: Vector3 = NavigationServer3D.map_get_closest_point(
+		navigation_map,
+		patrol_a.global_position
+	)
+	var target: Vector3 = NavigationServer3D.map_get_closest_point(
+		navigation_map,
+		patrol_b.global_position
+	)
+	if (
+		start.distance_to(patrol_a.global_position) > 1.0
+		or target.distance_to(patrol_b.global_position) > 1.0
+		or start.distance_to(target) < 1.0
+	):
+		return false
+
+	var query := NavigationPathQueryParameters3D.new()
+	query.map = navigation_map
+	query.start_position = start
+	query.target_position = target
+	query.metadata_flags = (
+		NavigationPathQueryParameters3D.PATH_METADATA_INCLUDE_ALL
+	)
+	var result := NavigationPathQueryResult3D.new()
+	NavigationServer3D.query_path(query, result)
+	return (
+		result.path.size() >= 2
+		and result.path[0].distance_to(start) <= 0.5
+		and result.path[result.path.size() - 1].distance_to(target) <= 0.5
+	)
 
 
 func _wait_for_navigation_map_iteration(

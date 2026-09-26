@@ -73,7 +73,7 @@ audience_faction_id = &"guards"
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(16.7, 2.8, 0)
-text = "8.4 LEDGE CITY — TRAVERSAL STRESS VARIANT\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nFIRST ROOFS ARE TOO HIGH FOR A PLAIN STANDING MANTLE: JUMP, CATCH/HANG, THEN MANTLE.\nWEST: zig-zag upward across separated roof islands; directional jumps from hangs gain height and cross real gaps.\nEAST: climb to the key roof, descend to the locked gate, then climb the north skyline to the archive apex.\nF5 quicksave · F9 quickload · F10 restart."
+text = "8.4 LEDGE CITY — BOULEVARD VARIANT\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nTHE MAIN BOULEVARD, CROSS STREET, ALLEYS AND BUILDING ROOMS ARE ALL REAL NAVIGABLE SPACE.\nWEST: use awnings/fire escapes, jump the cross street and service alley, then climb the Archive facade to its high window.\nEAST: enter/climb the Watchmaker, take the archive key, descend the rear fire escape, unlock the Archive front door, then climb its internal stairwell.\nF5 quicksave · F9 quickload · F10 restart."
 billboard = 1
 font_size = 18
 outline_size = 7
