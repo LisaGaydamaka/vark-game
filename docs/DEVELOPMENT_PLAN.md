@@ -1843,7 +1843,7 @@ The verifier does not repair or rewrite the mapper source. Identity must already
 
 **Manual:** accepted on Windows with TrenchBroom 2026.2. Starting from the accepted 8.1 ignored workspace, the mapper captured the Phase 8.2 baseline, moved one world brush plus both proof entities, saved, and ran source-owned identity repair. Repair reported `No persistent-ID repair needed; valid source was left byte-for-byte unchanged.` with both accepted opening/prop IDs preserved and `missing=0, duplicate=0`. The read-only verifier then passed: world geometry and both proof transforms changed, fresh save capture retained both persistent owners, the pre-edit semantic save restored into the reimported world, and the mapper source remained byte-for-byte unchanged.
 
-## 8.3 Rule proof `[~]`
+## 8.3 Rule proof `[x]`
 
 A real development mission package at `missions/rule_proof/` now provides the first player-facing authored-rule proof without adding mission-specific GDScript.
 
@@ -1860,7 +1860,7 @@ The intended player-visible result is deliberately simple: the mission starts wi
 
 **Automated:** accepted after fix-forward on head `a659d5c82144f4b0e2c25d59c81b1914f9ce6b6d` by GitHub Actions Test run #504. The initial implementation run #503 correctly failed the existing mission-content gate because the new real mission omitted the required authored `vark_exit`; the fix-forward added `exit.rule_proof` to authoritative `.map` source. The focused Application regression then passed all eleven 8.3 assertions: curated Development Launch target + valid MissionDefinition, real imported switch/light content with the shared wrapper/generic objective owner, inactive/default starting state, immediate switch-owned light truth versus controlled fact/objective timing, exact FIFO `switch.used → mission.fact_set_requested → mission.fact_changed → objective.activate_requested → objective.state_changed` ordering, latched fact + active objective + both fired one-shot IDs, no replay on repeated use, stable save truth, fresh restore without consequence replay, and restored one-shot suppression while ordinary switch gameplay continues. The same run ended with `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, and `ALL TEST SUITES PASSED`; successful-run script-error signatures were identical to the preceding green baseline #502.
 
-**Manual:** required — user/playtester. Launch **Rule Proof** from Development Launch. Confirm the status begins `OBJECTIVE INACTIVE`; use **F** on the labeled wall switch; confirm the gameplay light turns off and the status becomes `OBJECTIVE ACTIVE`; then toggle the switch on and off once more and confirm ordinary light control still works while the objective remains active rather than replaying/restarting. No debugger, console mutation, generated-file edit, or mission-specific script is needed.
+**Manual:** accepted by user/playtester on the final 8.3 build. Development Launch → **Rule Proof** started with `OBJECTIVE INACTIVE` and the gameplay light on; the first **F** use on the labeled switch turned the light off and changed the status to `OBJECTIVE ACTIVE`; two further switch uses continued to toggle the light normally while the objective remained active without resetting or visibly replaying the authored mission reaction. No debugger/console mutation, generated-file edit, or mission-specific script was needed.
 
 ## 8.4 GDScript extension proof `[ ]`
 

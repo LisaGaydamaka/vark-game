@@ -1241,7 +1241,7 @@ The workspace itself is ignored and does not need to be committed or manually no
 
 Accepted Windows result: after the baseline snapshot, the mapper moved one ordinary brush plus the accepted opening/prop and saved. Persistent-ID repair reported no change and preserved both IDs with valid identity status. The Phase 8.2 verifier passed, confirming changed world geometry and proof transforms, fresh save ownership of both objects, restoration of the pre-edit semantic save into the edited world, and byte-for-byte unchanged mapper source.
 
-## Phase 8.3 authored rule proof — automated accepted, player acceptance pending
+## Phase 8.3 authored rule proof — accepted
 
 The representative `missions/rule_proof/mission.tres` is the first player-facing content proof of the Phase 7 rule/fact foundation:
 
@@ -1262,6 +1262,8 @@ Focused player acceptance:
 5. Confirm the room gameplay light turns off and, after the ordinary semantic consequence step, the status text changes to **OBJECTIVE ACTIVE** with the security-cut objective text.
 6. Press **F** twice more on the same switch: first turn the light on, then off again. Confirm the light continues to toggle normally but the objective remains active; there is no second activation/reset or other duplicated mission reaction.
 7. Report whether the initial inactive state, first-use activation, and repeat-toggle behavior all matched. No console/debugger command or file edit is part of this acceptance.
+
+Accepted player result: **Rule Proof** started with `OBJECTIVE INACTIVE` and the gameplay light on; the first switch use turned the light off and changed the objective to `OBJECTIVE ACTIVE`; two additional switch uses continued normal light toggling while the objective remained active, with no visible reset/replay of the one-shot mission reaction.
 
 ---
 
