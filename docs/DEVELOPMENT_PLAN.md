@@ -1807,7 +1807,7 @@ The mission uses real TrenchBroom geometry/entities, multiple routes where pract
 
 Full polished results UI remains Phase 13; Phase 8 must consume the real semantic `MissionRunState` rather than create a temporary scraper/counter system.
 
-## 8.1 Mapper workflow proof `[~]`
+## 8.1 Mapper workflow proof `[x]`
 
 The first Phase 8 authoring proof stays on the existing source/import ownership path rather than creating the real mission content prematurely. The ordinary mapper workflow is now:
 
@@ -1823,7 +1823,7 @@ The first Phase 8 authoring proof stays on the existing source/import ownership 
 
 **Automated:** accepted after fix-forward on head `284c9ea508d6e10f0138027349e24aa21cefd381` by GitHub Actions Test run #498. The Windows mapper pass exposed that `vark_prop.prop_id` was absent because FuncGodot does not export a `StringName` FGD default. Run #497 then proved that changing only the FGD side to `String` was insufficient because FuncGodot's assembler requires an exact matching generated-node property type. The root correction therefore uses ordinary `String` on both the project-owned FGD property and `VarkOrdinaryProp.prop_id`; its semantic content-ID API was already string-valued, so save/gameplay identity behavior is unchanged. The Authoring suite now requires exported `prop_id(string)`, and real FuncGodot builds successfully apply standard/tall authored prop IDs on the production `OrdinaryProp` owner. The same run passed all three focused 8.1 assertions, ended with `ALL AUTHORING TESTS PASSED`, `ALL APPLICATION TESTS PASSED`, and `ALL TEST SUITES PASSED`, and introduced no new script-error signature relative to the prior green baseline #496. A full audit of project-owned `authoring/fgd/*.tres` found no other mapper-facing `StringName` defaults.
 
-**Manual:** required — Windows mapper/user with TrenchBroom 2026.2 using the Vark game configuration. The first pass correctly failed because `prop_id` was absent from the property list; do not work around that with a raw custom key. After this correction is green, repeat the focused Phase 8.1 procedure in `docs/TESTING.md`: refresh config, reset the ignored workspace, confirm `prop_id` is a normal visible `vark_prop` property, place/configure the proof opening and prop using the visible variant choice controls only, save, run existing ID repair/reload if needed, then run the read-only mapper-workflow verifier. Report whether the choices and `prop_id` were usable, the verifier passed, and no core/generated file hand-edit was needed.
+**Manual:** accepted on Windows with TrenchBroom 2026.2 after the `prop_id` fix. The mapper refreshed the installed Vark GameConfig/FGD and the sync probe confirmed `vark_opening`, `vark_prop`, `opening_variant(choices)`, `prop_variant(choices)`, and `prop_id(string)`. In the ignored workspace, the mapper placed/configured the proof opening and prop through normal entity properties, ran source-owned persistent-ID repair, reloaded the map after the repair write, and then ran the read-only mapper-workflow verifier. The verifier passed with `door_id = phase8.workflow.door` / `variant = narrow` resolving `ordinary_door_leaf_narrow.obj`, and `prop_id = phase8.workflow.prop` / `variant = tall_crate` resolving `ordinary_crate_tall.obj` with collision `(0.5, 0.7, 0.5)`; it also confirmed the `.map` source was unchanged. No generated output, gameplay scene, or gameplay script hand-edit was required.
 
 ## 8.2 Reimport proof `[ ]`
 

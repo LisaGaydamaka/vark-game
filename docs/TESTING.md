@@ -1134,7 +1134,7 @@ Expected: no output. If a diff remains, report it rather than hand-normalizing o
 
 The completed Windows run satisfied these cases. The first round trip exposed only TrenchBroom normalization of repository-added descriptive comments; entity data, identities, transforms, and brush geometry were unchanged. The tracked Playground map was then committed in TrenchBroom's save-normalized form and the stale comment-dependent authoring assertion was removed. Exact-head CI returned green, and the accepted rerun preserved the IDs and moved/restored start behavior while ending with an empty `git diff -- missions/playground/mission.map`; the mapper never hand-edited `persistent_id`.
 
-## Phase 8.1 mapper workflow proof — automated implemented, mapper acceptance pending
+## Phase 8.1 mapper workflow proof — accepted
 
 The continuous Authoring suite now protects the ordinary model-backed mapper route rather than only isolated entity imports:
 
@@ -1180,6 +1180,8 @@ godot --headless --path . --script res://tools/authoring/mapper_workflow_probe.g
 
 Expected: `Phase 8.1 mapper workflow proof passed.` The opening reports `variant=narrow` with the narrow door OBJ; the prop reports `variant=tall_crate`, the tall crate OBJ, and collision `(0.5, 0.7, 0.5)`. The verifier reports that the `.map` source was unchanged.
 9. Report whether both variant fields were normal mapper-visible choices, the verifier passed, and you needed no hand-edit in generated output, `OrdinaryDoor.tscn`, `OrdinaryProp.tscn`, or their gameplay scripts. Do not commit the ignored workspace.
+
+Accepted Windows result: the refreshed FGD exposed `prop_id(string)` plus both variant choice fields; persistent-ID repair added IDs only to the authoritative ignored `.map` source and required a reload; the final read-only verifier passed with the Narrow opening resolving `ordinary_door_leaf_narrow.obj`, the Tall crate resolving `ordinary_crate_tall.obj` with collision `(0.5, 0.7, 0.5)`, and the source remaining unchanged. No generated output, gameplay scene, or gameplay script hand-edit was required.
 
 ---
 
