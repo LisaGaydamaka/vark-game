@@ -22,6 +22,9 @@ func run(
 		"Application owns the production gameplay/look input boundary"
 	)
 
+	_test_application_hotkey_mapping(application, assert_true)
+	_test_quicksave_hotkey_route(application, boundary, assert_true)
+
 	# Keep the live application player neutral while the standalone boundary
 	# probe manipulates global Input actions to verify frame semantics.
 	assert_true.call(
@@ -36,6 +39,67 @@ func run(
 
 	await _test_domain_loss_cancels_gesture(application, player, assert_true)
 	_test_event_cadence_look_and_view_pose(application, boundary, assert_true)
+
+
+func _test_application_hotkey_mapping(
+	application: Node,
+	assert_true: Callable
+) -> void:
+	var quicksave := InputEventKey.new()
+	quicksave.pressed = true
+	quicksave.keycode = KEY_F5
+	var quickload := InputEventKey.new()
+	quickload.pressed = true
+	quickload.keycode = KEY_F9
+	var restart := InputEventKey.new()
+	restart.pressed = true
+	restart.keycode = KEY_F10
+	var released := InputEventKey.new()
+	released.pressed = false
+	released.keycode = KEY_F5
+	var echoed := InputEventKey.new()
+	echoed.pressed = true
+	echoed.echo = true
+	echoed.keycode = KEY_F5
+
+	assert_true.call(
+		application.call("_classify_application_hotkey", quicksave) == &"quicksave"
+		and application.call("_classify_application_hotkey", quickload) == &"quickload"
+		and application.call("_classify_application_hotkey", restart) == &"restart"
+		and application.call("_classify_application_hotkey", released) == &""
+		and application.call("_classify_application_hotkey", echoed) == &"",
+		"Application maps one fresh F5/F9/F10 edge to quicksave/quickload/restart without held-key repeat"
+	)
+
+
+func _test_quicksave_hotkey_route(
+	application: Node,
+	boundary: Node,
+	assert_true: Callable
+) -> void:
+	var save_coordinator := application.get_node("SaveCoordinator") as Node
+	save_coordinator.call("get_latest_committed_generation")
+	var before_generation: int = int(save_coordinator.get("_next_generation"))
+	var event := InputEventKey.new()
+	event.pressed = true
+	event.keycode = KEY_F5
+	boundary.call("route_input_event", event)
+	var status: Dictionary = save_coordinator.call(
+		"get_request_status",
+		before_generation
+	)
+	assert_true.call(
+		int(save_coordinator.get("_next_generation")) == before_generation + 1
+		and status.get("status", &"") == &"pending"
+		and int(status.get("source_session_id", 0))
+			== int(application.call("get_current_session_id")),
+		"F5 routes through the application input boundary into the existing save coordinator for the active WorldSession"
+	)
+	save_coordinator.call(
+		"cancel_pending_for_session",
+		int(application.call("get_current_session_id")),
+		"Application hotkey regression cleanup."
+	)
 
 
 func _test_gameplay_frame_lifetime(

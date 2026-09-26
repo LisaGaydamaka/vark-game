@@ -73,7 +73,7 @@ audience_faction_id = &"guards"
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(0, 2.7, 17.5)
-text = "8.4 REPRESENTATIVE STEALTH\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nWEST: quiet carpet + openable window; use the crate to help mantle.\nEAST: search the chest for the brass key, then cross loud tile to the locked door.\nUse the switch to darken the north hall. Props can distract the guard.\nQuicksave / quickload / restart use normal application controls."
+text = "8.4 REPRESENTATIVE STEALTH\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nWEST: quiet carpet + openable window; use the crate to help mantle.\nEAST: search the chest for the brass key, then cross loud tile to the locked door.\nUse the switch to darken the north hall. Props can distract the guard.\nF5 quicksave · F9 quickload · F10 restart."
 billboard = 1
 font_size = 18
 outline_size = 7

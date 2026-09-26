@@ -11,6 +11,11 @@ const DEFAULT_LOOK_SENSITIVITY: float = 0.007
 const MIN_LOOK_SENSITIVITY: float = 0.002
 const MAX_LOOK_SENSITIVITY: float = 0.014
 
+const APPLICATION_HOTKEY_NONE: StringName = &""
+const APPLICATION_HOTKEY_QUICKSAVE: StringName = &"quicksave"
+const APPLICATION_HOTKEY_QUICKLOAD: StringName = &"quickload"
+const APPLICATION_HOTKEY_RESTART: StringName = &"restart"
+
 
 enum TopLevelOperation {
 	NONE,
@@ -71,9 +76,50 @@ var _last_session_id: int = 0
 func _ready() -> void:
 	current_ui = ui_root
 	save_coordinator.bind_application(self)
+	input_boundary.application_input_received.connect(
+		_on_application_input_received
+	)
 	_wire_menu_shell()
 	_refresh_development_launch_targets()
 	_show_main_menu()
+
+
+func _on_application_input_received(event: InputEvent) -> void:
+	var command: StringName = _classify_application_hotkey(event)
+	if command == APPLICATION_HOTKEY_NONE:
+		return
+	if (
+		current_session == null
+		or control_mode != ControlMode.GAMEPLAY
+		or get_current_session_state() != WORLD_SESSION_SCRIPT.State.PLAYING
+	):
+		return
+
+	match command:
+		APPLICATION_HOTKEY_QUICKSAVE:
+			request_quicksave()
+		APPLICATION_HOTKEY_QUICKLOAD:
+			quickload_latest()
+		APPLICATION_HOTKEY_RESTART:
+			restart_current_world()
+
+
+func _classify_application_hotkey(event: InputEvent) -> StringName:
+	var key_event := event as InputEventKey
+	if (
+		key_event == null
+		or not key_event.pressed
+		or key_event.echo
+	):
+		return APPLICATION_HOTKEY_NONE
+	match key_event.keycode:
+		KEY_F5:
+			return APPLICATION_HOTKEY_QUICKSAVE
+		KEY_F9:
+			return APPLICATION_HOTKEY_QUICKLOAD
+		KEY_F10:
+			return APPLICATION_HOTKEY_RESTART
+	return APPLICATION_HOTKEY_NONE
 
 
 func get_current_session_id() -> int:

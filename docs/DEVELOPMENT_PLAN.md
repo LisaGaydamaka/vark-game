@@ -1896,7 +1896,7 @@ Extend semantic run-state only as needed now. At minimum own gameplay time, obje
 
 **Manual:** required — user/playtester completes the mission at least twice through materially different approaches and validates route usefulness, darkness/surfaces/props/guards/loot/container/key/window/alarm/objective/save/restart behavior.
 
-**Current status:** implementation and deterministic regression coverage are checked in on `test`; keep this item `[~]` until the focused two-route user/playtester acceptance below is reported successful and post-push CI is green.
+**Current status:** implementation, deterministic regression coverage, and the user-facing F5 quicksave / F9 quickload / F10 restart controls are checked in on `test`. Post-push CI is green; keep this item `[~]` until the focused two-route user/playtester acceptance below is reported successful.
 
 ## 8.5 GDScript extension proof `[ ]`
 
