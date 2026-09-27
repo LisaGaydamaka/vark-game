@@ -73,7 +73,7 @@ audience_faction_id = &"guards"
 
 [node name="Instructions" type="Label3D" parent="."]
 position = Vector3(16.7, 2.8, 0)
-text = "8.4 LEDGE CITY — COMPACT STREET VARIANT\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\nNARROW STREET, CROSS STREET, REAR ALLEYS AND SMALL INTERIOR CORRIDORS FORM ONE DENSE CITY BLOCK.\nCLIMB NORMAL CITY FABRIC: CARTS, CRATES, STALL CANOPIES, AWNINGS, BALCONIES, WINDOW SILLS, CORNICES AND TILTED ROOFS.\nWEST: climb Mercer/Survey architecture to the Archive high window. EAST: climb the Watchmaker roof room for the key, descend behind it, unlock the Archive and use its stairs.\nF5 quicksave · F9 quickload · F10 restart."
+text = "8.4 LEDGE CITY — COMPACT ENTERABLE BLOCK\\nSTEAL THE SEALED LEDGER, THEN RETURN HERE.\\nTHE HOUSES ARE SMALLER AND ENTERABLE: USE THEIR ROOMS, STAIRS, BALCONIES, WINDOW SILLS, CORNICES, ROOFS AND CROSS-STREET TIMBERS.\\nSTONE IS GRAY, TILE IS BLUE-GRAY, CARPET IS DARK RED. EVERY MAP FACE USES ONE OF THOSE SOLID SURFACE COLORS.\\nINTERIOR HANGING LANTERNS LIGHT IN ALL DIRECTIONS, BUT PARTITIONS AND LIMITED RANGE LEAVE DARK CORNERS FOR HIDING.\\nWEST: climb ordinary architecture toward the Archive high window. EAST: enter the Watchmaker upper floor for the key, then unlock the Archive and use its stairs.\\nF5 quicksave · F9 quickload · F10 restart."
 billboard = 1
 font_size = 18
 outline_size = 7

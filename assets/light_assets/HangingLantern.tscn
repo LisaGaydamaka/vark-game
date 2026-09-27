@@ -1,0 +1,74 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://gameplay/visibility/light_fixture_asset.gd" id="1_asset"]
+[ext_resource type="ArrayMesh" path="res://assets/models/lights/hanging_lantern_body.obj" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://assets/models/lights/hanging_lantern_glass.obj" id="3_glass"]
+
+[sub_resource type="StandardMaterial3D" id="BodyMaterial"]
+albedo_color = Color(0.14, 0.11, 0.075, 1)
+metallic = 0.45
+roughness = 0.62
+
+[sub_resource type="BoxShape3D" id="CanopyShape"]
+size = Vector3(0.30, 0.08, 0.30)
+
+[sub_resource type="BoxShape3D" id="ChainShape"]
+size = Vector3(0.06, 0.16, 0.06)
+
+[sub_resource type="BoxShape3D" id="LanternShape"]
+size = Vector3(0.31, 0.38, 0.31)
+
+[sub_resource type="BoxShape3D" id="BottomShape"]
+size = Vector3(0.27, 0.08, 0.27)
+
+[node name="HangingLanternAsset" type="Node3D"]
+script = ExtResource("1_asset")
+asset_id = &"hanging_lantern"
+requires_imported_mesh = true
+lit_surface_off_color = Color(0.07, 0.06, 0.045, 1)
+lit_surface_on_color = Color(1, 0.79, 0.42, 1)
+lit_surface_emission_energy = 4.0
+lit_surface_visible_when_off = true
+self_fill_energy_scale = 0.30
+self_fill_range = 0.80
+
+[node name="BodyMesh" type="MeshInstance3D" parent="."]
+layers = 524289
+mesh = ExtResource("2_body")
+material_override = SubResource("BodyMaterial")
+
+[node name="LitSurfaceMesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("3_glass")
+
+[node name="EmitterAnchor" type="Marker3D" parent="."]
+position = Vector3(0, -0.48, 0)
+
+[node name="FixtureFill" type="OmniLight3D" parent="EmitterAnchor"]
+light_energy = 0.0
+omni_range = 0.80
+shadow_enabled = false
+light_cull_mask = 524288
+
+[node name="ExposureOccluder" type="StaticBody3D" parent="."]
+collision_layer = 32
+collision_mask = 0
+
+[node name="SolidBody" type="StaticBody3D" parent="."]
+collision_layer = 1
+collision_mask = 0
+
+[node name="Canopy" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, -0.04, 0)
+shape = SubResource("CanopyShape")
+
+[node name="Chain" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, -0.15, 0)
+shape = SubResource("ChainShape")
+
+[node name="Lantern" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, -0.48, 0)
+shape = SubResource("LanternShape")
+
+[node name="Bottom" type="CollisionShape3D" parent="SolidBody"]
+position = Vector3(0, -0.69, 0)
+shape = SubResource("BottomShape")

@@ -11,27 +11,14 @@ const ORIGINAL_LABEL := "Representative Stealth"
 const ORIGINAL_PATH := "res://missions/representative_stealth/mission.tres"
 const LEDGE_LABEL := "Representative Stealth — Ledge City"
 const LEDGE_PATH := "res://missions/representative_stealth_ledge_city/mission.tres"
-
-const UP_GAPS := [
-	"ledge_city.mercer_awning",
-	"ledge_city.mercer_balcony",
-	"ledge_city.mercer_sill",
-	"ledge_city.office_sill",
-	"ledge_city.office_balcony",
-	"ledge_city.archive_fire_escape",
-	"ledge_city.archive_balcony1",
-	"ledge_city.archive_sill2",
-	"ledge_city.archive_balcony2",
-	"ledge_city.archive_sill3",
-	"ledge_city.watch_awning",
-	"ledge_city.watch_balcony",
-	"ledge_city.watch_sill",
-	"ledge_city.watch_roof",
-]
-const LATERAL_GAPS := [
-	"ledge_city.cross_street",
-	"ledge_city.service_alley",
-]
+const MAP_PATH := "res://missions/representative_stealth_ledge_city/mission.map"
+const HANGING_LANTERN_PATH := "res://assets/light_assets/HangingLantern.tscn"
+const STREET_LAMP_PATH := "res://assets/light_assets/StreetLamp.tscn"
+const ALLOWED_SURFACE_TEXTURES := PackedStringArray([
+	"vark_surfaces/stone",
+	"vark_surfaces/tile",
+	"vark_surfaces/carpet",
+])
 
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
@@ -47,7 +34,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and ledge_index >= 0
 		and ledge_index < paths.size()
 		and paths[ledge_index] == LEDGE_PATH,
-		"8.4 keeps the accepted vertical-city target unchanged and exposes Ledge City as a separate Development Launch mission"
+		"8.4 keeps baseline Representative Stealth separate and exposes rebuilt Ledge City"
 	)
 	application.free()
 
@@ -56,12 +43,45 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		load_errors.is_empty()
 		and Definition.get("mission_id")
 			== &"phase8_representative_stealth_ledge_city"
-		and str(Definition.get("map_source_path")) == LEDGE_PATH.replace(
-			"mission.tres",
-			"mission.map"
-		)
-		and int(Definition.get("mission_content_revision")) == 4,
-		"8.4 Ledge City owns a distinct MissionDefinition/save identity and authoritative mapper source"
+		and str(Definition.get("map_source_path")) == MAP_PATH
+		and int(Definition.get("mission_content_revision")) == 5,
+		"8.4 Ledge City revision 5 owns a distinct save identity after the spatial rebuild"
+	)
+
+	var source: String = FileAccess.get_file_as_string(MAP_PATH)
+	var face_audit: Dictionary = _audit_source_face_materials(source)
+	var brush_bounds: Array[AABB] = _worldspawn_brush_bounds(source)
+	var source_clearances_valid: bool = not _any_positive_overlap(
+		brush_bounds,
+		AABB(Vector3(-28, -438, 0), Vector3(56, 876, 72))
+	)
+	for aperture: AABB in [
+		AABB(Vector3(-120, 278, 0), Vector3(12, 44, 66)),
+		AABB(Vector3(108, 278, 0), Vector3(12, 44, 66)),
+		AABB(Vector3(-120, 28, 0), Vector3(12, 44, 66)),
+		AABB(Vector3(108, 28, 0), Vector3(12, 44, 66)),
+		AABB(Vector3(108, -292, 0), Vector3(12, 44, 66)),
+		AABB(Vector3(-120, -292, 0), Vector3(12, 44, 66)),
+		AABB(Vector3(-120, -292, 184), Vector3(12, 44, 58)),
+	]:
+		if _any_positive_overlap(brush_bounds, aperture):
+			source_clearances_valid = false
+			break
+	assert_true.call(
+		bool(face_audit.get("valid", false))
+		and int(face_audit.get("face_count", 0)) >= 1800
+		and source_clearances_valid
+		and source.count("// building_floor:") == 6
+		and source.count("// interior_stair:") == 77
+		and source.count("// sloped_roof:") == 12
+		and source.count("// timber_tie:") == 2
+		and source.count("// balcony:") >= 35
+		and not source.contains("zebra/zebra16x16")
+		and not source.contains("WallLamp.tscn")
+		and not source.contains("// platform:")
+		and not source.contains("// west_route:")
+		and not source.contains("// east_route:"),
+		"8.4 source uses only solid stone/tile/carpet faces, real interiors/architecture, and audited street/opening clearances"
 	)
 
 	var session: Node = WorldSession.new()
@@ -78,7 +98,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		built
 		and world != null
 		and world.has_method("get_representative_debug_summary"),
-		"8.4 Ledge City builds through the same production MissionDefinition/WorldSession path"
+		"8.4 rebuilt Ledge City builds through the production mission path"
 	)
 	if not built or world == null:
 		session.call("teardown")
@@ -99,6 +119,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var starts: Array[Node] = []
 	var exits: Array[Node] = []
 	var markers: Array[Node] = []
+	var surfaces: Array[Node] = []
 	for node: Node in nodes:
 		if node.has_method("get_access_summary") and node.has_method(
 			"configure_navigation_traversal"
@@ -124,6 +145,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			exits.append(node)
 		if node.is_in_group(&"vark_semantic_marker"):
 			markers.append(node)
+		if node.is_in_group(&"vark_footstep_surface"):
+			surfaces.append(node)
 
 	var worldspawn := world.get_node_or_null(
 		"FuncGodotMap/entity_0_worldspawn"
@@ -135,104 +158,47 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and patrol_points.size() == 2
 		and containers.size() == 1
 		and props.size() == 5
-		and lights.size() == 18
+		and lights.size() == 23
 		and switches.size() == 1
 		and openings.size() == 7
 		and pickups.size() == 4
-		and markers.size() >= 39
-		and _count_direct_collision_shapes(worldspawn) >= 230,
-		"8.4 Ledge City preserves representative gameplay roles inside a dense compact street block with accessible rooms and architectural traversal"
+		and markers.size() >= 33
+		and surfaces.size() == 22
+		and _count_direct_collision_shapes(worldspawn) >= 280,
+		"8.4 compact city keeps representative gameplay roles and adds enterable multi-floor architecture"
 	)
 
-	var ground_catch: Node = _find_by_property(
-		markers,
-		"content_id",
-		"ledge_city.ground_catch"
-	)
-	var key_roof: Node = _find_by_property(
-		markers,
-		"content_id",
-		"ledge_city.key_roof"
-	)
-	var archive_apex: Node = _find_by_property(
-		markers,
-		"content_id",
-		"ledge_city.archive_apex"
-	)
+	var surface_variants: Dictionary = {}
+	for surface: Node in surfaces:
+		var variant: String = str(surface.get("surface_variant"))
+		surface_variants[variant] = int(surface_variants.get(variant, 0)) + 1
 	assert_true.call(
-		ground_catch != null
-		and ground_catch.global_position.y >= 2.40
-		and ground_catch.global_position.y <= 2.60
-		and key_roof != null
-		and key_roof.global_position.y >= 6.70
-		and archive_apex != null
-		and archive_apex.global_position.y >= 12.40,
-		"8.4 Ledge City starts above ordinary standing reach, reaches the Watchmaker roof room and still carries the objective high into the Archive"
+		int(surface_variants.get("stone", 0)) > 0
+		and int(surface_variants.get("tile", 0)) > 0
+		and int(surface_variants.get("carpet", 0)) > 0,
+		"8.4 floor regions retain stone/tile/carpet footstep semantics matching visible materials"
 	)
 
-	var upward_gaps_valid: bool = true
-	for prefix: String in UP_GAPS:
-		var from_marker: Node3D = _find_by_property(
-			markers,
-			"content_id",
-			prefix + ".from"
-		) as Node3D
-		var to_marker: Node3D = _find_by_property(
-			markers,
-			"content_id",
-			prefix + ".to"
-		) as Node3D
-		if from_marker == null or to_marker == null:
-			upward_gaps_valid = false
-			break
-		var rise: float = to_marker.global_position.y - from_marker.global_position.y
-		var horizontal_gap: float = _horizontal_distance(
-			from_marker.global_position,
-			to_marker.global_position
-		)
+	var expected_openings: Dictionary = {
+		"door.mercer.front": Vector3(-112, 300, 0),
+		"door.watchmaker.front": Vector3(112, 300, 0),
+		"door.office.front": Vector3(-112, 50, 0),
+		"door.tenement.front": Vector3(112, 50, 0),
+		"door.foundry.front": Vector3(112, -270, 0),
+		"door.east_locked": Vector3(-112, -270, 0),
+		"opening.window_west": Vector3(-112, -270, 184),
+	}
+	var opening_positions_valid: bool = true
+	for door_id: String in expected_openings:
+		var opening := _find_by_property(openings, "door_id", door_id) as Node3D
 		if (
-			rise < 0.70
-			or rise > 1.10
-			or horizontal_gap < 0.70
-			or horizontal_gap > 2.25
+			opening == null
+			or opening.global_position.distance_to(
+				_map_origin_to_world(expected_openings[door_id] as Vector3)
+			) > 0.02
 		):
-			upward_gaps_valid = false
+			opening_positions_valid = false
 			break
-	assert_true.call(
-		upward_gaps_valid,
-		"8.4 Ledge City upward roof gaps sit inside the proven hang-jump/catch envelope instead of the old small-step mantle envelope"
-	)
-
-	var lateral_gaps_valid: bool = true
-	for prefix: String in LATERAL_GAPS:
-		var from_marker: Node3D = _find_by_property(
-			markers,
-			"content_id",
-			prefix + ".from"
-		) as Node3D
-		var to_marker: Node3D = _find_by_property(
-			markers,
-			"content_id",
-			prefix + ".to"
-		) as Node3D
-		if from_marker == null or to_marker == null:
-			lateral_gaps_valid = false
-			break
-		var rise: float = absf(
-			to_marker.global_position.y - from_marker.global_position.y
-		)
-		var horizontal_gap: float = _horizontal_distance(
-			from_marker.global_position,
-			to_marker.global_position
-		)
-		if rise > 0.25 or horizontal_gap < 1.40 or horizontal_gap > 3.10:
-			lateral_gaps_valid = false
-			break
-	assert_true.call(
-		lateral_gaps_valid,
-		"8.4 Ledge City includes real same-height ledge-to-ledge directional jumps rather than only touching platforms"
-	)
-
 	var window: Node = _find_by_property(
 		openings,
 		"door_id",
@@ -245,17 +211,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 	var access: Dictionary = (
 		locked_door.call("get_access_summary")
-		if locked_door != null
-		else {}
+		if locked_door != null else {}
 	)
 	assert_true.call(
-		window != null
+		opening_positions_valid
+		and window != null
 		and str(window.get("opening_variant")) == "window"
-		and window.global_position.y >= 12.4
 		and locked_door != null
 		and bool(access.get("locked", false))
 		and str(access.get("required_key_id", "")) == "key.service",
-		"8.4 Ledge City keeps the Archive high-window bypass and distinct locked/key front-door route"
+		"8.4 every authored door/window is seated on its rebuilt opening and the Archive keeps keyed plus high-window routes"
 	)
 
 	var pickup_roles: Dictionary = {}
@@ -271,19 +236,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and pickup_roles.get("loot.rep.gold", &"") == &"loot"
 		and pickup_roles.get("mission.dev_stealth.ledger", &"")
 			== &"mission_item",
-		"8.4 Ledge City retains the representative key/loot/objective content contract"
-	)
-
-	var source: String = FileAccess.get_file_as_string(
-		"res://missions/representative_stealth_ledge_city/mission.map"
-	)
-	assert_true.call(
-		source.count("// sloped_roof:") >= 12
-		and source.count("// street_item:") >= 20
-		and source.count("// door_fit:") >= 7
-		and not source.contains("// west_route:")
-		and not source.contains("// east_route:"),
-		"8.4 Ledge City uses tilted roofs and ordinary street/architectural objects for traversal, with exact-fit door headers and no dedicated route-platform brush class"
+		"8.4 rebuilt interiors retain key/loot/objective content"
 	)
 
 	var required_light_ids := PackedStringArray([
@@ -305,82 +258,67 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"light.rep.rear_w_north",
 		"light.rep.rear_e_south",
 		"light.rep.rear_e_north",
+		"light.rep.mercer.upper",
+		"light.rep.office.upper",
+		"light.rep.tenement.upper",
+		"light.rep.foundry.upper",
+		"light.rep.archive.mid",
 	])
+	var hanging_count: int = 0
+	var street_count: int = 0
 	var light_ids_valid: bool = true
 	for required_id: String in required_light_ids:
-		if _find_by_property(lights, "gameplay_light_id", required_id) == null:
-			light_ids_valid = false
-			break
-	assert_true.call(
-		light_ids_valid
-		and source.count("// lighting_pass:") == 10,
-		"8.4 Ledge City lighting pass covers every street-front interior, the key/objective upper rooms and both rear lanes while preserving localized authored darkness"
-	)
-
-	var wall_mount_specs: Dictionary = {
-		"light.rep.watch_inside": {
-			"origin": Vector3(350.0, 574.0, 54.0),
-			"inward": Vector3(-1.0, 0.0, 0.0),
-		},
-		"light.rep.archive_inside": {
-			"origin": Vector3(-420.0, -574.0, 110.0),
-			"inward": Vector3(1.0, 0.0, 0.0),
-		},
-		"light.rep.mercer_inside": {
-			"origin": Vector3(-320.0, 574.0, 54.0),
-			"inward": Vector3(-1.0, 0.0, 0.0),
-		},
-		"light.rep.office_inside": {
-			"origin": Vector3(-320.0, 64.0, 54.0),
-			"inward": Vector3(-1.0, 0.0, 0.0),
-		},
-		"light.rep.tenement_inside": {
-			"origin": Vector3(320.0, 64.0, 54.0),
-			"inward": Vector3(-1.0, 0.0, 0.0),
-		},
-		"light.rep.foundry_inside": {
-			"origin": Vector3(320.0, -574.0, 54.0),
-			"inward": Vector3(1.0, 0.0, 0.0),
-		},
-		"light.rep.watch_key_room": {
-			"origin": Vector3(430.0, 417.0, 254.0),
-			"inward": Vector3(1.0, 0.0, 0.0),
-		},
-		"light.rep.archive_upper": {
-			"origin": Vector3(-360.0, -574.0, 448.0),
-			"inward": Vector3(1.0, 0.0, 0.0),
-		},
-	}
-	var wall_mounts_valid: bool = true
-	for light_id: String in wall_mount_specs:
-		var light := _find_by_property(
+		var light: Node = _find_by_property(
 			lights,
 			"gameplay_light_id",
-			light_id
-		) as Node3D
-		var spec: Dictionary = wall_mount_specs[light_id]
-		if (
-			light == null
-			or str(light.get("fixture_asset_path"))
-				!= "res://assets/light_assets/WallLamp.tscn"
-		):
-			wall_mounts_valid = false
-			break
-		var expected_position: Vector3 = _map_origin_to_world(
-			spec["origin"] as Vector3
+			required_id
 		)
-		var fixture_forward: Vector3 = (
-			light.global_transform.basis * Vector3(0.0, 0.0, 1.0)
-		).normalized()
-		if (
-			light.global_position.distance_to(expected_position) > 0.02
-			or fixture_forward.dot(spec["inward"] as Vector3) < 0.99
-		):
-			wall_mounts_valid = false
+		if light == null:
+			light_ids_valid = false
 			break
+		var fixture_path: String = str(light.get("fixture_asset_path"))
+		if fixture_path == HANGING_LANTERN_PATH:
+			hanging_count += 1
+		elif fixture_path == STREET_LAMP_PATH:
+			street_count += 1
+		else:
+			light_ids_valid = false
+			break
+	var interior_light := _find_by_property(
+		lights,
+		"gameplay_light_id",
+		"light.rep.mercer_inside"
+	) as VarkGameplayLight
+	var lantern_asset := (
+		interior_light.get_node_or_null(
+			"FixtureAnchor/HangingLanternAsset"
+		) as VarkLightFixtureAsset
+		if interior_light != null else null
+	)
+	var lantern_summary: Dictionary = (
+		lantern_asset.get_contract_summary()
+		if lantern_asset != null else {}
+	)
+	var emitter_local: Vector3 = lantern_summary.get(
+		"emitter_local_position",
+		Vector3.ZERO
+	)
 	assert_true.call(
-		wall_mounts_valid,
-		"8.4 Ledge City wall lamps are seated on authored wall planes and project inward instead of floating in rooms"
+		light_ids_valid
+		and hanging_count == 13
+		and street_count == 10
+		and lantern_asset != null
+		and lantern_asset.validate_contract()
+		and str(lantern_summary.get("asset_id", "")) == "hanging_lantern"
+		and absf(emitter_local.x) <= 0.001
+		and absf(emitter_local.z) <= 0.001
+		and emitter_local.y < -0.30
+		and emitter_local.y > -0.60
+		and int(lantern_summary.get("collision_shape_count", 0)) >= 4
+		and int(lantern_summary.get("exposure_occluder_shape_count", 0)) == 1
+		and interior_light.get_emitter() is OmniLight3D
+		and is_equal_approx(float(interior_light.get("omni_range")), 3.4),
+		"8.4 rooms use short ceiling-hung omni lanterns while streets keep freestanding omni lamps"
 	)
 
 	var nav_ready: bool = await _wait_for_navigation(world, tree)
@@ -395,7 +333,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		nav_ready
 		and authored_patrol_path
 		and (world.get("navigation_errors") as PackedStringArray).is_empty(),
-		"8.4 Ledge City only becomes navigation-ready when the organized boulevard contains a real path between both authored patrol endpoints"
+		"8.4 rebuilt boulevard stays navigation-ready between both patrol endpoints"
 	)
 
 	var guard := guards[0] as VarkGuard if guards.size() == 1 else null
@@ -427,27 +365,18 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		guard.get_debug_summary()
 		if guard != null else {}
 	)
-	if not live_patrol_leg and guard != null:
-		print(
-			"8.4 Ledge City patrol diagnostics: ",
-			{
-				"guard_position": guard.global_position,
-				"summary": guard_summary,
-				"patrol_points": patrol_lookup.keys(),
-			}
-		)
 	assert_true.call(
 		began_playing
 		and live_patrol_leg
 		and str(guard_summary.get("last_error", "")).is_empty(),
-		"8.4 Ledge City isolated live guard can traverse the authored boulevard patrol instead of failing later with a no-route runtime error"
+		"8.4 live guard traverses the audited boulevard without a hidden brush obstruction"
 	)
 
 	var summary: Dictionary = session.call("get_mission_run_summary")
 	assert_true.call(
 		int(summary.get("loot_available_count", -1)) == 2
 		and int(summary.get("loot_available_value", -1)) == 125,
-		"8.4 Ledge City establishes the same authored mission-start loot availability without sharing save identity with the baseline city"
+		"8.4 rebuilt mission keeps authored mission-start loot availability"
 	)
 
 	session.call("teardown")
@@ -458,6 +387,102 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		tree,
 		assert_true
 	)
+
+
+func _audit_source_face_materials(source: String) -> Dictionary:
+	var face_count: int = 0
+	for raw_line: String in source.split("\n"):
+		var line: String = raw_line.strip_edges()
+		if not line.begins_with("("):
+			continue
+		face_count += 1
+		var allowed: bool = false
+		for texture: String in ALLOWED_SURFACE_TEXTURES:
+			if line.contains(") " + texture + " ["):
+				allowed = true
+				break
+		if not allowed:
+			return {
+				"valid": false,
+				"face_count": face_count,
+				"line": line,
+			}
+	return {
+		"valid": face_count > 0,
+		"face_count": face_count,
+	}
+
+
+func _worldspawn_brush_bounds(source: String) -> Array[AABB]:
+	var result: Array[AABB] = []
+	var cutoff: int = source.find("\"classname\" \"vark_player_start\"")
+	var world_source: String = source.substr(
+		0,
+		cutoff if cutoff >= 0 else source.length()
+	)
+	var comment_pattern := RegEx.new()
+	comment_pattern.compile("(?m)^// ([^\\n]+)\\n\\{")
+	for comment_match: RegExMatch in comment_pattern.search_all(world_source):
+		var comment: String = comment_match.get_string(1)
+		var bounds: AABB = _brush_bounds_after_comment(world_source, comment)
+		if bounds.size.x > 0.0 and bounds.size.y > 0.0 and bounds.size.z > 0.0:
+			result.append(bounds)
+	return result
+
+
+func _brush_bounds_after_comment(source: String, comment: String) -> AABB:
+	var marker: String = "// " + comment
+	var start: int = source.find(marker)
+	if start < 0:
+		return AABB()
+	var brush_start: int = source.find("{", start + marker.length())
+	var brush_end: int = source.find("\n}", brush_start)
+	if brush_start < 0 or brush_end < 0:
+		return AABB()
+	var brush: String = source.substr(
+		brush_start,
+		brush_end - brush_start
+	)
+	var coordinate_pattern := RegEx.new()
+	coordinate_pattern.compile(
+		"\\(\\s*(-?[0-9.]+)\\s+(-?[0-9.]+)\\s+(-?[0-9.]+)\\s*\\)"
+	)
+	var found: bool = false
+	var minimum := Vector3(INF, INF, INF)
+	var maximum := Vector3(-INF, -INF, -INF)
+	for match_result: RegExMatch in coordinate_pattern.search_all(brush):
+		var point := Vector3(
+			float(match_result.get_string(1)),
+			float(match_result.get_string(2)),
+			float(match_result.get_string(3))
+		)
+		minimum = minimum.min(point)
+		maximum = maximum.max(point)
+		found = true
+	if not found:
+		return AABB()
+	return AABB(minimum, maximum - minimum)
+
+
+func _any_positive_overlap(bounds: Array[AABB], query: AABB) -> bool:
+	var query_end: Vector3 = query.position + query.size
+	for candidate: AABB in bounds:
+		var candidate_end: Vector3 = candidate.position + candidate.size
+		var overlap_size := Vector3(
+			minf(candidate_end.x, query_end.x)
+				- maxf(candidate.position.x, query.position.x),
+			minf(candidate_end.y, query_end.y)
+				- maxf(candidate.position.y, query.position.y),
+			minf(candidate_end.z, query_end.z)
+				- maxf(candidate.position.z, query.position.z)
+		)
+		if (
+			overlap_size.x > 0.001
+			and overlap_size.y > 0.001
+			and overlap_size.z > 0.001
+		):
+			return true
+	return false
 
 
 func _test_application_quickload_returns_ledge_city_to_live_play(
