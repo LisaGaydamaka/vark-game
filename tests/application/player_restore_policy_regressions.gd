@@ -19,6 +19,7 @@ func run(
 	await _prove_normalized_traversal_restore(tree, assert_true, &"hanging")
 	await _prove_normalized_traversal_restore(tree, assert_true, &"cornering")
 	await _prove_normalized_traversal_restore(tree, assert_true, &"mantling")
+	await _prove_hotkey_hanging_restore_resumes(tree, assert_true)
 
 
 func _prove_direct_moving_restore(
@@ -260,6 +261,94 @@ func _prove_normalized_traversal_restore(
 		% target_state
 	)
 	await _cleanup_application(tree, application)
+
+
+func _prove_hotkey_hanging_restore_resumes(
+	tree: SceneTree,
+	assert_true: Callable
+) -> void:
+	const TEST_SAVE_DIRECTORY := "user://vark_tests/hotkey_hanging_restore"
+	_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)
+	var application: Node = await _launch_application(tree, LEDGE_PATH)
+	var player := application.get("current_player") as CharacterBody3D
+	var reached: bool = await _reach_traversal_state(tree, player, &"hanging")
+	if not reached:
+		assert_true.call(false, "Phase 4.3 hotkey restore fixture reaches hanging")
+		await _cleanup_application(tree, application)
+		_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)
+		return
+
+	var coordinator := application.get_node("SaveCoordinator") as Node
+	coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
+	var boundary := application.get_node("InputBoundary") as Node
+	var save_event := InputEventKey.new()
+	save_event.pressed = true
+	save_event.keycode = KEY_F5
+	boundary.call("route_input_event", save_event)
+	var generation: int = int(coordinator.get("_next_generation")) - 1
+	var snapshot: Dictionary = await _wait_for_hotkey_save(
+		tree,
+		coordinator,
+		generation,
+		180
+	)
+	var old_session_id: int = int(application.call("get_current_session_id"))
+	var load_event := InputEventKey.new()
+	load_event.pressed = true
+	load_event.keycode = KEY_F9
+	boundary.call("route_input_event", load_event)
+	var replaced: bool = false
+	for _frame: int in 180:
+		await tree.process_frame
+		if int(application.call("get_current_session_id")) != old_session_id:
+			replaced = true
+			break
+	var restored_player := application.get("current_player") as CharacterBody3D
+	var y_before: float = restored_player.global_position.y if restored_player != null else 0.0
+	await _advance_frames(tree, 4)
+	var movement: Dictionary = (
+		restored_player.call("get_movement_semantic_state")
+		if restored_player != null else {}
+	)
+	assert_true.call(
+		not snapshot.is_empty()
+		and replaced
+		and restored_player != null
+		and int(application.call("get_current_session_state")) == 4
+		and bool(boundary.get("gameplay_enabled"))
+		and movement.get("traversal", "") == "normal"
+		and restored_player.global_position.y < y_before + 0.001,
+		"Phase 4.3 F5/F9 hotkey restore normalizes a saved hang and resumes ordinary player simulation"
+	)
+	await _cleanup_application(tree, application)
+	_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)
+
+
+func _wait_for_hotkey_save(
+	tree: SceneTree,
+	coordinator: Node,
+	generation: int,
+	max_frames: int
+) -> Dictionary:
+	for _frame: int in max_frames:
+		var status: Dictionary = coordinator.call("get_request_status", generation)
+		if status.get("status", &"") == &"committed":
+			return coordinator.call("get_request_snapshot", generation)
+		if status.get("status", &"") in [&"failed", &"cancelled", &"superseded"]:
+			return {}
+		await tree.physics_frame
+		await tree.process_frame
+	return {}
+
+
+func _cleanup_hotkey_restore_storage(directory: String) -> void:
+	var final_path: String = directory + "/quicksave.varksave"
+	for path: String in [final_path, final_path + ".new", final_path + ".bak"]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var absolute_dir: String = ProjectSettings.globalize_path(directory)
+	if DirAccess.dir_exists_absolute(absolute_dir):
+		DirAccess.remove_absolute(absolute_dir)
 
 
 func _reach_traversal_state(
