@@ -454,6 +454,188 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	session.queue_free()
 	await tree.process_frame
 
+	await _test_application_quickload_returns_ledge_city_to_live_play(
+		tree,
+		assert_true
+	)
+
+
+func _test_application_quickload_returns_ledge_city_to_live_play(
+	tree: SceneTree,
+	assert_true: Callable
+) -> void:
+	const TEST_SAVE_DIRECTORY := "user://vark_tests/phase8_ledge_city_quickload"
+	_cleanup_quickload_storage(TEST_SAVE_DIRECTORY)
+
+	var application: Node = ApplicationScene.instantiate()
+	tree.get_root().add_child(application)
+	await tree.process_frame
+
+	var labels: PackedStringArray = application.get("development_launch_labels")
+	var target_index: int = labels.find(LEDGE_LABEL)
+	var launched: bool = (
+		bool(application.call("launch_development_target", target_index))
+		if target_index >= 0 else false
+	)
+	var world := application.get("current_world") as Node
+	var nav_ready: bool = (
+		await _wait_for_navigation(world, tree)
+		if launched and world != null else false
+	)
+	assert_true.call(
+		launched
+		and nav_ready
+		and int(application.call("get_current_session_state"))
+			== WorldSession.State.PLAYING,
+		"8.4 Ledge City application quickload regression starts from a real PLAYING development-launch session"
+	)
+	if not launched or not nav_ready:
+		application.queue_free()
+		await tree.process_frame
+		_cleanup_quickload_storage(TEST_SAVE_DIRECTORY)
+		return
+
+	var save_coordinator := application.get_node("SaveCoordinator") as Node
+	save_coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
+	var generation: int = int(application.call("request_quicksave"))
+	var snapshot: Dictionary = await _wait_for_save_commit(
+		tree,
+		save_coordinator,
+		generation,
+		180
+	)
+	assert_true.call(
+		not snapshot.is_empty(),
+		"8.4 Ledge City commits a real quicksave before exercising F9"
+	)
+	if snapshot.is_empty():
+		application.queue_free()
+		await tree.process_frame
+		_cleanup_quickload_storage(TEST_SAVE_DIRECTORY)
+		return
+
+	var saved_position: Vector3 = (
+		application.get("current_player") as Node3D
+	).global_position
+	Input.action_press("move_right")
+	await _wait_physics_frames(tree, 20)
+	Input.action_release("move_right")
+	var moved_position: Vector3 = (
+		application.get("current_player") as Node3D
+	).global_position
+	assert_true.call(
+		moved_position.distance_to(saved_position) > 0.10,
+		"8.4 Ledge City player can move away from the saved pose before F9"
+	)
+
+	var old_session_id: int = int(application.call("get_current_session_id"))
+	var boundary := application.get_node("InputBoundary") as Node
+	var load_event := InputEventKey.new()
+	load_event.pressed = true
+	load_event.keycode = KEY_F9
+	boundary.call("route_input_event", load_event)
+
+	var replaced: bool = false
+	for _index: int in 240:
+		await tree.process_frame
+		if int(application.call("get_current_session_id")) != old_session_id:
+			replaced = true
+			break
+
+	var restored_session := application.get("current_session") as Node
+	var restored_world := application.get("current_world") as Node
+	var restored_player := application.get("current_player") as Node3D
+	var restored_time_before: float = float(
+		application.call("get_gameplay_time_seconds")
+	)
+	var restored_position_before: Vector3 = (
+		restored_player.global_position
+		if restored_player != null else Vector3.ZERO
+	)
+
+	Input.action_press("move_left")
+	await _wait_physics_frames(tree, 20)
+	Input.action_release("move_left")
+
+	var restored_time_after: float = float(
+		application.call("get_gameplay_time_seconds")
+	)
+	var restored_position_after: Vector3 = (
+		restored_player.global_position
+		if restored_player != null and is_instance_valid(restored_player)
+		else restored_position_before
+	)
+	assert_true.call(
+		replaced
+		and restored_session != null
+		and restored_world != null
+		and restored_player != null
+		and restored_world.can_process()
+		and restored_player.can_process()
+		and int(application.call("get_current_session_state"))
+			== WorldSession.State.PLAYING
+		and int(restored_session.process_mode) == Node.PROCESS_MODE_INHERIT
+		and bool(boundary.get("gameplay_enabled"))
+		and bool(boundary.get("look_enabled"))
+		and boundary.get("current_player") == restored_player
+		and restored_player.get("gameplay_input_boundary") == boundary
+		and restored_time_after > restored_time_before
+		and restored_position_after.distance_to(restored_position_before) > 0.10,
+		"8.4 F9 restores Ledge City into a genuinely live simulation: session/world/player processing, gameplay clock and fresh movement all resume"
+	)
+
+	application.queue_free()
+	await tree.process_frame
+	Input.action_release("move_left")
+	Input.action_release("move_right")
+	_cleanup_quickload_storage(TEST_SAVE_DIRECTORY)
+
+
+func _wait_for_save_commit(
+	tree: SceneTree,
+	save_coordinator: Node,
+	generation: int,
+	max_frames: int
+) -> Dictionary:
+	if generation <= 0:
+		return {}
+	for _index: int in max_frames:
+		var status: Dictionary = save_coordinator.call(
+			"get_request_status",
+			generation
+		)
+		if status.get("status", &"") == &"committed":
+			return save_coordinator.call("get_request_snapshot", generation)
+		if status.get("status", &"") in [
+			&"failed",
+			&"cancelled",
+			&"superseded",
+		]:
+			return {}
+		await tree.physics_frame
+		await tree.process_frame
+	return {}
+
+
+func _wait_physics_frames(tree: SceneTree, count: int) -> void:
+	for _index: int in count:
+		await tree.physics_frame
+		await tree.process_frame
+
+
+func _cleanup_quickload_storage(directory: String) -> void:
+	var final_path: String = directory + "/quicksave.varksave"
+	for path: String in [
+		final_path,
+		final_path + ".new",
+		final_path + ".bak",
+	]:
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	var absolute_dir: String = ProjectSettings.globalize_path(directory)
+	if DirAccess.dir_exists_absolute(absolute_dir):
+		DirAccess.remove_absolute(absolute_dir)
+
 
 func _has_navigation_path_between_patrol_points(
 	world: Node3D,
