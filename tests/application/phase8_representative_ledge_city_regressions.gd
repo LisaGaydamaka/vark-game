@@ -239,6 +239,47 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 rebuilt interiors retain key/loot/objective content"
 	)
 
+	var key_cache := containers[0] as Node3D if containers.size() == 1 else null
+	var key_pickup := _find_by_property(pickups, "content_id", "key.service") as Node3D
+	var silver_pickup := _find_by_property(
+		pickups,
+		"content_id",
+		"loot.rep.silver"
+	) as Node3D
+	var gold_pickup := _find_by_property(
+		pickups,
+		"content_id",
+		"loot.rep.gold"
+	) as Node3D
+	var ledger_pickup := _find_by_property(
+		pickups,
+		"content_id",
+		"mission.dev_stealth.ledger"
+	) as Node3D
+	assert_true.call(
+		key_cache != null
+		and key_cache.global_position.distance_to(
+			_map_origin_to_world(Vector3(260, 310, 96))
+		) <= 0.02
+		and key_pickup != null
+		and key_pickup.global_position.distance_to(
+			_map_origin_to_world(Vector3(268, 310, 106))
+		) <= 0.02
+		and silver_pickup != null
+		and silver_pickup.global_position.distance_to(
+			_map_origin_to_world(Vector3(292, 310, 106))
+		) <= 0.02
+		and gold_pickup != null
+		and gold_pickup.global_position.distance_to(
+			_map_origin_to_world(Vector3(-265, -312, 184))
+		) <= 0.02
+		and ledger_pickup != null
+		and ledger_pickup.global_position.distance_to(
+			_map_origin_to_world(Vector3(-250, -225, 184.2))
+		) <= 0.02,
+		"8.4 chest and free pickups are seated on or inside their intended rebuilt floor/container geometry"
+	)
+
 	var required_light_ids := PackedStringArray([
 		"light.rep.south",
 		"light.rep.market",
@@ -264,6 +305,21 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"light.rep.foundry.upper",
 		"light.rep.archive.mid",
 	])
+	var expected_hanging_origins: Dictionary = {
+		"light.rep.mercer_inside": Vector3(-210, 285, 88),
+		"light.rep.watch_inside": Vector3(210, 285, 88),
+		"light.rep.office_inside": Vector3(-210, 70, 88),
+		"light.rep.tenement_inside": Vector3(210, 70, 88),
+		"light.rep.archive_inside": Vector3(-210, -285, 88),
+		"light.rep.foundry_inside": Vector3(210, -285, 88),
+		"light.rep.watch_key_room": Vector3(250, 300, 176),
+		"light.rep.archive_upper": Vector3(-245, -235, 264),
+		"light.rep.mercer.upper": Vector3(-250, 230, 176),
+		"light.rep.office.upper": Vector3(-250, 80, 176),
+		"light.rep.tenement.upper": Vector3(250, 80, 176),
+		"light.rep.foundry.upper": Vector3(250, -235, 176),
+		"light.rep.archive.mid": Vector3(-250, -310, 176),
+	}
 	var hanging_count: int = 0
 	var street_count: int = 0
 	var light_ids_valid: bool = true
@@ -279,6 +335,19 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		var fixture_path: String = str(light.get("fixture_asset_path"))
 		if fixture_path == HANGING_LANTERN_PATH:
 			hanging_count += 1
+			var expected_origin: Vector3 = expected_hanging_origins.get(
+				required_id,
+				Vector3(INF, INF, INF)
+			)
+			var light_node := light as Node3D
+			if (
+				light_node == null
+				or light_node.global_position.distance_to(
+					_map_origin_to_world(expected_origin)
+				) > 0.02
+			):
+				light_ids_valid = false
+				break
 		elif fixture_path == STREET_LAMP_PATH:
 			street_count += 1
 		else:
