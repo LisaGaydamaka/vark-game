@@ -275,19 +275,70 @@ func capture_semantic_state() -> Dictionary:
 	var restore_stance: StringName = _get_requested_restore_stance_name()
 	var source_traversal: StringName = _get_traversal_semantic_name()
 	var restore_policy: StringName = &"direct"
-	if source_traversal == &"stepping":
-		restore_policy = &"normalize_step_source"
-	elif source_traversal != &"normal":
-		restore_policy = &"normalize_airborne"
-
+	var traversal_anchor: Dictionary = {}
 	var saved_transform: Transform3D = global_transform
-	if source_traversal == &"stepping" and step != null:
-		saved_transform = step.get_restore_safe_transform(global_transform)
-	var saved_velocity: Vector3 = (
-		velocity
-		if restore_policy == &"direct"
-		else Vector3.ZERO
-	)
+	var saved_velocity: Vector3 = velocity
+
+	match source_traversal:
+		&"stepping":
+			restore_policy = &"normalize_step_source"
+			if step != null:
+				saved_transform = step.get_restore_safe_transform(
+					global_transform
+				)
+			saved_velocity = Vector3.ZERO
+		&"catching", &"hanging", &"cornering":
+			if ledge_controller != null:
+				traversal_anchor = (
+					ledge_controller.capture_restore_hang_anchor()
+				)
+			if not traversal_anchor.is_empty():
+				restore_policy = &"reconstruct_hang"
+				saved_transform.origin = traversal_anchor.get(
+					"hang_position",
+					saved_transform.origin
+				)
+				saved_velocity = Vector3.ZERO
+			else:
+				# A disappearing/invalid attachment must not make saving fail.
+				# Preserve the legacy safe-airborne fallback for that degraded case.
+				restore_policy = &"normalize_airborne"
+				saved_velocity = Vector3.ZERO
+		&"mantling":
+			if ledge_mantle != null and ledge_mantle.has_restore_source():
+				restore_stance = (
+					&"crouched"
+					if (
+						ledge_mantle.get_restore_source_stance()
+						== PlayerCrouch.Stance.CROUCHED
+					)
+					else &"standing"
+				)
+			if ledge_controller != null:
+				traversal_anchor = (
+					ledge_controller.capture_restore_hang_anchor()
+				)
+			if not traversal_anchor.is_empty():
+				# A mantle that began from a stable hang normalizes back to that
+				# semantic attachment rather than dropping the player.
+				restore_policy = &"reconstruct_hang"
+				saved_transform.origin = traversal_anchor.get(
+					"hang_position",
+					saved_transform.origin
+				)
+				saved_velocity = Vector3.ZERO
+			elif ledge_mantle != null and ledge_mantle.has_restore_source():
+				# Direct/airborne/ground mantles have no stable attachment owner.
+				# Roll back to the collision-safe pose captured before traversal.
+				restore_policy = &"normalize_mantle_source"
+				saved_transform = (
+					ledge_mantle.get_restore_source_transform()
+				)
+				saved_velocity = Vector3.ZERO
+			else:
+				restore_policy = &"normalize_airborne"
+				saved_velocity = Vector3.ZERO
+
 	return {
 		"transform": saved_transform,
 		"velocity": saved_velocity,
@@ -295,6 +346,7 @@ func capture_semantic_state() -> Dictionary:
 		"restore_stance": restore_stance,
 		"source_traversal": source_traversal,
 		"restore_policy": restore_policy,
+		"traversal_anchor": traversal_anchor.duplicate(true),
 		"semantic_possession": (
 			semantic_possession.capture_semantic_state()
 			if semantic_possession != null
@@ -305,7 +357,7 @@ func capture_semantic_state() -> Dictionary:
 
 func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if (
-		(snapshot.size() != 6 and snapshot.size() != 7)
+		snapshot.size() not in [6, 7, 8]
 		or typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
 		or typeof(snapshot.get("velocity", null)) != TYPE_VECTOR3
 	):
@@ -316,20 +368,41 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	var restore_stance: StringName = snapshot.get("restore_stance", &"")
 	var source_traversal: StringName = snapshot.get("source_traversal", &"")
 	var restore_policy: StringName = snapshot.get("restore_policy", &"")
+	var traversal_anchor_value: Variant = snapshot.get(
+		"traversal_anchor",
+		{}
+	)
+	if typeof(traversal_anchor_value) != TYPE_DICTIONARY:
+		return false
+	var traversal_anchor: Dictionary = traversal_anchor_value
 	if (
 		not _is_finite_transform(restored_transform)
 		or not _is_finite_vector(restored_velocity)
 		or not _is_valid_stance_semantic_name(source_stance, true)
 		or not _is_valid_stance_semantic_name(restore_stance, false)
 		or not _is_valid_traversal_semantic_name(source_traversal)
-		or (
-			restore_policy != &"direct"
-			and restore_policy != &"normalize_airborne"
-			and restore_policy != &"normalize_step_source"
-		)
+		or restore_policy not in [
+			&"direct",
+			&"reconstruct_hang",
+			&"normalize_airborne",
+			&"normalize_step_source",
+			&"normalize_mantle_source",
+		]
 		or (
 			restore_policy == &"direct"
 			and source_traversal != &"normal"
+		)
+		or (
+			restore_policy == &"reconstruct_hang"
+			and (
+				source_traversal not in [
+					&"catching",
+					&"hanging",
+					&"cornering",
+					&"mantling",
+				]
+				or traversal_anchor.is_empty()
+			)
 		)
 		or (
 			restore_policy == &"normalize_airborne"
@@ -339,10 +412,14 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 			restore_policy == &"normalize_step_source"
 			and source_traversal != &"stepping"
 		)
+		or (
+			restore_policy == &"normalize_mantle_source"
+			and source_traversal != &"mantling"
+		)
 	):
 		return false
 	if (
-		restore_policy in [&"normalize_airborne", &"normalize_step_source"]
+		restore_policy != &"direct"
 		and not restored_velocity.is_zero_approx()
 	):
 		return false
@@ -369,19 +446,35 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 
 	if ledge_controller == null:
 		return false
-	if restore_policy == &"normalize_airborne":
-		if not ledge_controller.normalize_after_restore_to_airborne():
-			return false
-		restored_velocity = Vector3.ZERO
-	elif restore_policy == &"normalize_step_source":
-		# The saved transform is the collision-safe source pose captured when the
-		# automatic step route was acquired. Never reconstruct the runtime route;
-		# resume as ordinary locomotion and let fresh contacts reacquire it.
-		if step != null:
-			step.cancel()
-		if support != null:
-			support.update(self)
-		restored_velocity = Vector3.ZERO
+	match restore_policy:
+		&"reconstruct_hang":
+			if not ledge_controller.restore_hang_from_semantic_anchor(
+				traversal_anchor
+			):
+				return false
+			restored_velocity = Vector3.ZERO
+		&"normalize_airborne":
+			# Retained for old saves and degraded invalid-attachment captures.
+			if not ledge_controller.normalize_after_restore_to_airborne():
+				return false
+			restored_velocity = Vector3.ZERO
+		&"normalize_step_source":
+			# The saved transform is the collision-safe source pose captured when
+			# the automatic step route was acquired. Never reconstruct its runtime
+			# blocker/top route.
+			if step != null:
+				step.cancel()
+			if support != null:
+				support.update(self)
+			restored_velocity = Vector3.ZERO
+		&"normalize_mantle_source":
+			# Direct mantle runtime routes are not durable truth. Roll back to the
+			# captured source pose and suppress immediate ledge reacquisition.
+			if not ledge_controller.normalize_after_restore_to_airborne():
+				return false
+			if support != null:
+				support.update(self)
+			restored_velocity = Vector3.ZERO
 
 	velocity = restored_velocity
 	player_input.current_command = PlayerCommand.new()
@@ -395,7 +488,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 
 
 func validate_restored_semantic_state(snapshot: Dictionary) -> bool:
-	if snapshot.size() != 6 and snapshot.size() != 7:
+	if snapshot.size() not in [6, 7, 8]:
 		return false
 	if (
 		typeof(snapshot.get("transform", null)) != TYPE_TRANSFORM3D
@@ -407,9 +500,15 @@ func validate_restored_semantic_state(snapshot: Dictionary) -> bool:
 	var restore_stance: StringName = snapshot.get("restore_stance", &"")
 	var source_traversal: StringName = snapshot.get("source_traversal", &"")
 	var restore_policy: StringName = snapshot.get("restore_policy", &"")
+	var traversal_anchor_value: Variant = snapshot.get(
+		"traversal_anchor",
+		{}
+	)
+	if typeof(traversal_anchor_value) != TYPE_DICTIONARY:
+		return false
+	var traversal_anchor: Dictionary = traversal_anchor_value
 	if (
-		not global_transform.is_equal_approx(expected_transform)
-		or not velocity.is_equal_approx(expected_velocity)
+		not velocity.is_equal_approx(expected_velocity)
 		or not _is_valid_stance_semantic_name(restore_stance, false)
 		or not _is_valid_traversal_semantic_name(source_traversal)
 	):
@@ -425,7 +524,30 @@ func validate_restored_semantic_state(snapshot: Dictionary) -> bool:
 		return false
 	var current_stance: StringName = _get_stance_semantic_name()
 	var current_traversal: StringName = _get_traversal_semantic_name()
-	if current_stance != restore_stance or current_traversal != &"normal":
+	if current_stance != restore_stance:
+		return false
+
+	if restore_policy == &"reconstruct_hang":
+		return (
+			source_traversal in [
+				&"catching",
+				&"hanging",
+				&"cornering",
+				&"mantling",
+			]
+			and current_traversal == &"hanging"
+			and velocity.is_zero_approx()
+			and ledge_controller != null
+			and ledge_controller.validate_restored_hang_anchor(
+				traversal_anchor
+			)
+			and global_transform.basis.is_equal_approx(
+				expected_transform.basis
+			)
+		)
+	if not global_transform.is_equal_approx(expected_transform):
+		return false
+	if current_traversal != &"normal":
 		return false
 	if restore_policy == &"direct":
 		return source_traversal == &"normal"
@@ -441,6 +563,13 @@ func validate_restored_semantic_state(snapshot: Dictionary) -> bool:
 			source_traversal == &"stepping"
 			and velocity.is_zero_approx()
 			and (step == null or not step.is_active())
+		)
+	if restore_policy == &"normalize_mantle_source":
+		return (
+			source_traversal == &"mantling"
+			and velocity.is_zero_approx()
+			and ledge_controller != null
+			and ledge_controller.is_restore_reentry_blocked()
 		)
 	return false
 
@@ -460,16 +589,13 @@ func apply_input_view_pose(pose: Dictionary) -> bool:
 		if not is_finite(float(value)):
 			return false
 
-	# Phase 4.1 restores input-owned orientation on a fresh player. Traversal
-	# state and traversal-specific look reconstruction remain owned by 4.3.
-	rotation.y = wrapf(float(pose["body_yaw"]), -PI, PI)
-	head.rotation.x = clampf(
+	if player_look == null:
+		return false
+	return player_look.restore_input_pose(
+		float(pose["body_yaw"]),
 		float(pose["head_pitch"]),
-		deg_to_rad(-89.0),
-		deg_to_rad(89.0)
+		float(pose["head_yaw"])
 	)
-	head.rotation.y = wrapf(float(pose["head_yaw"]), -PI, PI)
-	return true
 
 
 func is_grounded() -> bool:

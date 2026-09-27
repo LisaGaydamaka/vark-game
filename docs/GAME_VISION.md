@@ -812,6 +812,8 @@ The base game is not checkpoint-only.
 
 Because ordinary gameplay quicksave is fundamental, each stateful system must define meaningful restore semantics for transient states rather than assuming saves only occur while everything is idle.
 
+A stable traversal attachment that already exists at the save boundary—most importantly hanging from a ledge—is meaningful gameplay truth. Quickload reconstructs that attachment against the replacement world's current geometry instead of silently dropping the player. Short traversal transactions that are not meaningful to resume mid-motion, such as catch/corner/mantle movement, normalize to a coherent stable attachment or collision-safe source state. Runtime collider RIDs, detector candidates, and traversal route objects remain implementation machinery rather than save data.
+
 ---
 
 # Navigation and mission maps — LOCKED

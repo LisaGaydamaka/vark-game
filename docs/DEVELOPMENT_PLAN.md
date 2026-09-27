@@ -1114,30 +1114,27 @@ Restore now performs the bounded 4.2 order while the candidate is processing-dis
 
 **Manual:** none — 4.2 is accepted from deterministic semantic ownership/order coverage. It exposes no new player-facing save key, durable filesystem behavior, traversal/transient policy, or subjective save/load presentation; those remain owned by later Phase 4 items.
 
-## 4.3 Player transient/traversal restore policy `[x]`
+## 4.3 Player transient/traversal restore policy `[~]`
 
-Classify representative player states into directly restorable semantic states, reconstructable transient states, or states normalized to a safe semantic equivalent.
+Classify representative player states into directly restorable semantic states, reconstructable stable states, or short transactions normalized to a safe semantic equivalent.
 
-Prove standing/moving, crouched, airborne, hanging, and mantle/corner/catch behavior according to the chosen policy.
+Ordinary traversal/gameplay states must not gain routine save lockouts merely because direct runtime restoration is difficult. The real Phase 8 playtest reopened the earlier accepted policy after proving that normalizing a saved hang to airborne made F9 drop the player and that the development collision capsule could become visible in first-person presentation.
 
-Ordinary traversal/gameplay states must not gain routine save lockouts merely because direct runtime restoration is difficult.
+The corrected bounded policy still never serializes detector candidates, collider RIDs, `await` continuations, mantle/corner route objects, or other traversal-runtime implementation detail:
 
-The bounded 4.3 policy is explicit and intentionally avoids serializing detector candidates, collider RIDs, `await` continuations, mantle route objects, or other traversal-runtime implementation detail:
+- ordinary standing/moving and unsupported airborne state: **direct restore** of body transform/velocity plus separate input-owned view pose;
+- fully crouched: **direct semantic restore** of body transform/velocity plus the requested crouched endpoint; a standing↔crouched transition normalizes only to its already-requested endpoint;
+- stable ledge truth is reconstructed from detached value geometry. A saved `hanging` state restores as `hanging`; an in-progress `catching` state completes semantically into that same stable hang; `cornering` chooses the nearest valid source/target hang; and a mantle that began from a hang returns to that source hang. The replacement world must rediscover current runtime collider/contact identity from the saved edge/wall/top/hang values before accepting the attachment;
+- a direct/ground/air mantle that did **not** begin from a stable hang normalizes to the collision-safe pre-mantle source transform/stance and suppresses immediate same-ledge reacquisition rather than preserving a half-finished route;
+- active automatic `stepping` retains its existing collision-safe source-side normalization and lets fresh locomotion reacquire the step;
+- pre-correction saves whose explicit policy was `normalize_airborne` remain loadable under that legacy meaning; this policy correction does not invent a global save-format incompatibility;
+- the internal player capsule mesh is collision/debug geometry, not first-person presentation, and remains non-rendered before and after replacement.
 
-- ordinary standing/moving with no ledge traversal owner: **direct restore** of body transform, velocity, standing stance, and the separate input-owned view pose;
-- fully crouched: **direct semantic restore** of body transform/velocity plus the requested crouched endpoint, snapping the fresh candidate's live capsule/head/visual geometry to the crouched semantic stance before play resumes;
-- ordinary unsupported airborne with no ledge traversal owner: **direct restore** of body transform and ballistic velocity;
-- a mid-height standing↔crouched transition: normalize only the stance transition to its already-requested endpoint; the body transform/velocity remain the directly restored truth;
-- `catching`, `hanging`, `cornering`, and `mantling`: **normalize to ordinary airborne** at the same collision-safe body transform with zero traversal-owned velocity, preserving the accepted short ledge re-entry guard.
-- active automatic `stepping`: **normalize to the collision-safe source-side body pose where the step route was acquired**, with zero step-owned velocity. The validated blocker/top candidate is runtime-only and is discarded; fresh ordinary locomotion may reacquire/replay the step after load. The intermediate lifted body pose is not treated as independently direct-restorable state.
+**Done when:** ordinary moving/crouched/transitioning/airborne state restores coherently; current saves taken during catch/hang/corner/hang-origin mantle reconstruct a stable playable hang instead of falling; direct mantle and automatic-step transactions resume from collision-safe semantic source states without stale routes; loaded ledge view continues from the saved yaw/pitch without snapping on the next mouse event; legacy normalized-airborne saves still load; the collision proxy is never visible as the player body; and no traversal-runtime object becomes durable save truth.
 
-The player snapshot records both the source semantic state and the declared restore policy. Restore validation is policy-aware only for the player: the player must prove that its restored stance/traversal/pose/velocity satisfy the captured policy, while every non-player 4.2 owner still recaptures exactly. This does not loosen general world-state validation.
+**Automated:** implementation uploaded for exact-head validation. The Application regression covers direct moving/crouched/airborne state, both stance-transition directions, catch/hang/corner/hang-origin mantle reconstruction, legacy normalized-airborne compatibility, real F5/F9 hanging replacement with stable post-load attachment + fresh look/shimmy input, automatic-step source normalization, hidden first-person collision proxy, and the authoritative movement barrier. Keep this item `[~]` until exact-head CI is green.
 
-**Done when:** ordinary moving, fully crouched, and ordinary airborne states restore directly through the real Application/WorldSession replacement path; exact captures made during automatic step-up, catching, hanging, cornering, and mantling remain saveable instead of being rejected; those traversal-runtime states load as ordinary airborne at the same safe pose with zero traversal-owned velocity, discard non-serializable route/contact machinery, and resume ordinary movement instead of freezing on an intermediate pose; no save lockout is introduced for these representative player states.
-
-**Automated:** passed — the existing accepted 4.3 coverage remains, and exact implementation head `41c2dff36600e9ec85a20fda346f555435a03da9` passed Godot 4.7.2 GitHub Actions Test run #550. The reproduced F5/F9 regression saves during a real active automatic step, proves both immediate and committed snapshots classify the source as transient `stepping`, stores the collision-safe source transform under `normalize_step_source`, restores that pose without serializing/reconstructing the runtime step route, accepts fresh forward locomotion after F9, and the run ends with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`.
-
-**Manual:** none — 4.3 is accepted from deterministic save/load reconstruction coverage. It introduces no player-facing save control or subjective presentation; target-platform/user-facing save validation remains later Phase 4 work.
+**Manual:** required — validator: **Windows x64 user/playtester**. In a real representative mission/editor run, verify ordinary F5/F9 plus saves while hanging and during nearby traversal transitions. A saved hang must return still attached and immediately accept look/shimmy/mantle/drop input; no player collision capsule may appear below the camera; normalized short transactions must not embed, freeze, teleport to an unsafe location, or retain stale traversal input.
 
 
 ## 4.4 Other transient-state save policy `[x]`

@@ -165,6 +165,48 @@ func exit_ledge_view() -> void:
 	ledge_view_yaw_offset = 0.0
 
 
+func restore_input_pose(
+	body_yaw: float,
+	head_pitch: float,
+	head_yaw: float
+) -> bool:
+	if (
+		not is_finite(body_yaw)
+		or not is_finite(head_pitch)
+		or not is_finite(head_yaw)
+	):
+		return false
+	body.rotation.y = wrapf(body_yaw, -PI, PI)
+	head.rotation.x = clampf(
+		head_pitch,
+		deg_to_rad(-MAX_PITCH_DEGREES),
+		deg_to_rad(MAX_PITCH_DEGREES)
+	)
+	if ledge_view_active:
+		# Semantic traversal reconstruction happens before the application-owned
+		# view pose. Synchronize the ledge offset so the next mouse event continues
+		# from the loaded view instead of snapping to the wall-facing center.
+		var yaw_limit: float = deg_to_rad(HANG_LOOK_YAW_LIMIT_DEGREES)
+		ledge_view_yaw_offset = clampf(
+			wrapf(
+				body.rotation.y - ledge_view_center_yaw,
+				-PI,
+				PI
+			),
+			-yaw_limit,
+			yaw_limit
+		)
+		body.rotation.y = wrapf(
+			ledge_view_center_yaw + ledge_view_yaw_offset,
+			-PI,
+			PI
+		)
+		head.rotation.y = 0.0
+		return true
+	head.rotation.y = wrapf(head_yaw, -PI, PI)
+	return true
+
+
 func _apply_ledge_yaw_motion(yaw_motion: float) -> void:
 	var yaw_limit: float = deg_to_rad(
 		HANG_LOOK_YAW_LIMIT_DEGREES

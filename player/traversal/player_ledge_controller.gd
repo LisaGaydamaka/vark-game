@@ -113,6 +113,178 @@ func normalize_after_restore_to_airborne() -> bool:
 	return true
 
 
+func capture_restore_hang_anchor() -> Dictionary:
+	var candidate: PlayerLedgeDetector.LedgeCandidate = (
+		_select_restore_hang_candidate()
+	)
+	if candidate == null:
+		return {}
+	if not ledge_detector.refresh_candidate_attachment(candidate):
+		return {}
+	if not candidate.hangable:
+		return {}
+	return {
+		"edge_point": candidate.edge_point,
+		"wall_normal": candidate.wall_normal,
+		"top_normal": candidate.top_normal,
+		"hang_position": candidate.hang_position,
+	}
+
+
+func restore_hang_from_semantic_anchor(anchor: Dictionary) -> bool:
+	if not _is_valid_restore_hang_anchor(anchor):
+		return false
+	var edge_point: Vector3 = anchor["edge_point"]
+	var wall_normal: Vector3 = anchor["wall_normal"]
+
+	ledge_catch.cancel()
+	ledge_hang.cancel()
+	ledge_corner.cancel()
+	ledge_mantle.cancel()
+	active_catch_candidate = null
+	ledge_detector.clear_candidate()
+	look.exit_ledge_view()
+	state = State.NONE
+	restore_reentry_block_frames = 0
+
+	var height_window: float = maxf(
+		ledge_detector.get_capsule_radius(),
+		ledge_detector.get_shimmy_attachment_correction_limit() * 2.0
+	)
+	var candidate: PlayerLedgeDetector.LedgeCandidate = (
+		ledge_detector.find_local_candidate(
+			body,
+			support,
+			wall_normal,
+			edge_point,
+			height_window,
+			true,
+			true
+		)
+	)
+	if candidate == null:
+		return false
+	if not _candidate_matches_restore_anchor(candidate, anchor):
+		return false
+
+	body.global_position = candidate.hang_position
+	body.velocity = Vector3.ZERO
+	if support != null:
+		support.release_walkable_support(body)
+	ledge_hang.start(candidate)
+	look.enter_ledge_view(candidate.wall_normal)
+	state = State.HANGING
+	return true
+
+
+func validate_restored_hang_anchor(anchor: Dictionary) -> bool:
+	if state != State.HANGING or not _is_valid_restore_hang_anchor(anchor):
+		return false
+	var candidate: PlayerLedgeDetector.LedgeCandidate = (
+		ledge_hang.get_candidate()
+	)
+	return (
+		candidate != null
+		and _candidate_matches_restore_anchor(candidate, anchor)
+		and body.global_position.distance_to(candidate.hang_position)
+		<= _restore_anchor_position_tolerance()
+	)
+
+
+func _select_restore_hang_candidate() -> PlayerLedgeDetector.LedgeCandidate:
+	match state:
+		State.CATCHING:
+			return active_catch_candidate
+		State.HANGING:
+			return ledge_hang.get_candidate()
+		State.CORNERING:
+			var best: PlayerLedgeDetector.LedgeCandidate = null
+			var best_distance: float = INF
+			for candidate: PlayerLedgeDetector.LedgeCandidate in (
+				ledge_corner.get_release_candidates()
+			):
+				if candidate == null or not candidate.hangable:
+					continue
+				var distance: float = body.global_position.distance_to(
+					candidate.hang_position
+				)
+				if distance < best_distance:
+					best = candidate
+					best_distance = distance
+			return best
+		State.MANTLING:
+			if not ledge_mantle.did_start_from_hang():
+				return null
+			return ledge_mantle.get_release_candidate()
+	return null
+
+
+func _is_valid_restore_hang_anchor(anchor: Dictionary) -> bool:
+	if anchor.size() != 4:
+		return false
+	for key: String in [
+		"edge_point",
+		"wall_normal",
+		"top_normal",
+		"hang_position",
+	]:
+		if typeof(anchor.get(key, null)) != TYPE_VECTOR3:
+			return false
+		var value: Vector3 = anchor[key]
+		if not value.is_finite():
+			return false
+	var wall_normal: Vector3 = anchor["wall_normal"]
+	var top_normal: Vector3 = anchor["top_normal"]
+	return (
+		wall_normal.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED
+		and top_normal.length_squared() > LOOK_DIRECTION_EPSILON_SQUARED
+	)
+
+
+func _candidate_matches_restore_anchor(
+	candidate: PlayerLedgeDetector.LedgeCandidate,
+	anchor: Dictionary
+) -> bool:
+	if candidate == null or not _is_valid_restore_hang_anchor(anchor):
+		return false
+	var wall_normal: Vector3 = anchor["wall_normal"]
+	var top_normal: Vector3 = anchor["top_normal"]
+	wall_normal = wall_normal.normalized()
+	top_normal = top_normal.normalized()
+	if (
+		candidate.wall_normal.length_squared()
+		<= LOOK_DIRECTION_EPSILON_SQUARED
+		or candidate.top_normal.length_squared()
+		<= LOOK_DIRECTION_EPSILON_SQUARED
+	):
+		return false
+	if (
+		candidate.wall_normal.normalized().dot(wall_normal)
+		< minimum_local_ledge_alignment
+	):
+		return false
+	if (
+		candidate.top_normal.normalized().dot(top_normal)
+		< minimum_local_ledge_alignment
+	):
+		return false
+	var edge_point: Vector3 = anchor["edge_point"]
+	var hang_position: Vector3 = anchor["hang_position"]
+	var tolerance: float = _restore_anchor_position_tolerance()
+	return (
+		candidate.edge_point.distance_to(edge_point) <= tolerance
+		and candidate.hang_position.distance_to(hang_position) <= tolerance
+	)
+
+
+func _restore_anchor_position_tolerance() -> float:
+	return maxf(
+		0.01,
+		ledge_detector.get_capsule_radius()
+		+ ledge_detector.get_shimmy_attachment_correction_limit()
+	)
+
+
 func is_restore_reentry_blocked() -> bool:
 	return restore_reentry_block_frames > 0
 
@@ -516,7 +688,10 @@ func _update_ledge_hang(jump_pressed: bool, crouch_pressed: bool, delta: float) 
 			support,
 			mantle_source
 		)
-		if mantle_candidate != null and ledge_mantle.try_start(body, mantle_candidate):
+		if (
+			mantle_candidate != null
+			and ledge_mantle.try_start(body, mantle_candidate, true)
+		):
 			ledge_hang.cancel()
 			_enter_active_state(State.MANTLING)
 			return

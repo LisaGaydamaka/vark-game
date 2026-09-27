@@ -7,6 +7,7 @@ const LEDGE_PATH: String = "res://tests/movement/fixtures/ledge_traversal.tscn"
 const STEP_PATH: String = "res://tests/movement/fixtures/normal_step.tscn"
 const POSITION_TOLERANCE: float = 0.001
 const VELOCITY_TOLERANCE: float = 0.001
+const VIEW_TOLERANCE: float = 0.001
 
 
 func run(
@@ -15,11 +16,13 @@ func run(
 ) -> void:
 	await _prove_direct_moving_restore(tree, assert_true)
 	await _prove_direct_crouched_restore(tree, assert_true)
+	await _prove_stance_transition_restore(tree, assert_true)
 	await _prove_direct_airborne_restore(tree, assert_true)
-	await _prove_normalized_traversal_restore(tree, assert_true, &"catching")
-	await _prove_normalized_traversal_restore(tree, assert_true, &"hanging")
-	await _prove_normalized_traversal_restore(tree, assert_true, &"cornering")
-	await _prove_normalized_traversal_restore(tree, assert_true, &"mantling")
+	await _prove_reconstructed_traversal_restore(tree, assert_true, &"catching")
+	await _prove_reconstructed_traversal_restore(tree, assert_true, &"hanging")
+	await _prove_reconstructed_traversal_restore(tree, assert_true, &"cornering")
+	await _prove_reconstructed_traversal_restore(tree, assert_true, &"mantling")
+	await _prove_legacy_airborne_normalization_restore(tree, assert_true)
 	await _prove_hotkey_hanging_restore_resumes(tree, assert_true)
 	await _prove_hotkey_step_restore_resumes(tree, assert_true)
 
@@ -49,6 +52,9 @@ func _prove_direct_moving_restore(
 		"velocity",
 		Vector3.ZERO
 	)
+	var source_proxy_hidden: bool = not (
+		player.get_node("MeshInstance3D") as MeshInstance3D
+	).visible
 	Input.action_release("move_forward")
 
 	var restored: bool = bool(application.call("restore_snapshot", snapshot))
@@ -76,8 +82,12 @@ func _prove_direct_moving_restore(
 			VELOCITY_TOLERANCE
 		)
 		and restored_movement.get("stance", "") == "standing"
-		and restored_movement.get("traversal", "") == "normal",
-		"Phase 4.3 directly restores ordinary standing/moving player pose and momentum"
+		and restored_movement.get("traversal", "") == "normal"
+		and source_proxy_hidden
+		and not (
+			restored_player.get_node("MeshInstance3D") as MeshInstance3D
+		).visible,
+		"Phase 4.3 directly restores ordinary standing/moving pose while the collision proxy stays hidden from first-person presentation"
 	)
 	await _cleanup_application(tree, application)
 
@@ -122,6 +132,61 @@ func _prove_direct_crouched_restore(
 		and restored_crouch != null
 		and restored_crouch.is_fully_crouched(),
 		"Phase 4.3 directly restores crouched semantic stance and live collider/head geometry"
+	)
+	await _cleanup_application(tree, application)
+
+
+func _prove_stance_transition_restore(
+	tree: SceneTree,
+	assert_true: Callable
+) -> void:
+	var application: Node = await _launch_application(tree, FLAT_PATH)
+	var player := application.get("current_player") as CharacterBody3D
+
+	Input.action_press("crouch")
+	await _completed_physics_frame(tree)
+	Input.action_release("crouch")
+	var down_snapshot: Dictionary = _capture_snapshot(application, 4304)
+	var down_saved: Dictionary = down_snapshot.get(
+		"session",
+		{}
+	).get("world_state", {}).get("player", {})
+	var down_restored: bool = bool(
+		application.call("restore_snapshot", down_snapshot)
+	)
+	var restored_player := application.get(
+		"current_player"
+	) as CharacterBody3D
+	var restored_crouch: PlayerCrouch = restored_player.get("crouch")
+	assert_true.call(
+		down_restored
+		and down_saved.get("source_stance", &"") == &"transitioning"
+		and down_saved.get("restore_stance", &"") == &"crouched"
+		and restored_crouch != null
+		and restored_crouch.is_fully_crouched(),
+		"Phase 4.3 normalizes an in-progress crouch transition to its requested crouched endpoint"
+	)
+
+	Input.action_press("crouch")
+	await _completed_physics_frame(tree)
+	Input.action_release("crouch")
+	var up_snapshot: Dictionary = _capture_snapshot(application, 4305)
+	var up_saved: Dictionary = up_snapshot.get(
+		"session",
+		{}
+	).get("world_state", {}).get("player", {})
+	var up_restored: bool = bool(
+		application.call("restore_snapshot", up_snapshot)
+	)
+	restored_player = application.get("current_player") as CharacterBody3D
+	restored_crouch = restored_player.get("crouch")
+	assert_true.call(
+		up_restored
+		and up_saved.get("source_stance", &"") == &"transitioning"
+		and up_saved.get("restore_stance", &"") == &"standing"
+		and restored_crouch != null
+		and restored_crouch.is_fully_standing(),
+		"Phase 4.3 normalizes an in-progress stand transition to its requested standing endpoint"
 	)
 	await _cleanup_application(tree, application)
 
@@ -187,7 +252,7 @@ func _prove_direct_airborne_restore(
 	await _cleanup_application(tree, application)
 
 
-func _prove_normalized_traversal_restore(
+func _prove_reconstructed_traversal_restore(
 	tree: SceneTree,
 	assert_true: Callable,
 	target_state: StringName
@@ -208,7 +273,6 @@ func _prove_normalized_traversal_restore(
 		await _cleanup_application(tree, application)
 		return
 
-	var source_position: Vector3 = player.global_position
 	var snapshot: Dictionary = _capture_snapshot(
 		application,
 		4400 + _traversal_generation_offset(target_state)
@@ -217,7 +281,11 @@ func _prove_normalized_traversal_restore(
 		"session",
 		{}
 	).get("world_state", {}).get("player", {})
-	var save_request: int = int(application.call("request_quicksave"))
+	var saved_transform: Transform3D = saved_player.get(
+		"transform",
+		Transform3D.IDENTITY
+	)
+	var anchor: Dictionary = saved_player.get("traversal_anchor", {})
 	var restored: bool = bool(application.call("restore_snapshot", snapshot))
 	var restored_player := application.get(
 		"current_player"
@@ -230,37 +298,82 @@ func _prove_normalized_traversal_restore(
 	)
 
 	assert_true.call(
-		save_request > 0
-		and saved_player.get("source_traversal", &"") == target_state
-		and saved_player.get("restore_policy", &"") == &"normalize_airborne",
-		"Phase 4.3 keeps %s saveable and records an explicit normalized-airborne restore policy"
+		saved_player.get("source_traversal", &"") == target_state
+		and saved_player.get("restore_policy", &"") == &"reconstruct_hang"
+		and anchor.size() == 4,
+		"Phase 4.3 records %s as detached stable ledge-attachment reconstruction data"
 		% target_state
 	)
 	assert_true.call(
 		restored
-		and _vectors_close(
-			restored_player.global_position,
-			source_position,
-			POSITION_TOLERANCE
-		)
+		and restored_player != null
 		and restored_player.velocity.is_zero_approx()
 		and immediate.get("support", "") == "airborne"
-		and immediate.get("traversal", "") == "normal"
+		and immediate.get("traversal", "") == "hanging"
 		and restored_controller != null
-		and restored_controller.is_restore_reentry_blocked(),
-		"Phase 4.3 normalizes %s to the same collision-safe pose as ordinary airborne state"
+		and not restored_controller.is_restore_reentry_blocked()
+		and restored_player.global_position.distance_to(
+			saved_transform.origin
+		) <= 0.02,
+		"Phase 4.3 restores %s to a stable hang in the replacement world instead of dropping the player"
 		% target_state
 	)
 
-	await _advance_frames(tree, 2)
-	var after_two_frames: Dictionary = restored_player.call(
+	var stable_position: Vector3 = restored_player.global_position
+	await _advance_frames(tree, 4)
+	var after_frames: Dictionary = restored_player.call(
 		"get_movement_semantic_state"
 	)
 	assert_true.call(
-		after_two_frames.get("traversal", "") == "normal"
-		and restored_player.global_position.y < source_position.y + 0.001,
-		"Phase 4.3 normalized %s does not immediately recreate discarded traversal runtime state"
+		after_frames.get("traversal", "") == "hanging"
+		and restored_player.global_position.distance_to(stable_position)
+		<= 0.025,
+		"Phase 4.3 reconstructed %s remains stably attached after gameplay resumes"
 		% target_state
+	)
+	await _cleanup_application(tree, application)
+
+
+func _prove_legacy_airborne_normalization_restore(
+	tree: SceneTree,
+	assert_true: Callable
+) -> void:
+	var application: Node = await _launch_application(tree, LEDGE_PATH)
+	var player := application.get("current_player") as CharacterBody3D
+	if not await _reach_traversal_state(tree, player, &"hanging"):
+		assert_true.call(false, "Phase 4.3 legacy-save fixture reaches hanging")
+		await _cleanup_application(tree, application)
+		return
+
+	var snapshot: Dictionary = _capture_snapshot(application, 4499)
+	var session_snapshot: Dictionary = snapshot.get("session", {})
+	var world_state: Dictionary = session_snapshot.get("world_state", {})
+	var saved_player: Dictionary = world_state.get("player", {})
+	# Saves made under the earlier policy have no anchor and explicitly say
+	# normalize_airborne. Honor that meaning instead of bumping global format.
+	saved_player.erase("traversal_anchor")
+	saved_player["restore_policy"] = &"normalize_airborne"
+	saved_player["velocity"] = Vector3.ZERO
+	world_state["player"] = saved_player
+	session_snapshot["world_state"] = world_state
+	snapshot["session"] = session_snapshot
+
+	var restored: bool = bool(application.call("restore_snapshot", snapshot))
+	var restored_player := application.get(
+		"current_player"
+	) as CharacterBody3D
+	var controller: PlayerLedgeController = restored_player.get(
+		"ledge_controller"
+	)
+	assert_true.call(
+		restored
+		and restored_player.call("get_movement_semantic_state").get(
+			"traversal",
+			""
+		) == "normal"
+		and controller != null
+		and controller.is_restore_reentry_blocked(),
+		"Phase 4.3 retains backward compatibility with pre-correction normalized-airborne traversal saves"
 	)
 	await _cleanup_application(tree, application)
 
@@ -382,6 +495,12 @@ func _prove_hotkey_hanging_restore_resumes(
 	var coordinator := application.get_node("SaveCoordinator") as Node
 	coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
 	var boundary := application.get_node("InputBoundary") as Node
+
+	var look_event := InputEventMouseMotion.new()
+	look_event.relative = Vector2(17.0, -6.0)
+	boundary.call("route_input_event", look_event)
+	var saved_view: Dictionary = application.call("get_current_view_pose")
+
 	var save_event := InputEventKey.new()
 	save_event.pressed = true
 	save_event.keycode = KEY_F5
@@ -393,6 +512,10 @@ func _prove_hotkey_hanging_restore_resumes(
 		generation,
 		180
 	)
+	var saved_player: Dictionary = snapshot.get(
+		"session",
+		{}
+	).get("world_state", {}).get("player", {})
 	var old_session_id: int = int(application.call("get_current_session_id"))
 	var load_event := InputEventKey.new()
 	load_event.pressed = true
@@ -404,22 +527,79 @@ func _prove_hotkey_hanging_restore_resumes(
 		if int(application.call("get_current_session_id")) != old_session_id:
 			replaced = true
 			break
+
 	var restored_player := application.get("current_player") as CharacterBody3D
-	var y_before: float = restored_player.global_position.y if restored_player != null else 0.0
+	var restored_view: Dictionary = application.call("get_current_view_pose")
+	var stable_position: Vector3 = (
+		restored_player.global_position
+		if restored_player != null
+		else Vector3.ZERO
+	)
 	await _advance_frames(tree, 4)
 	var movement: Dictionary = (
 		restored_player.call("get_movement_semantic_state")
 		if restored_player != null else {}
 	)
+	var restored_look: PlayerLook = (
+		restored_player.get("player_look")
+		if restored_player != null else null
+	)
+	var proxy := (
+		restored_player.get_node("MeshInstance3D") as MeshInstance3D
+		if restored_player != null else null
+	)
 	assert_true.call(
 		not snapshot.is_empty()
+		and saved_player.get("restore_policy", &"") == &"reconstruct_hang"
 		and replaced
 		and restored_player != null
 		and int(application.call("get_current_session_state")) == 4
 		and bool(boundary.get("gameplay_enabled"))
-		and movement.get("traversal", "") == "normal"
-		and restored_player.global_position.y < y_before + 0.001,
-		"Phase 4.3 F5/F9 hotkey restore normalizes a saved hang and resumes ordinary player simulation"
+		and movement.get("traversal", "") == "hanging"
+		and restored_player.global_position.distance_to(stable_position) <= 0.025
+		and restored_look != null
+		and restored_look.ledge_view_active
+		and proxy != null
+		and not proxy.visible
+		and absf(
+			wrapf(
+				float(restored_view.get("body_yaw", 0.0))
+				- float(saved_view.get("body_yaw", 0.0)),
+				-PI,
+				PI
+			)
+		) <= VIEW_TOLERANCE
+		and absf(
+			float(restored_view.get("head_pitch", 0.0))
+			- float(saved_view.get("head_pitch", 0.0))
+		) <= VIEW_TOLERANCE,
+		"Phase 4.3 F5/F9 restores a saved hang as a stable attachment with continuous ledge view and no visible collision capsule"
+	)
+
+	var yaw_before: float = float(
+		application.call("get_current_view_pose").get("body_yaw", 0.0)
+	)
+	var followup_look := InputEventMouseMotion.new()
+	followup_look.relative = Vector2(1.0, 0.0)
+	boundary.call("route_input_event", followup_look)
+	var yaw_after: float = float(
+		application.call("get_current_view_pose").get("body_yaw", 0.0)
+	)
+	var yaw_delta: float = absf(wrapf(yaw_after - yaw_before, -PI, PI))
+
+	var shimmy_start: Vector3 = restored_player.global_position
+	Input.action_press("move_right")
+	await _advance_frames(tree, 8)
+	Input.action_release("move_right")
+	var after_shimmy: Dictionary = restored_player.call(
+		"get_movement_semantic_state"
+	)
+	assert_true.call(
+		yaw_delta > 0.0001
+		and yaw_delta < 0.05
+		and after_shimmy.get("traversal", "") == "hanging"
+		and restored_player.global_position.distance_to(shimmy_start) > 0.02,
+		"Restored hanging state accepts fresh look and shimmy input without a view snap or stale traversal lock"
 	)
 	await _cleanup_application(tree, application)
 	_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)

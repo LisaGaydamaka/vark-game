@@ -42,6 +42,10 @@ var mantle_origin_wall_normal: Vector3 = Vector3.ZERO
 var edge_continuation_count: int = 0
 var phase: int = Phase.NONE
 var completed: bool = false
+var restore_source_transform: Transform3D = Transform3D.IDENTITY
+var restore_source_transform_valid: bool = false
+var restore_source_stance: int = PlayerCrouch.Stance.STANDING
+var restore_started_from_hang: bool = false
 
 
 func _init(
@@ -162,12 +166,19 @@ func find_candidate_with_source_mode(
 
 func try_start(
 	player: CharacterBody3D,
-	candidate: MantleCandidate
+	candidate: MantleCandidate,
+	started_from_hang: bool = false
 ) -> bool:
 	if candidate == null or not candidate.valid:
 		return false
 
+	var source_transform: Transform3D = player.global_transform
+	var source_stance: int = crouch.get_requested_stance()
 	cancel()
+	restore_source_transform = source_transform
+	restore_source_transform_valid = true
+	restore_source_stance = source_stance
+	restore_started_from_hang = started_from_hang
 	if not _configure_route(player, candidate):
 		cancel()
 		return false
@@ -849,6 +860,22 @@ func get_target_position() -> Vector3:
 	return active_candidate.target_position
 
 
+func has_restore_source() -> bool:
+	return restore_source_transform_valid
+
+
+func get_restore_source_transform() -> Transform3D:
+	return restore_source_transform
+
+
+func get_restore_source_stance() -> int:
+	return restore_source_stance
+
+
+func did_start_from_hang() -> bool:
+	return restore_source_transform_valid and restore_started_from_hang
+
+
 func cancel() -> void:
 	active_candidate = null
 	route_edge_point = Vector3.ZERO
@@ -858,3 +885,7 @@ func cancel() -> void:
 	edge_continuation_count = 0
 	phase = Phase.NONE
 	completed = false
+	restore_source_transform = Transform3D.IDENTITY
+	restore_source_transform_valid = false
+	restore_source_stance = PlayerCrouch.Stance.STANDING
+	restore_started_from_hang = false
