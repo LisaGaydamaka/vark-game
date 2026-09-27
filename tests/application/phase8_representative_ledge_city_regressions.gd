@@ -420,8 +420,19 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	var began_playing: bool = bool(session.call("begin_play"))
+	if began_playing:
+		# begin_play() enables the live producers again. Let that startup
+		# boundary finish, then isolate this geometry-only patrol proof from
+		# sight/footstep investigation before configuring the route.
+		await tree.physics_frame
+		await tree.process_frame
 	if awareness != null:
+		awareness.set_physics_process(false)
+		awareness.process_mode = Node.PROCESS_MODE_DISABLED
 		awareness.call("reset_reaction")
+	if footstep_emitter != null:
+		footstep_emitter.set_physics_process(false)
+		footstep_emitter.process_mode = Node.PROCESS_MODE_DISABLED
 	if guard != null:
 		guard.call("set_awareness_observation_paused", false)
 		guard.call("clear_awareness_navigation_target")
