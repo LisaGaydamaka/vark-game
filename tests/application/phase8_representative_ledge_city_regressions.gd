@@ -60,7 +60,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"mission.tres",
 			"mission.map"
 		)
-		and int(Definition.get("mission_content_revision")) == 3,
+		and int(Definition.get("mission_content_revision")) == 4,
 		"8.4 Ledge City owns a distinct MissionDefinition/save identity and authoritative mapper source"
 	)
 
@@ -135,7 +135,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and patrol_points.size() == 2
 		and containers.size() == 1
 		and props.size() == 5
-		and lights.size() == 8
+		and lights.size() == 18
 		and switches.size() == 1
 		and openings.size() == 7
 		and pickups.size() == 4
@@ -284,6 +284,103 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not source.contains("// west_route:")
 		and not source.contains("// east_route:"),
 		"8.4 Ledge City uses tilted roofs and ordinary street/architectural objects for traversal, with exact-fit door headers and no dedicated route-platform brush class"
+	)
+
+	var required_light_ids := PackedStringArray([
+		"light.rep.south",
+		"light.rep.market",
+		"light.rep.cross",
+		"light.rep.mid",
+		"light.rep.archive",
+		"light.rep.north",
+		"light.rep.watch_inside",
+		"light.rep.archive_inside",
+		"light.rep.mercer_inside",
+		"light.rep.office_inside",
+		"light.rep.tenement_inside",
+		"light.rep.foundry_inside",
+		"light.rep.watch_key_room",
+		"light.rep.archive_upper",
+		"light.rep.rear_w_south",
+		"light.rep.rear_w_north",
+		"light.rep.rear_e_south",
+		"light.rep.rear_e_north",
+	])
+	var light_ids_valid: bool = true
+	for required_id: String in required_light_ids:
+		if _find_by_property(lights, "gameplay_light_id", required_id) == null:
+			light_ids_valid = false
+			break
+	assert_true.call(
+		light_ids_valid
+		and source.count("// lighting_pass:") == 10,
+		"8.4 Ledge City lighting pass covers every street-front interior, the key/objective upper rooms and both rear lanes while preserving localized authored darkness"
+	)
+
+	var wall_mount_specs: Dictionary = {
+		"light.rep.watch_inside": {
+			"origin": Vector3(350.0, 574.0, 54.0),
+			"inward": Vector3(-1.0, 0.0, 0.0),
+		},
+		"light.rep.archive_inside": {
+			"origin": Vector3(-420.0, -574.0, 110.0),
+			"inward": Vector3(1.0, 0.0, 0.0),
+		},
+		"light.rep.mercer_inside": {
+			"origin": Vector3(-320.0, 574.0, 54.0),
+			"inward": Vector3(-1.0, 0.0, 0.0),
+		},
+		"light.rep.office_inside": {
+			"origin": Vector3(-320.0, 64.0, 54.0),
+			"inward": Vector3(-1.0, 0.0, 0.0),
+		},
+		"light.rep.tenement_inside": {
+			"origin": Vector3(320.0, 64.0, 54.0),
+			"inward": Vector3(-1.0, 0.0, 0.0),
+		},
+		"light.rep.foundry_inside": {
+			"origin": Vector3(320.0, -574.0, 54.0),
+			"inward": Vector3(1.0, 0.0, 0.0),
+		},
+		"light.rep.watch_key_room": {
+			"origin": Vector3(430.0, 417.0, 254.0),
+			"inward": Vector3(1.0, 0.0, 0.0),
+		},
+		"light.rep.archive_upper": {
+			"origin": Vector3(-360.0, -574.0, 448.0),
+			"inward": Vector3(1.0, 0.0, 0.0),
+		},
+	}
+	var wall_mounts_valid: bool = true
+	for light_id: String in wall_mount_specs:
+		var light := _find_by_property(
+			lights,
+			"gameplay_light_id",
+			light_id
+		) as Node3D
+		var spec: Dictionary = wall_mount_specs[light_id]
+		if (
+			light == null
+			or str(light.get("fixture_asset_path"))
+				!= "res://assets/light_assets/WallLamp.tscn"
+		):
+			wall_mounts_valid = false
+			break
+		var expected_position: Vector3 = _map_origin_to_world(
+			spec["origin"] as Vector3
+		)
+		var fixture_forward: Vector3 = (
+			light.global_transform.basis * Vector3(0.0, 0.0, 1.0)
+		).normalized()
+		if (
+			light.global_position.distance_to(expected_position) > 0.02
+			or fixture_forward.dot(spec["inward"] as Vector3) < 0.99
+		):
+			wall_mounts_valid = false
+			break
+	assert_true.call(
+		wall_mounts_valid,
+		"8.4 Ledge City wall lamps are seated on authored wall planes and project inward instead of floating in rooms"
 	)
 
 	var nav_ready: bool = await _wait_for_navigation(world, tree)
@@ -436,6 +533,10 @@ func _find_by_property(
 
 func _horizontal_distance(a: Vector3, b: Vector3) -> float:
 	return Vector2(a.x, a.z).distance_to(Vector2(b.x, b.z))
+
+
+func _map_origin_to_world(map_origin: Vector3) -> Vector3:
+	return Vector3(map_origin.y, map_origin.z, map_origin.x) / 32.0
 
 
 func _wait_for_navigation(world: Node, tree: SceneTree) -> bool:

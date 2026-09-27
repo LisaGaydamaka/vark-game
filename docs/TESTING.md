@@ -1258,7 +1258,7 @@ Across both runs verify that the footprint reads as a **city**: crooked streets/
 
 ### Phase 8.4 alternate traversal-stress city
 
-The accepted first vertical-city layout remains available unchanged as **Development Launch → Representative Stealth**. The separate **Representative Stealth — Ledge City** package is now revision 3 and is deliberately rebuilt as a much denser, more ordinary city block.
+The accepted first vertical-city layout remains available unchanged as **Development Launch → Representative Stealth**. The separate **Representative Stealth — Ledge City** package is now revision 4. Revision 4 is a lighting-only content pass on top of the accepted revision-3 boulevard/layout and patrol fix: geometry, traversal routes, door placement and guard route are unchanged.
 
 The map no longer treats traversal surfaces as a set of special-purpose platforms. The main carriageway is about 3 m wide, sidewalks are narrow, the cross street and rear/service alleys are tighter, and building interiors use small front corridors plus divided rooms. Mercer Row, the Watchmaker, Survey Office, the tenement, the foundry and the Archive all present as street-front architecture rather than isolated masses. Exterior wall corners overlap so brush seams cannot expose cracks, and ordinary door openings are authored against the real 1.30 m × 2.08 m leaf dimensions (41.6 × 66.56 mapper units) instead of oversized generic holes.
 
@@ -1266,7 +1266,7 @@ Traversal is hidden inside normal city fabric: loaded carts, stacked crates, mar
 
 The guard-route protection added after the observed `Guard 'guard.dev_stealth' has no route to patrol target 'patrol.rep.b'` failure remains active: the shared representative world does not become `navigation_ready` unless both patrol endpoints share a real graph path, and the focused regression requires a live patrol leg.
 
-Because revision 3 replaces room dimensions, street widths, roofs and save-space assumptions, **old Ledge City revision-1/revision-2 quicksaves are intentionally incompatible**. Use a fresh mission/start.
+Revision 4 adds persistent gameplay lights, so **revision-1/revision-2/revision-3 Ledge City quicksaves are intentionally incompatible**. Use a fresh mission/start. The baseline lighting target is now moderate illumination through the main boulevard, ordinary building interiors, key/objective rooms and most rear lanes. Two mid-block rear service pockets are intentionally left without direct fixtures as the remaining fully dark choices. Existing and new wall lamps must be visibly mounted to wall surfaces with the lantern projecting into the room, not floating in space.
 
 Manual acceptance for revision 3:
 
@@ -1275,7 +1275,9 @@ Manual acceptance for revision 3:
 3. On the west exterior route, do not look for bespoke platforms. Use ordinary street clutter into Mercer awnings/balconies/sills, its tilted roof, Survey Office architectural details, then the Archive fire escape/sills/high window. Test jump→catch/hang→mantle and roof-to-roof/ledge-to-ledge movement where appropriate.
 4. On the east route, use street objects and Watchmaker façade architecture to reach the sloped roof/key room, then descend the rear fire escape, unlock the Archive front door and climb the interior stairs/mezzanines.
 5. Explore the roofs rather than only the objective line. Tilted roofs, dormers, chimneys, parapets and building-height differences should produce additional useful height changes and hiding/perch choices. Report any object that looks like a naked gameplay platform instead of believable architecture, any climbable-looking feature that cannot be used, or any mandatory catch/jump that is ambiguous or impossible.
-6. Watch at least one full guard patrol leg and recheck lights, cover/LOS, switch/extinguish, surface noise, prop distraction, objective/alarm, fresh F5→F9 and F10. There must be no patrol no-route error.
+6. Watch at least one full guard patrol leg and recheck cover/LOS, surface noise, prop distraction, objective/alarm, fresh F5→F9 and F10. There must be no patrol no-route error.
+7. Lighting-specific revision-4 check: walk the full boulevard, enter Mercer Row, Watchmaker, Survey Office, tenement, foundry and Archive, visit the Watchmaker key room and Archive upper objective floor, and sample both rear lanes. Most of these spaces should read as moderately lit rather than black. The two intentionally unlit mid-block rear service pockets may remain fully dark.
+8. Inspect the wall fixtures up close, especially the original Watchmaker wall lamp. Its backplate must touch the wall plane and the arm/lantern must project into the room. Repeat this spot-check for the Archive and newly added interior wall lamps. Extinguishing a wall lamp must visibly remove only its local pool rather than revealing a floating fixture.
 
 ---
 
