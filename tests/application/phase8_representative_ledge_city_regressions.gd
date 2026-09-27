@@ -438,7 +438,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		began_playing
 		and live_patrol_leg
 		and str(guard_summary.get("last_error", "")).is_empty(),
-		"8.4 live guard traverses the audited boulevard without a hidden brush obstruction"
+		(
+			"8.4 live guard traverses the audited boulevard without a hidden brush obstruction; summary=%s"
+			% str(guard_summary)
+		)
 	)
 
 	var summary: Dictionary = session.call("get_mission_run_summary")
@@ -484,10 +487,11 @@ func _audit_source_face_materials(source: String) -> Dictionary:
 
 func _worldspawn_brush_bounds(source: String) -> Array[AABB]:
 	var result: Array[AABB] = []
+	var world_start: int = source.find("\"classname\" \"worldspawn\"")
 	var cutoff: int = source.find("\"classname\" \"vark_player_start\"")
 	var world_source: String = source.substr(
-		0,
-		cutoff if cutoff >= 0 else source.length()
+		maxi(world_start, 0),
+		(cutoff if cutoff >= 0 else source.length()) - maxi(world_start, 0)
 	)
 	var comment_pattern := RegEx.new()
 	comment_pattern.compile("(?m)^// ([^\\n]+)\\n\\{")
@@ -530,7 +534,12 @@ func _brush_bounds_after_comment(source: String, comment: String) -> AABB:
 		found = true
 	if not found:
 		return AABB()
-	return AABB(minimum, maximum - minimum)
+	# The generated Valve-plane support points deliberately extend one map
+	# unit past each positive axis plane so the three plane points are
+	# non-collinear. They are not brush vertices. Remove that construction
+	# unit before using the source-only AABB for clearance assertions.
+	var corrected_maximum: Vector3 = maximum - Vector3.ONE
+	return AABB(minimum, corrected_maximum - minimum)
 
 
 func _any_positive_overlap(bounds: Array[AABB], query: AABB) -> bool:
