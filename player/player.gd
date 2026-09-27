@@ -461,19 +461,18 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		&"normalize_step_source":
 			# The saved transform is the collision-safe source pose captured when
 			# the automatic step route was acquired. Never reconstruct its runtime
-			# blocker/top route.
+			# blocker/top route. Support is transient and is reacquired on the first
+			# live physics frame; querying freshly-added physics bodies here is too
+			# early in the synchronous restore transaction.
 			if step != null:
 				step.cancel()
-			if support != null:
-				support.update(self)
 			restored_velocity = Vector3.ZERO
 		&"normalize_mantle_source":
 			# Direct mantle runtime routes are not durable truth. Roll back to the
 			# captured source pose and suppress immediate ledge reacquisition.
+			# Support is reacquired by ordinary locomotion after physics resumes.
 			if not ledge_controller.normalize_after_restore_to_airborne():
 				return false
-			if support != null:
-				support.update(self)
 			restored_velocity = Vector3.ZERO
 
 	velocity = restored_velocity

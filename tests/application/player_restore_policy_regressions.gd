@@ -163,12 +163,23 @@ func _prove_stance_transition_restore(
 	) as CharacterBody3D
 	var restored_crouch: PlayerCrouch = restored_player.get("crouch")
 	assert_true.call(
+		down_saved.get("source_stance", &"") == &"transitioning"
+		and down_saved.get("restore_stance", &"") == &"crouched",
+		"Phase 4.3 captures a real mid-crouch transition and its requested crouched endpoint; saved=%s"
+		% str(down_saved)
+	)
+	assert_true.call(
 		down_restored
-		and down_saved.get("source_stance", &"") == &"transitioning"
-		and down_saved.get("restore_stance", &"") == &"crouched"
 		and restored_crouch != null
 		and restored_crouch.is_fully_crouched(),
-		"Phase 4.3 normalizes an in-progress crouch transition to its requested crouched endpoint"
+		"Phase 4.3 restores the captured mid-crouch transition to crouched; restored=%s stance=%s"
+		% [
+			str(down_restored),
+			(
+				str(restored_player.call("get_movement_semantic_state"))
+				if restored_player != null else "<missing player>"
+			),
+		]
 	)
 
 	restored_crouch.request_stance(PlayerCrouch.Stance.STANDING)
@@ -188,12 +199,23 @@ func _prove_stance_transition_restore(
 	restored_player = application.get("current_player") as CharacterBody3D
 	restored_crouch = restored_player.get("crouch")
 	assert_true.call(
+		up_saved.get("source_stance", &"") == &"transitioning"
+		and up_saved.get("restore_stance", &"") == &"standing",
+		"Phase 4.3 captures a real mid-stand transition and its requested standing endpoint; saved=%s"
+		% str(up_saved)
+	)
+	assert_true.call(
 		up_restored
-		and up_saved.get("source_stance", &"") == &"transitioning"
-		and up_saved.get("restore_stance", &"") == &"standing"
 		and restored_crouch != null
 		and restored_crouch.is_fully_standing(),
-		"Phase 4.3 normalizes an in-progress stand transition to its requested standing endpoint"
+		"Phase 4.3 restores the captured mid-stand transition to standing; restored=%s stance=%s"
+		% [
+			str(up_restored),
+			(
+				str(restored_player.call("get_movement_semantic_state"))
+				if restored_player != null else "<missing player>"
+			),
+		]
 	)
 	await _cleanup_application(tree, application)
 
