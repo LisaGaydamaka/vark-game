@@ -1114,7 +1114,7 @@ Restore now performs the bounded 4.2 order while the candidate is processing-dis
 
 **Manual:** none — 4.2 is accepted from deterministic semantic ownership/order coverage. It exposes no new player-facing save key, durable filesystem behavior, traversal/transient policy, or subjective save/load presentation; those remain owned by later Phase 4 items.
 
-## 4.3 Player transient/traversal restore policy `[~]`
+## 4.3 Player transient/traversal restore policy `[x]`
 
 Classify representative player states into directly restorable semantic states, reconstructable transient states, or states normalized to a safe semantic equivalent.
 
@@ -1135,7 +1135,7 @@ The player snapshot records both the source semantic state and the declared rest
 
 **Done when:** ordinary moving, fully crouched, and ordinary airborne states restore directly through the real Application/WorldSession replacement path; exact captures made during automatic step-up, catching, hanging, cornering, and mantling remain saveable instead of being rejected; those traversal-runtime states load as ordinary airborne at the same safe pose with zero traversal-owned velocity, discard non-serializable route/contact machinery, and resume ordinary movement instead of freezing on an intermediate pose; no save lockout is introduced for these representative player states.
 
-**Automated:** pending post-push verification — the existing accepted 4.3 coverage remains, and the reproduced F5/F9 freeze adds a production-path save during an active automatic step. The regression must prove both the immediate and committed snapshots classify the source as transient `stepping`, store the step's collision-safe source transform under `normalize_step_source`, restore that pose without the runtime step route, and accept fresh forward locomotion after F9.
+**Automated:** passed — the existing accepted 4.3 coverage remains, and exact implementation head `41c2dff36600e9ec85a20fda346f555435a03da9` passed Godot 4.7.2 GitHub Actions Test run #550. The reproduced F5/F9 regression saves during a real active automatic step, proves both immediate and committed snapshots classify the source as transient `stepping`, stores the collision-safe source transform under `normalize_step_source`, restores that pose without serializing/reconstructing the runtime step route, accepts fresh forward locomotion after F9, and the run ends with `ALL APPLICATION TESTS PASSED` and `ALL TEST SUITES PASSED`.
 
 **Manual:** none — 4.3 is accepted from deterministic save/load reconstruction coverage. It introduces no player-facing save control or subjective presentation; target-platform/user-facing save validation remains later Phase 4 work.
 
