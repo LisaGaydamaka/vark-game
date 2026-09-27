@@ -94,6 +94,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and source.count("// balcony:") == 0
 		and source.count("// window_sill:") == 0
 		and _all_stair_landings_connect(source)
+		and _all_upper_floor_coverage_complete(source)
 		and _all_opening_frames_seat_leaf(source)
 		and not source.contains("zebra/zebra16x16")
 		and not source.contains("WallLamp.tscn")
@@ -1087,6 +1088,100 @@ func _all_opening_frames_seat_leaf(source: String) -> bool:
 			or not is_equal_approx(header.position.y, left_end.y)
 			or not is_equal_approx(header_end.y, right.position.y)
 		):
+			return false
+	return true
+
+
+func _all_upper_floor_coverage_complete(source: String) -> bool:
+	# Positive world-brush overlap is already forbidden above, so the sum of
+	# these floor-plate areas is also their union area. Require each upper
+	# storey to cover the complete interior rectangle except the exact stair
+	# shaft; this catches the earlier 10-map-unit missing-floor strips.
+	var checks: Array[Dictionary] = [
+		{
+			"footprint": Vector4(-322, 188, -118, 352),
+			"hole": Vector4(-258, 196, -138, 240),
+			"brushes": [
+				"interior_floor: mercer_back_88",
+				"interior_floor: mercer_front_88",
+				"interior_floor: mercer_side_a_88",
+				"interior_floor: mercer_side_b_88",
+			],
+		},
+		{
+			"footprint": Vector4(118, 188, 322, 352),
+			"hole": Vector4(138, 196, 258, 240),
+			"brushes": [
+				"interior_floor: watchmaker_back_88",
+				"interior_floor: watchmaker_front_88",
+				"interior_floor: watchmaker_side_a_88",
+				"interior_floor: watchmaker_side_b_88",
+			],
+		},
+		{
+			"footprint": Vector4(-322, -32, -118, 132),
+			"hole": Vector4(-258, -24, -138, 20),
+			"brushes": [
+				"interior_floor: office_back_88",
+				"interior_floor: office_front_88",
+				"interior_floor: office_side_a_88",
+				"interior_floor: office_side_b_88",
+			],
+		},
+		{
+			"footprint": Vector4(118, -32, 322, 132),
+			"hole": Vector4(138, -24, 258, 20),
+			"brushes": [
+				"interior_floor: tenement_back_88",
+				"interior_floor: tenement_front_88",
+				"interior_floor: tenement_side_a_88",
+				"interior_floor: tenement_side_b_88",
+			],
+		},
+		{
+			"footprint": Vector4(-322, -352, -118, -188),
+			"hole": Vector4(-258, -352, -138, -308),
+			"brushes": [
+				"interior_floor: archive_level2_back_88",
+				"interior_floor: archive_level2_front_88",
+				"interior_floor: archive_level2_side_b_88",
+			],
+		},
+		{
+			"footprint": Vector4(-322, -352, -118, -188),
+			"hole": Vector4(-248, -242, -138, -198),
+			"brushes": [
+				"interior_floor: archive_level3_back_176",
+				"interior_floor: archive_level3_front_176",
+				"interior_floor: archive_level3_side_a_176",
+				"interior_floor: archive_level3_side_b_176",
+			],
+		},
+		{
+			"footprint": Vector4(118, -352, 322, -188),
+			"hole": Vector4(138, -344, 258, -300),
+			"brushes": [
+				"interior_floor: foundry_back_88",
+				"interior_floor: foundry_front_88",
+				"interior_floor: foundry_side_a_88",
+				"interior_floor: foundry_side_b_88",
+			],
+		},
+	]
+	for check: Dictionary in checks:
+		var footprint: Vector4 = check["footprint"]
+		var hole: Vector4 = check["hole"]
+		var expected_area: float = (
+			(footprint.z - footprint.x) * (footprint.w - footprint.y)
+			- (hole.z - hole.x) * (hole.w - hole.y)
+		)
+		var authored_area: float = 0.0
+		for brush_name: String in check["brushes"]:
+			var floor: AABB = _brush_bounds_after_comment(source, brush_name)
+			if floor.size == Vector3.ZERO:
+				return false
+			authored_area += floor.size.x * floor.size.y
+		if not is_equal_approx(authored_area, expected_area):
 			return false
 	return true
 
