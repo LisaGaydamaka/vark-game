@@ -184,6 +184,11 @@ func _prove_stance_transition_restore(
 		]
 	)
 
+	# A new replacement session publishes its first stable save boundary on the
+	# next live physics tick. Production F5 waits for that boundary; this direct
+	# snapshot helper must do the same before exercising a second restore.
+	await _completed_physics_frame(tree)
+
 	restored_crouch.request_stance(PlayerCrouch.Stance.STANDING)
 	var up_mid_height: float = (
 		restored_crouch.get_height_for_stance(PlayerCrouch.Stance.STANDING)
