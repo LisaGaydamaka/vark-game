@@ -16,10 +16,16 @@ const TOP_SUPPORTED_BODY_EPSILON: float = 0.025
 const OPENING_VARIANT_ORDINARY: String = "ordinary"
 const OPENING_VARIANT_NARROW: String = "narrow"
 const OPENING_VARIANT_WINDOW: String = "window"
+const OPENING_VARIANT_SNEAK_WINDOW: String = "sneak_window"
 const OPENING_VARIANT_NARROW_MODEL_PATH: String = (
 	"res://assets/models/doors/ordinary_door_leaf_narrow.obj"
 )
-const WINDOW_PRESENTATION_SIZE: Vector3 = Vector3(1.30, 2.08, 0.10)
+const DEFAULT_LEAF_SIZE: Vector3 = Vector3(1.30, 2.08, 0.10)
+const DEFAULT_LEAF_POSITION: Vector3 = Vector3(0.65, 1.05, 0.06)
+# Sneak-through windows clear the accepted 0.95 m crouched capsule while
+# remaining lower than the 1.49 m standing capsule.
+const SNEAK_WINDOW_PRESENTATION_SIZE: Vector3 = Vector3(1.30, 1.18, 0.10)
+const SNEAK_WINDOW_LEAF_POSITION: Vector3 = Vector3(0.65, 0.59, 0.06)
 
 
 @export var persistent_id: String = ""
@@ -63,7 +69,12 @@ func _ready() -> void:
 	_barred = starts_barred
 	_material = StandardMaterial3D.new()
 	door_mesh.material_override = _material
+	# Mapper-selected variants may own different leaf geometry. Localize the
+	# packed-scene shape before resizing one instance.
+	if door_collision.shape != null:
+		door_collision.shape = door_collision.shape.duplicate()
 
+	_apply_opening_variant_geometry()
 	_apply_authored_variant_defaults()
 	var configured_visual: Mesh = visual_model
 	if visual_model_path.strip_edges().is_empty():
@@ -95,8 +106,26 @@ func _func_godot_apply_properties(_properties: Dictionary) -> void:
 	_closed_rotation_y = rotation.y
 	_locked = starts_locked
 	_barred = starts_barred
-	if visual_model_path.strip_edges().is_empty():
+	_apply_opening_variant_geometry()
+	# _ready() may have resolved the default ordinary-door model before mapper
+	# properties arrive. When the mapper selected a built-in presentation
+	# variant without an explicit visual path, discard that inherited path and
+	# resolve the variant from its authored contract instead.
+	var mapper_visual_path: String = str(
+		_properties.get("visual_model_path", "")
+	).strip_edges()
+	if (
+		mapper_visual_path.is_empty()
+		and opening_variant.strip_edges() in [
+			OPENING_VARIANT_NARROW,
+			OPENING_VARIANT_WINDOW,
+			OPENING_VARIANT_SNEAK_WINDOW,
+		]
+	):
+		visual_model_path = ""
 		_apply_authored_variant_defaults()
+	elif not mapper_visual_path.is_empty():
+		visual_model_path = mapper_visual_path
 	if not visual_model_path.strip_edges().is_empty():
 		var requested_path: String = visual_model_path
 		if not set_visual_model_from_path(requested_path):
@@ -104,7 +133,10 @@ func _func_godot_apply_properties(_properties: Dictionary) -> void:
 				"VarkOrdinaryDoor mapper properties could not load explicit visual_model_path '%s'."
 				% requested_path
 			)
-	elif opening_variant.strip_edges() == OPENING_VARIANT_WINDOW:
+	elif opening_variant.strip_edges() in [
+		OPENING_VARIANT_WINDOW,
+		OPENING_VARIANT_SNEAK_WINDOW,
+	]:
 		_apply_visual_model(visual_model, false)
 	_sync_derived_state()
 
@@ -271,18 +303,44 @@ func is_interaction_highlighted() -> bool:
 	return _highlighted
 
 
+func _apply_opening_variant_geometry() -> void:
+	if door_collision == null or door_mesh == null:
+		return
+	var box := door_collision.shape as BoxShape3D
+	if box == null:
+		return
+	var sneak_window: bool = (
+		opening_variant.strip_edges() == OPENING_VARIANT_SNEAK_WINDOW
+	)
+	box.size = (
+		SNEAK_WINDOW_PRESENTATION_SIZE
+		if sneak_window else DEFAULT_LEAF_SIZE
+	)
+	var leaf_position: Vector3 = (
+		SNEAK_WINDOW_LEAF_POSITION
+		if sneak_window else DEFAULT_LEAF_POSITION
+	)
+	door_collision.position = leaf_position
+	door_mesh.position = leaf_position
+
+
 func _apply_authored_variant_defaults() -> void:
 	if not visual_model_path.strip_edges().is_empty():
 		return
 	match opening_variant.strip_edges():
 		OPENING_VARIANT_NARROW:
 			visual_model_path = OPENING_VARIANT_NARROW_MODEL_PATH
-		OPENING_VARIANT_WINDOW:
-			# The development window variant is deliberately self-contained.
-			# It must not depend on a newly-added raw imported source file being
-			# present in Godot's local import cache before FuncGodot builds.
+		OPENING_VARIANT_WINDOW, OPENING_VARIANT_SNEAK_WINDOW:
+			# Development window variants are deliberately self-contained.
+			# They must not depend on a newly-added raw imported source file
+			# being present in Godot's local import cache before FuncGodot builds.
 			var window_mesh := BoxMesh.new()
-			window_mesh.size = WINDOW_PRESENTATION_SIZE
+			window_mesh.size = (
+				SNEAK_WINDOW_PRESENTATION_SIZE
+				if opening_variant.strip_edges()
+					== OPENING_VARIANT_SNEAK_WINDOW
+				else DEFAULT_LEAF_SIZE
+			)
 			visual_model = window_mesh
 
 

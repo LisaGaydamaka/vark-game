@@ -44,8 +44,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and Definition.get("mission_id")
 			== &"phase8_representative_stealth_ledge_city"
 		and str(Definition.get("map_source_path")) == MAP_PATH
-		and int(Definition.get("mission_content_revision")) == 6,
-		"8.4 Ledge City revision 6 owns a distinct save identity after the collision/placement correction pass"
+		and int(Definition.get("mission_content_revision")) == 7,
+		"8.4 Ledge City revision 7 owns a distinct save identity after the room/acoustic/window architecture rebuild"
 	)
 
 	var source: String = FileAccess.get_file_as_string(MAP_PATH)
@@ -56,13 +56,21 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		AABB(Vector3(-28, -438, 2), Vector3(56, 876, 70))
 	)
 	for aperture: AABB in [
-		AABB(Vector3(-120, 278, 2), Vector3(12, 44, 64)),
-		AABB(Vector3(108, 278, 2), Vector3(12, 44, 64)),
-		AABB(Vector3(-120, 28, 2), Vector3(12, 44, 64)),
-		AABB(Vector3(108, 28, 2), Vector3(12, 44, 64)),
-		AABB(Vector3(108, -292, 2), Vector3(12, 44, 64)),
-		AABB(Vector3(-120, -292, 2), Vector3(12, 44, 64)),
-		AABB(Vector3(-120, -292, 186), Vector3(12, 44, 56)),
+		# Six ground doors.
+		AABB(Vector3(-117, 280, 2), Vector3(6, 40, 64)),
+		AABB(Vector3(111, 280, 2), Vector3(6, 40, 64)),
+		AABB(Vector3(-117, 30, 2), Vector3(6, 40, 64)),
+		AABB(Vector3(111, 30, 2), Vector3(6, 40, 64)),
+		AABB(Vector3(111, -290, 2), Vector3(6, 40, 64)),
+		AABB(Vector3(-117, -290, 2), Vector3(6, 40, 64)),
+		# Six upper crouch windows plus the Archive high window.
+		AABB(Vector3(-117, 215, 98), Vector3(6, 40, 36)),
+		AABB(Vector3(111, 215, 98), Vector3(6, 40, 36)),
+		AABB(Vector3(-117, 88, 98), Vector3(6, 40, 36)),
+		AABB(Vector3(111, 88, 98), Vector3(6, 40, 36)),
+		AABB(Vector3(-117, -348, 98), Vector3(6, 40, 36)),
+		AABB(Vector3(111, -348, 98), Vector3(6, 40, 36)),
+		AABB(Vector3(-117, -290, 186), Vector3(6, 40, 36)),
 	]:
 		if _any_positive_overlap(brush_bounds, aperture):
 			source_clearances_valid = false
@@ -76,13 +84,23 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and source.count("// interior_stair:") == 77
 		and source.count("// sloped_roof:") == 12
 		and source.count("// timber_tie:") == 2
-		and source.count("// balcony:") >= 35
+		and source.count("// supported_bay:") == 18
+		and source.count("// supported_upper_bay:") == 3
+		and source.count("// supported_terrace:") == 28
+		and source.count("// overstreet:") == 10
+		and source.count("// alley_bridge:") == 8
+		and source.count("// room_wall:") == 14
+		and source.count("// partition:") == 18
+		and source.count("// balcony:") == 0
+		and source.count("// window_sill:") == 0
+		and _all_stair_landings_connect(source)
+		and _all_opening_frames_seat_leaf(source)
 		and not source.contains("zebra/zebra16x16")
 		and not source.contains("WallLamp.tscn")
 		and not source.contains("// platform:")
 		and not source.contains("// west_route:")
 		and not source.contains("// east_route:"),
-		"8.4 source uses only solid stone/tile/carpet faces, has zero positive-volume world-brush overlaps, and preserves audited street/opening clearances"
+		"8.4 source has zero positive-volume world-brush overlap, complete stair landings/floors, and supported irregular architecture instead of hanging route slabs"
 	)
 
 	var session: Node = WorldSession.new()
@@ -121,6 +139,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var exits: Array[Node] = []
 	var markers: Array[Node] = []
 	var surfaces: Array[Node] = []
+	var acoustic_spaces: Array[Node] = []
+	var acoustic_portals: Array[Node] = []
 	for node: Node in nodes:
 		if node.has_method("get_access_summary") and node.has_method(
 			"configure_navigation_traversal"
@@ -148,6 +168,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			markers.append(node)
 		if node.is_in_group(&"vark_footstep_surface"):
 			surfaces.append(node)
+		if node is VarkAcousticSpace:
+			acoustic_spaces.append(node)
+		if node is VarkAcousticPortal:
+			acoustic_portals.append(node)
 
 	var worldspawn := world.get_node_or_null(
 		"FuncGodotMap/entity_0_worldspawn"
@@ -161,11 +185,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and props.size() == 5
 		and lights.size() == 23
 		and switches.size() == 1
-		and openings.size() == 7
+		and openings.size() == 13
 		and pickups.size() == 4
 		and markers.size() >= 33
-		and surfaces.size() == 22
-		and _count_direct_collision_shapes(worldspawn) >= 280,
+		and surfaces.size() == 29
+		and acoustic_spaces.size() == 46
+		and acoustic_portals.size() == 54
+		and _count_direct_collision_shapes(worldspawn) >= 315,
 		"8.4 compact city keeps representative gameplay roles and adds enterable multi-floor architecture"
 	)
 
@@ -180,6 +206,57 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 floor regions retain stone/tile/carpet footstep semantics matching visible materials"
 	)
 
+	var acoustic_propagation := world.get_node_or_null(
+		"AcousticPropagation"
+	) as VarkAcousticPropagation
+	var acoustic_summary: Dictionary = (
+		acoustic_propagation.get_debug_summary()
+		if acoustic_propagation != null else {}
+	)
+	var acoustic_ids: Dictionary = {}
+	for acoustic_space: Node in acoustic_spaces:
+		acoustic_ids[str(acoustic_space.get("space_id"))] = true
+	assert_true.call(
+		acoustic_propagation != null
+		and acoustic_propagation.is_configured()
+		and acoustic_propagation.has_topology()
+		and int(acoustic_summary.get("space_count", 0)) == 46
+		and int(acoustic_summary.get("portal_count", 0)) == 54
+		and int(acoustic_summary.get("door_count", 0)) == 13
+		and not acoustic_ids.has("space.rep.main")
+		and acoustic_ids.has("space.mercer.g.rear")
+		and acoustic_ids.has("space.mercer.g.front")
+		and acoustic_ids.has("space.mercer.stair")
+		and acoustic_ids.has("space.archive.u.front")
+		and acoustic_ids.has("space.ext.street_mercer")
+		and (acoustic_summary.get("errors", PackedStringArray()) as PackedStringArray).is_empty(),
+		"8.4 acoustics are room/stair/exterior authored topology rather than one city-sized acoustic box"
+	)
+
+	if acoustic_propagation != null:
+		var room_route: Dictionary = acoustic_propagation.evaluate(
+			_map_origin_to_world(Vector3(-300, 220, 20)),
+			1.0,
+			_map_origin_to_world(Vector3(-300, 320, 20))
+		)
+		var stair_route: Dictionary = acoustic_propagation.evaluate(
+			_map_origin_to_world(Vector3(-300, 220, 20)),
+			1.0,
+			_map_origin_to_world(Vector3(-300, 220, 120))
+		)
+		assert_true.call(
+			bool(room_route.get("route_found", false))
+			and (room_route.get("portal_route", []) as Array)
+				== [&"portal.room.mercer.g"]
+			and bool(stair_route.get("route_found", false))
+			and (stair_route.get("portal_route", []) as Array)
+				== [
+					&"portal.stair.mercer.bottom",
+					&"portal.stair.mercer.top",
+				],
+			"8.4 sound crosses real room openings and vertical stairwells only through their authored portal graph"
+		)
+
 	var expected_openings: Dictionary = {
 		"door.mercer.front": Vector3(-112, 320.8, 0),
 		"door.watchmaker.front": Vector3(112, 320.8, 0),
@@ -187,6 +264,12 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"door.tenement.front": Vector3(112, 70.8, 0),
 		"door.foundry.front": Vector3(112, -249.2, 0),
 		"door.east_locked": Vector3(-112, -249.2, 0),
+		"window.mercer.upper": Vector3(-112, 255.8, 96),
+		"window.watchmaker.upper": Vector3(112, 255.8, 96),
+		"window.office.upper": Vector3(-112, 128.8, 96),
+		"window.tenement.upper": Vector3(112, 128.8, 96),
+		"window.archive.level2": Vector3(-112, -307.2, 96),
+		"window.foundry.upper": Vector3(112, -307.2, 96),
 		"opening.window_west": Vector3(-112, -249.2, 184),
 	}
 	var opening_positions_valid: bool = true
@@ -205,6 +288,37 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"door_id",
 		"opening.window_west"
 	)
+	var window_geometry_valid: bool = true
+	var window_count: int = 0
+	for opening_node: Node in openings:
+		if str(opening_node.get("opening_variant")) != "sneak_window":
+			continue
+		window_count += 1
+		var window_collision := opening_node.get_node_or_null(
+			"CollisionShape3D"
+		) as CollisionShape3D
+		var window_box := (
+			window_collision.shape as BoxShape3D
+			if window_collision != null else null
+		)
+		var window_mesh := opening_node.get_node_or_null(
+			"DoorMesh"
+		) as MeshInstance3D
+		var window_mesh_bounds: AABB = (
+			window_mesh.mesh.get_aabb()
+			if window_mesh != null and window_mesh.mesh != null
+			else AABB()
+		)
+		if (
+			window_box == null
+			or not is_equal_approx(window_box.size.x, 1.30)
+			or not is_equal_approx(window_box.size.y, 1.18)
+			or not is_equal_approx(window_collision.position.y, 0.59)
+			or not is_equal_approx(window_mesh_bounds.size.x, 1.30)
+			or not is_equal_approx(window_mesh_bounds.size.y, 1.18)
+		):
+			window_geometry_valid = false
+			break
 	var locked_door: Node = _find_by_property(
 		openings,
 		"door_id",
@@ -216,12 +330,14 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 	assert_true.call(
 		opening_positions_valid
+		and window_count == 7
+		and window_geometry_valid
 		and window != null
-		and str(window.get("opening_variant")) == "window"
+		and str(window.get("opening_variant")) == "sneak_window"
 		and locked_door != null
 		and bool(access.get("locked", false))
 		and str(access.get("required_key_id", "")) == "key.service",
-		"8.4 every authored door/window is seated on its rebuilt opening and the Archive keeps keyed plus high-window routes"
+		"8.4 all six ordinary doors plus seven crouch-height windows are seated on their physical openings and keep shared opening ownership"
 	)
 
 	var pickup_roles: Dictionary = {}
@@ -341,8 +457,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	])
 	var expected_street_origins: Dictionary = {
 		"light.rep.south": Vector3(-86, 405, 0),
-		"light.rep.market": Vector3(86, 255, 0),
-		"light.rep.cross": Vector3(-86, 125, 0),
+		"light.rep.market": Vector3(60, 255, 0),
+		"light.rep.cross": Vector3(-60, 125, 0),
 		"light.rep.mid": Vector3(86, -65, 0),
 		"light.rep.archive": Vector3(-86, -205, 0),
 		"light.rep.north": Vector3(86, -405, 0),
@@ -476,6 +592,91 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and (world.get("navigation_errors") as PackedStringArray).is_empty(),
 		"8.4 rebuilt boulevard stays navigation-ready between both patrol endpoints"
 	)
+
+	var sneak_windows: Dictionary = {
+		"window.mercer.upper": Vector3(-114, 235, 96),
+		"window.watchmaker.upper": Vector3(114, 235, 96),
+		"window.office.upper": Vector3(-114, 108, 96),
+		"window.tenement.upper": Vector3(114, 108, 96),
+		"window.archive.level2": Vector3(-114, -328, 96),
+		"window.foundry.upper": Vector3(114, -328, 96),
+		"opening.window_west": Vector3(-114, -270, 184),
+	}
+	var sneak_windows_valid: bool = true
+	for window_id: String in sneak_windows:
+		var sneak_window := _find_by_property(
+			openings,
+			"door_id",
+			window_id
+		) as VarkOrdinaryDoor
+		if (
+			sneak_window == null
+			or not sneak_window.apply_semantic_state({
+				"phase": VarkOrdinaryDoor.PHASE_OPEN,
+				"open_fraction": 1.0,
+				"motion_blocked": false,
+				"locked": false,
+				"barred": false,
+			})
+			or not _capsule_fits_map_aperture(
+				world,
+				sneak_window,
+				sneak_windows[window_id] as Vector3,
+				0.95
+			)
+			or _capsule_fits_map_aperture(
+				world,
+				sneak_window,
+				sneak_windows[window_id] as Vector3,
+				1.49
+			)
+		):
+			sneak_windows_valid = false
+			break
+	assert_true.call(
+		sneak_windows_valid,
+		"8.4 every open window physically admits the accepted 0.95 m crouched capsule but rejects the 1.49 m standing capsule"
+	)
+
+	if acoustic_propagation != null:
+		var mercer_window := _find_by_property(
+			openings,
+			"door_id",
+			"window.mercer.upper"
+		) as VarkOrdinaryDoor
+		var open_window_route: Dictionary = acoustic_propagation.evaluate(
+			_map_origin_to_world(Vector3(-130, 235, 116)),
+			1.0,
+			_map_origin_to_world(Vector3(-90, 235, 116))
+		)
+		var open_window_strength: float = float(
+			open_window_route.get("propagated_strength", 0.0)
+		)
+		var closed_window_strength: float = 0.0
+		if mercer_window != null:
+			mercer_window.apply_semantic_state({
+				"phase": VarkOrdinaryDoor.PHASE_CLOSED,
+				"open_fraction": 0.0,
+				"motion_blocked": false,
+				"locked": false,
+				"barred": false,
+			})
+			var closed_window_route: Dictionary = acoustic_propagation.evaluate(
+				_map_origin_to_world(Vector3(-130, 235, 116)),
+				1.0,
+				_map_origin_to_world(Vector3(-90, 235, 116))
+			)
+			closed_window_strength = float(
+				closed_window_route.get("propagated_strength", 0.0)
+			)
+		assert_true.call(
+			bool(open_window_route.get("route_found", false))
+			and (open_window_route.get("portal_route", []) as Array)
+				== [&"portal.window.mercer"]
+			and closed_window_strength > 0.0
+			and open_window_strength > closed_window_strength * 2.0,
+			"8.4 the same ordinary window state that opens the sneak passage also opens its room-to-street acoustic portal"
+		)
 
 	var physical_roots: Array[Node] = []
 	physical_roots.append_array(openings)
@@ -804,6 +1005,108 @@ func _shrink_audit_shape(source_shape: Shape3D) -> Shape3D:
 		cylinder.height = maxf(source_cylinder.height - SHRINK * 2.0, 0.001)
 		return cylinder
 	return null
+
+
+
+func _all_opening_frames_seat_leaf(source: String) -> bool:
+	const LEAF_WIDTH_MAP_UNITS := 41.6
+	var checks: Array[Dictionary] = [
+		{"left": "facade: mercer_0_left", "right": "facade: mercer_0_right", "header": "facade: mercer_0_header"},
+		{"left": "facade: watchmaker_0_left", "right": "facade: watchmaker_0_right", "header": "facade: watchmaker_0_header"},
+		{"left": "facade: office_0_left", "right": "facade: office_0_right", "header": "facade: office_0_header"},
+		{"left": "facade: tenement_0_left", "right": "facade: tenement_0_right", "header": "facade: tenement_0_header"},
+		{"left": "facade: archive_0_left", "right": "facade: archive_0_right", "header": "facade: archive_0_header"},
+		{"left": "facade: foundry_0_left", "right": "facade: foundry_0_right", "header": "facade: foundry_0_header"},
+		{"left": "facade: mercer_96_left", "right": "facade: mercer_96_right", "header": "facade: mercer_96_header"},
+		{"left": "facade: watchmaker_96_left", "right": "facade: watchmaker_96_right", "header": "facade: watchmaker_96_header"},
+		{"left": "facade: office_96_left", "right": "facade: office_96_right", "header": "facade: office_96_header"},
+		{"left": "facade: tenement_96_left", "right": "facade: tenement_96_right", "header": "facade: tenement_96_header"},
+		{"left": "facade: archive_level2_96_left", "right": "facade: archive_level2_96_right", "header": "facade: archive_level2_96_header"},
+		{"left": "facade: foundry_96_left", "right": "facade: foundry_96_right", "header": "facade: foundry_96_header"},
+		{"left": "facade: archive_level3_184_left", "right": "facade: archive_level3_184_right", "header": "facade: archive_level3_184_header"},
+	]
+	for check: Dictionary in checks:
+		var left: AABB = _brush_bounds_after_comment(source, str(check["left"]))
+		var right: AABB = _brush_bounds_after_comment(source, str(check["right"]))
+		var header: AABB = _brush_bounds_after_comment(source, str(check["header"]))
+		if (
+			left.size == Vector3.ZERO
+			or right.size == Vector3.ZERO
+			or header.size == Vector3.ZERO
+		):
+			return false
+		var left_end: Vector3 = left.position + left.size
+		var header_end: Vector3 = header.position + header.size
+		if (
+			not is_equal_approx(
+				right.position.y - left_end.y,
+				LEAF_WIDTH_MAP_UNITS
+			)
+			or not is_equal_approx(header.position.y, left_end.y)
+			or not is_equal_approx(header_end.y, right.position.y)
+		):
+			return false
+	return true
+
+
+func _all_stair_landings_connect(source: String) -> bool:
+	var checks: Array[Dictionary] = [
+		{"step": "interior_stair: mercer_0_11", "floor": "interior_floor: mercer_back_88", "side": &"west"},
+		{"step": "interior_stair: office_0_11", "floor": "interior_floor: office_back_88", "side": &"west"},
+		{"step": "interior_stair: archive_lower_0_11", "floor": "interior_floor: archive_level2_back_88", "side": &"west"},
+		{"step": "interior_stair: archive_upper_96_11", "floor": "interior_floor: archive_level3_back_176", "side": &"west"},
+		{"step": "interior_stair: watchmaker_0_11", "floor": "interior_floor: watchmaker_front_88", "side": &"east"},
+		{"step": "interior_stair: tenement_0_11", "floor": "interior_floor: tenement_front_88", "side": &"east"},
+		{"step": "interior_stair: foundry_0_11", "floor": "interior_floor: foundry_front_88", "side": &"east"},
+	]
+	for check: Dictionary in checks:
+		var step: AABB = _brush_bounds_after_comment(source, str(check["step"]))
+		var floor: AABB = _brush_bounds_after_comment(source, str(check["floor"]))
+		if step.size == Vector3.ZERO or floor.size == Vector3.ZERO:
+			return false
+		var step_end: Vector3 = step.position + step.size
+		var floor_end: Vector3 = floor.position + floor.size
+		if not is_equal_approx(step_end.z, floor.position.z):
+			return false
+		if (
+			check["side"] == &"west"
+			and not is_equal_approx(step.position.x, floor_end.x)
+		):
+			return false
+		if (
+			check["side"] == &"east"
+			and not is_equal_approx(step_end.x, floor.position.x)
+		):
+			return false
+	return true
+
+
+func _capsule_fits_map_aperture(
+	world: Node,
+	opening: CollisionObject3D,
+	map_floor_center: Vector3,
+	height: float
+) -> bool:
+	if world == null or opening == null:
+		return false
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.24
+	capsule.height = height
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = capsule
+	var floor_world: Vector3 = _map_origin_to_world(map_floor_center)
+	query.transform = Transform3D(
+		Basis.IDENTITY,
+		floor_world + Vector3.UP * (height * 0.5 + 0.01)
+	)
+	query.collision_mask = 1
+	query.collide_with_bodies = true
+	query.collide_with_areas = false
+	query.exclude = [opening.get_rid()]
+	return world.get_world_3d().direct_space_state.intersect_shape(
+		query,
+		16
+	).is_empty()
 
 
 func _test_application_quickload_returns_ledge_city_to_live_play(

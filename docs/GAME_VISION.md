@@ -395,7 +395,7 @@ The gameplay archetype/entity and the visual model are separate concerns. The Va
 
 Different compatible visual models should therefore be able to reuse the same gameplay archetype—for example wooden, metal, and ornate door models using ordinary door behavior, or chair/crate/vase models using ordinary prop behavior.
 
-Openable windows are treated as ordinary door/opening variants. They reuse the same interaction, movement/open-state, collision/vision/acoustic/navigation/save integration as appropriate and do **not** require a separate window gameplay subsystem. A purely static/decorative window may simply be ordinary architecture/model presentation.
+Openable windows are treated as ordinary door/opening variants. They reuse the same interaction, movement/open-state, collision/vision/acoustic/navigation/save integration as appropriate and do **not** require a separate window gameplay subsystem. A reusable **sneak-through window** presentation may use the same owner with a crouch-height leaf/opening: the accepted crouched player capsule must fit when open while the standing capsule must not. A purely static/decorative window may simply be ordinary architecture/model presentation.
 
 Final art replacement must preserve these gameplay contracts rather than forcing gameplay rewrites.
 
