@@ -1120,9 +1120,17 @@ func _capsule_fits_map_aperture(
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = capsule
 	var floor_world: Vector3 = _map_origin_to_world(map_floor_center)
+	# This probe answers whether the *aperture* admits the accepted capsule.
+	# The real player is intentionally supported by the floor while traversing,
+	# so do not count near-contact with that support plane as an obstruction.
+	# A 5 cm lift is far below the window's 30 cm crouch headroom and leaves the
+	# full 0.95/1.49 m capsule geometry unchanged.
+	const SUPPORT_CLEARANCE: float = 0.05
 	query.transform = Transform3D(
 		Basis.IDENTITY,
-		floor_world + Vector3.UP * (height * 0.5 + 0.01)
+		floor_world + Vector3.UP * (
+			height * 0.5 + SUPPORT_CLEARANCE
+		)
 	)
 	query.collision_mask = 1
 	query.collide_with_bodies = true
