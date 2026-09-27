@@ -19,6 +19,14 @@ const ALLOWED_SURFACE_TEXTURES := [
 	"vark_surfaces/tile",
 	"vark_surfaces/carpet",
 ]
+const LEDGE_STATIC_SHADOW_RENDER_LAYER: int = 19
+const LEDGE_STATIC_SHADOW_RENDER_MASK: int = 1 << (
+	LEDGE_STATIC_SHADOW_RENDER_LAYER - 1
+)
+const LEDGE_SHADOW_ATLAS_SIZE: int = 2048
+const LEDGE_SHADOW_ATLAS_SUBDIV: Viewport.PositionalShadowAtlasQuadrantSubdiv = (
+	Viewport.SHADOW_ATLAS_QUADRANT_SUBDIV_16
+)
 
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
@@ -104,6 +112,17 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not source.contains("// west_route:")
 		and not source.contains("// east_route:"),
 		"8.4 source has zero positive-volume world-brush overlap, complete stair landings/floors, and supported irregular architecture instead of hanging route slabs"
+	)
+
+	var root_viewport := tree.get_root() as Viewport
+	var previous_shadow_atlas_size: int = root_viewport.positional_shadow_atlas_size
+	var previous_shadow_atlas_16_bits: bool = (
+		root_viewport.positional_shadow_atlas_16_bits
+	)
+	var previous_shadow_subdivisions: Array[int] = []
+	for quadrant: int in 4:
+		previous_shadow_subdivisions.append(
+			int(root_viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant))
 	)
 
 	var session: Node = WorldSession.new()
@@ -196,6 +215,92 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and acoustic_portals.size() == 54
 		and _count_direct_collision_shapes(worldspawn) >= 315,
 		"8.4 compact city keeps representative gameplay roles and adds enterable multi-floor architecture"
+	)
+
+	var atlas_layout_valid: bool = (
+		root_viewport.positional_shadow_atlas_size == LEDGE_SHADOW_ATLAS_SIZE
+		and root_viewport.positional_shadow_atlas_16_bits
+	)
+	for quadrant: int in 4:
+		atlas_layout_valid = (
+			atlas_layout_valid
+			and root_viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant)
+				== LEDGE_SHADOW_ATLAS_SUBDIV
+	)
+
+	var world_shadow_meshes: Array[MeshInstance3D] = []
+	if worldspawn != null:
+		if worldspawn is MeshInstance3D:
+			world_shadow_meshes.append(worldspawn as MeshInstance3D)
+		for node: Node in worldspawn.find_children("*", "MeshInstance3D", true, false):
+			var mesh := node as MeshInstance3D
+			if mesh != null:
+				world_shadow_meshes.append(mesh)
+	var static_shadow_layers_valid: bool = not world_shadow_meshes.is_empty()
+	for mesh: MeshInstance3D in world_shadow_meshes:
+		static_shadow_layers_valid = (
+			static_shadow_layers_valid
+			and mesh.get_layer_mask_value(LEDGE_STATIC_SHADOW_RENDER_LAYER)
+		)
+
+	var opening_shadow_layers_valid: bool = true
+	for opening: Node in openings:
+		var door_mesh := opening.get_node_or_null("DoorMesh") as MeshInstance3D
+		if (
+			door_mesh == null
+			or not door_mesh.get_layer_mask_value(
+				LEDGE_STATIC_SHADOW_RENDER_LAYER
+			)
+		):
+			opening_shadow_layers_valid = false
+			break
+
+	var dynamic_shadow_layers_excluded: bool = true
+	for prop: Node in props:
+		var prop_mesh := prop.get_node_or_null("PropMesh") as MeshInstance3D
+		if (
+			prop_mesh == null
+			or prop_mesh.get_layer_mask_value(
+				LEDGE_STATIC_SHADOW_RENDER_LAYER
+			)
+		):
+			dynamic_shadow_layers_excluded = false
+			break
+	var guard_shadow_mesh := (
+		(guards[0] as Node).get_node_or_null("GuardMesh") as MeshInstance3D
+		if guards.size() == 1 else null
+	)
+	dynamic_shadow_layers_excluded = (
+		dynamic_shadow_layers_excluded
+		and guard_shadow_mesh != null
+		and not guard_shadow_mesh.get_layer_mask_value(
+			LEDGE_STATIC_SHADOW_RENDER_LAYER
+		)
+	)
+
+	var light_shadow_masks_valid: bool = true
+	for light: Node in lights:
+		var gameplay_light := light as VarkGameplayLight
+		var emitter := (
+			gameplay_light.get_emitter()
+			if gameplay_light != null else null
+		)
+		if (
+			gameplay_light == null
+			or emitter == null
+			or gameplay_light.get_visual_shadow_caster_mask()
+				!= LEDGE_STATIC_SHADOW_RENDER_MASK
+			or emitter.shadow_caster_mask != LEDGE_STATIC_SHADOW_RENDER_MASK
+		):
+			light_shadow_masks_valid = false
+			break
+	assert_true.call(
+		atlas_layout_valid
+		and static_shadow_layers_valid
+		and opening_shadow_layers_valid
+		and dynamic_shadow_layers_excluded
+		and light_shadow_masks_valid,
+		"8.4 Ledge City bounds positional-shadow atlas churn: fixed 2048/16-slot quadrants, static architecture/openings cast, continuously moving guard/props do not invalidate 23 omni shadow caches"
 	)
 
 	var surface_variants: Dictionary = {}
@@ -810,6 +915,22 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	session.call("teardown")
 	session.queue_free()
 	await tree.process_frame
+
+	var restored_shadow_budget: bool = (
+		root_viewport.positional_shadow_atlas_size == previous_shadow_atlas_size
+		and root_viewport.positional_shadow_atlas_16_bits
+			== previous_shadow_atlas_16_bits
+	)
+	for quadrant: int in 4:
+		restored_shadow_budget = (
+			restored_shadow_budget
+			and int(root_viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant))
+				== previous_shadow_subdivisions[quadrant]
+		)
+	assert_true.call(
+		restored_shadow_budget,
+		"8.4 Ledge City renderer budget is mission-scoped and restores the host viewport shadow-atlas configuration on teardown"
+	)
 
 	await _test_application_quickload_returns_ledge_city_to_live_play(
 		tree,

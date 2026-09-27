@@ -40,6 +40,7 @@ var _interaction_proxy: Area3D = null
 var _interaction_collision: CollisionShape3D = null
 var _highlighted: bool = false
 var _configured_light_energy: float = 0.0
+var _visual_shadow_caster_mask: int = 1048575
 var _exposure_ray_query := PhysicsRayQueryParameters3D.new()
 var _exposure_query_exclude: Array[RID] = []
 
@@ -98,6 +99,18 @@ func get_emitter() -> OmniLight3D:
 
 func get_emitter_global_position() -> Vector3:
 	return _emitter.global_position if _emitter != null else global_position
+
+
+func set_visual_shadow_caster_mask(mask: int) -> void:
+	# Renderer-only control. Gameplay exposure keeps using its independent
+	# physics occlusion mask and is intentionally unaffected by this.
+	_visual_shadow_caster_mask = mask & 1048575
+	if _emitter != null:
+		_emitter.shadow_caster_mask = _visual_shadow_caster_mask
+
+
+func get_visual_shadow_caster_mask() -> int:
+	return _visual_shadow_caster_mask
 
 
 func set_enabled_state(
@@ -207,6 +220,7 @@ func get_gameplay_debug_state() -> Dictionary:
 			if _emitter != null
 			else 0.0
 		),
+		"visual_shadow_caster_mask": _visual_shadow_caster_mask,
 		"active": (
 			gameplay_enabled
 			and visible
@@ -362,6 +376,7 @@ func _sync_emitter_configuration() -> void:
 	_emitter.light_color = light_color
 	_emitter.omni_range = maxf(omni_range, 0.001)
 	_emitter.shadow_enabled = shadow_enabled
+	_emitter.shadow_caster_mask = _visual_shadow_caster_mask
 	# Twenty-plus cube-shadow omnis are the dominant visual scaling cost in
 	# authored stealth maps. Dual paraboloid cuts each omni shadow from six
 	# faces to two; camera-distance LOD stops distant shadow work while leaving

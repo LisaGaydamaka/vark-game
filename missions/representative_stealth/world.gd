@@ -16,6 +16,15 @@ const AcousticPropagationScript = preload(
 const GuardSpeechLine = preload(
 	"res://missions/representative_stealth/guard_heard_noise.tres"
 )
+const LEDGE_CITY_MISSION_ID: StringName = &"phase8_representative_stealth_ledge_city"
+const LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER: int = 19
+const LEDGE_CITY_STATIC_SHADOW_RENDER_MASK: int = 1 << (
+	LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER - 1
+)
+const LEDGE_CITY_SHADOW_ATLAS_SIZE: int = 2048
+const LEDGE_CITY_SHADOW_ATLAS_SUBDIV: Viewport.PositionalShadowAtlasQuadrantSubdiv = (
+	Viewport.SHADOW_ATLAS_QUADRANT_SUBDIV_16
+)
 
 
 @onready var player: CharacterBody3D = $Player
@@ -32,6 +41,11 @@ var navigation_errors := PackedStringArray()
 var acoustic_propagation: VarkAcousticPropagation = null
 var _navigation_mesh: NavigationMesh = null
 var _guard: VarkGuard = null
+var _shadow_budget_viewport: Viewport = null
+var _shadow_budget_previous_size: int = 0
+var _shadow_budget_previous_16_bits: bool = true
+var _shadow_budget_previous_subdivisions: Array[int] = []
+var _shadow_budget_active: bool = false
 
 
 func configure_mission_definition(definition: Resource) -> bool:
@@ -48,6 +62,7 @@ func _ready() -> void:
 	)
 	func_map.local_map_file = str(mission_definition.get("map_source_path"))
 	func_map.build()
+	_configure_ledge_city_shadow_budget()
 	_apply_authored_player_start()
 	_apply_authored_exit()
 	acoustic_propagation = AcousticPropagationScript.new()
@@ -64,6 +79,123 @@ func _ready() -> void:
 	gameplay_exposure.refresh_sources()
 	gameplay_exposure.sample_now()
 	call_deferred("_rebuild_navigation_from_imported_geometry")
+
+
+func _exit_tree() -> void:
+	_restore_ledge_city_shadow_budget()
+
+
+func _configure_ledge_city_shadow_budget() -> void:
+	if (
+		mission_definition == null
+		or StringName(mission_definition.get("mission_id")) != LEDGE_CITY_MISSION_ID
+		or _shadow_budget_active
+	):
+		return
+
+	var viewport: Viewport = get_viewport()
+	if viewport == null:
+		return
+	_shadow_budget_viewport = viewport
+	_shadow_budget_previous_size = viewport.positional_shadow_atlas_size
+	_shadow_budget_previous_16_bits = viewport.positional_shadow_atlas_16_bits
+	_shadow_budget_previous_subdivisions.clear()
+	for quadrant: int in 4:
+		_shadow_budget_previous_subdivisions.append(
+			int(viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant))
+		)
+
+	# Godot's positional-shadow atlas can migrate and re-render omni-light
+	# shadow slots as projected light size changes. Ledge City has 23 shadowed
+	# omnis, so keep their atlas workload bounded and slot sizes uniform.
+	viewport.positional_shadow_atlas_size = LEDGE_CITY_SHADOW_ATLAS_SIZE
+	viewport.positional_shadow_atlas_16_bits = true
+	for quadrant: int in 4:
+		viewport.set_positional_shadow_atlas_quadrant_subdiv(
+			quadrant,
+			LEDGE_CITY_SHADOW_ATLAS_SUBDIV
+		)
+
+	var worldspawn := func_map.get_node_or_null("entity_0_worldspawn") as StaticBody3D
+	if worldspawn != null:
+		_set_shadow_render_layer_recursive(worldspawn, true)
+
+	for node: Node in func_map.find_children("*", "", true, false):
+		if node is VarkOrdinaryDoor:
+			var door_mesh := node.get_node_or_null("DoorMesh") as MeshInstance3D
+			if door_mesh != null:
+				door_mesh.set_layer_mask_value(
+					LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER,
+					true
+				)
+		if node is VarkGameplayLight:
+			var light := node as VarkGameplayLight
+			light.set_visual_shadow_caster_mask(
+				LEDGE_CITY_STATIC_SHADOW_RENDER_MASK
+			)
+			var body_mesh := light.find_child(
+				"BodyMesh",
+				true,
+				false
+			) as MeshInstance3D
+			if body_mesh != null:
+				body_mesh.set_layer_mask_value(
+					LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER,
+					true
+				)
+		if node is VarkOrdinaryProp:
+			var prop_mesh := node.get_node_or_null("PropMesh") as MeshInstance3D
+			if prop_mesh != null:
+				prop_mesh.set_layer_mask_value(
+					LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER,
+					false
+				)
+		if node is VarkGuard:
+			var guard_mesh := node.get_node_or_null("GuardMesh") as MeshInstance3D
+			if guard_mesh != null:
+				guard_mesh.set_layer_mask_value(
+					LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER,
+					false
+				)
+
+	_shadow_budget_active = true
+
+
+func _restore_ledge_city_shadow_budget() -> void:
+	if not _shadow_budget_active or _shadow_budget_viewport == null:
+		return
+	if not is_instance_valid(_shadow_budget_viewport):
+		_shadow_budget_active = false
+		_shadow_budget_viewport = null
+		return
+
+	_shadow_budget_viewport.positional_shadow_atlas_size = (
+		_shadow_budget_previous_size
+	)
+	_shadow_budget_viewport.positional_shadow_atlas_16_bits = (
+		_shadow_budget_previous_16_bits
+	)
+	for quadrant: int in mini(
+		4,
+		_shadow_budget_previous_subdivisions.size()
+	):
+		_shadow_budget_viewport.set_positional_shadow_atlas_quadrant_subdiv(
+			quadrant,
+			_shadow_budget_previous_subdivisions[quadrant]
+		)
+	_shadow_budget_active = false
+	_shadow_budget_viewport = null
+	_shadow_budget_previous_subdivisions.clear()
+
+
+func _set_shadow_render_layer_recursive(root: Node, enabled: bool) -> void:
+	if root is MeshInstance3D:
+		(root as MeshInstance3D).set_layer_mask_value(
+			LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER,
+			enabled
+		)
+	for child: Node in root.get_children():
+		_set_shadow_render_layer_recursive(child, enabled)
 
 
 func get_representative_debug_summary() -> Dictionary:
