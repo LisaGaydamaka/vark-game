@@ -18,6 +18,10 @@ class StepCandidate:
 	var edge_point: Vector3 = Vector3.ZERO
 	var wall_normal: Vector3 = Vector3.ZERO
 	var step_height: float = 0.0
+	# Collision-safe body pose at the source side when this transient step route
+	# was acquired. This is runtime context used only to derive a semantic save
+	# normalization target; the candidate itself is never serialized.
+	var source_body_transform: Transform3D = Transform3D.IDENTITY
 	var approach_alignment: float = 0.0
 	var source_support_point: Vector3 = Vector3.ZERO
 	var source_support_normal: Vector3 = Vector3.UP
@@ -257,6 +261,7 @@ func try_start_from_contacts(
 	if best_candidate == null:
 		return false
 
+	best_candidate.source_body_transform = player.global_transform
 	active_candidate = best_candidate
 	current_assist_speed = 0.0
 	return true
@@ -513,6 +518,12 @@ func get_capsule_bottom_y(position: Vector3) -> float:
 
 func is_active() -> bool:
 	return active_candidate != null
+
+
+func get_restore_safe_transform(fallback: Transform3D) -> Transform3D:
+	if active_candidate == null:
+		return fallback
+	return active_candidate.source_body_transform
 
 
 func cancel() -> void:

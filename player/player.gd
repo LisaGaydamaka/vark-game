@@ -274,18 +274,22 @@ func capture_semantic_state() -> Dictionary:
 	var source_stance: StringName = _get_stance_semantic_name()
 	var restore_stance: StringName = _get_requested_restore_stance_name()
 	var source_traversal: StringName = _get_traversal_semantic_name()
-	var restore_policy: StringName = (
-		&"direct"
-		if source_traversal == &"normal"
-		else &"normalize_airborne"
-	)
+	var restore_policy: StringName = &"direct"
+	if source_traversal == &"stepping":
+		restore_policy = &"normalize_step_source"
+	elif source_traversal != &"normal":
+		restore_policy = &"normalize_airborne"
+
+	var saved_transform: Transform3D = global_transform
+	if source_traversal == &"stepping" and step != null:
+		saved_transform = step.get_restore_safe_transform(global_transform)
 	var saved_velocity: Vector3 = (
 		velocity
 		if restore_policy == &"direct"
 		else Vector3.ZERO
 	)
 	return {
-		"transform": global_transform,
+		"transform": saved_transform,
 		"velocity": saved_velocity,
 		"source_stance": source_stance,
 		"restore_stance": restore_stance,
@@ -321,6 +325,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		or (
 			restore_policy != &"direct"
 			and restore_policy != &"normalize_airborne"
+			and restore_policy != &"normalize_step_source"
 		)
 		or (
 			restore_policy == &"direct"
@@ -328,12 +333,16 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 		)
 		or (
 			restore_policy == &"normalize_airborne"
-			and source_traversal == &"normal"
+			and source_traversal in [&"normal", &"stepping"]
+		)
+		or (
+			restore_policy == &"normalize_step_source"
+			and source_traversal != &"stepping"
 		)
 	):
 		return false
 	if (
-		restore_policy == &"normalize_airborne"
+		restore_policy in [&"normalize_airborne", &"normalize_step_source"]
 		and not restored_velocity.is_zero_approx()
 	):
 		return false
@@ -363,6 +372,15 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	if restore_policy == &"normalize_airborne":
 		if not ledge_controller.normalize_after_restore_to_airborne():
 			return false
+		restored_velocity = Vector3.ZERO
+	elif restore_policy == &"normalize_step_source":
+		# The saved transform is the collision-safe source pose captured when the
+		# automatic step route was acquired. Never reconstruct the runtime route;
+		# resume as ordinary locomotion and let fresh contacts reacquire it.
+		if step != null:
+			step.cancel()
+		if support != null:
+			support.update(self)
 		restored_velocity = Vector3.ZERO
 
 	velocity = restored_velocity
@@ -413,10 +431,16 @@ func validate_restored_semantic_state(snapshot: Dictionary) -> bool:
 		return source_traversal == &"normal"
 	if restore_policy == &"normalize_airborne":
 		return (
-			source_traversal != &"normal"
+			source_traversal not in [&"normal", &"stepping"]
 			and velocity.is_zero_approx()
 			and ledge_controller != null
 			and ledge_controller.is_restore_reentry_blocked()
+		)
+	if restore_policy == &"normalize_step_source":
+		return (
+			source_traversal == &"stepping"
+			and velocity.is_zero_approx()
+			and (step == null or not step.is_active())
 		)
 	return false
 

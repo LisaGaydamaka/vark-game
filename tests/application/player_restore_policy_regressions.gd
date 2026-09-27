@@ -289,6 +289,9 @@ func _prove_hotkey_step_restore_resumes(
 		return
 
 	var source_position: Vector3 = player.global_position
+	var expected_safe_transform: Transform3D = step.get_restore_safe_transform(
+		player.global_transform
+	)
 	var source_snapshot: Dictionary = player.call("capture_semantic_state")
 	var coordinator := application.get_node("SaveCoordinator") as Node
 	coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
@@ -303,6 +306,14 @@ func _prove_hotkey_step_restore_resumes(
 		coordinator,
 		generation,
 		180
+	)
+	var saved_player: Dictionary = snapshot.get(
+		"session",
+		{}
+	).get("world_state", {}).get("player", {})
+	var saved_transform: Transform3D = saved_player.get(
+		"transform",
+		Transform3D.IDENTITY
 	)
 	Input.action_release("move_forward")
 	var old_session_id: int = int(application.call("get_current_session_id"))
@@ -332,18 +343,22 @@ func _prove_hotkey_step_restore_resumes(
 	assert_true.call(
 		not snapshot.is_empty()
 		and source_snapshot.get("source_traversal", &"") == &"stepping"
-		and source_snapshot.get("restore_policy", &"") == &"normalize_airborne"
+		and source_snapshot.get("restore_policy", &"") == &"normalize_step_source"
+		and saved_player.get("source_traversal", &"") == &"stepping"
+		and saved_player.get("restore_policy", &"") == &"normalize_step_source"
+		and saved_transform.is_equal_approx(expected_safe_transform)
 		and reached_step
 		and replaced
 		and restored != null
-		and restored_start.distance_to(source_position) <= 0.02
+		and restored_start.distance_to(saved_transform.origin) <= 0.02
+		and restored_start.y <= source_position.y + 0.001
 		and not (restored.get("step") as PlayerStep).is_active()
 		and restored.call("get_movement_semantic_state").get(
 			"traversal",
 			""
 		) == "normal"
 		and restored_end.z < restored_start.z - 0.25,
-		"Phase 4.3 F5/F9 normalizes an active automatic step, discards its transient route, and resumes forward locomotion instead of trapping a mid-step pose"
+		"Phase 4.3 F5/F9 normalizes an active automatic step back to its collision-safe source pose, discards the transient route, and resumes forward locomotion"
 	)
 	await _cleanup_application(tree, application)
 	_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)
