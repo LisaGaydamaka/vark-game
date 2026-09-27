@@ -19,6 +19,15 @@ func run(
 		"F9/F10 editor-shortcut isolation plugin is enabled as project tooling"
 	)
 
+	var plugin_source: String = FileAccess.get_file_as_string(
+		"res://addons/vark_editor_shortcuts/vark_editor_shortcut_plugin.gd"
+	)
+	assert_true.call(
+		plugin_source.contains("func _build() -> bool:")
+		and plugin_source.contains("return _apply_vark_shortcut_policy()"),
+		"Editor shortcut isolation is reasserted at Godot's pre-run build boundary before embedded debugger shortcut serialization"
+	)
+
 	var plain_f9 := InputEventKey.new()
 	plain_f9.keycode = KEY_F9
 	var custom := InputEventKey.new()
