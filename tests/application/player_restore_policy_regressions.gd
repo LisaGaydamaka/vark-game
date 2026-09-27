@@ -163,7 +163,9 @@ func _prove_stance_transition_restore(
 	) as CharacterBody3D
 	var restored_crouch: PlayerCrouch = restored_player.get("crouch")
 	assert_true.call(
-		down_saved.get("source_stance", &"") == &"transitioning"
+		crouch.get_height_for_stance(PlayerCrouch.Stance.STANDING)
+		> crouch.get_height_for_stance(PlayerCrouch.Stance.CROUCHED)
+		and down_saved.get("source_stance", &"") == &"transitioning"
 		and down_saved.get("restore_stance", &"") == &"crouched",
 		"Phase 4.3 captures a real mid-crouch transition and its requested crouched endpoint; saved=%s"
 		% str(down_saved)

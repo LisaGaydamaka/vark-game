@@ -51,7 +51,12 @@ func _init(
 		shape is CapsuleShape3D,
 		"PlayerCrouch requires the player collision shape to be CapsuleShape3D."
 	)
-	capsule_shape = shape as CapsuleShape3D
+	# PlayerCrouch mutates capsule height at runtime. PackedScene subresources may
+	# otherwise be shared by multiple Player instances/replacement sessions, so
+	# mutating the authored resource would leak stance geometry into the next
+	# fresh player. Own a private runtime shape before any height change.
+	capsule_shape = (shape as CapsuleShape3D).duplicate() as CapsuleShape3D
+	collision_shape.shape = capsule_shape
 	standing_height = capsule_shape.height
 	var minimum_height: float = capsule_shape.radius * 2.0
 	crouch_height = clampf(p_crouch_height, minimum_height, standing_height)
@@ -62,7 +67,13 @@ func _init(
 	head_top_clearance = standing_top - standing_head_height
 
 	if visual_mesh != null and visual_mesh.mesh is CapsuleMesh:
-		capsule_mesh = visual_mesh.mesh as CapsuleMesh
+		# The debug/presentation proxy height is mutated alongside collision, so it
+		# needs the same per-instance ownership as the collision shape.
+		capsule_mesh = (
+			(visual_mesh.mesh as CapsuleMesh).duplicate()
+			as CapsuleMesh
+		)
+		visual_mesh.mesh = capsule_mesh
 		visual_bottom_offset = visual_mesh.position.y - capsule_mesh.height * 0.5
 
 
