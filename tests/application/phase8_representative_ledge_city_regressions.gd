@@ -81,7 +81,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and source_clearances_valid
 		and not _has_positive_pair_overlap(brush_bounds)
 		and source.count("// building_floor:") == 6
-		and source.count("// interior_stair:") == 77
+		and source.count("// interior_stair:") == 83
 		and source.count("// sloped_roof:") == 12
 		and source.count("// timber_tie:") == 2
 		and source.count("// supported_bay:") == 18
@@ -244,6 +244,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			1.0,
 			_map_origin_to_world(Vector3(-300, 220, 120))
 		)
+		var stair_identity: Dictionary = acoustic_propagation.evaluate(
+			_map_origin_to_world(Vector3(-250, 218, 64)),
+			1.0,
+			_map_origin_to_world(Vector3(-250, 218, 72))
+		)
+		var office_front_identity: Dictionary = acoustic_propagation.evaluate(
+			_map_origin_to_world(Vector3(-200, 108, 116)),
+			1.0,
+			_map_origin_to_world(Vector3(-190, 116, 116))
+		)
 		assert_true.call(
 			bool(room_route.get("route_found", false))
 			and (room_route.get("portal_route", []) as Array)
@@ -253,8 +263,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 				== [
 					&"portal.stair.mercer.bottom",
 					&"portal.stair.mercer.top",
-				],
-			"8.4 sound crosses real room openings and vertical stairwells only through their authored portal graph"
+				]
+			and stair_identity.get("source_space_id", "")
+				== "space.mercer.stair"
+			and stair_identity.get("listener_space_id", "")
+				== "space.mercer.stair"
+			and office_front_identity.get("source_space_id", "")
+				== "space.office.u.front"
+			and office_front_identity.get("listener_space_id", "")
+				== "space.office.u.front",
+			"8.4 sound assigns ordinary room points to their room, stair-shaft points to the nested stair space, and crosses only authored room/stair portals"
 		)
 
 	var expected_openings: Dictionary = {
@@ -309,6 +327,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			if window_mesh != null and window_mesh.mesh != null
 			else AABB()
 		)
+		var window_nav: Dictionary = opening_node.call(
+			"get_navigation_link_summary"
+		)
 		if (
 			window_box == null
 			or not is_equal_approx(window_box.size.x, 1.30)
@@ -316,6 +337,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			or not is_equal_approx(window_collision.position.y, 0.59)
 			or not is_equal_approx(window_mesh_bounds.size.x, 1.30)
 			or not is_equal_approx(window_mesh_bounds.size.y, 1.18)
+			or bool(window_nav.get("configured", true))
+			or bool(window_nav.get("map_bound", true))
 		):
 			window_geometry_valid = false
 			break
@@ -1051,13 +1074,13 @@ func _all_opening_frames_seat_leaf(source: String) -> bool:
 
 func _all_stair_landings_connect(source: String) -> bool:
 	var checks: Array[Dictionary] = [
-		{"step": "interior_stair: mercer_0_11", "floor": "interior_floor: mercer_back_88", "side": &"west"},
-		{"step": "interior_stair: office_0_11", "floor": "interior_floor: office_back_88", "side": &"west"},
-		{"step": "interior_stair: archive_lower_0_11", "floor": "interior_floor: archive_level2_back_88", "side": &"west"},
+		{"step": "interior_stair: mercer_0_12", "floor": "interior_floor: mercer_back_88", "side": &"west"},
+		{"step": "interior_stair: office_0_12", "floor": "interior_floor: office_back_88", "side": &"west"},
+		{"step": "interior_stair: archive_lower_0_12", "floor": "interior_floor: archive_level2_back_88", "side": &"west"},
 		{"step": "interior_stair: archive_upper_96_11", "floor": "interior_floor: archive_level3_back_176", "side": &"west"},
-		{"step": "interior_stair: watchmaker_0_11", "floor": "interior_floor: watchmaker_front_88", "side": &"east"},
-		{"step": "interior_stair: tenement_0_11", "floor": "interior_floor: tenement_front_88", "side": &"east"},
-		{"step": "interior_stair: foundry_0_11", "floor": "interior_floor: foundry_front_88", "side": &"east"},
+		{"step": "interior_stair: watchmaker_0_12", "floor": "interior_floor: watchmaker_front_88", "side": &"east"},
+		{"step": "interior_stair: tenement_0_12", "floor": "interior_floor: tenement_front_88", "side": &"east"},
+		{"step": "interior_stair: foundry_0_12", "floor": "interior_floor: foundry_front_88", "side": &"east"},
 	]
 	for check: Dictionary in checks:
 		var step: AABB = _brush_bounds_after_comment(source, str(check["step"]))
@@ -1066,7 +1089,9 @@ func _all_stair_landings_connect(source: String) -> bool:
 			return false
 		var step_end: Vector3 = step.position + step.size
 		var floor_end: Vector3 = floor.position + floor.size
-		if not is_equal_approx(step_end.z, floor.position.z):
+		# Stairs must reach the actual upper walking surface, not merely touch
+		# the underside of the floor slab.
+		if not is_equal_approx(step_end.z, floor_end.z):
 			return false
 		if (
 			check["side"] == &"west"

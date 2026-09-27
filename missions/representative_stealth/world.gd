@@ -205,11 +205,18 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 	)
 
 	var openings: Array[VarkOrdinaryDoor] = []
+	var navigation_openings: Array[VarkOrdinaryDoor] = []
 	var patrol_points: Dictionary = {}
 	for node: Node in func_map.find_children("*", "", true, false):
 		var opening := node as VarkOrdinaryDoor
 		if opening != null:
 			openings.append(opening)
+			# Sneak windows reuse the ordinary-opening semantic/persistence spine,
+			# but the guard navigation agent is 1.75 m tall and cannot crouch.
+			# Do not carve/register an NPC smart link through a player-only
+			# 1.18 m aperture; the real map geometry remains authoritative.
+			if str(opening.opening_variant) != "sneak_window":
+				navigation_openings.append(opening)
 			continue
 		if node.is_in_group(PATROL_POINT_GROUP):
 			var patrol := node as VarkPatrolPoint
@@ -224,7 +231,7 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 			else:
 				patrol_points[patrol.patrol_id] = patrol
 
-	for opening: VarkOrdinaryDoor in openings:
+	for opening: VarkOrdinaryDoor in navigation_openings:
 		if not opening.configure_navigation_traversal(
 			navigation_mesh.agent_radius,
 			0.30
@@ -281,7 +288,7 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 		_report_navigation_errors()
 		return
 
-	for opening: VarkOrdinaryDoor in openings:
+	for opening: VarkOrdinaryDoor in navigation_openings:
 		var link_iteration_before: int = NavigationServer3D.map_get_iteration_id(
 			navigation_map
 		)
