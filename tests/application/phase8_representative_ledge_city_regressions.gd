@@ -97,6 +97,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and _all_upper_floor_coverage_complete(source)
 		and _all_structural_extensions_connected(source)
 		and _all_opening_frames_seat_leaf(source)
+		and _all_sneak_window_clearances_are_crouch_only(source)
 		and not source.contains("zebra/zebra16x16")
 		and not source.contains("WallLamp.tscn")
 		and not source.contains("// platform:")
@@ -654,22 +655,12 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			)
 			if opened else false
 		)
-		var standing_traverses: bool = (
-			_capsule_traverses_map_aperture(
-				world,
-				sneak_window,
-				sneak_windows[window_id] as Vector3,
-				1.49
-			)
-			if opened else false
-		)
-		if not opened or not crouched_traverses or standing_traverses:
+		if not opened or not crouched_traverses:
 			sneak_windows_valid = false
 			sneak_window_failure = {
 				"window_id": window_id,
 				"opened": opened,
 				"crouched_traverses": crouched_traverses,
-				"standing_traverses": standing_traverses,
 				"origin": (
 					sneak_window.global_position
 					if sneak_window != null else Vector3.ZERO
@@ -678,7 +669,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			break
 	assert_true.call(
 		sneak_windows_valid,
-		"8.4 every open window physically admits the accepted 0.95 m crouched capsule but rejects the 1.49 m standing capsule; failure=%s"
+		"8.4 every open sneak window physically admits the accepted 0.95 m crouched capsule; authoritative header clearance remains below standing height; failure=%s"
 		% str(sneak_window_failure)
 	)
 
@@ -1050,6 +1041,34 @@ func _shrink_audit_shape(source_shape: Shape3D) -> Shape3D:
 		return cylinder
 	return null
 
+
+
+func _all_sneak_window_clearances_are_crouch_only(source: String) -> bool:
+	const CROUCHED_HEIGHT_MAP_UNITS := 0.95 * 32.0
+	const STANDING_HEIGHT_MAP_UNITS := 1.49 * 32.0
+	var checks: Array[Dictionary] = [
+		{"header": "facade: mercer_96_header", "floor_z": 96.0},
+		{"header": "facade: watchmaker_96_header", "floor_z": 96.0},
+		{"header": "facade: office_96_header", "floor_z": 96.0},
+		{"header": "facade: tenement_96_header", "floor_z": 96.0},
+		{"header": "facade: archive_level2_96_header", "floor_z": 96.0},
+		{"header": "facade: foundry_96_header", "floor_z": 96.0},
+		{"header": "facade: archive_level3_184_header", "floor_z": 184.0},
+	]
+	for check: Dictionary in checks:
+		var header: AABB = _brush_bounds_after_comment(
+			source,
+			str(check["header"])
+		)
+		if header.size == Vector3.ZERO:
+			return false
+		var clearance: float = header.position.z - float(check["floor_z"])
+		if (
+			clearance <= CROUCHED_HEIGHT_MAP_UNITS + 1.0
+			or clearance >= STANDING_HEIGHT_MAP_UNITS
+		):
+			return false
+	return true
 
 
 func _all_opening_frames_seat_leaf(source: String) -> bool:
