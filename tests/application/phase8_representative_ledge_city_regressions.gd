@@ -247,8 +247,6 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	var world_shadow_meshes: Array[MeshInstance3D] = []
 	if worldspawn != null:
-		if worldspawn is MeshInstance3D:
-			world_shadow_meshes.append(worldspawn as MeshInstance3D)
 		for node: Node in worldspawn.find_children("*", "MeshInstance3D", true, false):
 			var mesh := node as MeshInstance3D
 			if mesh != null:
