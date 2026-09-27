@@ -565,7 +565,7 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		if restored_player != null and is_instance_valid(restored_player)
 		else restored_position_before
 	)
-	assert_true.call(
+	var live_after_load: bool = (
 		replaced
 		and restored_session != null
 		and restored_world != null
@@ -580,7 +580,44 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		and boundary.get("current_player") == restored_player
 		and restored_player.get("gameplay_input_boundary") == boundary
 		and restored_time_after > restored_time_before
-		and restored_position_after.distance_to(restored_position_before) > 0.10,
+		and restored_position_after.distance_to(restored_position_before) > 0.10
+	)
+	if not live_after_load:
+		print(
+			"8.4 F9 freeze diagnostics: ",
+			{
+				"replaced": replaced,
+				"session_state": application.call("get_current_session_state"),
+				"session_process_mode": (
+					restored_session.process_mode
+					if restored_session != null else -1
+				),
+				"world_can_process": (
+					restored_world.can_process()
+					if restored_world != null else false
+				),
+				"player_can_process": (
+					restored_player.can_process()
+					if restored_player != null else false
+				),
+				"gameplay_enabled": boundary.get("gameplay_enabled"),
+				"look_enabled": boundary.get("look_enabled"),
+				"boundary_player_matches": (
+					boundary.get("current_player") == restored_player
+				),
+				"player_boundary_matches": (
+					restored_player != null
+					and restored_player.get("gameplay_input_boundary") == boundary
+				),
+				"time_before": restored_time_before,
+				"time_after": restored_time_after,
+				"movement_distance": restored_position_after.distance_to(
+					restored_position_before
+				),
+			}
+		)
+	assert_true.call(
+		live_after_load,
 		"8.4 F9 restores Ledge City into a genuinely live simulation: session/world/player processing, gameplay clock and fresh movement all resume"
 	)
 
