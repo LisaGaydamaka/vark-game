@@ -626,39 +626,58 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"opening.window_west": Vector3(-114, -270, 184),
 	}
 	var sneak_windows_valid: bool = true
+	var sneak_window_failure: Dictionary = {}
 	for window_id: String in sneak_windows:
 		var sneak_window := _find_by_property(
 			openings,
 			"door_id",
 			window_id
 		) as VarkOrdinaryDoor
-		if (
-			sneak_window == null
-			or not sneak_window.apply_semantic_state({
+		var opened: bool = (
+			sneak_window != null
+			and sneak_window.apply_semantic_state({
 				"phase": VarkOrdinaryDoor.PHASE_OPEN,
 				"open_fraction": 1.0,
 				"motion_blocked": false,
 				"locked": false,
 				"barred": false,
 			})
-			or not _capsule_fits_map_aperture(
+		)
+		var crouched_traverses: bool = (
+			_capsule_traverses_map_aperture(
 				world,
 				sneak_window,
 				sneak_windows[window_id] as Vector3,
 				0.95
 			)
-			or _capsule_fits_map_aperture(
+			if opened else false
+		)
+		var standing_traverses: bool = (
+			_capsule_traverses_map_aperture(
 				world,
 				sneak_window,
 				sneak_windows[window_id] as Vector3,
 				1.49
 			)
-		):
+			if opened else false
+		)
+		if not opened or not crouched_traverses or standing_traverses:
 			sneak_windows_valid = false
+			sneak_window_failure = {
+				"window_id": window_id,
+				"opened": opened,
+				"crouched_traverses": crouched_traverses,
+				"standing_traverses": standing_traverses,
+				"origin": (
+					sneak_window.global_position
+					if sneak_window != null else Vector3.ZERO
+				),
+			}
 			break
 	assert_true.call(
 		sneak_windows_valid,
-		"8.4 every open window physically admits the accepted 0.95 m crouched capsule but rejects the 1.49 m standing capsule"
+		"8.4 every open window physically admits the accepted 0.95 m crouched capsule but rejects the 1.49 m standing capsule; failure=%s"
+		% str(sneak_window_failure)
 	)
 
 	if acoustic_propagation != null:
@@ -1106,40 +1125,53 @@ func _all_stair_landings_connect(source: String) -> bool:
 	return true
 
 
-func _capsule_fits_map_aperture(
+func _capsule_traverses_map_aperture(
 	world: Node,
-	opening: CollisionObject3D,
+	opening: VarkOrdinaryDoor,
 	map_floor_center: Vector3,
 	height: float
 ) -> bool:
 	if world == null or opening == null:
 		return false
+	var frame: Dictionary = opening.get_navigation_doorway_frame()
+	if not bool(frame.get("valid", false)):
+		return false
+	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
+	normal.y = 0.0
+	if normal.length_squared() <= 0.000001:
+		return false
+	normal = normal.normalized()
+
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.24
 	capsule.height = height
+	var floor_world: Vector3 = _map_origin_to_world(map_floor_center)
+	# Sweep the actual crouch/standing capsule all the way through the open
+	# wall aperture. This proves traversability, rather than asking whether a
+	# stationary capsule centered inside the wall plane happens to overlap one
+	# of the jamb/header support colliders.
+	const SUPPORT_CLEARANCE: float = 0.03
+	const APPROACH_DISTANCE: float = 0.55
+	var center: Vector3 = floor_world + Vector3.UP * (
+		height * 0.5 + SUPPORT_CLEARANCE
+	)
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = capsule
-	var floor_world: Vector3 = _map_origin_to_world(map_floor_center)
-	# This probe answers whether the *aperture* admits the accepted capsule.
-	# The real player is intentionally supported by the floor while traversing,
-	# so do not count near-contact with that support plane as an obstruction.
-	# A 5 cm lift is far below the window's 30 cm crouch headroom and leaves the
-	# full 0.95/1.49 m capsule geometry unchanged.
-	const SUPPORT_CLEARANCE: float = 0.05
 	query.transform = Transform3D(
 		Basis.IDENTITY,
-		floor_world + Vector3.UP * (
-			height * 0.5 + SUPPORT_CLEARANCE
-		)
+		center - normal * APPROACH_DISTANCE
 	)
+	query.motion = normal * (APPROACH_DISTANCE * 2.0)
 	query.collision_mask = 1
 	query.collide_with_bodies = true
 	query.collide_with_areas = false
 	query.exclude = [opening.get_rid()]
-	return world.get_world_3d().direct_space_state.intersect_shape(
-		query,
-		16
-	).is_empty()
+	var cast: PackedFloat32Array = (
+		world.get_world_3d().direct_space_state.cast_motion(query)
+	)
+	if cast.size() < 2:
+		return false
+	return cast[0] >= 0.999
 
 
 func _test_application_quickload_returns_ledge_city_to_live_play(
