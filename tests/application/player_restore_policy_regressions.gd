@@ -4,6 +4,7 @@ extends RefCounted
 const ApplicationScene = preload("res://application/Application.tscn")
 const FLAT_PATH: String = "res://tests/movement/fixtures/sprint_jump.tscn"
 const LEDGE_PATH: String = "res://tests/movement/fixtures/ledge_traversal.tscn"
+const STEP_PATH: String = "res://tests/movement/fixtures/normal_step.tscn"
 const POSITION_TOLERANCE: float = 0.001
 const VELOCITY_TOLERANCE: float = 0.001
 
@@ -20,6 +21,7 @@ func run(
 	await _prove_normalized_traversal_restore(tree, assert_true, &"cornering")
 	await _prove_normalized_traversal_restore(tree, assert_true, &"mantling")
 	await _prove_hotkey_hanging_restore_resumes(tree, assert_true)
+	await _prove_hotkey_step_restore_resumes(tree, assert_true)
 
 
 func _prove_direct_moving_restore(
@@ -261,6 +263,85 @@ func _prove_normalized_traversal_restore(
 		% target_state
 	)
 	await _cleanup_application(tree, application)
+
+
+func _prove_hotkey_step_restore_resumes(
+	tree: SceneTree,
+	assert_true: Callable
+) -> void:
+	const TEST_SAVE_DIRECTORY := "user://vark_tests/hotkey_step_restore"
+	_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)
+	var application: Node = await _launch_application(tree, STEP_PATH)
+	var player := application.get("current_player") as CharacterBody3D
+	var step: PlayerStep = player.get("step")
+	Input.action_press("move_forward")
+	var reached_step: bool = false
+	for _frame: int in 80:
+		await _completed_physics_frame(tree)
+		if step != null and step.is_active():
+			reached_step = true
+			break
+	if not reached_step:
+		Input.action_release("move_forward")
+		assert_true.call(false, "Phase 4.3 hotkey restore fixture reaches active automatic step")
+		await _cleanup_application(tree, application)
+		_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)
+		return
+
+	var source_position: Vector3 = player.global_position
+	var source_snapshot: Dictionary = player.call("capture_semantic_state")
+	var coordinator := application.get_node("SaveCoordinator") as Node
+	coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
+	var boundary := application.get_node("InputBoundary") as Node
+	var save_event := InputEventKey.new()
+	save_event.pressed = true
+	save_event.keycode = KEY_F5
+	boundary.call("route_input_event", save_event)
+	var generation: int = int(coordinator.get("_next_generation")) - 1
+	var snapshot: Dictionary = await _wait_for_hotkey_save(
+		tree,
+		coordinator,
+		generation,
+		180
+	)
+	Input.action_release("move_forward")
+	var old_session_id: int = int(application.call("get_current_session_id"))
+	var load_event := InputEventKey.new()
+	load_event.pressed = true
+	load_event.keycode = KEY_F9
+	boundary.call("route_input_event", load_event)
+	var replaced: bool = false
+	for _frame: int in 180:
+		await tree.process_frame
+		if int(application.call("get_current_session_id")) != old_session_id:
+			replaced = true
+			break
+
+	var restored := application.get("current_player") as CharacterBody3D
+	var restored_start: Vector3 = (
+		restored.global_position if restored != null else Vector3.ZERO
+	)
+	Input.action_press("move_forward")
+	await _advance_frames(tree, 45)
+	Input.action_release("move_forward")
+	var restored_end: Vector3 = (
+		restored.global_position
+		if restored != null and is_instance_valid(restored)
+		else restored_start
+	)
+	assert_true.call(
+		not snapshot.is_empty()
+		and source_snapshot.get("source_traversal", &"") == &"normal"
+		and source_snapshot.get("restore_policy", &"") == &"direct"
+		and reached_step
+		and replaced
+		and restored != null
+		and restored_start.distance_to(source_position) <= 0.02
+		and restored_end.z < restored_start.z - 0.25,
+		"Phase 4.3 F5/F9 restore from an active automatic step resumes forward locomotion instead of trapping the direct-restored intermediate pose"
+	)
+	await _cleanup_application(tree, application)
+	_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)
 
 
 func _prove_hotkey_hanging_restore_resumes(
