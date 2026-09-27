@@ -95,6 +95,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and source.count("// window_sill:") == 0
 		and _all_stair_landings_connect(source)
 		and _all_upper_floor_coverage_complete(source)
+		and _all_structural_extensions_connected(source)
 		and _all_opening_frames_seat_leaf(source)
 		and not source.contains("zebra/zebra16x16")
 		and not source.contains("WallLamp.tscn")
@@ -1090,6 +1091,81 @@ func _all_opening_frames_seat_leaf(source: String) -> bool:
 		):
 			return false
 	return true
+
+
+func _all_structural_extensions_connected(source: String) -> bool:
+	var world_start: int = source.find("\"classname\" \"worldspawn\"")
+	var cutoff: int = source.find("\"classname\" \"vark_player_start\"")
+	var world_source: String = source.substr(
+		maxi(world_start, 0),
+		(cutoff if cutoff >= 0 else source.length()) - maxi(world_start, 0)
+	)
+	var comment_pattern := RegEx.new()
+	comment_pattern.compile("(?m)^// ([^\\n]+)\\n\\{")
+	var named_bounds: Array[Dictionary] = []
+	for result: RegExMatch in comment_pattern.search_all(world_source):
+		var comment: String = result.get_string(1)
+		var bounds: AABB = _brush_bounds_after_comment(world_source, comment)
+		if bounds.size != Vector3.ZERO:
+			named_bounds.append({
+				"name": comment,
+				"bounds": bounds,
+			})
+	var structural_prefixes := PackedStringArray([
+		"supported_bay:",
+		"supported_upper_bay:",
+		"supported_terrace:",
+		"overstreet:",
+		"alley_bridge:",
+	])
+	var structural_count: int = 0
+	for entry: Dictionary in named_bounds:
+		var name: String = str(entry["name"])
+		var structural: bool = false
+		for prefix: String in structural_prefixes:
+			if name.begins_with(prefix):
+				structural = true
+				break
+		if not structural:
+			continue
+		structural_count += 1
+		var connected: bool = false
+		for other: Dictionary in named_bounds:
+			if other == entry:
+				continue
+			if _aabbs_share_supporting_face(
+				entry["bounds"] as AABB,
+				other["bounds"] as AABB
+			):
+				connected = true
+				break
+		if not connected:
+			return false
+	return structural_count == 67
+
+
+func _aabbs_share_supporting_face(first: AABB, second: AABB) -> bool:
+	var first_end: Vector3 = first.position + first.size
+	var second_end: Vector3 = second.position + second.size
+	for axis: int in 3:
+		var face_touch: bool = (
+			is_equal_approx(first_end[axis], second.position[axis])
+			or is_equal_approx(second_end[axis], first.position[axis])
+		)
+		if not face_touch:
+			continue
+		var first_other: int = (axis + 1) % 3
+		var second_other: int = (axis + 2) % 3
+		if (
+			minf(first_end[first_other], second_end[first_other])
+				- maxf(first.position[first_other], second.position[first_other])
+				> 0.001
+			and minf(first_end[second_other], second_end[second_other])
+				- maxf(first.position[second_other], second.position[second_other])
+				> 0.001
+		):
+			return true
+	return false
 
 
 func _all_upper_floor_coverage_complete(source: String) -> bool:
