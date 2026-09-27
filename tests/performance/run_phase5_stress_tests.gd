@@ -4,6 +4,7 @@ extends SceneTree
 const ApplicationScene = preload("res://application/Application.tscn")
 const IntegratedReaction = preload("res://missions/integrated_slice/guard_reaction.gd")
 const SLICE_PATH: String = "res://missions/integrated_slice/world.tscn"
+const LEDGE_CITY_PATH: String = "res://missions/representative_stealth_ledge_city/mission.tres"
 
 const GUARD_COUNT: int = 12
 const VISION_ROUNDS: int = 32
@@ -11,6 +12,9 @@ const SOUND_EVENT_COUNT: int = 48
 const EXTRA_LIGHT_COUNT: int = 24
 const EXPOSURE_SAMPLE_COUNT: int = 48
 const DOOR_NAV_CYCLE_COUNT: int = 64
+const LEDGE_EVALUATION_COUNT: int = 240
+const LEDGE_SOUND_EVENT_COUNT: int = 48
+const LEDGE_EXPOSURE_SAMPLE_COUNT: int = 48
 
 var failures: Array[String] = []
 
@@ -252,8 +256,145 @@ func _run_tests() -> void:
 	print("[PHASE5_STRESS_METRICS] ", JSON.stringify(metrics))
 
 	await _cleanup(application)
+	await _measure_ledge_city_scaling()
 	_print_summary()
 	quit(1 if not failures.is_empty() else 0)
+
+
+func _measure_ledge_city_scaling() -> void:
+	var application: Node = ApplicationScene.instantiate()
+	application.set(
+		"development_launch_labels",
+		PackedStringArray(["Representative Stealth — Ledge City"])
+	)
+	application.set(
+		"development_launch_resource_paths",
+		PackedStringArray([LEDGE_CITY_PATH])
+	)
+	get_root().add_child(application)
+	await process_frame
+
+	var launched: bool = bool(application.call("launch_development_target", 0))
+	var world := application.get("current_world") as Node3D
+	var player := application.get("current_player") as CharacterBody3D
+	var navigation_ready: bool = await _wait_for_navigation_ready(world, 480)
+	var propagation := (
+		world.get_node_or_null("AcousticPropagation") as VarkAcousticPropagation
+		if world != null else null
+	)
+	var exposure := (
+		world.get_node_or_null("GameplayExposure") as VarkGameplayExposure
+		if world != null else null
+	)
+	var guard: VarkGuard = null
+	if world != null:
+		for candidate: Node in world.find_children("*", "", true, false):
+			if candidate is VarkGuard:
+				guard = candidate as VarkGuard
+				break
+	var hearing := (
+		guard.get_node_or_null("Hearing") as VarkAcousticListener
+		if guard != null else null
+	)
+
+	_assert_true(
+		launched
+		and navigation_ready
+		and world != null
+		and player != null
+		and propagation != null
+		and exposure != null
+		and guard != null
+		and hearing != null,
+		"5.8 stress fixture launches the real revision-7 Ledge City acoustic/exposure owners"
+	)
+	if (
+		not launched
+		or not navigation_ready
+		or world == null
+		or player == null
+		or propagation == null
+		or exposure == null
+		or guard == null
+		or hearing == null
+	):
+		await _cleanup(application)
+		return
+
+	player.set_physics_process(false)
+	player.velocity = Vector3.ZERO
+	exposure.set_physics_process(false)
+	guard.set_physics_process(false)
+	var awareness: Node = guard.get_node_or_null("Awareness")
+	if awareness != null:
+		awareness.set_physics_process(false)
+
+	var acoustic_summary: Dictionary = propagation.get_debug_summary()
+	var origin: Vector3 = player.global_position
+	var listener_position: Vector3 = hearing.global_position
+
+	var evaluate_start_us: int = Time.get_ticks_usec()
+	var route_found_count: int = 0
+	for _index: int in LEDGE_EVALUATION_COUNT:
+		var result: Dictionary = propagation.evaluate(
+			origin,
+			0.72,
+			listener_position
+		)
+		if bool(result.get("route_found", false)):
+			route_found_count += 1
+	var evaluate_total_us: int = Time.get_ticks_usec() - evaluate_start_us
+
+	var sound_event: Dictionary = {
+		"name": &"gameplay.sound",
+		"payload": {
+			"kind": &"stress.ledge_city",
+			"origin": origin,
+			"strength": 0.35,
+		},
+	}
+	var sound_start_us: int = Time.get_ticks_usec()
+	var sounds_handled: int = 0
+	for _index: int in LEDGE_SOUND_EVENT_COUNT:
+		if propagation.handle_gameplay_sound(sound_event):
+			sounds_handled += 1
+	var sound_total_us: int = Time.get_ticks_usec() - sound_start_us
+
+	exposure.refresh_sources()
+	var exposure_summary: Dictionary = exposure.sample_now()
+	var exposure_start_us: int = Time.get_ticks_usec()
+	for _index: int in LEDGE_EXPOSURE_SAMPLE_COUNT:
+		exposure_summary = exposure.sample_now()
+	var exposure_total_us: int = Time.get_ticks_usec() - exposure_start_us
+
+	var metrics: Dictionary = {
+		"space_count": int(acoustic_summary.get("space_count", 0)),
+		"portal_count": int(acoustic_summary.get("portal_count", 0)),
+		"listener_count": int(acoustic_summary.get("listener_count", 0)),
+		"evaluation_count": LEDGE_EVALUATION_COUNT,
+		"route_found_count": route_found_count,
+		"evaluation_total_us": evaluate_total_us,
+		"sound_events": LEDGE_SOUND_EVENT_COUNT,
+		"sound_total_us": sound_total_us,
+		"gameplay_light_count": int(exposure_summary.get("source_count", 0)),
+		"exposure_samples": LEDGE_EXPOSURE_SAMPLE_COUNT,
+		"exposure_total_us": exposure_total_us,
+	}
+	print("[LEDGE_CITY_STRESS_METRICS] ", JSON.stringify(metrics))
+	_assert_true(
+		int(metrics["space_count"]) == 46
+		and int(metrics["portal_count"]) == 54
+		and int(metrics["listener_count"]) >= 2
+		and int(metrics["route_found_count"]) == LEDGE_EVALUATION_COUNT
+		and sounds_handled == LEDGE_SOUND_EVENT_COUNT
+		and int(metrics["gameplay_light_count"]) == 23
+		and evaluate_total_us > 0
+		and sound_total_us > 0
+		and exposure_total_us > 0,
+		"5.8 records the real Ledge City 46-space/54-portal acoustic and 23-light exposure workload"
+	)
+
+	await _cleanup(application)
 
 
 func _create_stress_guards(
