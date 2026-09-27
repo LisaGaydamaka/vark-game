@@ -14,11 +14,11 @@ const LEDGE_PATH := "res://missions/representative_stealth_ledge_city/mission.tr
 const MAP_PATH := "res://missions/representative_stealth_ledge_city/mission.map"
 const HANGING_LANTERN_PATH := "res://assets/light_assets/HangingLantern.tscn"
 const STREET_LAMP_PATH := "res://assets/light_assets/StreetLamp.tscn"
-const ALLOWED_SURFACE_TEXTURES := PackedStringArray([
+const ALLOWED_SURFACE_TEXTURES := [
 	"vark_surfaces/stone",
 	"vark_surfaces/tile",
 	"vark_surfaces/carpet",
-])
+]
 
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
