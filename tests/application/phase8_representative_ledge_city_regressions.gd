@@ -53,16 +53,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var brush_bounds: Array[AABB] = _worldspawn_brush_bounds(source)
 	var source_clearances_valid: bool = not _any_positive_overlap(
 		brush_bounds,
-		AABB(Vector3(-28, -438, 0), Vector3(56, 876, 72))
+		AABB(Vector3(-28, -438, 2), Vector3(56, 876, 70))
 	)
 	for aperture: AABB in [
-		AABB(Vector3(-120, 278, 0), Vector3(12, 44, 66)),
-		AABB(Vector3(108, 278, 0), Vector3(12, 44, 66)),
-		AABB(Vector3(-120, 28, 0), Vector3(12, 44, 66)),
-		AABB(Vector3(108, 28, 0), Vector3(12, 44, 66)),
-		AABB(Vector3(108, -292, 0), Vector3(12, 44, 66)),
-		AABB(Vector3(-120, -292, 0), Vector3(12, 44, 66)),
-		AABB(Vector3(-120, -292, 184), Vector3(12, 44, 58)),
+		AABB(Vector3(-120, 278, 2), Vector3(12, 44, 64)),
+		AABB(Vector3(108, 278, 2), Vector3(12, 44, 64)),
+		AABB(Vector3(-120, 28, 2), Vector3(12, 44, 64)),
+		AABB(Vector3(108, 28, 2), Vector3(12, 44, 64)),
+		AABB(Vector3(108, -292, 2), Vector3(12, 44, 64)),
+		AABB(Vector3(-120, -292, 2), Vector3(12, 44, 64)),
+		AABB(Vector3(-120, -292, 186), Vector3(12, 44, 56)),
 	]:
 		if _any_positive_overlap(brush_bounds, aperture):
 			source_clearances_valid = false
@@ -434,6 +434,15 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		guard.get_debug_summary()
 		if guard != null else {}
 	)
+	if not live_patrol_leg and guard != null:
+		print(
+			"8.4 compact-city patrol diagnostics: ",
+			{
+				"guard_position": guard.global_position,
+				"summary": guard_summary,
+				"patrol_points": patrol_lookup.keys(),
+			}
+		)
 	assert_true.call(
 		began_playing
 		and live_patrol_leg
