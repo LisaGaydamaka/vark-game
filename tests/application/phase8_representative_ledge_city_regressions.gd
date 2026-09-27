@@ -1228,14 +1228,16 @@ func _capsule_traverses_map_aperture(
 ) -> bool:
 	if world == null or opening == null:
 		return false
-	var frame: Dictionary = opening.get_navigation_doorway_frame()
-	if not bool(frame.get("valid", false)):
-		return false
-	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
-	normal.y = 0.0
-	if normal.length_squared() <= 0.000001:
-		return false
-	normal = normal.normalized()
+	# All Ledge City passable windows are authored in the east/west facade
+	# planes: map X becomes world Z. Use that authoritative wall axis for this
+	# map-specific passage sweep. The ordinary-door navigation frame is a
+	# navigation ownership seam and is intentionally not required for the
+	# player-only sneak-window variant.
+	var normal := Vector3(
+		0.0,
+		0.0,
+		1.0 if map_floor_center.x < 0.0 else -1.0
+	)
 
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.24
