@@ -21,6 +21,19 @@ var _handler_registered: bool = false
 var _errors: PackedStringArray = PackedStringArray()
 var _last_sound_debug: Dictionary = {}
 
+var _sorted_door_ids: Array[String] = []
+var _cached_evaluation_valid: bool = false
+var _cached_evaluation_origin: Vector3 = Vector3.ZERO
+var _cached_evaluation_listener: Vector3 = Vector3.ZERO
+var _cached_evaluation_strength: float = 0.0
+var _cached_evaluation_door_signature: int = 0
+var _cached_evaluation_result: Dictionary = {}
+var _evaluation_count: int = 0
+var _route_search_count: int = 0
+var _same_space_fast_path_count: int = 0
+var _cache_hit_count: int = 0
+var _threshold_rejection_count: int = 0
+
 
 func _ready() -> void:
 	var world_root: Node = get_parent()
@@ -82,6 +95,12 @@ func configure(world_root: Node) -> Dictionary:
 					_errors.append("Duplicate acoustic door_id '%s'." % door_id)
 				else:
 					_doors_by_id[door_id] = node
+
+	_sorted_door_ids.clear()
+	for door_id_value: Variant in _doors_by_id.keys():
+		_sorted_door_ids.append(str(door_id_value))
+	_sorted_door_ids.sort()
+	_invalidate_evaluation_cache()
 
 	if _spaces.is_empty() and _portals.is_empty() and _listeners.is_empty():
 		_configured = true
@@ -161,11 +180,18 @@ func clear() -> void:
 	_portals.clear()
 	_listeners.clear()
 	_doors_by_id.clear()
+	_sorted_door_ids.clear()
 	_adjacency.clear()
+	_invalidate_evaluation_cache()
 	_configured = false
 	_topology_enabled = false
 	_errors = PackedStringArray()
 	_last_sound_debug.clear()
+	_evaluation_count = 0
+	_route_search_count = 0
+	_same_space_fast_path_count = 0
+	_cache_hit_count = 0
+	_threshold_rejection_count = 0
 
 
 func is_configured() -> bool:
@@ -189,6 +215,11 @@ func get_debug_summary() -> Dictionary:
 		"portal_count": _portals.size(),
 		"listener_count": _listeners.size(),
 		"door_count": _doors_by_id.size(),
+		"evaluation_count": _evaluation_count,
+		"route_search_count": _route_search_count,
+		"same_space_fast_path_count": _same_space_fast_path_count,
+		"cache_hit_count": _cache_hit_count,
+		"threshold_rejection_count": _threshold_rejection_count,
 		"errors": _errors.duplicate(),
 	}
 
@@ -217,7 +248,12 @@ func get_portal_debug_state(portal_id: StringName) -> Dictionary:
 
 
 func get_last_sound_debug_snapshot() -> Dictionary:
-	return _last_sound_debug.duplicate(true)
+	var snapshot: Dictionary = _last_sound_debug.duplicate(true)
+	# Portal debug state is inspection data, not gameplay consequence data.
+	# Materialize it only when a debugger actually asks for the snapshot instead
+	# of allocating one dictionary per portal for every ordinary footstep.
+	snapshot["portal_states"] = get_portal_debug_states()
+	return snapshot
 
 
 func get_debug_inspection() -> Dictionary:
@@ -243,10 +279,10 @@ func handle_gameplay_sound(event: Dictionary) -> bool:
 		var listener: VarkAcousticListener = listener_value as VarkAcousticListener
 		if listener == null or not is_instance_valid(listener):
 			continue
-		var propagation: Dictionary = evaluate(
+		var propagation: Dictionary = _evaluate_for_listener(
 			origin,
 			strength,
-			listener.global_position
+			listener
 		)
 		if not listener.receive_gameplay_sound(event, propagation):
 			return false
@@ -271,7 +307,6 @@ func handle_gameplay_sound(event: Dictionary) -> bool:
 		"kind": payload.get("kind", &""),
 		"origin": origin,
 		"source_strength": strength,
-		"portal_states": get_portal_debug_states(),
 		"listeners": listener_results,
 	}
 	return true
@@ -282,6 +317,7 @@ func evaluate(
 	strength: float,
 	listener_position: Vector3
 ) -> Dictionary:
+	_evaluation_count += 1
 	var empty_result := {
 		"route_found": false,
 		"propagated_strength": 0.0,
@@ -296,11 +332,55 @@ func evaluate(
 	if not is_finite(strength) or strength <= 0.0:
 		return empty_result
 
+	var door_signature: int = _current_door_signature()
+	if (
+		_cached_evaluation_valid
+		and origin.is_equal_approx(_cached_evaluation_origin)
+		and listener_position.is_equal_approx(_cached_evaluation_listener)
+		and is_equal_approx(strength, _cached_evaluation_strength)
+		and door_signature == _cached_evaluation_door_signature
+	):
+		_cache_hit_count += 1
+		return _cached_evaluation_result.duplicate(true)
+
 	var source_space: VarkAcousticSpace = _find_space(origin)
 	var listener_space: VarkAcousticSpace = _find_space(listener_position)
 	if source_space == null or listener_space == null:
+		_cache_evaluation(
+			origin,
+			strength,
+			listener_position,
+			door_signature,
+			empty_result
+		)
 		return empty_result
 
+	# Same-space propagation has no portal choice. The previous implementation
+	# still entered the full frontier search even for the player's own footstep
+	# listener; direct distance is the exact same acoustic result.
+	if source_space.space_id == listener_space.space_id:
+		_same_space_fast_path_count += 1
+		var direct_distance: float = origin.distance_to(listener_position)
+		var direct_cost: float = DISTANCE_DECAY_PER_METER * direct_distance
+		var direct_result := {
+			"route_found": true,
+			"propagated_strength": strength * exp(-direct_cost),
+			"source_space_id": source_space.space_id,
+			"listener_space_id": listener_space.space_id,
+			"portal_route": [],
+			"path_distance": direct_distance,
+			"path_cost": direct_cost,
+		}
+		_cache_evaluation(
+			origin,
+			strength,
+			listener_position,
+			door_signature,
+			direct_result
+		)
+		return direct_result
+
+	_route_search_count += 1
 	var route: Dictionary = _find_best_route(
 		source_space.space_id,
 		listener_space.space_id,
@@ -310,19 +390,117 @@ func evaluate(
 	if not bool(route.get("route_found", false)):
 		empty_result["source_space_id"] = source_space.space_id
 		empty_result["listener_space_id"] = listener_space.space_id
+		_cache_evaluation(
+			origin,
+			strength,
+			listener_position,
+			door_signature,
+			empty_result
+		)
 		return empty_result
 
 	var path_cost: float = float(route["path_cost"])
-	var propagated_strength: float = strength * exp(-path_cost)
-	return {
+	var result := {
 		"route_found": true,
-		"propagated_strength": propagated_strength,
+		"propagated_strength": strength * exp(-path_cost),
 		"source_space_id": source_space.space_id,
 		"listener_space_id": listener_space.space_id,
 		"portal_route": (route["portal_route"] as Array).duplicate(true),
 		"path_distance": float(route["path_distance"]),
 		"path_cost": path_cost,
 	}
+	_cache_evaluation(
+		origin,
+		strength,
+		listener_position,
+		door_signature,
+		result
+	)
+	return result
+
+
+func _evaluate_for_listener(
+	origin: Vector3,
+	strength: float,
+	listener: VarkAcousticListener
+) -> Dictionary:
+	if listener == null or not is_instance_valid(listener):
+		return {
+			"route_found": false,
+			"propagated_strength": 0.0,
+			"source_space_id": "",
+			"listener_space_id": "",
+			"portal_route": [],
+			"path_distance": INF,
+			"path_cost": INF,
+		}
+
+	# Transmission cannot amplify and an authored path cannot be shorter than
+	# straight-line distance. If even that optimistic bound is under this
+	# listener's hearing threshold, a graph expansion cannot change gameplay.
+	var listener_position: Vector3 = listener.global_position
+	var direct_distance: float = origin.distance_to(listener_position)
+	var maximum_possible_strength: float = (
+		strength * exp(-DISTANCE_DECAY_PER_METER * direct_distance)
+	)
+	if maximum_possible_strength < maxf(listener.hearing_threshold, 0.000001):
+		_threshold_rejection_count += 1
+		var source_space: VarkAcousticSpace = _find_space(origin)
+		var listener_space: VarkAcousticSpace = _find_space(listener_position)
+		return {
+			"route_found": false,
+			"propagated_strength": 0.0,
+			"source_space_id": (
+				source_space.space_id if source_space != null else ""
+			),
+			"listener_space_id": (
+				listener_space.space_id if listener_space != null else ""
+			),
+			"portal_route": [],
+			"path_distance": direct_distance,
+			"path_cost": INF,
+		}
+	return evaluate(origin, strength, listener_position)
+
+
+func _current_door_signature() -> int:
+	var signature: int = 17
+	for door_id: String in _sorted_door_ids:
+		var door := _doors_by_id.get(door_id) as Node
+		var openness: float = 0.0
+		if (
+			door != null
+			and is_instance_valid(door)
+			and door.has_method("get_acoustic_openness")
+		):
+			openness = clampf(
+				float(door.call("get_acoustic_openness")),
+				0.0,
+				1.0
+			)
+		var quantized: int = roundi(openness * 1000000.0)
+		signature = int((signature * 16777619) ^ quantized)
+	return signature
+
+
+func _cache_evaluation(
+	origin: Vector3,
+	strength: float,
+	listener_position: Vector3,
+	door_signature: int,
+	result: Dictionary
+) -> void:
+	_cached_evaluation_valid = true
+	_cached_evaluation_origin = origin
+	_cached_evaluation_listener = listener_position
+	_cached_evaluation_strength = strength
+	_cached_evaluation_door_signature = door_signature
+	_cached_evaluation_result = result.duplicate(true)
+
+
+func _invalidate_evaluation_cache() -> void:
+	_cached_evaluation_valid = false
+	_cached_evaluation_result.clear()
 
 
 func _find_best_route(

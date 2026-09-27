@@ -386,6 +386,7 @@ func _measure_ledge_city_scaling() -> void:
 	for _index: int in LEDGE_EXPOSURE_SAMPLE_COUNT:
 		exposure_summary = exposure.sample_now()
 	var exposure_total_us: int = Time.get_ticks_usec() - exposure_start_us
+	var acoustic_after: Dictionary = propagation.get_debug_summary()
 	var ledge_runtime_start_us: int = Time.get_ticks_usec()
 	var ledge_runtime_value: float = 0.0
 	for _index: int in LEDGE_RUNTIME_EXPOSURE_SAMPLE_COUNT:
@@ -399,6 +400,11 @@ func _measure_ledge_city_scaling() -> void:
 		"evaluation_count": LEDGE_EVALUATION_COUNT,
 		"route_found_count": route_found_count,
 		"evaluation_total_us": evaluate_total_us,
+		"acoustic_evaluation_calls": int(acoustic_after.get("evaluation_count", 0)),
+		"acoustic_route_searches": int(acoustic_after.get("route_search_count", 0)),
+		"acoustic_same_space_fast_paths": int(acoustic_after.get("same_space_fast_path_count", 0)),
+		"acoustic_cache_hits": int(acoustic_after.get("cache_hit_count", 0)),
+		"acoustic_threshold_rejections": int(acoustic_after.get("threshold_rejection_count", 0)),
 		"sound_events": LEDGE_SOUND_EVENT_COUNT,
 		"sound_total_us": sound_total_us,
 		"gameplay_light_count": int(exposure_summary.get("source_count", 0)),
@@ -413,6 +419,11 @@ func _measure_ledge_city_scaling() -> void:
 		and int(metrics["portal_count"]) == 54
 		and int(metrics["listener_count"]) >= 2
 		and int(metrics["route_found_count"]) == LEDGE_EVALUATION_COUNT
+		and int(metrics["acoustic_route_searches"]) >= 1
+		and int(metrics["acoustic_route_searches"]) <= 4
+		and int(metrics["acoustic_cache_hits"]) >= LEDGE_EVALUATION_COUNT - 1
+		and int(metrics["acoustic_same_space_fast_paths"]) >= 1
+		and int(metrics["acoustic_threshold_rejections"]) >= LEDGE_SOUND_EVENT_COUNT
 		and sounds_handled == LEDGE_SOUND_EVENT_COUNT
 		and int(metrics["gameplay_light_count"]) == 23
 		and evaluate_total_us > 0
@@ -420,7 +431,7 @@ func _measure_ledge_city_scaling() -> void:
 		and exposure_total_us > 0
 		and ledge_runtime_total_us > 0
 		and is_finite(ledge_runtime_value),
-		"5.8 records the real Ledge City 46-space/54-portal acoustic plus detailed and physics-hot-path 23-light exposure workloads"
+		"5.8 records the real Ledge City workload and proves repeated acoustics use cache/same-space/inaudible fast paths instead of expanding the 54-portal graph at frame rate"
 	)
 
 	await _cleanup(application)
