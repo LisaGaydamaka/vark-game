@@ -1591,6 +1591,8 @@ These early timings are **observations, not CI budgets**. GitHub-hosted runner l
 
 The first recorded baseline is GitHub Actions Test run #361 on exact implementation head `01e16311d02523e65df9fcb971b2ba5e4d2ec3d3`: Godot `4.7.2-stable (official)`, Linux/X64, AMD EPYC 7763, 4 exposed processors. The fixed workload observed 6,570 µs for 384 vision checks; 21,875 µs for 48 sound dispatches across 13 listeners (624 receiver evaluations); 49,559 µs for 48 exposure samples with 25 total gameplay lights; and 567 µs for 64 alternating ordinary-door/nav path cycles with 64/64 paths resolved. Treat these values only as a reference point for later regressions or controlled-machine profiling.
 
+The Ledge City scale investigation added a second production measurement before optimization on Test #584 / `3c302b6c35dfd069e013e07260972091bdce9b55`: 46 spaces, 54 portals and 23 gameplay lights; 240 acoustic route evaluations took 53,843 µs, 48 sound dispatches took 30,717 µs, and 48 full exposure samples took 40,693 µs. The performance correction on Test #585 / `13c3eb6a224b83b90eab6186932cfcfc4e11c977` keeps the detailed API but adds the real physics hot path: 240 Ledge City scalar samples took 8,493 µs (~35 µs/sample), versus 45,571 µs for 48 full diagnostic samples (~949 µs/sample) in that same run. These are headless CPU measurements; they do **not** benchmark Forward+ GPU shadow cost. Renderer regression instead asserts dual-paraboloid omni shadows and distance fade, while the Windows playtest owns visible shadow quality and frame-pacing acceptance.
+
 ---
 
 # Supported-platform validation
