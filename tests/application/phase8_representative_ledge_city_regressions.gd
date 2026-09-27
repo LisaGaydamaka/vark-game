@@ -553,9 +553,9 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		if restored_player != null else Vector3.ZERO
 	)
 
-	Input.action_press("move_left")
+	Input.action_press("move_right")
 	await _wait_physics_frames(tree, 20)
-	Input.action_release("move_left")
+	Input.action_release("move_right")
 
 	var restored_time_after: float = float(
 		application.call("get_gameplay_time_seconds")
