@@ -331,14 +331,19 @@ func _prove_hotkey_step_restore_resumes(
 	)
 	assert_true.call(
 		not snapshot.is_empty()
-		and source_snapshot.get("source_traversal", &"") == &"normal"
-		and source_snapshot.get("restore_policy", &"") == &"direct"
+		and source_snapshot.get("source_traversal", &"") == &"stepping"
+		and source_snapshot.get("restore_policy", &"") == &"normalize_airborne"
 		and reached_step
 		and replaced
 		and restored != null
 		and restored_start.distance_to(source_position) <= 0.02
+		and not (restored.get("step") as PlayerStep).is_active()
+		and restored.call("get_movement_semantic_state").get(
+			"traversal",
+			""
+		) == "normal"
 		and restored_end.z < restored_start.z - 0.25,
-		"Phase 4.3 F5/F9 restore from an active automatic step resumes forward locomotion instead of trapping the direct-restored intermediate pose"
+		"Phase 4.3 F5/F9 normalizes an active automatic step, discards its transient route, and resumes forward locomotion instead of trapping a mid-step pose"
 	)
 	await _cleanup_application(tree, application)
 	_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)

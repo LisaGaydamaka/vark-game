@@ -1114,7 +1114,7 @@ Restore now performs the bounded 4.2 order while the candidate is processing-dis
 
 **Manual:** none — 4.2 is accepted from deterministic semantic ownership/order coverage. It exposes no new player-facing save key, durable filesystem behavior, traversal/transient policy, or subjective save/load presentation; those remain owned by later Phase 4 items.
 
-## 4.3 Player transient/traversal restore policy `[x]`
+## 4.3 Player transient/traversal restore policy `[~]`
 
 Classify representative player states into directly restorable semantic states, reconstructable transient states, or states normalized to a safe semantic equivalent.
 
@@ -1128,13 +1128,13 @@ The bounded 4.3 policy is explicit and intentionally avoids serializing detector
 - fully crouched: **direct semantic restore** of body transform/velocity plus the requested crouched endpoint, snapping the fresh candidate's live capsule/head/visual geometry to the crouched semantic stance before play resumes;
 - ordinary unsupported airborne with no ledge traversal owner: **direct restore** of body transform and ballistic velocity;
 - a mid-height standing↔crouched transition: normalize only the stance transition to its already-requested endpoint; the body transform/velocity remain the directly restored truth;
-- `catching`, `hanging`, `cornering`, and `mantling`: **normalize to ordinary airborne** at the same collision-safe body transform, zero traversal-owned velocity, preserve the requested stance endpoint and input-owned view orientation, discard live traversal candidates/routes, and suppress fresh mantle/hang acquisition for six physics frames so the discarded transition is not immediately recreated before gravity can separate the body from the ledge.
+- `catching`, `hanging`, `cornering`, `mantling`, and active automatic `stepping`: **normalize to ordinary airborne** at the same collision-safe body transform with zero traversal-owned velocity. Active step-up is explicitly represented as transient source state because its validated blocker/top route is runtime-only; restore discards that route rather than direct-restoring an intermediate pose that cannot complete. Preserve the requested stance endpoint and input-owned view orientation, discard live step/ledge candidates/routes, and suppress fresh mantle/hang acquisition briefly so the discarded transition is not immediately recreated before ordinary physics can separate/re-support the body.
 
 The player snapshot records both the source semantic state and the declared restore policy. Restore validation is policy-aware only for the player: the player must prove that its restored stance/traversal/pose/velocity satisfy the captured policy, while every non-player 4.2 owner still recaptures exactly. This does not loosen general world-state validation.
 
-**Done when:** ordinary moving, fully crouched, and ordinary airborne states restore directly through the real Application/WorldSession replacement path; exact captures made during catching, hanging, cornering, and mantling remain saveable instead of being rejected; those traversal-runtime states load as ordinary airborne at the same safe pose with zero traversal-owned velocity and do not instantly reacquire the discarded traversal; no save lockout is introduced for these representative player states.
+**Done when:** ordinary moving, fully crouched, and ordinary airborne states restore directly through the real Application/WorldSession replacement path; exact captures made during automatic step-up, catching, hanging, cornering, and mantling remain saveable instead of being rejected; those traversal-runtime states load as ordinary airborne at the same safe pose with zero traversal-owned velocity, discard non-serializable route/contact machinery, and resume ordinary movement instead of freezing on an intermediate pose; no save lockout is introduced for these representative player states.
 
-**Automated:** accepted — exact `test` head `b5172f0bb1af8031bc0aae0b0cf6e625a72ddc38` passed Godot 4.7.2 GitHub Actions Test run #250. `player_restore_policy_regressions.gd` passed direct standing/moving, crouched, and ordinary-airborne restoration plus catching/hanging/cornering/mantling saveability, normalized-airborne reconstruction, and traversal re-entry suppression. The unchanged Movement suite also passed, and CI ended with `ALL APPLICATION TESTS PASSED`, `ALL MOVEMENT TESTS PASSED`, and `ALL TEST SUITES PASSED`.
+**Automated:** pending post-push verification — the existing accepted 4.3 coverage remains, and the reproduced F5/F9 freeze now adds a production-path save during an active automatic step. The regression must prove the snapshot classifies the source as transient `stepping`, restores it by normalization rather than direct intermediate-pose continuation, discards the runtime step route, and accepts fresh forward locomotion after F9.
 
 **Manual:** none — 4.3 is accepted from deterministic save/load reconstruction coverage. It introduces no player-facing save control or subjective presentation; target-platform/user-facing save validation remains later Phase 4 work.
 

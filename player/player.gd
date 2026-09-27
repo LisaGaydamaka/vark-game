@@ -523,6 +523,12 @@ func _get_requested_restore_stance_name() -> StringName:
 
 
 func _get_traversal_semantic_name() -> StringName:
+	# Automatic step-up is a short-lived traversal transaction even though it
+	# does not use PlayerLedgeController. Its active candidate owns the validated
+	# blocker/top route. Saving the body mid-transaction as ordinary direct state
+	# would restore an intermediate pose without that runtime route.
+	if step != null and step.is_active():
+		return &"stepping"
 	if ledge_controller == null:
 		return &"normal"
 	match ledge_controller.state:
@@ -549,6 +555,7 @@ func _is_valid_stance_semantic_name(
 func _is_valid_traversal_semantic_name(value: StringName) -> bool:
 	return value in [
 		&"normal",
+		&"stepping",
 		&"catching",
 		&"hanging",
 		&"cornering",
