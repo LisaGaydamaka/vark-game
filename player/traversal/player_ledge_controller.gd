@@ -134,8 +134,12 @@ func capture_restore_hang_anchor() -> Dictionary:
 func restore_hang_from_semantic_anchor(anchor: Dictionary) -> bool:
 	if not _is_valid_restore_hang_anchor(anchor):
 		return false
-	var edge_point: Vector3 = anchor["edge_point"]
-	var wall_normal: Vector3 = anchor["wall_normal"]
+	var reference: PlayerLedgeDetector.LedgeCandidate = (
+		_build_restore_reference_candidate(anchor)
+	)
+	if reference == null:
+		push_error("Player ledge restore could not build its detached reference geometry.")
+		return false
 
 	ledge_catch.cancel()
 	ledge_hang.cancel()
@@ -147,24 +151,29 @@ func restore_hang_from_semantic_anchor(anchor: Dictionary) -> bool:
 	state = State.NONE
 	restore_reentry_block_frames = 0
 
-	var height_window: float = maxf(
-		ledge_detector.get_capsule_radius(),
-		ledge_detector.get_shimmy_attachment_correction_limit() * 2.0
-	)
+	# This is tracking/rebinding, not fresh gameplay discovery. Reconstruct a
+	# value-only reference from the snapshot, then use the detector's existing
+	# local attachment path to acquire current-world collider RIDs around the
+	# exact saved hang pose.
 	var candidate: PlayerLedgeDetector.LedgeCandidate = (
-		ledge_detector.find_local_candidate(
+		ledge_detector.find_hang_candidate_at_position(
 			body,
 			support,
-			wall_normal,
-			edge_point,
-			height_window,
-			true,
-			true
+			reference,
+			reference.wall_normal,
+			reference.hang_position
 		)
 	)
 	if candidate == null:
+		push_error(
+			"Player ledge restore could not rebind saved hang geometry at %s."
+			% str(reference.hang_position)
+		)
 		return false
 	if not _candidate_matches_restore_anchor(candidate, anchor):
+		push_error(
+			"Player ledge restore rebound a candidate outside the saved local ledge region."
+		)
 		return false
 
 	body.global_position = candidate.hang_position
@@ -217,6 +226,26 @@ func _select_restore_hang_candidate() -> PlayerLedgeDetector.LedgeCandidate:
 				return null
 			return ledge_mantle.get_release_candidate()
 	return null
+
+
+func _build_restore_reference_candidate(
+	anchor: Dictionary
+) -> PlayerLedgeDetector.LedgeCandidate:
+	if not _is_valid_restore_hang_anchor(anchor):
+		return null
+	var reference := PlayerLedgeDetector.LedgeCandidate.new()
+	reference.edge_point = anchor["edge_point"]
+	reference.wall_normal = anchor["wall_normal"]
+	reference.top_normal = anchor["top_normal"]
+	reference.hang_position = anchor["hang_position"]
+	reference.ledge_direction = ledge_detector.get_ledge_direction(
+		reference.wall_normal,
+		reference.top_normal
+	)
+	if reference.ledge_direction.length_squared() <= LOOK_DIRECTION_EPSILON_SQUARED:
+		return null
+	reference.hangable = true
+	return reference
 
 
 func _is_valid_restore_hang_anchor(anchor: Dictionary) -> bool:

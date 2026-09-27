@@ -143,9 +143,9 @@ func _prove_stance_transition_restore(
 	var application: Node = await _launch_application(tree, FLAT_PATH)
 	var player := application.get("current_player") as CharacterBody3D
 
-	Input.action_press("crouch")
-	await _completed_physics_frame(tree)
-	Input.action_release("crouch")
+	var crouch: PlayerCrouch = player.get("crouch")
+	crouch.request_stance(PlayerCrouch.Stance.CROUCHED)
+	crouch.update(player, 0.01)
 	var down_snapshot: Dictionary = _capture_snapshot(application, 4304)
 	var down_saved: Dictionary = down_snapshot.get(
 		"session",
@@ -167,9 +167,8 @@ func _prove_stance_transition_restore(
 		"Phase 4.3 normalizes an in-progress crouch transition to its requested crouched endpoint"
 	)
 
-	Input.action_press("crouch")
-	await _completed_physics_frame(tree)
-	Input.action_release("crouch")
+	restored_crouch.request_stance(PlayerCrouch.Stance.STANDING)
+	restored_crouch.update(restored_player, 0.01)
 	var up_snapshot: Dictionary = _capture_snapshot(application, 4305)
 	var up_saved: Dictionary = up_snapshot.get(
 		"session",
@@ -304,6 +303,14 @@ func _prove_reconstructed_traversal_restore(
 		"Phase 4.3 records %s as detached stable ledge-attachment reconstruction data"
 		% target_state
 	)
+	if not restored or restored_player == null:
+		assert_true.call(
+			false,
+			"Phase 4.3 replacement reconstructs traversal source %s successfully"
+			% target_state
+		)
+		await _cleanup_application(tree, application)
+		return
 	assert_true.call(
 		restored
 		and restored_player != null
@@ -529,6 +536,14 @@ func _prove_hotkey_hanging_restore_resumes(
 			break
 
 	var restored_player := application.get("current_player") as CharacterBody3D
+	if not replaced or restored_player == null:
+		assert_true.call(
+			false,
+			"Phase 4.3 F5/F9 hanging replacement reconstructs a live player"
+		)
+		await _cleanup_application(tree, application)
+		_cleanup_hotkey_restore_storage(TEST_SAVE_DIRECTORY)
+		return
 	var restored_view: Dictionary = application.call("get_current_view_pose")
 	var stable_position: Vector3 = (
 		restored_player.global_position
