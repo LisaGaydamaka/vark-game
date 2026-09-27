@@ -390,6 +390,20 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 rooms use short ceiling-hung omni lanterns while streets keep freestanding omni lamps"
 	)
 
+	var guard := guards[0] as VarkGuard if guards.size() == 1 else null
+	var awareness: Node = (
+		guard.get_node_or_null("Awareness")
+		if guard != null else null
+	)
+	# This is a patrol-geometry proof, not an awareness proof. Disable the two
+	# player-driven perception producers before the world enters PLAYING so the
+	# nearby spawn cannot inject an investigate/stare goal while nav settles.
+	if awareness != null:
+		awareness.set_physics_process(false)
+	var footstep_emitter := world.get_node_or_null("FootstepEmitter")
+	if footstep_emitter != null:
+		footstep_emitter.set_physics_process(false)
+
 	var nav_ready: bool = await _wait_for_navigation(world, tree)
 	var authored_patrol_path: bool = (
 		_has_navigation_path_between_patrol_points(
@@ -405,19 +419,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 rebuilt boulevard stays navigation-ready between both patrol endpoints"
 	)
 
-	var guard := guards[0] as VarkGuard if guards.size() == 1 else null
-	var awareness: Node = (
-		guard.get_node_or_null("Awareness")
-		if guard != null else null
-	)
-	# begin_play() enables the live perception owners. For this isolated
-	# geometry/navigation proof, disable perception only after that lifecycle
-	# boundary, then clear any observation/navigation state it could have
-	# acquired from seeing the player at the start point.
 	var began_playing: bool = bool(session.call("begin_play"))
 	if awareness != null:
 		awareness.call("reset_reaction")
-		awareness.set_physics_process(false)
 	if guard != null:
 		guard.call("set_awareness_observation_paused", false)
 		guard.call("clear_awareness_navigation_target")
