@@ -28,6 +28,16 @@ func _initialize() -> void:
 func _run_tests() -> void:
 	print("[PHASE5_STRESS_ENV] ", JSON.stringify(_environment_summary()))
 
+	_assert_true(
+		str(
+			ProjectSettings.get_setting(
+				"rendering/rendering_device/driver.windows",
+				""
+			)
+		) == "vulkan",
+		"5.8 Windows Forward+ uses Vulkan rather than the experimental D3D12 driver so renderer frame-pacing validation is performed on Godot's recommended backend"
+	)
+
 	var application: Node = ApplicationScene.instantiate()
 	application.set(
 		"development_launch_labels",
