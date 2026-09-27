@@ -69,6 +69,19 @@ func _assert_exposure_lab() -> void:
 		await process_frame
 		return
 
+	var sampling_before: Dictionary = owner.get_sampling_debug_state()
+	for _sample_frame: int in 8:
+		await physics_frame
+		await process_frame
+	var sampling_after: Dictionary = owner.get_sampling_debug_state()
+	_assert_true(
+		int(sampling_after.get("runtime_sample_count", 0))
+			- int(sampling_before.get("runtime_sample_count", 0)) >= 8
+		and int(sampling_after.get("detailed_sample_count", 0))
+			- int(sampling_before.get("detailed_sample_count", 0)) <= 1,
+		"Gameplay exposure keeps physics-rate scalar sampling while throttling allocation-heavy detailed summaries"
+	)
+
 	var key_light := world.get_node_or_null("KeyGameplayLight") as VarkGameplayLight
 	var fill_light := world.get_node_or_null("FillGameplayLight") as VarkGameplayLight
 	var decorative_light := world.get_node_or_null(
@@ -95,6 +108,16 @@ func _assert_exposure_lab() -> void:
 		and fill_light.get_emitter() is OmniLight3D
 		and key_light.get_emitter().shadow_enabled
 		and fill_light.get_emitter().shadow_enabled
+		and key_light.get_emitter().omni_shadow_mode
+			== OmniLight3D.SHADOW_DUAL_PARABOLOID
+		and fill_light.get_emitter().omni_shadow_mode
+			== OmniLight3D.SHADOW_DUAL_PARABOLOID
+		and key_light.get_emitter().distance_fade_enabled
+		and fill_light.get_emitter().distance_fade_enabled
+		and key_light.get_emitter().distance_fade_shadow
+			< key_light.get_emitter().distance_fade_begin
+		and fill_light.get_emitter().distance_fade_shadow
+			< fill_light.get_emitter().distance_fade_begin
 		and decorative_light.get_script() != GameplayLight
 		and decorative_light.light_energy > key_light.light_energy
 		and readout != null

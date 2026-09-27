@@ -18,6 +18,11 @@ fixture_asset_path = "res://assets/light_assets/WallLamp.tscn"
 light_energy = 2.4
 omni_range = 5.0
 shadow_enabled = true
+omni_shadow_mode = 0
+distance_fade_enabled = true
+distance_fade_begin = 12.0
+distance_fade_length = 4.0
+distance_fade_shadow = 7.0
 
 [node name="FixtureAnchor" type="Node3D" parent="."]
 

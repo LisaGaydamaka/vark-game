@@ -11,10 +11,12 @@ const VISION_ROUNDS: int = 32
 const SOUND_EVENT_COUNT: int = 48
 const EXTRA_LIGHT_COUNT: int = 24
 const EXPOSURE_SAMPLE_COUNT: int = 48
+const EXPOSURE_RUNTIME_SAMPLE_COUNT: int = 240
 const DOOR_NAV_CYCLE_COUNT: int = 64
 const LEDGE_EVALUATION_COUNT: int = 240
 const LEDGE_SOUND_EVENT_COUNT: int = 48
 const LEDGE_EXPOSURE_SAMPLE_COUNT: int = 48
+const LEDGE_RUNTIME_EXPOSURE_SAMPLE_COUNT: int = 240
 
 var failures: Array[String] = []
 
@@ -177,13 +179,29 @@ func _run_tests() -> void:
 	for _index: int in EXPOSURE_SAMPLE_COUNT:
 		light_summary = exposure.sample_now()
 	var exposure_total_us: int = Time.get_ticks_usec() - exposure_start_us
+	var sampling_before: Dictionary = exposure.get_sampling_debug_state()
+	var runtime_exposure_start_us: int = Time.get_ticks_usec()
+	var runtime_exposure_value: float = 0.0
+	for _index: int in EXPOSURE_RUNTIME_SAMPLE_COUNT:
+		runtime_exposure_value = exposure.sample_value_now()
+	var runtime_exposure_total_us: int = (
+		Time.get_ticks_usec() - runtime_exposure_start_us
+	)
+	var sampling_after: Dictionary = exposure.get_sampling_debug_state()
 	_assert_true(
 		total_light_count == base_light_count + EXTRA_LIGHT_COUNT
 		and int(light_summary.get("sample_count", 0)) > 0
 		and is_finite(float(light_summary.get("exposure", NAN)))
 		and is_finite(float(light_summary.get("raw_exposure", NAN)))
-		and exposure_total_us > 0,
-		"5.8 executes forty-eight production exposure samples with twenty-four additional real gameplay lights"
+		and exposure_total_us > 0
+		and is_finite(runtime_exposure_value)
+		and runtime_exposure_total_us > 0
+		and int(sampling_after.get("runtime_sample_count", 0))
+			- int(sampling_before.get("runtime_sample_count", 0))
+			== EXPOSURE_RUNTIME_SAMPLE_COUNT
+		and int(sampling_after.get("detailed_sample_count", 0))
+			== int(sampling_before.get("detailed_sample_count", 0)),
+		"5.8 separates the physics-rate exposure scalar hot path from allocation-heavy detailed diagnostics under twenty-four additional gameplay lights"
 	)
 
 	var navigation_map: RID = world.get_world_3d().navigation_map
@@ -249,6 +267,8 @@ func _run_tests() -> void:
 		"total_gameplay_light_count": total_light_count,
 		"exposure_samples": EXPOSURE_SAMPLE_COUNT,
 		"exposure_total_us": exposure_total_us,
+		"runtime_exposure_samples": EXPOSURE_RUNTIME_SAMPLE_COUNT,
+		"runtime_exposure_total_us": runtime_exposure_total_us,
 		"door_nav_cycles": DOOR_NAV_CYCLE_COUNT,
 		"successful_nav_paths": successful_paths,
 		"door_nav_total_us": door_nav_total_us,
@@ -366,6 +386,11 @@ func _measure_ledge_city_scaling() -> void:
 	for _index: int in LEDGE_EXPOSURE_SAMPLE_COUNT:
 		exposure_summary = exposure.sample_now()
 	var exposure_total_us: int = Time.get_ticks_usec() - exposure_start_us
+	var ledge_runtime_start_us: int = Time.get_ticks_usec()
+	var ledge_runtime_value: float = 0.0
+	for _index: int in LEDGE_RUNTIME_EXPOSURE_SAMPLE_COUNT:
+		ledge_runtime_value = exposure.sample_value_now()
+	var ledge_runtime_total_us: int = Time.get_ticks_usec() - ledge_runtime_start_us
 
 	var metrics: Dictionary = {
 		"space_count": int(acoustic_summary.get("space_count", 0)),
@@ -379,6 +404,8 @@ func _measure_ledge_city_scaling() -> void:
 		"gameplay_light_count": int(exposure_summary.get("source_count", 0)),
 		"exposure_samples": LEDGE_EXPOSURE_SAMPLE_COUNT,
 		"exposure_total_us": exposure_total_us,
+		"runtime_exposure_samples": LEDGE_RUNTIME_EXPOSURE_SAMPLE_COUNT,
+		"runtime_exposure_total_us": ledge_runtime_total_us,
 	}
 	print("[LEDGE_CITY_STRESS_METRICS] ", JSON.stringify(metrics))
 	_assert_true(
@@ -390,8 +417,10 @@ func _measure_ledge_city_scaling() -> void:
 		and int(metrics["gameplay_light_count"]) == 23
 		and evaluate_total_us > 0
 		and sound_total_us > 0
-		and exposure_total_us > 0,
-		"5.8 records the real Ledge City 46-space/54-portal acoustic and 23-light exposure workload"
+		and exposure_total_us > 0
+		and ledge_runtime_total_us > 0
+		and is_finite(ledge_runtime_value),
+		"5.8 records the real Ledge City 46-space/54-portal acoustic plus detailed and physics-hot-path 23-light exposure workloads"
 	)
 
 	await _cleanup(application)

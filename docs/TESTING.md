@@ -808,7 +808,7 @@ This remains a micro-proof rather than the final production nav-bake policy. Cac
 Phase 3.8 owns the first concrete gameplay-exposure proof:
 
 - **Exposure Lab** launches through the real Application → WorldSession → Player path and exposes one world-owned gameplay-exposure owner plus a development-only top-left light-gem/debug readout;
-- gameplay-light sources are actual shadow-casting `OmniLight3D` nodes. Their rendered transform/range is shared with the gameplay query, while an explicit provisional `gameplay_strength` remains separate from presentation energy so decorative brightness does not silently become stealth truth;
+- gameplay-light sources are actual shadow-casting `OmniLight3D` nodes. Their rendered transform/range is shared with the gameplay query, while an explicit provisional `gameplay_strength` remains separate from presentation energy so decorative brightness does not silently become stealth truth. Renderer shadows use `SHADOW_DUAL_PARABOLOID` instead of the default six-face cube mode, and camera-distance shadow/light fade is enabled as visual LOD; semantic exposure remains independent raycast truth and is not culled by camera distance;
 - the owner derives three vertical samples from the real player's `CapsuleShape3D` (lower body, torso, upper body), rather than using a fake point target;
 - each source ray-tests those samples against world collision for occlusion, uses a simple provisional distance falloff from the light's real `omni_range`, averages visible body-sample contribution for that light, adds contributions from multiple lights, then clamps the final exposure to 0–1;
 - the fixture has labeled **DARK**, **LIGHT EDGE**, **PARTIAL**, **FULL**, **TWO LIGHTS**, and **OCCLUDED** positions. The occluded position is behind real StaticBody3D geometry rather than a test-only boolean;
@@ -1582,7 +1582,7 @@ The fixed workload is intentionally modest enough for the ordinary all-tests bar
 
 - 12 real guards / awareness owners × 32 explicit production vision samples = 384 guard-vision checks;
 - 48 semantic sound dispatches through the real acoustic graph after the same world has at least 12 guard hearing receivers;
-- 24 additional real gameplay-light sources followed by 48 complete production exposure samples (three player-body sample rays per relevant light);
+- 24 additional real gameplay-light sources followed by 48 complete detailed production exposure samples plus 240 physics-hot-path scalar samples. The scalar path preserves the same three player-body occlusion/falloff semantics but does not allocate/deep-copy the nested per-light diagnostic tree; detailed summaries remain available explicitly and refresh the debug HUD at 4 Hz during live play;
 - 64 alternating ordinary-door semantic CLOSED/OPEN changes with 64 synchronous path queries across the Integrated Slice's baked patrol route and door-owned navigation link.
 
 The suite prints one `[PHASE5_STRESS_ENV]` JSON record and one `[PHASE5_STRESS_METRICS]` JSON record. The environment record includes the exact Godot version exposed by the runtime, OS, processor name/count, and GitHub runner OS/architecture when available. The metrics record includes workload counts, discovered listener/light counts, successful path count, and total microseconds for each category.

@@ -5,11 +5,15 @@ extends Node3D
 signal exposure_sampled(summary: Dictionary)
 
 @export var player_path: NodePath = NodePath("../Player")
+@export_range(0.05, 1.0, 0.05) var debug_summary_interval_seconds: float = 0.25
 
 var _player: CharacterBody3D = null
 var _lights: Array[VarkGameplayLight] = []
 var _current_exposure: float = 0.0
 var _last_summary: Dictionary = {}
+var _debug_summary_elapsed: float = 0.0
+var _runtime_sample_count: int = 0
+var _detailed_sample_count: int = 0
 
 
 func _ready() -> void:
@@ -19,7 +23,16 @@ func _ready() -> void:
 	sample_now()
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
+	sample_value_now()
+	_debug_summary_elapsed += maxf(delta, 0.0)
+	var interval: float = maxf(debug_summary_interval_seconds, 0.05)
+	if _debug_summary_elapsed + 0.000001 < interval:
+		return
+	_debug_summary_elapsed = fmod(_debug_summary_elapsed, interval)
+	# Detailed per-light/sample diagnostics are intentionally throttled. They
+	# are useful to the debug HUD, but rebuilding/deep-copying them at 60 Hz
+	# caused allocation spikes in maps with many gameplay lights.
 	sample_now()
 
 
@@ -51,7 +64,23 @@ func get_debug_inspection() -> Dictionary:
 	return get_exposure_summary()
 
 
+func get_sampling_debug_state() -> Dictionary:
+	return {
+		"runtime_sample_count": _runtime_sample_count,
+		"detailed_sample_count": _detailed_sample_count,
+		"debug_summary_interval_seconds": debug_summary_interval_seconds,
+		"source_count": _lights.size(),
+	}
+
+
+func sample_value_now() -> float:
+	_runtime_sample_count += 1
+	_sample_runtime_value()
+	return _current_exposure
+
+
 func sample_now() -> Dictionary:
+	_detailed_sample_count += 1
 	if _player == null or not is_instance_valid(_player) or not is_inside_tree():
 		_current_exposure = 0.0
 		_last_summary = {
@@ -128,6 +157,36 @@ func sample_now() -> Dictionary:
 	var summary: Dictionary = get_exposure_summary()
 	exposure_sampled.emit(summary.duplicate(true))
 	return summary
+
+
+func _sample_runtime_value() -> void:
+	if _player == null or not is_instance_valid(_player) or not is_inside_tree():
+		_current_exposure = 0.0
+		return
+
+	var samples: Array[Vector3] = _get_player_sample_points()
+	if samples.is_empty():
+		_current_exposure = 0.0
+		return
+	var total_exposure: float = 0.0
+	var space_state: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	for light: VarkGameplayLight in _lights:
+		if (
+			light == null
+			or not is_instance_valid(light)
+			or not light.gameplay_enabled
+			or not light.visible
+			or light.gameplay_strength <= 0.0
+		):
+			continue
+		var light_total: float = 0.0
+		for sample_position: Vector3 in samples:
+			light_total += light.sample_gameplay_contribution(
+				sample_position,
+				space_state
+			)
+		total_exposure += light_total / float(samples.size())
+	_current_exposure = clampf(total_exposure, 0.0, 1.0)
 
 
 func _get_player_sample_points() -> Array[Vector3]:

@@ -11,6 +11,7 @@ var _bar: ProgressBar = null
 var _readout: Label = null
 var _last_summary: Dictionary = {}
 var _debug_text: String = ""
+var _gem_value: float = 0.0
 
 
 func _ready() -> void:
@@ -22,6 +23,15 @@ func _ready() -> void:
 			Callable(self, "_on_exposure_sampled")
 		)
 	refresh_now()
+	set_process(_exposure != null)
+
+
+func _process(_delta: float) -> void:
+	if _exposure == null or not is_instance_valid(_exposure):
+		return
+	# The scalar exposure remains physics-rate even though the expensive
+	# per-light diagnostic tree is refreshed only a few times per second.
+	_apply_presentation(_exposure.get_current_exposure())
 
 
 func refresh_now() -> String:
@@ -42,7 +52,7 @@ func get_last_summary() -> Dictionary:
 
 
 func get_gem_value() -> float:
-	return float(_last_summary.get("exposure", 0.0))
+	return _gem_value
 
 
 func get_filled_segments() -> int:
@@ -60,6 +70,7 @@ func _render_summary(summary: Dictionary) -> String:
 		0.0,
 		1.0
 	)
+	_gem_value = exposure_value
 	var filled: int = get_filled_segments()
 	var bar_text: String = ""
 	for index: int in 10:
@@ -101,6 +112,7 @@ func _render_summary(summary: Dictionary) -> String:
 
 
 func _apply_presentation(exposure_value: float) -> void:
+	_gem_value = clampf(exposure_value, 0.0, 1.0)
 	if _bar != null and is_instance_valid(_bar):
 		_bar.value = exposure_value
 	if _readout != null and is_instance_valid(_readout):

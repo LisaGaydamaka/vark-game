@@ -7,6 +7,11 @@ const EXTINGUISH_SOUND_KIND: StringName = &"light.extinguish"
 const DIRECT_NONE: String = "none"
 const DIRECT_EXTINGUISH: String = "extinguish"
 const INTERACTION_PROXY_LAYER: int = 1 << 4
+const VISUAL_SHADOW_FADE_MIN_DISTANCE: float = 6.0
+const VISUAL_SHADOW_FADE_RANGE_PADDING: float = 2.0
+const VISUAL_LIGHT_FADE_MIN_BEGIN: float = 12.0
+const VISUAL_LIGHT_FADE_RANGE_SCALE: float = 2.0
+const VISUAL_LIGHT_FADE_LENGTH: float = 4.0
 
 
 @export var persistent_id: String = ""
@@ -35,6 +40,8 @@ var _interaction_proxy: Area3D = null
 var _interaction_collision: CollisionShape3D = null
 var _highlighted: bool = false
 var _configured_light_energy: float = 0.0
+var _exposure_ray_query := PhysicsRayQueryParameters3D.new()
+var _exposure_query_exclude: Array[RID] = []
 
 
 func _ready() -> void:
@@ -180,6 +187,26 @@ func get_gameplay_debug_state() -> Dictionary:
 			if _fixture_asset != null
 			else gameplay_enabled
 		),
+		"visual_shadow_mode": (
+			_emitter.omni_shadow_mode
+			if _emitter != null
+			else OmniLight3D.SHADOW_DUAL_PARABOLOID
+		),
+		"visual_distance_fade_enabled": (
+			_emitter.distance_fade_enabled
+			if _emitter != null
+			else false
+		),
+		"visual_shadow_fade_distance": (
+			_emitter.distance_fade_shadow
+			if _emitter != null
+			else 0.0
+		),
+		"visual_light_fade_begin": (
+			_emitter.distance_fade_begin
+			if _emitter != null
+			else 0.0
+		),
 		"active": (
 			gameplay_enabled
 			and visible
@@ -187,6 +214,29 @@ func get_gameplay_debug_state() -> Dictionary:
 			and gameplay_strength > 0.0
 		),
 	}
+
+
+func sample_gameplay_contribution(
+	sample_position: Vector3,
+	space_state: PhysicsDirectSpaceState3D
+) -> float:
+	var emitter_position: Vector3 = get_emitter_global_position()
+	var distance: float = emitter_position.distance_to(sample_position)
+	var range_meters: float = maxf(omni_range, 0.001)
+	if (
+		not gameplay_enabled
+		or not visible
+		or gameplay_strength <= 0.0
+		or distance >= range_meters
+	):
+		return 0.0
+	if _is_exposure_occluded(sample_position, space_state):
+		return 0.0
+	return gameplay_strength * clampf(
+		1.0 - distance / range_meters,
+		0.0,
+		1.0
+	)
 
 
 func sample_gameplay_exposure(
@@ -211,21 +261,10 @@ func sample_gameplay_exposure(
 		}, true)
 		return inactive_state
 
-	var query := PhysicsRayQueryParameters3D.create(
-		emitter_position,
-		sample_position
+	var occluded: bool = _is_exposure_occluded(
+		sample_position,
+		space_state
 	)
-	query.collision_mask = occlusion_mask
-	query.collide_with_bodies = true
-	query.collide_with_areas = false
-	if _fixture_asset != null:
-		# Exclude the coarse player collision around the luminous volume, but
-		# include the fixture's opaque-body exposure occluder so semantic
-		# exposure follows the metal/frame shadows seen by the renderer.
-		query.exclude = _fixture_asset.get_collision_rids()
-		query.collision_mask |= VarkLightFixtureAsset.EXPOSURE_OCCLUDER_PHYSICS_LAYER
-	var hit: Dictionary = space_state.intersect_ray(query)
-	var occluded: bool = not hit.is_empty()
 	var distance_weight: float = clampf(
 		1.0 - distance / range_meters,
 		0.0,
@@ -245,6 +284,23 @@ func sample_gameplay_exposure(
 	return state
 
 
+func _is_exposure_occluded(
+	sample_position: Vector3,
+	space_state: PhysicsDirectSpaceState3D
+) -> bool:
+	_exposure_ray_query.from = get_emitter_global_position()
+	_exposure_ray_query.to = sample_position
+	_exposure_ray_query.collision_mask = occlusion_mask
+	_exposure_ray_query.collide_with_bodies = true
+	_exposure_ray_query.collide_with_areas = false
+	_exposure_ray_query.exclude = _exposure_query_exclude
+	if _fixture_asset != null:
+		_exposure_ray_query.collision_mask |= (
+			VarkLightFixtureAsset.EXPOSURE_OCCLUDER_PHYSICS_LAYER
+		)
+	return not space_state.intersect_ray(_exposure_ray_query).is_empty()
+
+
 func _ensure_emitter() -> void:
 	_emitter = get_node_or_null("Emitter") as OmniLight3D
 	if _emitter != null:
@@ -262,6 +318,7 @@ func _configure_fixture() -> void:
 	for child: Node in _fixture_anchor.get_children():
 		child.queue_free()
 	_fixture_asset = null
+	_exposure_query_exclude.clear()
 
 	var resolved: PackedScene = fixture_asset_scene
 	var path: String = fixture_asset_path.strip_edges()
@@ -290,6 +347,7 @@ func _configure_fixture() -> void:
 	)
 	_fixture_asset.set_lit_enabled(gameplay_enabled)
 	_fixture_asset.set_highlighted(_highlighted)
+	_exposure_query_exclude = _fixture_asset.get_collision_rids()
 	if _emitter != null:
 		_emitter.transform = (
 			_fixture_anchor.transform
@@ -304,6 +362,21 @@ func _sync_emitter_configuration() -> void:
 	_emitter.light_color = light_color
 	_emitter.omni_range = maxf(omni_range, 0.001)
 	_emitter.shadow_enabled = shadow_enabled
+	# Twenty-plus cube-shadow omnis are the dominant visual scaling cost in
+	# authored stealth maps. Dual paraboloid cuts each omni shadow from six
+	# faces to two; camera-distance LOD stops distant shadow work while leaving
+	# semantic gameplay exposure fully raycast-driven and unchanged.
+	_emitter.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+	_emitter.distance_fade_enabled = true
+	_emitter.distance_fade_shadow = maxf(
+		omni_range + VISUAL_SHADOW_FADE_RANGE_PADDING,
+		VISUAL_SHADOW_FADE_MIN_DISTANCE
+	)
+	_emitter.distance_fade_begin = maxf(
+		omni_range * VISUAL_LIGHT_FADE_RANGE_SCALE,
+		VISUAL_LIGHT_FADE_MIN_BEGIN
+	)
+	_emitter.distance_fade_length = VISUAL_LIGHT_FADE_LENGTH
 	if _fixture_asset != null:
 		_fixture_asset.configure_source_lighting(
 			light_color,
