@@ -39,13 +39,16 @@ var navigation_ready: bool = false
 var navigation_rebuild_serial: int = 0
 var navigation_errors := PackedStringArray()
 var acoustic_propagation: VarkAcousticPropagation = null
+static var _shared_shadow_budget_refcount: int = 0
+static var _shared_shadow_budget_viewport: Viewport = null
+static var _shared_shadow_budget_previous_size: int = 0
+static var _shared_shadow_budget_previous_16_bits: bool = true
+static var _shared_shadow_budget_previous_subdivisions: Array[int] = []
+static var _shared_shadow_budget_atlas_applied: bool = false
+
 var _navigation_mesh: NavigationMesh = null
 var _guard: VarkGuard = null
-var _shadow_budget_viewport: Viewport = null
-var _shadow_budget_previous_size: int = 0
-var _shadow_budget_previous_16_bits: bool = true
-var _shadow_budget_previous_subdivisions: Array[int] = []
-var _shadow_budget_active: bool = false
+var _owns_shadow_budget_reference: bool = false
 
 
 func configure_mission_definition(definition: Resource) -> bool:
@@ -89,33 +92,65 @@ func _configure_ledge_city_shadow_budget() -> void:
 	if (
 		mission_definition == null
 		or StringName(mission_definition.get("mission_id")) != LEDGE_CITY_MISSION_ID
-		or _shadow_budget_active
+		or _owns_shadow_budget_reference
 	):
 		return
 
 	var viewport: Viewport = get_viewport()
 	if viewport == null:
 		return
-	_shadow_budget_viewport = viewport
-	_shadow_budget_previous_size = viewport.positional_shadow_atlas_size
-	_shadow_budget_previous_16_bits = viewport.positional_shadow_atlas_16_bits
-	_shadow_budget_previous_subdivisions.clear()
-	for quadrant: int in 4:
-		_shadow_budget_previous_subdivisions.append(
-			int(viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant))
-		)
 
-	# Godot's positional-shadow atlas can migrate and re-render omni-light
-	# shadow slots as projected light size changes. Ledge City has 23 shadowed
-	# omnis, so keep their atlas workload bounded and slot sizes uniform.
-	viewport.positional_shadow_atlas_size = LEDGE_CITY_SHADOW_ATLAS_SIZE
-	viewport.positional_shadow_atlas_16_bits = true
-	for quadrant: int in 4:
-		viewport.set_positional_shadow_atlas_quadrant_subdiv(
-			quadrant,
-			LEDGE_CITY_SHADOW_ATLAS_SUBDIV
+	# F9 replacement can construct the next world before the old world exits.
+	# Treat the renderer budget as shared mission-scoped state so the retiring
+	# world cannot restore defaults underneath the replacement world.
+	if _shared_shadow_budget_refcount == 0:
+		_shared_shadow_budget_viewport = viewport
+		_shared_shadow_budget_atlas_applied = _should_apply_shadow_atlas_budget()
+		if _shared_shadow_budget_atlas_applied:
+			_shared_shadow_budget_previous_size = (
+				viewport.positional_shadow_atlas_size
+			)
+			_shared_shadow_budget_previous_16_bits = (
+				viewport.positional_shadow_atlas_16_bits
+			)
+			_shared_shadow_budget_previous_subdivisions.clear()
+			for quadrant: int in 4:
+				_shared_shadow_budget_previous_subdivisions.append(
+					int(
+						viewport.get_positional_shadow_atlas_quadrant_subdiv(
+							quadrant
+						)
+					)
+				)
+	elif _shared_shadow_budget_viewport != viewport:
+		push_error(
+			"Ledge City shadow budget cannot span multiple active Viewports."
 		)
+		return
 
+	# Headless CI has no Forward+ frame pacing to optimize, and allocating/
+	# repartitioning its positional shadow atlas can stall renderer teardown.
+	# Keep the renderer-facing caster partition fully testable there, but only
+	# mutate the real atlas in a rendered runtime.
+	if _shared_shadow_budget_atlas_applied:
+		viewport.positional_shadow_atlas_size = LEDGE_CITY_SHADOW_ATLAS_SIZE
+		viewport.positional_shadow_atlas_16_bits = true
+		for quadrant: int in 4:
+			viewport.set_positional_shadow_atlas_quadrant_subdiv(
+				quadrant,
+				LEDGE_CITY_SHADOW_ATLAS_SUBDIV
+			)
+
+	_shared_shadow_budget_refcount += 1
+	_owns_shadow_budget_reference = true
+	_configure_ledge_city_shadow_casters()
+
+
+func _should_apply_shadow_atlas_budget() -> bool:
+	return DisplayServer.get_name().to_lower() != "headless"
+
+
+func _configure_ledge_city_shadow_casters() -> void:
 	var worldspawn := func_map.get_node_or_null("entity_0_worldspawn") as StaticBody3D
 	if worldspawn != null:
 		_set_shadow_render_layer_recursive(worldspawn, true)
@@ -158,34 +193,50 @@ func _configure_ledge_city_shadow_budget() -> void:
 					false
 				)
 
-	_shadow_budget_active = true
-
 
 func _restore_ledge_city_shadow_budget() -> void:
-	if not _shadow_budget_active or _shadow_budget_viewport == null:
+	if not _owns_shadow_budget_reference:
 		return
-	if not is_instance_valid(_shadow_budget_viewport):
-		_shadow_budget_active = false
-		_shadow_budget_viewport = null
+	_owns_shadow_budget_reference = false
+	_shared_shadow_budget_refcount = maxi(_shared_shadow_budget_refcount - 1, 0)
+	if _shared_shadow_budget_refcount > 0:
 		return
 
-	_shadow_budget_viewport.positional_shadow_atlas_size = (
-		_shadow_budget_previous_size
-	)
-	_shadow_budget_viewport.positional_shadow_atlas_16_bits = (
-		_shadow_budget_previous_16_bits
-	)
-	for quadrant: int in mini(
-		4,
-		_shadow_budget_previous_subdivisions.size()
+	var viewport: Viewport = _shared_shadow_budget_viewport
+	if (
+		_shared_shadow_budget_atlas_applied
+		and viewport != null
+		and is_instance_valid(viewport)
 	):
-		_shadow_budget_viewport.set_positional_shadow_atlas_quadrant_subdiv(
-			quadrant,
-			_shadow_budget_previous_subdivisions[quadrant]
+		viewport.positional_shadow_atlas_size = _shared_shadow_budget_previous_size
+		viewport.positional_shadow_atlas_16_bits = (
+			_shared_shadow_budget_previous_16_bits
 		)
-	_shadow_budget_active = false
-	_shadow_budget_viewport = null
-	_shadow_budget_previous_subdivisions.clear()
+		for quadrant: int in mini(
+			4,
+			_shared_shadow_budget_previous_subdivisions.size()
+		):
+			viewport.set_positional_shadow_atlas_quadrant_subdiv(
+				quadrant,
+				_shared_shadow_budget_previous_subdivisions[quadrant]
+			)
+
+	_shared_shadow_budget_viewport = null
+	_shared_shadow_budget_previous_subdivisions.clear()
+	_shared_shadow_budget_atlas_applied = false
+
+
+func get_shadow_budget_debug_state() -> Dictionary:
+	return {
+		"active": _owns_shadow_budget_reference,
+		"shared_refcount": _shared_shadow_budget_refcount,
+		"atlas_requested": true,
+		"atlas_applied": _shared_shadow_budget_atlas_applied,
+		"desired_atlas_size": LEDGE_CITY_SHADOW_ATLAS_SIZE,
+		"desired_atlas_subdiv": int(LEDGE_CITY_SHADOW_ATLAS_SUBDIV),
+		"static_shadow_render_layer": LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER,
+		"static_shadow_render_mask": LEDGE_CITY_STATIC_SHADOW_RENDER_MASK,
+	}
 
 
 func _set_shadow_render_layer_recursive(root: Node, enabled: bool) -> void:

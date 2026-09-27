@@ -217,16 +217,33 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 compact city keeps representative gameplay roles and adds enterable multi-floor architecture"
 	)
 
-	var atlas_layout_valid: bool = (
-		root_viewport.positional_shadow_atlas_size == LEDGE_SHADOW_ATLAS_SIZE
-		and root_viewport.positional_shadow_atlas_16_bits
+	var shadow_budget_state: Dictionary = (
+		world.call("get_shadow_budget_debug_state")
+		if world.has_method("get_shadow_budget_debug_state")
+		else {}
 	)
-	for quadrant: int in 4:
+	var atlas_layout_valid: bool = (
+		bool(shadow_budget_state.get("active", false))
+		and bool(shadow_budget_state.get("atlas_requested", false))
+		and int(shadow_budget_state.get("desired_atlas_size", 0))
+			== LEDGE_SHADOW_ATLAS_SIZE
+		and int(shadow_budget_state.get("desired_atlas_subdiv", -1))
+			== int(LEDGE_SHADOW_ATLAS_SUBDIV)
+	)
+	if bool(shadow_budget_state.get("atlas_applied", false)):
 		atlas_layout_valid = (
 			atlas_layout_valid
-			and root_viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant)
-				== LEDGE_SHADOW_ATLAS_SUBDIV
-	)
+			and root_viewport.positional_shadow_atlas_size
+				== LEDGE_SHADOW_ATLAS_SIZE
+			and root_viewport.positional_shadow_atlas_16_bits
+		)
+		for quadrant: int in 4:
+			atlas_layout_valid = (
+				atlas_layout_valid
+				and root_viewport.get_positional_shadow_atlas_quadrant_subdiv(
+					quadrant
+				) == LEDGE_SHADOW_ATLAS_SUBDIV
+			)
 
 	var world_shadow_meshes: Array[MeshInstance3D] = []
 	if worldspawn != null:
@@ -300,7 +317,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and opening_shadow_layers_valid
 		and dynamic_shadow_layers_excluded
 		and light_shadow_masks_valid,
-		"8.4 Ledge City bounds positional-shadow atlas churn: fixed 2048/16-slot quadrants, static architecture/openings cast, continuously moving guard/props do not invalidate 23 omni shadow caches"
+		"8.4 Ledge City bounds positional-shadow churn: rendered runtimes request a fixed 2048/16-slot atlas, static architecture/openings cast, and continuously moving guard/props do not invalidate 23 omni shadow caches"
 	)
 
 	var surface_variants: Dictionary = {}
@@ -1494,6 +1511,17 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 	const TEST_SAVE_DIRECTORY := "user://vark_tests/phase8_ledge_city_quickload"
 	_cleanup_quickload_storage(TEST_SAVE_DIRECTORY)
 
+	var root_viewport := tree.get_root() as Viewport
+	var previous_shadow_atlas_size: int = root_viewport.positional_shadow_atlas_size
+	var previous_shadow_atlas_16_bits: bool = (
+		root_viewport.positional_shadow_atlas_16_bits
+	)
+	var previous_shadow_subdivisions: Array[int] = []
+	for quadrant: int in 4:
+		previous_shadow_subdivisions.append(
+			int(root_viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant))
+		)
+
 	var application: Node = ApplicationScene.instantiate()
 	tree.get_root().add_child(application)
 	await tree.process_frame
@@ -1509,12 +1537,24 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		await _wait_for_navigation(world, tree)
 		if launched and world != null else false
 	)
+	var initial_shadow_budget: Dictionary = (
+		world.call("get_shadow_budget_debug_state")
+		if world != null and world.has_method("get_shadow_budget_debug_state")
+		else {}
+	)
 	assert_true.call(
 		launched
 		and nav_ready
 		and int(application.call("get_current_session_state"))
-			== WorldSession.State.PLAYING,
-		"8.4 Ledge City application quickload regression starts from a real PLAYING development-launch session"
+			== WorldSession.State.PLAYING
+		and bool(initial_shadow_budget.get("active", false))
+		and bool(initial_shadow_budget.get("atlas_requested", false))
+		and (
+			not bool(initial_shadow_budget.get("atlas_applied", false))
+			or _is_ledge_shadow_budget_active(root_viewport)
+		)
+		and int(initial_shadow_budget.get("shared_refcount", 0)) >= 1,
+		"8.4 Ledge City application quickload regression starts PLAYING with the mission-scoped shadow budget owned"
 	)
 	if not launched or not nav_ready:
 		application.queue_free()
@@ -1592,6 +1632,14 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		if restored_player != null and is_instance_valid(restored_player)
 		else restored_position_before
 	)
+	var restored_shadow_budget: Dictionary = (
+		restored_world.call("get_shadow_budget_debug_state")
+		if (
+			restored_world != null
+			and restored_world.has_method("get_shadow_budget_debug_state")
+		)
+		else {}
+	)
 	var live_after_load: bool = (
 		replaced
 		and restored_session != null
@@ -1608,6 +1656,13 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		and restored_player.get("gameplay_input_boundary") == boundary
 		and restored_time_after > restored_time_before
 		and restored_position_after.distance_to(restored_position_before) > 0.10
+		and bool(restored_shadow_budget.get("active", false))
+		and bool(restored_shadow_budget.get("atlas_requested", false))
+		and (
+			not bool(restored_shadow_budget.get("atlas_applied", false))
+			or _is_ledge_shadow_budget_active(root_viewport)
+		)
+		and int(restored_shadow_budget.get("shared_refcount", 0)) >= 1
 	)
 	if not live_after_load:
 		print(
@@ -1641,6 +1696,10 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 				"movement_distance": restored_position_after.distance_to(
 					restored_position_before
 				),
+				"shadow_budget": restored_shadow_budget,
+				"viewport_shadow_budget_active": _is_ledge_shadow_budget_active(
+					root_viewport
+				),
 			}
 		)
 	assert_true.call(
@@ -1650,6 +1709,21 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 
 	application.queue_free()
 	await tree.process_frame
+	var shadow_budget_restored: bool = (
+		root_viewport.positional_shadow_atlas_size == previous_shadow_atlas_size
+		and root_viewport.positional_shadow_atlas_16_bits
+			== previous_shadow_atlas_16_bits
+	)
+	for quadrant: int in 4:
+		shadow_budget_restored = (
+			shadow_budget_restored
+			and int(root_viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant))
+				== previous_shadow_subdivisions[quadrant]
+		)
+	assert_true.call(
+		shadow_budget_restored,
+		"8.4 F9 replacement retains the shared Ledge shadow budget until the final world exits, then restores the host viewport"
+	)
 	Input.action_release("move_left")
 	Input.action_release("move_right")
 	_cleanup_quickload_storage(TEST_SAVE_DIRECTORY)
@@ -1685,6 +1759,23 @@ func _wait_physics_frames(tree: SceneTree, count: int) -> void:
 	for _index: int in count:
 		await tree.physics_frame
 		await tree.process_frame
+
+
+func _is_ledge_shadow_budget_active(viewport: Viewport) -> bool:
+	if viewport == null:
+		return false
+	if (
+		viewport.positional_shadow_atlas_size != LEDGE_SHADOW_ATLAS_SIZE
+		or not viewport.positional_shadow_atlas_16_bits
+	):
+		return false
+	for quadrant: int in 4:
+		if (
+			viewport.get_positional_shadow_atlas_quadrant_subdiv(quadrant)
+			!= LEDGE_SHADOW_ATLAS_SUBDIV
+		):
+			return false
+	return true
 
 
 func _cleanup_quickload_storage(directory: String) -> void:
