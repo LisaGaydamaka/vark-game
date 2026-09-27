@@ -410,10 +410,16 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		guard.get_node_or_null("Awareness")
 		if guard != null else null
 	)
+	# begin_play() enables the live perception owners. For this isolated
+	# geometry/navigation proof, disable perception only after that lifecycle
+	# boundary, then clear any observation/navigation state it could have
+	# acquired from seeing the player at the start point.
+	var began_playing: bool = bool(session.call("begin_play"))
 	if awareness != null:
 		awareness.call("reset_reaction")
 		awareness.set_physics_process(false)
 	if guard != null:
+		guard.call("set_awareness_observation_paused", false)
 		guard.call("clear_awareness_navigation_target")
 	var patrol_lookup: Dictionary = {}
 	for patrol: Node in patrol_points:
@@ -425,7 +431,6 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		guard.configure_patrol(patrol_lookup, locked_door)
 		if guard != null and locked_door != null else false
 	)
-	var began_playing: bool = bool(session.call("begin_play"))
 	var live_patrol_leg: bool = (
 		await _wait_for_guard_patrol_leg(guard, tree, 600)
 		if began_playing and patrol_reconfigured else false
