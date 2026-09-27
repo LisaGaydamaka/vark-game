@@ -30,6 +30,9 @@ const MissionRulesRegressions = preload(
 const Phase8RuleProofRegressions = preload(
 	"res://tests/application/phase8_rule_proof_regressions.gd"
 )
+const EditorShortcutRegressions = preload(
+	"res://tests/application/editor_shortcut_regressions.gd"
+)
 const Phase8RepresentativeStealthRegressions = preload(
 	"res://tests/application/phase8_representative_stealth_regressions.gd"
 )
@@ -129,6 +132,12 @@ func _run_tests() -> void:
 	_assert_true(
 		invalid_load_errors.size() == 5,
 		"MissionDefinition reports every currently required load field when invalid"
+	)
+
+	var editor_shortcut_regressions: RefCounted = EditorShortcutRegressions.new()
+	await editor_shortcut_regressions.run(
+		self,
+		Callable(self, "_assert_true")
 	)
 
 	var interaction_regressions: RefCounted = InteractionRegressions.new()
