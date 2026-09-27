@@ -44,8 +44,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and Definition.get("mission_id")
 			== &"phase8_representative_stealth_ledge_city"
 		and str(Definition.get("map_source_path")) == MAP_PATH
-		and int(Definition.get("mission_content_revision")) == 5,
-		"8.4 Ledge City revision 5 owns a distinct save identity after the spatial rebuild"
+		and int(Definition.get("mission_content_revision")) == 6,
+		"8.4 Ledge City revision 6 owns a distinct save identity after the collision/placement correction pass"
 	)
 
 	var source: String = FileAccess.get_file_as_string(MAP_PATH)
@@ -71,6 +71,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		bool(face_audit.get("valid", false))
 		and int(face_audit.get("face_count", 0)) >= 1800
 		and source_clearances_valid
+		and not _has_positive_pair_overlap(brush_bounds)
 		and source.count("// building_floor:") == 6
 		and source.count("// interior_stair:") == 77
 		and source.count("// sloped_roof:") == 12
@@ -81,7 +82,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not source.contains("// platform:")
 		and not source.contains("// west_route:")
 		and not source.contains("// east_route:"),
-		"8.4 source uses only solid stone/tile/carpet faces, real interiors/architecture, and audited street/opening clearances"
+		"8.4 source uses only solid stone/tile/carpet faces, has zero positive-volume world-brush overlaps, and preserves audited street/opening clearances"
 	)
 
 	var session: Node = WorldSession.new()
@@ -180,13 +181,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	var expected_openings: Dictionary = {
-		"door.mercer.front": Vector3(-112, 300, 0),
-		"door.watchmaker.front": Vector3(112, 300, 0),
-		"door.office.front": Vector3(-112, 50, 0),
-		"door.tenement.front": Vector3(112, 50, 0),
-		"door.foundry.front": Vector3(112, -270, 0),
-		"door.east_locked": Vector3(-112, -270, 0),
-		"opening.window_west": Vector3(-112, -270, 184),
+		"door.mercer.front": Vector3(-112, 320.8, 0),
+		"door.watchmaker.front": Vector3(112, 320.8, 0),
+		"door.office.front": Vector3(-112, 70.8, 0),
+		"door.tenement.front": Vector3(112, 70.8, 0),
+		"door.foundry.front": Vector3(112, -249.2, 0),
+		"door.east_locked": Vector3(-112, -249.2, 0),
+		"opening.window_west": Vector3(-112, -249.2, 184),
 	}
 	var opening_positions_valid: bool = true
 	for door_id: String in expected_openings:
@@ -263,11 +264,11 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		) <= 0.02
 		and key_pickup != null
 		and key_pickup.global_position.distance_to(
-			_map_origin_to_world(Vector3(268, 310, 106))
+			_map_origin_to_world(Vector3(260, 304.88, 100.48))
 		) <= 0.02
 		and silver_pickup != null
 		and silver_pickup.global_position.distance_to(
-			_map_origin_to_world(Vector3(292, 310, 106))
+			_map_origin_to_world(Vector3(260, 315.12, 99.84))
 		) <= 0.02
 		and gold_pickup != null
 		and gold_pickup.global_position.distance_to(
@@ -278,6 +279,39 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			_map_origin_to_world(Vector3(-250, -225, 184.2))
 		) <= 0.02,
 		"8.4 chest and free pickups are seated on or inside their intended rebuilt floor/container geometry"
+	)
+
+	var physical_positions_valid: bool = true
+	var expected_prop_origins: Dictionary = {
+		"prop.rep.route_crate": Vector3(-42, 348, 9.6),
+		"prop.rep.climb_crate": Vector3(42, 285, 9.6),
+		"prop.rep.distraction": Vector3(52, 20, 9.6),
+		"prop.rep.hide_cover": Vector3(-275, 60, 9.6),
+		"prop.rep.archive_cover": Vector3(-255, -245, 9.6),
+	}
+	for prop_id: String in expected_prop_origins:
+		var prop := _find_by_property(props, "prop_id", prop_id) as Node3D
+		if (
+			prop == null
+			or prop.global_position.distance_to(
+				_map_origin_to_world(expected_prop_origins[prop_id] as Vector3)
+			) > 0.02
+		):
+			physical_positions_valid = false
+			break
+	var switch_node := switches[0] as Node3D if switches.size() == 1 else null
+	var guard_node := guards[0] as Node3D if guards.size() == 1 else null
+	assert_true.call(
+		physical_positions_valid
+		and switch_node != null
+		and switch_node.global_position.distance_to(
+			_map_origin_to_world(Vector3(-122.2, 28, 42))
+		) <= 0.02
+		and guard_node != null
+		and guard_node.global_position.distance_to(
+			_map_origin_to_world(Vector3(0, 80, 0))
+		) <= 0.02,
+		"8.4 crates sit exactly on floors, the wall switch clears its facade, and the guard starts farther from the player"
 	)
 
 	var required_light_ids := PackedStringArray([
@@ -305,6 +339,18 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"light.rep.foundry.upper",
 		"light.rep.archive.mid",
 	])
+	var expected_street_origins: Dictionary = {
+		"light.rep.south": Vector3(-86, 405, 0),
+		"light.rep.market": Vector3(86, 255, 0),
+		"light.rep.cross": Vector3(-86, 125, 0),
+		"light.rep.mid": Vector3(86, -65, 0),
+		"light.rep.archive": Vector3(-86, -205, 0),
+		"light.rep.north": Vector3(86, -405, 0),
+		"light.rep.rear_w_south": Vector3(-372, 320, 0),
+		"light.rep.rear_w_north": Vector3(-372, -275, 0),
+		"light.rep.rear_e_south": Vector3(372, 275, 0),
+		"light.rep.rear_e_north": Vector3(372, -330, 0),
+	}
 	var expected_hanging_origins: Dictionary = {
 		"light.rep.mercer_inside": Vector3(-210, 285, 88),
 		"light.rep.watch_inside": Vector3(210, 285, 88),
@@ -350,6 +396,19 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 				break
 		elif fixture_path == STREET_LAMP_PATH:
 			street_count += 1
+			var expected_street_origin: Vector3 = expected_street_origins.get(
+				required_id,
+				Vector3(INF, INF, INF)
+			)
+			var street_light_node := light as Node3D
+			if (
+				street_light_node == null
+				or street_light_node.global_position.distance_to(
+					_map_origin_to_world(expected_street_origin)
+				) > 0.02
+			):
+				light_ids_valid = false
+				break
 		else:
 			light_ids_valid = false
 			break
@@ -381,13 +440,12 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and str(lantern_summary.get("asset_id", "")) == "hanging_lantern"
 		and absf(emitter_local.x) <= 0.001
 		and absf(emitter_local.z) <= 0.001
-		and emitter_local.y < -0.30
-		and emitter_local.y > -0.60
-		and int(lantern_summary.get("collision_shape_count", 0)) >= 4
+		and is_equal_approx(emitter_local.y, -0.38)
+		and int(lantern_summary.get("collision_shape_count", 0)) == 8
 		and int(lantern_summary.get("exposure_occluder_shape_count", 0)) == 1
 		and interior_light.get_emitter() is OmniLight3D
 		and is_equal_approx(float(interior_light.get("omni_range")), 3.4),
-		"8.4 rooms use short ceiling-hung omni lanterns while streets keep freestanding omni lamps"
+		"8.4 rooms use short ceiling-hung omni lanterns with an open lower frame while streets keep freestanding omni lamps"
 	)
 
 	var guard := guards[0] as VarkGuard if guards.size() == 1 else null
@@ -417,6 +475,39 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and authored_patrol_path
 		and (world.get("navigation_errors") as PackedStringArray).is_empty(),
 		"8.4 rebuilt boulevard stays navigation-ready between both patrol endpoints"
+	)
+
+	var physical_roots: Array[Node] = []
+	physical_roots.append_array(openings)
+	physical_roots.append_array(pickups)
+	physical_roots.append_array(containers)
+	physical_roots.append_array(guards)
+	physical_roots.append_array(props)
+	physical_roots.append_array(lights)
+	physical_roots.append_array(switches)
+	var overlap_audit: Dictionary = _audit_runtime_physical_overlaps(
+		world,
+		physical_roots
+	)
+	assert_true.call(
+		bool(overlap_audit.get("ok", false)),
+		"8.4 all shrunken real physical point-entity colliders are clear of world brushes and each other; audit=%s"
+		% str(overlap_audit)
+	)
+
+	var downward_sample: Dictionary = {}
+	if interior_light != null:
+		var emitter_position: Vector3 = interior_light.get_emitter_global_position()
+		downward_sample = interior_light.sample_gameplay_exposure(
+			emitter_position + Vector3.DOWN * 0.75,
+			world.get_world_3d().direct_space_state
+		)
+	assert_true.call(
+		not downward_sample.is_empty()
+		and not bool(downward_sample.get("occluded", true))
+		and float(downward_sample.get("contribution", 0.0)) > 0.0,
+		"8.4 hanging lantern has a physically clear downward light path through its open bottom frame; sample=%s"
+		% str(downward_sample)
 	)
 
 	var began_playing: bool = bool(session.call("begin_play"))
@@ -590,6 +681,129 @@ func _any_positive_overlap(bounds: Array[AABB], query: AABB) -> bool:
 		):
 			return true
 	return false
+
+
+
+func _has_positive_pair_overlap(bounds: Array[AABB]) -> bool:
+	for first_index: int in bounds.size():
+		for second_index: int in range(first_index + 1, bounds.size()):
+			if _aabb_positive_overlap(bounds[first_index], bounds[second_index]):
+				return true
+	return false
+
+
+func _aabb_positive_overlap(first: AABB, second: AABB) -> bool:
+	var first_end: Vector3 = first.position + first.size
+	var second_end: Vector3 = second.position + second.size
+	return (
+		minf(first_end.x, second_end.x)
+			- maxf(first.position.x, second.position.x) > 0.001
+		and minf(first_end.y, second_end.y)
+			- maxf(first.position.y, second.position.y) > 0.001
+		and minf(first_end.z, second_end.z)
+			- maxf(first.position.z, second.position.z) > 0.001
+	)
+
+
+func _audit_runtime_physical_overlaps(
+	world: Node,
+	roots: Array[Node]
+) -> Dictionary:
+	if world == null:
+		return {"ok": false, "error": "missing world"}
+	var space_state: PhysicsDirectSpaceState3D = (
+		world.get_world_3d().direct_space_state
+	)
+	for root: Node in roots:
+		if root == null or not is_instance_valid(root):
+			continue
+		var bodies: Array[PhysicsBody3D] = []
+		if root is PhysicsBody3D:
+			bodies.append(root as PhysicsBody3D)
+		for candidate: Node in root.find_children("*", "", true, false):
+			if candidate is PhysicsBody3D:
+				var body := candidate as PhysicsBody3D
+				if (
+					body.collision_layer != 0
+					and body.collision_layer
+						!= VarkLightFixtureAsset.EXPOSURE_OCCLUDER_PHYSICS_LAYER
+				):
+					bodies.append(body)
+		var excluded: Array[RID] = []
+		for body: PhysicsBody3D in bodies:
+			if body.get_rid().is_valid():
+				excluded.append(body.get_rid())
+		for body: PhysicsBody3D in bodies:
+			for candidate: Node in body.find_children("*", "CollisionShape3D", true, false):
+				var collision := candidate as CollisionShape3D
+				if (
+					collision == null
+					or collision.disabled
+					or collision.shape == null
+					or _nearest_physics_body(collision) != body
+				):
+					continue
+				var audit_shape: Shape3D = _shrink_audit_shape(collision.shape)
+				if audit_shape == null:
+					continue
+				var query := PhysicsShapeQueryParameters3D.new()
+				query.shape = audit_shape
+				query.transform = collision.global_transform
+				query.collision_mask = 0x7fffffff
+				query.collide_with_bodies = true
+				query.collide_with_areas = false
+				query.exclude = excluded
+				var hits: Array[Dictionary] = space_state.intersect_shape(query, 16)
+				if not hits.is_empty():
+					var collider: Object = hits[0].get("collider", null)
+					return {
+						"ok": false,
+						"root": str(root.get_path()),
+						"body": str(body.get_path()),
+						"shape": str(collision.get_path()),
+						"collider": str(collider),
+					}
+	return {"ok": true}
+
+
+func _nearest_physics_body(node: Node) -> PhysicsBody3D:
+	var cursor: Node = node.get_parent()
+	while cursor != null:
+		if cursor is PhysicsBody3D:
+			return cursor as PhysicsBody3D
+		cursor = cursor.get_parent()
+	return null
+
+
+func _shrink_audit_shape(source_shape: Shape3D) -> Shape3D:
+	const SHRINK := 0.01
+	if source_shape is BoxShape3D:
+		var source_box := source_shape as BoxShape3D
+		var box := source_box.duplicate() as BoxShape3D
+		box.size = Vector3(
+			maxf(source_box.size.x - SHRINK * 2.0, 0.001),
+			maxf(source_box.size.y - SHRINK * 2.0, 0.001),
+			maxf(source_box.size.z - SHRINK * 2.0, 0.001)
+		)
+		return box
+	if source_shape is SphereShape3D:
+		var source_sphere := source_shape as SphereShape3D
+		var sphere := source_sphere.duplicate() as SphereShape3D
+		sphere.radius = maxf(source_sphere.radius - SHRINK, 0.001)
+		return sphere
+	if source_shape is CapsuleShape3D:
+		var source_capsule := source_shape as CapsuleShape3D
+		var capsule := source_capsule.duplicate() as CapsuleShape3D
+		capsule.radius = maxf(source_capsule.radius - SHRINK, 0.001)
+		capsule.height = maxf(source_capsule.height - SHRINK * 2.0, capsule.radius * 2.0)
+		return capsule
+	if source_shape is CylinderShape3D:
+		var source_cylinder := source_shape as CylinderShape3D
+		var cylinder := source_cylinder.duplicate() as CylinderShape3D
+		cylinder.radius = maxf(source_cylinder.radius - SHRINK, 0.001)
+		cylinder.height = maxf(source_cylinder.height - SHRINK * 2.0, 0.001)
+		return cylinder
+	return null
 
 
 func _test_application_quickload_returns_ledge_city_to_live_play(
