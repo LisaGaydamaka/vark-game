@@ -145,7 +145,11 @@ func _prove_stance_transition_restore(
 
 	var crouch: PlayerCrouch = player.get("crouch")
 	crouch.request_stance(PlayerCrouch.Stance.CROUCHED)
-	crouch.update(player, 0.01)
+	var down_mid_height: float = (
+		crouch.get_height_for_stance(PlayerCrouch.Stance.STANDING)
+		+ crouch.get_height_for_stance(PlayerCrouch.Stance.CROUCHED)
+	) * 0.5
+	crouch.call("_apply_height", down_mid_height)
 	var down_snapshot: Dictionary = _capture_snapshot(application, 4304)
 	var down_saved: Dictionary = down_snapshot.get(
 		"session",
@@ -168,7 +172,11 @@ func _prove_stance_transition_restore(
 	)
 
 	restored_crouch.request_stance(PlayerCrouch.Stance.STANDING)
-	restored_crouch.update(restored_player, 0.01)
+	var up_mid_height: float = (
+		restored_crouch.get_height_for_stance(PlayerCrouch.Stance.STANDING)
+		+ restored_crouch.get_height_for_stance(PlayerCrouch.Stance.CROUCHED)
+	) * 0.5
+	restored_crouch.call("_apply_height", up_mid_height)
 	var up_snapshot: Dictionary = _capture_snapshot(application, 4305)
 	var up_saved: Dictionary = up_snapshot.get(
 		"session",

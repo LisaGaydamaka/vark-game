@@ -138,7 +138,6 @@ func restore_hang_from_semantic_anchor(anchor: Dictionary) -> bool:
 		_build_restore_reference_candidate(anchor)
 	)
 	if reference == null:
-		push_error("Player ledge restore could not build its detached reference geometry.")
 		return false
 
 	ledge_catch.cancel()
@@ -151,37 +150,19 @@ func restore_hang_from_semantic_anchor(anchor: Dictionary) -> bool:
 	state = State.NONE
 	restore_reentry_block_frames = 0
 
-	# This is tracking/rebinding, not fresh gameplay discovery. Reconstruct a
-	# value-only reference from the snapshot, then use the detector's existing
-	# local attachment path to acquire current-world collider RIDs around the
-	# exact saved hang pose.
-	var candidate: PlayerLedgeDetector.LedgeCandidate = (
-		ledge_detector.find_hang_candidate_at_position(
-			body,
-			support,
-			reference,
-			reference.wall_normal,
-			reference.hang_position
-		)
-	)
-	if candidate == null:
-		push_error(
-			"Player ledge restore could not rebind saved hang geometry at %s."
-			% str(reference.hang_position)
-		)
-		return false
-	if not _candidate_matches_restore_anchor(candidate, anchor):
-		push_error(
-			"Player ledge restore rebound a candidate outside the saved local ledge region."
-		)
-		return false
-
-	body.global_position = candidate.hang_position
+	# WorldSession restore is deliberately synchronous and happens before the
+	# replacement world receives its first live physics frame. Physics queries
+	# against freshly-added bodies are therefore not a valid restore primitive.
+	# Reconstruct only detached stable hang geometry here. PlayerLedgeHang's
+	# existing 30 Hz attachment revalidation will bind current-world collider
+	# identity as soon as live physics resumes, and will release through the
+	# ordinary lost-ledge path if the geometry is no longer valid.
+	body.global_position = reference.hang_position
 	body.velocity = Vector3.ZERO
 	if support != null:
 		support.release_walkable_support(body)
-	ledge_hang.start(candidate)
-	look.enter_ledge_view(candidate.wall_normal)
+	ledge_hang.start(reference)
+	look.enter_ledge_view(reference.wall_normal)
 	state = State.HANGING
 	return true
 
