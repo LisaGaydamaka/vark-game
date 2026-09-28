@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_solid"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/vertex_merge_distance_base.tres" id="2_vertex"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/cull_interior_faces.tres" id="3_cull"]
+
+[resource]
+script = ExtResource("1_solid")
+spawn_type = 0
+origin_type = 1
+collision_mask = 0
+classname = "worldspawn"
+description = "Vark static world geometry with collision-to-material metadata for authoritative footstep surface resolution."
+base_classes = Array[Resource]([ExtResource("2_vertex"), ExtResource("3_cull")])
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.8, 0.8, 0.8, 1)
+})
+node_class = "StaticBody3D"
+add_textures_metadata = true
+add_face_position_metadata = true
+add_face_normal_metadata = true
+add_collision_shape_to_face_indices_metadata = true
