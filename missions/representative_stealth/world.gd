@@ -8,6 +8,7 @@ const PLAYER_START_GROUP: StringName = &"vark_player_start"
 const EXIT_GROUP: StringName = &"vark_mission_exit"
 const PATROL_POINT_GROUP: StringName = &"vark_patrol_point"
 const GUARD_GROUP: StringName = &"vark_guard"
+const DOOR_FRAME_GROUP: StringName = &"vark_door_frame"
 const GuardAwarenessScript = preload("res://gameplay/npc/guard_awareness.gd")
 const GuardCommunicationScript = preload("res://gameplay/npc/guard_communication.gd")
 const AcousticPropagationScript = preload(
@@ -156,6 +157,8 @@ func _configure_ledge_city_shadow_casters() -> void:
 		_set_shadow_render_layer_recursive(worldspawn, true)
 
 	for node: Node in func_map.find_children("*", "", true, false):
+		if node.is_in_group(DOOR_FRAME_GROUP):
+			_set_shadow_render_layer_recursive(node, true)
 		if node is VarkOrdinaryDoor:
 			var door_mesh := node.get_node_or_null("DoorMesh") as MeshInstance3D
 			if door_mesh != null:
