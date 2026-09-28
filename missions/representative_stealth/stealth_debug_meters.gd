@@ -67,6 +67,14 @@ func get_debug_state() -> Dictionary:
 		"sound_connected": (
 			_footstep_emitter != null and is_instance_valid(_footstep_emitter)
 		),
+		"ui_ready": (
+			_light_label != null
+			and _light_bar != null
+			and _sound_label != null
+			and _sound_bar != null
+		),
+		"light_bar_value": _light_bar.value if _light_bar != null else -1.0,
+		"sound_bar_value": _sound_bar.value if _sound_bar != null else -1.0,
 	}
 
 
