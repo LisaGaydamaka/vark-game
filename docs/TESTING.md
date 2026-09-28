@@ -1272,6 +1272,12 @@ Acoustics must reflect architecture rather than radius inside one giant city vol
 
 Every authored brush face still uses exactly one of stone, tile or carpet. The revision-7 source audit requires **zero positive-volume world-brush/world-brush overlaps**, connected top stair/upper-floor boundaries for all seven flights, no legacy hanging `balcony:` or `window_sill:` route brushes, and the supported/cantilevered architecture counts. Runtime validation checks all 13 opening owners, 29 semantic surface volumes, 23 lights, 46 acoustic spaces, 54 portals, real point-object collider separation, navigation, a live patrol leg and real F5→F9 replacement.
 
+### Phase 8.4 Ledge City geometry alignment — revision 8
+
+Revision 8 treats exact-fit door/window geometry as an authored alignment problem rather than a clearance problem. The 39 façade jamb/header brushes are imported through a dedicated solid `vark_door_frame` brush owner; they remain normal collision/vision/navigation/static-shadow geometry, while only the paired moving opening is allowed to ignore frame contact during its own sweep. The authoritative `.map` keeps the 41.6-map-unit leaf span exact, seats ordinary headers at 67.2 map units and sneak-window headers at 37.76 map units above their floor, places west/east hinge roots on the façade face with mirrored yaw, and does not introduce artificial gaps around leaves.
+
+The Phase 8 application regression now audits all 325 physical source brushes for positive-volume overlap and face connection, verifies all 13 exact-fit frames against the actual leaf dimensions, imports the dedicated frame owner, and drives every ordinary door/sneak window through a real collision-authoritative 0→90° hinge sweep. Runtime placement checks retain explicit expected transforms for doors/windows, all five props, the switch, guard, chest/pickups and all 23 light fixtures, then shrink-query every physical point-entity collider against world geometry and every other physical point object. Exact implementation head `07259d2dc56785fec12584a1d6f81d12e16381b2` passed the full Godot 4.7.2 barrier in GitHub Actions Test #608, including the exhaustive brush audit, all-opening sweep proof and physical-object overlap audit.
+
 Manual acceptance for revision 7:
 
 1. Fully close/reopen Godot after pulling, then launch **Development Launch → Representative Stealth — Ledge City** from a fresh revision-7 run.
