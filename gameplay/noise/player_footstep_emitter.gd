@@ -11,8 +11,8 @@ const SURFACE_PROFILE_PATHS: Dictionary = {
 	"tile": "res://gameplay/noise/profiles/tile.tres",
 }
 const SURFACE_TEXTURE_PREFIX: String = "vark_surfaces/"
-const SURFACE_RAY_START_HEIGHT: float = 0.20
-const SURFACE_RAY_DEPTH: float = 0.55
+const SURFACE_PROBE_RADIUS: float = 0.10
+const SURFACE_PROBE_CENTER_HEIGHT: float = 0.04
 
 
 @export var player_path: NodePath = NodePath("../Player")
@@ -305,15 +305,26 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 	var world_3d: World3D = _player.get_world_3d()
 	if world_3d == null:
 		return null
-	var query := PhysicsRayQueryParameters3D.create(
-		_player.global_position + Vector3.UP * SURFACE_RAY_START_HEIGHT,
-		_player.global_position + Vector3.DOWN * SURFACE_RAY_DEPTH
+
+	# Query the actual support contact just below the player's feet. FuncGodot
+	# world geometry is built from convex brush shapes; a small overlap/rest
+	# probe is reliable for those shapes in both READY and PLAYING worlds,
+	# whereas a zero-width ray can miss a face that lies exactly on a convex
+	# boundary. Keep this probe map-solid-only: non-map supports fall back to
+	# the existing authored semantic surface volumes.
+	var probe_shape := SphereShape3D.new()
+	probe_shape.radius = SURFACE_PROBE_RADIUS
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = probe_shape
+	query.transform = Transform3D(
+		Basis.IDENTITY,
+		_player.global_position + Vector3.UP * SURFACE_PROBE_CENTER_HEIGHT
 	)
-	query.collision_mask = _player.collision_mask
+	query.collision_mask = 1
 	query.exclude = [_player.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
-	var hit: Dictionary = world_3d.direct_space_state.intersect_ray(query)
+	var hit: Dictionary = world_3d.direct_space_state.get_rest_info(query)
 	if hit.is_empty():
 		return null
 
