@@ -1004,7 +1004,10 @@ func _enter_state(
 ) -> void:
 	var previous_state: StringName = _awareness_state
 	if previous_state == STATE_SEARCHING and new_state != STATE_SEARCHING:
-		_clear_search_plan(false)
+		# Leaving SEARCHING destroys the active plan. Clear the paired visit
+		# counter with its visited-position array so capture never emits a
+		# semantic snapshot that this owner itself cannot restore.
+		_clear_search_plan(true)
 	if (
 		not (new_state in [STATE_SUSPICIOUS, STATE_INVESTIGATING])
 		and _investigation_stare_active
