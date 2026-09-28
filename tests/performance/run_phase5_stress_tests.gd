@@ -426,7 +426,7 @@ func _measure_ledge_city_scaling() -> void:
 	print("[LEDGE_CITY_STRESS_METRICS] ", JSON.stringify(metrics))
 	_assert_true(
 		int(metrics["space_count"]) == 46
-		and int(metrics["portal_count"]) == 54
+		and int(metrics["portal_count"]) == 58
 		and int(metrics["listener_count"]) >= 2
 		and int(metrics["route_found_count"]) == LEDGE_EVALUATION_COUNT
 		and int(metrics["acoustic_route_searches"]) >= 1
@@ -441,7 +441,7 @@ func _measure_ledge_city_scaling() -> void:
 		and exposure_total_us > 0
 		and ledge_runtime_total_us > 0
 		and is_finite(ledge_runtime_value),
-		"5.8 records the real Ledge City workload and proves repeated acoustics use cache/same-space/inaudible fast paths instead of expanding the 54-portal graph at frame rate"
+		"5.8 records the real Ledge City workload and proves repeated acoustics use cache/same-space/inaudible fast paths instead of expanding the 58-portal graph at frame rate"
 	)
 
 	await _cleanup(application)
