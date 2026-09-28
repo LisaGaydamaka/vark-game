@@ -72,13 +72,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		AABB(Vector3(111, -290, 2), Vector3(6, 40, 64)),
 		AABB(Vector3(-117, -290, 2), Vector3(6, 40, 64)),
 		# Six upper crouch windows plus the Archive high window.
-		AABB(Vector3(-117, 215, 98), Vector3(6, 40, 36)),
-		AABB(Vector3(111, 215, 98), Vector3(6, 40, 36)),
-		AABB(Vector3(-117, 88, 98), Vector3(6, 40, 36)),
-		AABB(Vector3(111, 88, 98), Vector3(6, 40, 36)),
-		AABB(Vector3(-117, -348, 98), Vector3(6, 40, 36)),
-		AABB(Vector3(111, -348, 98), Vector3(6, 40, 36)),
-		AABB(Vector3(-117, -290, 186), Vector3(6, 40, 36)),
+		AABB(Vector3(-117, 215, 98), Vector3(6, 40, 35.5)),
+		AABB(Vector3(111, 215, 98), Vector3(6, 40, 35.5)),
+		AABB(Vector3(-117, 88, 98), Vector3(6, 40, 35.5)),
+		AABB(Vector3(111, 88, 98), Vector3(6, 40, 35.5)),
+		AABB(Vector3(-117, -348, 98), Vector3(6, 40, 35.5)),
+		AABB(Vector3(111, -348, 98), Vector3(6, 40, 35.5)),
+		AABB(Vector3(-117, -290, 186), Vector3(6, 40, 35.5)),
 	]:
 		if _any_positive_overlap(brush_bounds, aperture):
 			source_clearances_valid = false
