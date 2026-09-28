@@ -373,6 +373,36 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 	):
 		return null
 
+	# Vark's authored solid-color brushes intentionally use one material on every
+	# face. Resolve that common case directly from the collision shape mapping;
+	# it avoids depending on face-normal winding conventions and guarantees the
+	# gameplay surface stays identical to the brush's rendered material.
+	var uniform_texture_index: int = -1
+	var uniform_texture: bool = true
+	for face_index: int in face_indices:
+		if face_index < 0 or face_index >= textures.size():
+			uniform_texture = false
+			break
+		var candidate_texture_index: int = textures[face_index]
+		if uniform_texture_index < 0:
+			uniform_texture_index = candidate_texture_index
+		elif candidate_texture_index != uniform_texture_index:
+			uniform_texture = false
+			break
+	if (
+		uniform_texture
+		and uniform_texture_index >= 0
+		and uniform_texture_index < texture_names.size()
+	):
+		var uniform_texture_name: String = str(
+			texture_names[uniform_texture_index]
+		)
+		var uniform_profile: VarkSurfaceProfile = (
+			_get_profile_for_surface_texture(uniform_texture_name)
+		)
+		if uniform_profile != null:
+			return uniform_profile
+
 	var hit_normal: Vector3 = (hit.get("normal", Vector3.UP) as Vector3).normalized()
 	var hit_position: Vector3 = hit.get("position", _player.global_position) as Vector3
 	var best_face_index: int = -1
@@ -389,7 +419,11 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 		var global_normal: Vector3 = (
 			collider.global_transform.basis * normals[face_index]
 		).normalized()
-		var normal_score: float = global_normal.dot(hit_normal)
+		# FuncGodot plane normals and physics hit normals may use opposite
+		# winding conventions. Surface identity depends on the plane, not that
+		# sign, so compare alignment magnitude and use face position to choose
+		# between the two parallel planes of a convex brush.
+		var normal_score: float = absf(global_normal.dot(hit_normal))
 		var face_position: Vector3 = collider.to_global(positions[face_index])
 		var position_distance: float = face_position.distance_squared_to(
 			hit_position
@@ -411,6 +445,10 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 	if texture_index < 0 or texture_index >= texture_names.size():
 		return null
 	var texture_name: String = str(texture_names[texture_index])
+	return _get_profile_for_surface_texture(texture_name)
+
+
+func _get_profile_for_surface_texture(texture_name: String) -> VarkSurfaceProfile:
 	if not texture_name.begins_with(SURFACE_TEXTURE_PREFIX):
 		return null
 	var variant: String = texture_name.trim_prefix(SURFACE_TEXTURE_PREFIX)
