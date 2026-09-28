@@ -373,7 +373,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and acoustic_propagation.is_configured()
 		and acoustic_propagation.has_topology()
 		and int(acoustic_summary.get("space_count", 0)) == 46
-		and int(acoustic_summary.get("portal_count", 0)) == 54
+		and int(acoustic_summary.get("portal_count", 0)) == 58
 		and int(acoustic_summary.get("door_count", 0)) == 13
 		and not acoustic_ids.has("space.rep.main")
 		and acoustic_ids.has("space.mercer.g.rear")
