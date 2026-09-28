@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="FuncGodotFGDSolidClass" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://addons/func_godot/src/fgd/func_godot_fgd_solid_class.gd" id="1_solid"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/phong_base.tres" id="2_phong"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/vertex_merge_distance_base.tres" id="3_vertex"]
+[ext_resource type="Resource" path="res://addons/func_godot/fgd/cull_interior_faces.tres" id="4_cull"]
+
+[resource]
+script = ExtResource("1_solid")
+collision_shape_type = 2
+collision_mask = 0
+classname = "vark_door_frame"
+description = "Static exact-fit door/window frame geometry. Remains solid for player, vision, navigation, and world collision while the paired ordinary opening may ignore this frame during its own hinge sweep."
+base_classes = Array[Resource]([ExtResource("2_phong"), ExtResource("3_vertex"), ExtResource("4_cull")])
+auto_apply_to_matching_node_properties = true
+meta_properties = Dictionary[String, Variant]({
+"color": Color(0.8, 0.8, 0.8, 1)
+})
+node_class = "StaticBody3D"
+node_groups = Array[String](["vark_door_frame"])
