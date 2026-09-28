@@ -306,12 +306,10 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 	if world_3d == null:
 		return null
 
-	# Query the actual support contact just below the player's feet. FuncGodot
-	# world geometry is built from convex brush shapes; a small overlap/rest
-	# probe is reliable for those shapes in both READY and PLAYING worlds,
-	# whereas a zero-width ray can miss a face that lies exactly on a convex
-	# boundary. Keep this probe map-solid-only: non-map supports fall back to
-	# the existing authored semantic surface volumes.
+	# Resolve the solid brush actually touching the player's feet. The Vark map
+	# contract uses one visible surface material for every face of a brush, so
+	# collision-shape identity is sufficient and more robust than a zero-width
+	# ray against convex brush boundaries.
 	var probe_shape := SphereShape3D.new()
 	probe_shape.radius = SURFACE_PROBE_RADIUS
 	var query := PhysicsShapeQueryParameters3D.new()
@@ -320,14 +318,22 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 		Basis.IDENTITY,
 		_player.global_position + Vector3.UP * SURFACE_PROBE_CENTER_HEIGHT
 	)
-	query.collision_mask = 1
+	query.collision_mask = 0x7fffffff
 	query.exclude = [_player.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
-	var hit: Dictionary = world_3d.direct_space_state.get_rest_info(query)
-	if hit.is_empty():
-		return null
+	var hits: Array[Dictionary] = world_3d.direct_space_state.intersect_shape(
+		query,
+		16
+	)
+	for hit: Dictionary in hits:
+		var profile: VarkSurfaceProfile = _get_func_godot_shape_profile(hit)
+		if profile != null and profile.is_valid_profile():
+			return profile
+	return null
 
+
+func _get_func_godot_shape_profile(hit: Dictionary) -> VarkSurfaceProfile:
 	var collider := hit.get("collider") as CollisionObject3D
 	if collider == null or not collider.has_meta("func_godot_mesh_data"):
 		return null
@@ -335,13 +341,18 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 	if not (mesh_data_variant is Dictionary):
 		return null
 	var mesh_data: Dictionary = mesh_data_variant as Dictionary
-	var shape_to_faces_variant: Variant = mesh_data.get(
+	var shape_map_variant: Variant = mesh_data.get(
 		"collision_shape_to_face_indices_map",
 		{}
 	)
-	if not (shape_to_faces_variant is Dictionary):
+	var texture_names_variant: Variant = mesh_data.get("texture_names", [])
+	var textures_variant: Variant = mesh_data.get("textures", PackedInt32Array())
+	if (
+		not (shape_map_variant is Dictionary)
+		or not (texture_names_variant is Array)
+		or not (textures_variant is PackedInt32Array)
+	):
 		return null
-	var shape_to_faces: Dictionary = shape_to_faces_variant as Dictionary
 
 	var shape_index: int = int(hit.get("shape", -1))
 	if shape_index < 0:
@@ -353,7 +364,9 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 	if not (shape_owner is CollisionShape3D):
 		return null
 	var collision_shape := shape_owner as CollisionShape3D
-	var face_indices_variant: Variant = shape_to_faces.get(
+
+	var shape_map: Dictionary = shape_map_variant as Dictionary
+	var face_indices_variant: Variant = shape_map.get(
 		collision_shape.name,
 		PackedInt32Array()
 	)
@@ -363,101 +376,22 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 	if face_indices.is_empty():
 		return null
 
-	var texture_names_variant: Variant = mesh_data.get("texture_names", [])
-	var textures_variant: Variant = mesh_data.get("textures", PackedInt32Array())
-	var normals_variant: Variant = mesh_data.get("normals", PackedVector3Array())
-	var positions_variant: Variant = mesh_data.get("positions", PackedVector3Array())
-	if (
-		not (texture_names_variant is Array)
-		or not (textures_variant is PackedInt32Array)
-		or not (normals_variant is PackedVector3Array)
-		or not (positions_variant is PackedVector3Array)
-	):
-		return null
 	var texture_names: Array = texture_names_variant as Array
 	var textures: PackedInt32Array = textures_variant as PackedInt32Array
-	var normals: PackedVector3Array = normals_variant as PackedVector3Array
-	var positions: PackedVector3Array = positions_variant as PackedVector3Array
-	if (
-		textures.is_empty()
-		or normals.is_empty()
-		or positions.is_empty()
-	):
-		return null
-
-	# Vark's authored solid-color brushes intentionally use one material on every
-	# face. Resolve that common case directly from the collision shape mapping;
-	# it avoids depending on face-normal winding conventions and guarantees the
-	# gameplay surface stays identical to the brush's rendered material.
-	var uniform_texture_index: int = -1
-	var uniform_texture: bool = true
+	var texture_index: int = -1
 	for face_index: int in face_indices:
 		if face_index < 0 or face_index >= textures.size():
-			uniform_texture = false
-			break
-		var candidate_texture_index: int = textures[face_index]
-		if uniform_texture_index < 0:
-			uniform_texture_index = candidate_texture_index
-		elif candidate_texture_index != uniform_texture_index:
-			uniform_texture = false
-			break
-	if (
-		uniform_texture
-		and uniform_texture_index >= 0
-		and uniform_texture_index < texture_names.size()
-	):
-		var uniform_texture_name: String = str(
-			texture_names[uniform_texture_index]
-		)
-		var uniform_profile: VarkSurfaceProfile = (
-			_get_profile_for_surface_texture(uniform_texture_name)
-		)
-		if uniform_profile != null:
-			return uniform_profile
-
-	var hit_normal: Vector3 = (hit.get("normal", Vector3.UP) as Vector3).normalized()
-	var hit_position: Vector3 = hit.get("position", _player.global_position) as Vector3
-	var best_face_index: int = -1
-	var best_normal_score: float = -2.0
-	var best_position_distance: float = INF
-	for face_index: int in face_indices:
-		if (
-			face_index < 0
-			or face_index >= textures.size()
-			or face_index >= normals.size()
-			or face_index >= positions.size()
-		):
-			continue
-		var global_normal: Vector3 = (
-			collider.global_transform.basis * normals[face_index]
-		).normalized()
-		# FuncGodot plane normals and physics hit normals may use opposite
-		# winding conventions. Surface identity depends on the plane, not that
-		# sign, so compare alignment magnitude and use face position to choose
-		# between the two parallel planes of a convex brush.
-		var normal_score: float = absf(global_normal.dot(hit_normal))
-		var face_position: Vector3 = collider.to_global(positions[face_index])
-		var position_distance: float = face_position.distance_squared_to(
-			hit_position
-		)
-		if (
-			normal_score > best_normal_score + 0.0001
-			or (
-				is_equal_approx(normal_score, best_normal_score)
-				and position_distance < best_position_distance
-			)
-		):
-			best_face_index = face_index
-			best_normal_score = normal_score
-			best_position_distance = position_distance
-
-	if best_face_index < 0 or best_normal_score < 0.80:
-		return null
-	var texture_index: int = textures[best_face_index]
+			return null
+		var candidate_index: int = textures[face_index]
+		if texture_index < 0:
+			texture_index = candidate_index
+		elif candidate_index != texture_index:
+			# Mixed-material brushes need face-level contact data. Vark's
+			# current authored solid-color contract forbids this ambiguity.
+			return null
 	if texture_index < 0 or texture_index >= texture_names.size():
 		return null
-	var texture_name: String = str(texture_names[texture_index])
-	return _get_profile_for_surface_texture(texture_name)
+	return _get_profile_for_surface_texture(str(texture_names[texture_index]))
 
 
 func _get_profile_for_surface_texture(texture_name: String) -> VarkSurfaceProfile:
