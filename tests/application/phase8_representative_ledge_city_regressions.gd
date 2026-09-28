@@ -1691,6 +1691,36 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 
 	var save_coordinator := application.get_node("SaveCoordinator") as Node
 	save_coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
+
+	# Reproduce the player-reported failure on the exact persistent owner. A
+	# moving east-side sneak window may be physically obstructed arbitrarily
+	# close to fully open; that is valid semantic truth and must survive F9.
+	var live_openings: Array[Node] = []
+	for candidate: Node in world.find_children("*", "", true, false):
+		if candidate is VarkOrdinaryDoor:
+			live_openings.append(candidate)
+	var watch_window := _find_by_property(
+		live_openings,
+		"door_id",
+		"window.watchmaker.upper"
+	) as VarkOrdinaryDoor
+	var watch_blocked_state := {
+		"phase": VarkOrdinaryDoor.PHASE_OPENING,
+		"open_fraction": 0.999999,
+		"motion_blocked": true,
+		"locked": false,
+		"barred": false,
+	}
+	var watch_state_prepared: bool = (
+		watch_window != null
+		and watch_window.apply_semantic_state(watch_blocked_state)
+	)
+	assert_true.call(
+		watch_state_prepared
+		and watch_window.capture_semantic_state() == watch_blocked_state,
+		"8.4 watchmaker sneak window accepts valid near-endpoint blocked state before quicksave"
+	)
+
 	var generation: int = int(application.call("request_quicksave"))
 	var snapshot: Dictionary = await _wait_for_save_commit(
 		tree,
@@ -1739,6 +1769,21 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 	var restored_session := application.get("current_session") as Node
 	var restored_world := application.get("current_world") as Node
 	var restored_player := application.get("current_player") as Node3D
+	var restored_watch_window: VarkOrdinaryDoor = null
+	if restored_world != null:
+		var restored_openings: Array[Node] = []
+		for candidate: Node in restored_world.find_children("*", "", true, false):
+			if candidate is VarkOrdinaryDoor:
+				restored_openings.append(candidate)
+		restored_watch_window = _find_by_property(
+			restored_openings,
+			"door_id",
+			"window.watchmaker.upper"
+		) as VarkOrdinaryDoor
+	var restored_watch_state: Dictionary = (
+		restored_watch_window.capture_semantic_state()
+		if restored_watch_window != null else {}
+	)
 	var restored_time_before: float = float(
 		application.call("get_gameplay_time_seconds")
 	)
@@ -1790,6 +1835,7 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 			or _is_ledge_shadow_budget_active(root_viewport)
 		)
 		and int(restored_shadow_budget.get("shared_refcount", 0)) >= 1
+		and restored_watch_state == watch_blocked_state
 	)
 	if not live_after_load:
 		print(
