@@ -790,6 +790,55 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	if awareness != null:
 		awareness.set_physics_process(false)
 	var footstep_emitter := world.get_node_or_null("FootstepEmitter")
+	var debug_meters := world.get_node_or_null("StealthDebugMeters")
+	var exposure_node := world.get_node_or_null(
+		"GameplayExposure"
+	) as VarkGameplayExposure
+	if footstep_emitter != null and debug_meters != null:
+		footstep_emitter.emit_signal(
+			"gameplay_noise_emitted",
+			{
+				"last_strength": 0.62,
+				"last_surface_id": &"stone",
+				"last_gait": "walking",
+				"last_sound_kind": &"footstep.stone",
+			}
+		)
+	var meter_state: Dictionary = (
+		debug_meters.call("get_debug_state")
+		if debug_meters != null else {}
+	)
+	var light_meter := (
+		debug_meters.find_child("LightMeter", true, false) as ProgressBar
+		if debug_meters != null else null
+	)
+	var sound_meter := (
+		debug_meters.find_child("SoundMeter", true, false) as ProgressBar
+		if debug_meters != null else null
+	)
+	assert_true.call(
+		debug_meters != null
+		and exposure_node != null
+		and bool(meter_state.get("exposure_connected", false))
+		and bool(meter_state.get("sound_connected", false))
+		and is_equal_approx(
+			float(meter_state.get("light_exposure", -1.0)),
+			exposure_node.get_current_exposure()
+		)
+		and is_equal_approx(
+			float(meter_state.get("last_sound_strength", -1.0)),
+			0.62
+		)
+		and is_equal_approx(
+			float(meter_state.get("sound_display_strength", -1.0)),
+			0.62
+		)
+		and str(meter_state.get("last_surface_id", "")) == "stone"
+		and str(meter_state.get("last_gait", "")) == "walking"
+		and light_meter != null
+		and sound_meter != null,
+		"8.4 stealth debug HUD reads live gameplay exposure and reacts to the real player-noise signal"
+	)
 	if footstep_emitter != null:
 		footstep_emitter.set_physics_process(false)
 
