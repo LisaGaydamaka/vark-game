@@ -358,6 +358,21 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 floor regions retain stone/tile/carpet footstep semantics matching visible materials"
 	)
 
+	var world_material_metadata: Dictionary = _audit_func_godot_surface_metadata(
+		worldspawn
+	)
+	var frame_material_metadata: Dictionary = _audit_func_godot_surface_metadata(
+		door_frames[0] as CollisionObject3D
+		if door_frames.size() == 1 else null
+	)
+	assert_true.call(
+		bool(world_material_metadata.get("ok", false))
+		and bool(frame_material_metadata.get("ok", false))
+		and int(world_material_metadata.get("shape_count", 0)) >= 280,
+		"8.4 every imported solid map collision shape carries face texture metadata so footsteps can resolve the rendered stone/tile/carpet plane directly; world=%s frame=%s"
+		% [str(world_material_metadata), str(frame_material_metadata)]
+	)
+
 	var acoustic_propagation := world.get_node_or_null(
 		"AcousticPropagation"
 	) as VarkAcousticPropagation
@@ -790,6 +805,66 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	if awareness != null:
 		awareness.set_physics_process(false)
 	var footstep_emitter := world.get_node_or_null("FootstepEmitter")
+	var player := world.get_node_or_null("Player") as CharacterBody3D
+	var surface_sample_failures: Array[Dictionary] = []
+	if footstep_emitter != null and player != null:
+		var original_player_transform: Transform3D = player.global_transform
+		for sample: Dictionary in [
+			{
+				"label": "Mercer carpet ground floor",
+				"map_position": Vector3(-200.0, 300.0, 0.0),
+				"expected": "carpet",
+			},
+			{
+				"label": "Watchmaker tile ground floor",
+				"map_position": Vector3(200.0, 300.0, 0.0),
+				"expected": "tile",
+			},
+			{
+				"label": "Mercer stone terrace (old carpet-volume mismatch)",
+				"map_position": Vector3(-93.5, 234.5, 96.0),
+				"expected": "stone",
+			},
+			{
+				"label": "Archive upper carpet stair (old tile-volume mismatch)",
+				"map_position": Vector3(-162.5, -219.5, 120.0),
+				"expected": "carpet",
+			},
+			{
+				"label": "Mercer over-street stone floor (previously unowned)",
+				"map_position": Vector3(-91.5, 322.5, 96.0),
+				"expected": "stone",
+			},
+			{
+				"label": "West alley stone bridge (previously unowned)",
+				"map_position": Vector3(-285.5, 160.5, 96.0),
+				"expected": "stone",
+			},
+		]:
+			player.global_position = _map_origin_to_world(
+				sample.get("map_position", Vector3.ZERO) as Vector3
+			)
+			var resolved: Dictionary = footstep_emitter.call(
+				"get_current_surface_debug"
+			)
+			if (
+				str(resolved.get("surface_id", "")) != str(sample.get("expected", ""))
+				or str(resolved.get("resolution_source", ""))
+					!= "func_godot_material"
+			):
+				surface_sample_failures.append({
+					"sample": sample,
+					"resolved": resolved,
+				})
+		player.global_transform = original_player_transform
+	assert_true.call(
+		footstep_emitter != null
+		and player != null
+		and surface_sample_failures.is_empty(),
+		"8.4 representative material probes resolve footstep sound from the exact rendered plane, including former terrace/stair mismatches and previously unowned elevated floors; failures=%s"
+		% str(surface_sample_failures)
+	)
+
 	var debug_meters := world.get_node_or_null("StealthDebugMeters")
 	var exposure_node := world.get_node_or_null(
 		"GameplayExposure"
@@ -1140,6 +1215,106 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		tree,
 		assert_true
 	)
+
+
+func _audit_func_godot_surface_metadata(
+	collider: CollisionObject3D
+) -> Dictionary:
+	if collider == null or not collider.has_meta("func_godot_mesh_data"):
+		return {
+			"ok": false,
+			"error": "missing collider or func_godot_mesh_data",
+		}
+	var mesh_data_variant: Variant = collider.get_meta("func_godot_mesh_data")
+	if not (mesh_data_variant is Dictionary):
+		return {
+			"ok": false,
+			"error": "mesh metadata is not a Dictionary",
+		}
+	var mesh_data: Dictionary = mesh_data_variant as Dictionary
+	var texture_names_variant: Variant = mesh_data.get("texture_names", [])
+	var textures_variant: Variant = mesh_data.get("textures", PackedInt32Array())
+	var normals_variant: Variant = mesh_data.get("normals", PackedVector3Array())
+	var positions_variant: Variant = mesh_data.get("positions", PackedVector3Array())
+	var shape_map_variant: Variant = mesh_data.get(
+		"collision_shape_to_face_indices_map",
+		{}
+	)
+	if (
+		not (texture_names_variant is Array)
+		or not (textures_variant is PackedInt32Array)
+		or not (normals_variant is PackedVector3Array)
+		or not (positions_variant is PackedVector3Array)
+		or not (shape_map_variant is Dictionary)
+	):
+		return {
+			"ok": false,
+			"error": "required texture/face/shape metadata is missing",
+		}
+	var texture_names: Array = texture_names_variant as Array
+	var textures: PackedInt32Array = textures_variant as PackedInt32Array
+	var normals: PackedVector3Array = normals_variant as PackedVector3Array
+	var positions: PackedVector3Array = positions_variant as PackedVector3Array
+	var shape_map: Dictionary = shape_map_variant as Dictionary
+	if (
+		textures.is_empty()
+		or textures.size() != normals.size()
+		or textures.size() != positions.size()
+	):
+		return {
+			"ok": false,
+			"error": "parallel face metadata arrays are empty or differ in size",
+			"texture_faces": textures.size(),
+			"normal_faces": normals.size(),
+			"position_faces": positions.size(),
+		}
+
+	var shape_count: int = 0
+	var mapped_shape_count: int = 0
+	var referenced_face_count: int = 0
+	for child: Node in collider.get_children():
+		if not (child is CollisionShape3D):
+			continue
+		shape_count += 1
+		if not shape_map.has(child.name):
+			continue
+		var face_indices_variant: Variant = shape_map.get(
+			child.name,
+			PackedInt32Array()
+		)
+		if not (face_indices_variant is PackedInt32Array):
+			continue
+		var face_indices: PackedInt32Array = (
+			face_indices_variant as PackedInt32Array
+		)
+		if face_indices.is_empty():
+			continue
+		var valid_shape: bool = true
+		for face_index: int in face_indices:
+			if face_index < 0 or face_index >= textures.size():
+				valid_shape = false
+				break
+			var texture_index: int = textures[face_index]
+			if texture_index < 0 or texture_index >= texture_names.size():
+				valid_shape = false
+				break
+			if not ALLOWED_SURFACE_TEXTURES.has(str(texture_names[texture_index])):
+				valid_shape = false
+				break
+		if valid_shape:
+			mapped_shape_count += 1
+			referenced_face_count += face_indices.size()
+	return {
+		"ok": (
+			shape_count > 0
+			and mapped_shape_count == shape_count
+			and referenced_face_count > 0
+		),
+		"shape_count": shape_count,
+		"mapped_shape_count": mapped_shape_count,
+		"referenced_face_count": referenced_face_count,
+		"texture_names": texture_names,
+	}
 
 
 func _audit_source_face_materials(source: String) -> Dictionary:
