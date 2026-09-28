@@ -24,6 +24,7 @@ func _initialize() -> void:
 func _run_tests() -> void:
 	_assert_authoring_schema()
 	_assert_guard_nav_doorway_fit()
+	_assert_unconfigured_restore_staging_round_trip()
 	await _assert_explicit_link_patrol()
 	await _assert_patrol_point_wait()
 	await _assert_vertical_stealth_lab()
@@ -82,6 +83,39 @@ func _assert_guard_nav_doorway_fit() -> void:
 		and source.contains("\"content_id\" \"guard.nav_probe\""),
 		"Guard/Nav Lab keeps the authored exact-fit doorway and stable guard identity"
 	)
+
+
+func _assert_unconfigured_restore_staging_round_trip() -> void:
+	var guard := GuardScript.new() as VarkGuard
+	guard.persistent_id = "guard.restore_staging"
+	guard.guard_id = "guard.restore_staging"
+	guard.patrol_a_id = "patrol.a"
+	guard.patrol_b_id = "patrol.b"
+	var snapshot := {
+		"persistent_id": "guard.restore_staging",
+		"actor_id": "guard.restore_staging",
+		"life_state": &"conscious",
+		"transform": Transform3D(Basis.IDENTITY, Vector3(2.0, 0.0, -1.0)),
+		"velocity": Vector3.ZERO,
+		"goal_id": "patrol.b",
+		"patrol_wait_active": true,
+		"patrol_wait_remaining_seconds": 4.56666666666667,
+	}
+	var applied: bool = guard.apply_semantic_state(snapshot)
+	var recaptured: Dictionary = guard.capture_semantic_state()
+	var summary: Dictionary = guard.get_debug_summary()
+	_assert_true(
+		applied
+		and recaptured == snapshot
+		and str(summary.get("patrol_b_id", "")) == "patrol.b"
+		and bool(summary.get("patrol_wait_active", false))
+		and is_equal_approx(
+			float(summary.get("patrol_wait_remaining_seconds", 0.0)),
+			4.56666666666667
+		),
+		"An unconfigured replacement guard exposes staged patrol-wait restore truth during immediate semantic recapture"
+	)
+	guard.free()
 
 
 func _assert_explicit_link_patrol() -> void:
