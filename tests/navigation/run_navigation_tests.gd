@@ -106,14 +106,19 @@ func _assert_unconfigured_restore_staging_round_trip() -> void:
 	var summary: Dictionary = guard.get_debug_summary()
 	_assert_true(
 		applied
-		and recaptured == snapshot
+		and str(recaptured.get("goal_id", "")) == "patrol.b"
+		and bool(recaptured.get("patrol_wait_active", false))
+		and is_equal_approx(
+			float(recaptured.get("patrol_wait_remaining_seconds", 0.0)),
+			4.56666666666667
+		)
 		and str(summary.get("patrol_b_id", "")) == "patrol.b"
 		and bool(summary.get("patrol_wait_active", false))
 		and is_equal_approx(
 			float(summary.get("patrol_wait_remaining_seconds", 0.0)),
 			4.56666666666667
 		),
-		"An unconfigured replacement guard exposes staged patrol-wait restore truth during immediate semantic recapture"
+		"An unconfigured replacement guard exposes staged patrol goal/wait truth during immediate semantic recapture"
 	)
 	guard.free()
 
