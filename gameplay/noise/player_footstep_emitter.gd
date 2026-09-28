@@ -309,6 +309,7 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 		_player.global_position + Vector3.UP * SURFACE_RAY_START_HEIGHT,
 		_player.global_position + Vector3.DOWN * SURFACE_RAY_DEPTH
 	)
+	query.collision_mask = _player.collision_mask
 	query.exclude = [_player.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
