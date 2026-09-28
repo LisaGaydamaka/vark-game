@@ -1314,10 +1314,14 @@ func _all_opening_frames_seat_leaf(source: String) -> bool:
 
 
 func _all_named_solid_brushes_face_connected(source: String) -> bool:
+	var world_start: int = source.find("\"classname\" \"worldspawn\"")
 	var cutoff: int = source.find("\"classname\" \"vark_player_start\"")
-	if cutoff < 0:
+	if world_start < 0 or cutoff <= world_start:
 		return false
-	var physical_source: String = source.substr(0, cutoff)
+	var physical_source: String = source.substr(
+		world_start,
+		cutoff - world_start
+	)
 	var comment_pattern := RegEx.new()
 	comment_pattern.compile("(?m)^// ([^\\n]+)\\n\\{")
 	var named_bounds: Array[AABB] = []
