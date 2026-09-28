@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://missions/representative_stealth/world.gd" id="1_world"]
 [ext_resource type="Script" path="res://addons/func_godot/src/map/func_godot_map.gd" id="2_map"]
@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://gameplay/objectives/simple_objective_state.gd" id="9_objective"]
 [ext_resource type="Script" path="res://gameplay/objectives/semantic_route_trigger.gd" id="10_trigger"]
 [ext_resource type="Script" path="res://gameplay/alarms/alarm_channel.gd" id="11_alarm"]
+[ext_resource type="Script" path="res://missions/representative_stealth/stealth_debug_meters.gd" id="12_debug_meters"]
 
 [sub_resource type="Environment" id="Environment_representative"]
 background_mode = 1
@@ -48,6 +49,12 @@ player_path = NodePath("../Player")
 [node name="FootstepEmitter" type="Node" parent="."]
 script = ExtResource("8_footsteps")
 player_path = NodePath("../Player")
+
+[node name="StealthDebugMeters" type="CanvasLayer" parent="."]
+layer = 100
+script = ExtResource("12_debug_meters")
+exposure_path = NodePath("../GameplayExposure")
+footstep_emitter_path = NodePath("../FootstepEmitter")
 
 [node name="ObjectiveState" type="Node" parent="."]
 script = ExtResource("9_objective")
