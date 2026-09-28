@@ -1,6 +1,6 @@
 // Game: Vark
 // Format: Valve
-// Phase 8.4 Ledge City revision 8.
+// Phase 8.4 Ledge City revision 9.
 // Compact city rebuild: half-footprint enterable houses, real interiors/stairs, architectural traversal,
 // direct solid-color surface materials, omnidirectional hanging interior lanterns, and audited clearances.
 {
@@ -9,48 +9,84 @@
 "classname" "worldspawn"
 // street: carriageway
 {
-( -68 -450 -8 ) ( -68 -449 -8 ) ( -68 -450 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 -450 -8 ) ( -68 -450 -7 ) ( -67 -450 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 -450 -8 ) ( -67 -450 -8 ) ( -68 -449 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 450 0 ) ( 68 450 1 ) ( 68 451 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 450 0 ) ( 69 450 0 ) ( 68 450 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 450 0 ) ( 68 451 0 ) ( 69 450 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 -454 -8 ) ( -68 -453 -8 ) ( -68 -454 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 -454 -8 ) ( -68 -454 -7 ) ( -67 -454 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 -454 -8 ) ( -67 -454 -8 ) ( -68 -453 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 454 0 ) ( 68 454 1 ) ( 68 455 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 454 0 ) ( 69 454 0 ) ( 68 454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 454 0 ) ( 68 455 0 ) ( 69 454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 // street: west_sidewalk
 {
-( -110 -450 -8 ) ( -110 -449 -8 ) ( -110 -450 -7 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -110 -450 -8 ) ( -110 -450 -7 ) ( -109 -450 -8 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -110 -450 -8 ) ( -109 -450 -8 ) ( -110 -449 -8 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 450 0 ) ( -68 450 1 ) ( -68 451 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 450 0 ) ( -67 450 0 ) ( -68 450 1 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 450 0 ) ( -68 451 0 ) ( -67 450 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -454 -8 ) ( -110 -453 -8 ) ( -110 -454 -7 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -454 -8 ) ( -110 -454 -7 ) ( -109 -454 -8 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -454 -8 ) ( -109 -454 -8 ) ( -110 -453 -8 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 454 0 ) ( -68 454 1 ) ( -68 455 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 454 0 ) ( -67 454 0 ) ( -68 454 1 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 454 0 ) ( -68 455 0 ) ( -67 454 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 // street: east_sidewalk
 {
-( 68 -450 -8 ) ( 68 -449 -8 ) ( 68 -450 -7 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 -450 -8 ) ( 68 -450 -7 ) ( 69 -450 -8 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 -450 -8 ) ( 69 -450 -8 ) ( 68 -449 -8 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 110 450 0 ) ( 110 450 1 ) ( 110 451 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 110 450 0 ) ( 111 450 0 ) ( 110 450 1 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 110 450 0 ) ( 110 451 0 ) ( 111 450 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 -454 -8 ) ( 68 -453 -8 ) ( 68 -454 -7 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 -454 -8 ) ( 68 -454 -7 ) ( 69 -454 -8 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 -454 -8 ) ( 69 -454 -8 ) ( 68 -453 -8 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 454 0 ) ( 110 454 1 ) ( 110 455 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 454 0 ) ( 111 454 0 ) ( 110 454 1 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 454 0 ) ( 110 455 0 ) ( 111 454 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 // rear_alley: west
 {
-( -410 -380 -8 ) ( -410 -379 -8 ) ( -410 -380 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -410 -380 -8 ) ( -410 -380 -7 ) ( -409 -380 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -410 -380 -8 ) ( -409 -380 -8 ) ( -410 -379 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -330 380 0 ) ( -330 380 1 ) ( -330 381 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -330 380 0 ) ( -329 380 0 ) ( -330 380 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -330 380 0 ) ( -330 381 0 ) ( -329 380 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -424 -454 -8 ) ( -424 -453 -8 ) ( -424 -454 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -424 -454 -8 ) ( -424 -454 -7 ) ( -423 -454 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -424 -454 -8 ) ( -423 -454 -8 ) ( -424 -453 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 454 0 ) ( -330 454 1 ) ( -330 455 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 454 0 ) ( -329 454 0 ) ( -330 454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 454 0 ) ( -330 455 0 ) ( -329 454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 // rear_alley: east
 {
-( 330 -380 -8 ) ( 330 -379 -8 ) ( 330 -380 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 330 -380 -8 ) ( 330 -380 -7 ) ( 331 -380 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 330 -380 -8 ) ( 331 -380 -8 ) ( 330 -379 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 410 380 0 ) ( 410 380 1 ) ( 410 381 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 410 380 0 ) ( 411 380 0 ) ( 410 380 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 410 380 0 ) ( 410 381 0 ) ( 411 380 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -454 -8 ) ( 330 -453 -8 ) ( 330 -454 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -454 -8 ) ( 330 -454 -7 ) ( 331 -454 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -454 -8 ) ( 331 -454 -8 ) ( 330 -453 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 424 454 0 ) ( 424 454 1 ) ( 424 455 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 424 454 0 ) ( 425 454 0 ) ( 424 454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 424 454 0 ) ( 424 455 0 ) ( 425 454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+}
+// back_valley_floor: west_south
+{
+( -330 360 -8 ) ( -330 361 -8 ) ( -330 360 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 360 -8 ) ( -330 360 -7 ) ( -329 360 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 360 -8 ) ( -329 360 -8 ) ( -330 361 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 454 0 ) ( -110 454 1 ) ( -110 455 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 454 0 ) ( -109 454 0 ) ( -110 454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 454 0 ) ( -110 455 0 ) ( -109 454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+}
+// back_valley_floor: east_south
+{
+( 110 360 -8 ) ( 110 361 -8 ) ( 110 360 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 360 -8 ) ( 110 360 -7 ) ( 111 360 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 360 -8 ) ( 111 360 -8 ) ( 110 361 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 454 0 ) ( 330 454 1 ) ( 330 455 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 454 0 ) ( 331 454 0 ) ( 330 454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 454 0 ) ( 330 455 0 ) ( 331 454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+}
+// back_valley_floor: west_north
+{
+( -330 -454 -8 ) ( -330 -453 -8 ) ( -330 -454 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 -454 -8 ) ( -330 -454 -7 ) ( -329 -454 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 -454 -8 ) ( -329 -454 -8 ) ( -330 -453 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -360 0 ) ( -110 -360 1 ) ( -110 -359 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -360 0 ) ( -109 -360 0 ) ( -110 -360 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -360 0 ) ( -110 -359 0 ) ( -109 -360 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+}
+// back_valley_floor: east_north
+{
+( 110 -454 -8 ) ( 110 -453 -8 ) ( 110 -454 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 -454 -8 ) ( 110 -454 -7 ) ( 111 -454 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 -454 -8 ) ( 111 -454 -8 ) ( 110 -453 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -360 0 ) ( 330 -360 1 ) ( 330 -359 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -360 0 ) ( 331 -360 0 ) ( 330 -360 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -360 0 ) ( 330 -359 0 ) ( 331 -360 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 // cross_street: south_cross_west
 {
@@ -3074,6 +3110,7 @@
 "persistent_id" "vark_archive_window"
 "door_id" "opening.window_west"
 "opening_variant" "sneak_window"
+"open_angle_degrees" "-90"
 "starts_locked" "0"
 "required_key_id" ""
 "starts_barred" "0"
@@ -3795,12 +3832,12 @@
 "surface_variant" "stone"
 // surface_volume: carriageway
 {
-( -68 -450 0 ) ( -68 -449 0 ) ( -68 -450 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 -450 0 ) ( -68 -450 1 ) ( -67 -450 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 -450 0 ) ( -67 -450 0 ) ( -68 -449 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 450 48 ) ( 68 450 49 ) ( 68 451 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 450 48 ) ( 69 450 48 ) ( 68 450 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 450 48 ) ( 68 451 48 ) ( 69 450 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 -454 0 ) ( -68 -453 0 ) ( -68 -454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 -454 0 ) ( -68 -454 1 ) ( -67 -454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 -454 0 ) ( -67 -454 0 ) ( -68 -453 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 454 48 ) ( 68 454 49 ) ( 68 455 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 454 48 ) ( 69 454 48 ) ( 68 454 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 454 48 ) ( 68 455 48 ) ( 69 454 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -3808,12 +3845,12 @@
 "surface_variant" "tile"
 // surface_volume: west_sidewalk
 {
-( -110 -450 0 ) ( -110 -449 0 ) ( -110 -450 1 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -110 -450 0 ) ( -110 -450 1 ) ( -109 -450 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -110 -450 0 ) ( -109 -450 0 ) ( -110 -449 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 450 48 ) ( -68 450 49 ) ( -68 451 48 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 450 48 ) ( -67 450 48 ) ( -68 450 49 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -68 450 48 ) ( -68 451 48 ) ( -67 450 48 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -454 0 ) ( -110 -453 0 ) ( -110 -454 1 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -454 0 ) ( -110 -454 1 ) ( -109 -454 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -454 0 ) ( -109 -454 0 ) ( -110 -453 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 454 48 ) ( -68 454 49 ) ( -68 455 48 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 454 48 ) ( -67 454 48 ) ( -68 454 49 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -68 454 48 ) ( -68 455 48 ) ( -67 454 48 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -3821,12 +3858,12 @@
 "surface_variant" "tile"
 // surface_volume: east_sidewalk
 {
-( 68 -450 0 ) ( 68 -449 0 ) ( 68 -450 1 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 -450 0 ) ( 68 -450 1 ) ( 69 -450 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 68 -450 0 ) ( 69 -450 0 ) ( 68 -449 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 110 450 48 ) ( 110 450 49 ) ( 110 451 48 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 110 450 48 ) ( 111 450 48 ) ( 110 450 49 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 110 450 48 ) ( 110 451 48 ) ( 111 450 48 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 -454 0 ) ( 68 -453 0 ) ( 68 -454 1 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 -454 0 ) ( 68 -454 1 ) ( 69 -454 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 68 -454 0 ) ( 69 -454 0 ) ( 68 -453 0 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 454 48 ) ( 110 454 49 ) ( 110 455 48 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 454 48 ) ( 111 454 48 ) ( 110 454 49 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 454 48 ) ( 110 455 48 ) ( 111 454 48 ) vark_surfaces/tile [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -3834,12 +3871,12 @@
 "surface_variant" "stone"
 // surface_volume: west_rear
 {
-( -410 -380 0 ) ( -410 -379 0 ) ( -410 -380 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -410 -380 0 ) ( -410 -380 1 ) ( -409 -380 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -410 -380 0 ) ( -409 -380 0 ) ( -410 -379 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -330 380 48 ) ( -330 380 49 ) ( -330 381 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -330 380 48 ) ( -329 380 48 ) ( -330 380 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -330 380 48 ) ( -330 381 48 ) ( -329 380 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -424 -454 0 ) ( -424 -453 0 ) ( -424 -454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -424 -454 0 ) ( -424 -454 1 ) ( -423 -454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -424 -454 0 ) ( -423 -454 0 ) ( -424 -453 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 454 48 ) ( -330 454 49 ) ( -330 455 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 454 48 ) ( -329 454 48 ) ( -330 454 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 454 48 ) ( -330 455 48 ) ( -329 454 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -3847,12 +3884,64 @@
 "surface_variant" "stone"
 // surface_volume: east_rear
 {
-( 330 -380 0 ) ( 330 -379 0 ) ( 330 -380 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 330 -380 0 ) ( 330 -380 1 ) ( 331 -380 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 330 -380 0 ) ( 331 -380 0 ) ( 330 -379 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 410 380 48 ) ( 410 380 49 ) ( 410 381 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 410 380 48 ) ( 411 380 48 ) ( 410 380 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 410 380 48 ) ( 410 381 48 ) ( 411 380 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -454 0 ) ( 330 -453 0 ) ( 330 -454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -454 0 ) ( 330 -454 1 ) ( 331 -454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -454 0 ) ( 331 -454 0 ) ( 330 -453 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 424 454 48 ) ( 424 454 49 ) ( 424 455 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 424 454 48 ) ( 425 454 48 ) ( 424 454 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 424 454 48 ) ( 424 455 48 ) ( 425 454 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+}
+}
+{
+"classname" "vark_footstep_surface"
+"surface_variant" "stone"
+// surface_volume: back_valley_w_south
+{
+( -330 360 0 ) ( -330 361 0 ) ( -330 360 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 360 0 ) ( -330 360 1 ) ( -329 360 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 360 0 ) ( -329 360 0 ) ( -330 361 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 454 48 ) ( -110 454 49 ) ( -110 455 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 454 48 ) ( -109 454 48 ) ( -110 454 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 454 48 ) ( -110 455 48 ) ( -109 454 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+}
+}
+{
+"classname" "vark_footstep_surface"
+"surface_variant" "stone"
+// surface_volume: back_valley_e_south
+{
+( 110 360 0 ) ( 110 361 0 ) ( 110 360 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 360 0 ) ( 110 360 1 ) ( 111 360 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 360 0 ) ( 111 360 0 ) ( 110 361 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 454 48 ) ( 330 454 49 ) ( 330 455 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 454 48 ) ( 331 454 48 ) ( 330 454 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 454 48 ) ( 330 455 48 ) ( 331 454 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+}
+}
+{
+"classname" "vark_footstep_surface"
+"surface_variant" "stone"
+// surface_volume: back_valley_w_north
+{
+( -330 -454 0 ) ( -330 -453 0 ) ( -330 -454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 -454 0 ) ( -330 -454 1 ) ( -329 -454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -330 -454 0 ) ( -329 -454 0 ) ( -330 -453 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -360 48 ) ( -110 -360 49 ) ( -110 -359 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -360 48 ) ( -109 -360 48 ) ( -110 -360 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -110 -360 48 ) ( -110 -359 48 ) ( -109 -360 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+}
+}
+{
+"classname" "vark_footstep_surface"
+"surface_variant" "stone"
+// surface_volume: back_valley_e_north
+{
+( 110 -454 0 ) ( 110 -453 0 ) ( 110 -454 1 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 -454 0 ) ( 110 -454 1 ) ( 111 -454 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 110 -454 0 ) ( 111 -454 0 ) ( 110 -453 0 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -360 48 ) ( 330 -360 49 ) ( 330 -359 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -360 48 ) ( 331 -360 48 ) ( 330 -360 49 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 330 -360 48 ) ( 330 -359 48 ) ( 331 -360 48 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -4082,6 +4171,7 @@
 "persistent_id" "vark_window_mercer_upper"
 "door_id" "window.mercer.upper"
 "opening_variant" "sneak_window"
+"open_angle_degrees" "-90"
 "starts_locked" "0"
 "required_key_id" ""
 "starts_barred" "0"
@@ -4096,6 +4186,7 @@
 "persistent_id" "vark_window_watch_upper"
 "door_id" "window.watchmaker.upper"
 "opening_variant" "sneak_window"
+"open_angle_degrees" "-90"
 "starts_locked" "0"
 "required_key_id" ""
 "starts_barred" "0"
@@ -4110,6 +4201,7 @@
 "persistent_id" "vark_window_office_upper"
 "door_id" "window.office.upper"
 "opening_variant" "sneak_window"
+"open_angle_degrees" "-90"
 "starts_locked" "0"
 "required_key_id" ""
 "starts_barred" "0"
@@ -4124,6 +4216,7 @@
 "persistent_id" "vark_window_tenement_upper"
 "door_id" "window.tenement.upper"
 "opening_variant" "sneak_window"
+"open_angle_degrees" "-90"
 "starts_locked" "0"
 "required_key_id" ""
 "starts_barred" "0"
@@ -4138,6 +4231,7 @@
 "persistent_id" "vark_window_archive_level2"
 "door_id" "window.archive.level2"
 "opening_variant" "sneak_window"
+"open_angle_degrees" "-90"
 "starts_locked" "0"
 "required_key_id" ""
 "starts_barred" "0"
@@ -4152,6 +4246,7 @@
 "persistent_id" "vark_window_foundry_upper"
 "door_id" "window.foundry.upper"
 "opening_variant" "sneak_window"
+"open_angle_degrees" "-90"
 "starts_locked" "0"
 "required_key_id" ""
 "starts_barred" "0"
@@ -4265,6 +4360,54 @@
 // acoustic portal: portal.ext.rear_e_center_s
 // acoustic portal: portal.ext.rear_e_center_n
 // acoustic portal: portal.ext.rear_e_north
+// acoustic portal: portal.ext.corner_w_south
+{
+"classname" "vark_acoustic_portal"
+"portal_id" "portal.ext.corner_w_south"
+"space_a_id" "space.ext.rear_w_south"
+"space_b_id" "space.ext.street_south"
+"door_id" ""
+"closed_transmission" "1"
+"open_transmission" "1"
+"angle" "180"
+"origin" "-330 410 48"
+}
+// acoustic portal: portal.ext.corner_e_south
+{
+"classname" "vark_acoustic_portal"
+"portal_id" "portal.ext.corner_e_south"
+"space_a_id" "space.ext.rear_e_south"
+"space_b_id" "space.ext.street_south"
+"door_id" ""
+"closed_transmission" "1"
+"open_transmission" "1"
+"angle" "180"
+"origin" "330 410 48"
+}
+// acoustic portal: portal.ext.corner_w_north
+{
+"classname" "vark_acoustic_portal"
+"portal_id" "portal.ext.corner_w_north"
+"space_a_id" "space.ext.rear_w_north"
+"space_b_id" "space.ext.street_north"
+"door_id" ""
+"closed_transmission" "1"
+"open_transmission" "1"
+"angle" "180"
+"origin" "-330 -410 48"
+}
+// acoustic portal: portal.ext.corner_e_north
+{
+"classname" "vark_acoustic_portal"
+"portal_id" "portal.ext.corner_e_north"
+"space_a_id" "space.ext.rear_e_north"
+"space_b_id" "space.ext.street_north"
+"door_id" ""
+"closed_transmission" "1"
+"open_transmission" "1"
+"angle" "180"
+"origin" "330 -410 48"
+}
 // acoustic portal: portal.door.mercer
 // acoustic portal: portal.door.watch
 // acoustic portal: portal.door.office
@@ -4310,12 +4453,12 @@
 "space_id" "space.ext.street_south"
 // acoustic_volume: space.ext.street_south
 {
-( -108 360 -8 ) ( -108 361 -8 ) ( -108 360 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -108 360 -8 ) ( -108 360 -7 ) ( -107 360 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -108 360 -8 ) ( -107 360 -8 ) ( -108 361 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 108 448 304 ) ( 108 448 305 ) ( 108 449 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 108 448 304 ) ( 109 448 304 ) ( 108 448 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 108 448 304 ) ( 108 449 304 ) ( 109 448 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -328 360 -8 ) ( -328 361 -8 ) ( -328 360 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -328 360 -8 ) ( -328 360 -7 ) ( -327 360 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -328 360 -8 ) ( -327 360 -8 ) ( -328 361 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 328 452 304 ) ( 328 452 305 ) ( 328 453 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 328 452 304 ) ( 329 452 304 ) ( 328 452 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 328 452 304 ) ( 328 453 304 ) ( 329 452 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -4388,12 +4531,12 @@
 "space_id" "space.ext.street_north"
 // acoustic_volume: space.ext.street_north
 {
-( -108 -448 -8 ) ( -108 -447 -8 ) ( -108 -448 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -108 -448 -8 ) ( -108 -448 -7 ) ( -107 -448 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -108 -448 -8 ) ( -107 -448 -8 ) ( -108 -447 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 108 -360 304 ) ( 108 -360 305 ) ( 108 -359 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 108 -360 304 ) ( 109 -360 304 ) ( 108 -360 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 108 -360 304 ) ( 108 -359 304 ) ( 109 -360 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -328 -452 -8 ) ( -328 -451 -8 ) ( -328 -452 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -328 -452 -8 ) ( -328 -452 -7 ) ( -327 -452 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -328 -452 -8 ) ( -327 -452 -8 ) ( -328 -451 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 328 -360 304 ) ( 328 -360 305 ) ( 328 -359 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 328 -360 304 ) ( 329 -360 304 ) ( 328 -360 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 328 -360 304 ) ( 328 -359 304 ) ( 329 -360 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -4401,12 +4544,12 @@
 "space_id" "space.ext.rear_w_south"
 // acoustic_volume: space.ext.rear_w_south
 {
-( -408 180 -8 ) ( -408 181 -8 ) ( -408 180 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -408 180 -8 ) ( -408 180 -7 ) ( -407 180 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -408 180 -8 ) ( -407 180 -8 ) ( -408 181 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -332 380 304 ) ( -332 380 305 ) ( -332 381 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -332 380 304 ) ( -331 380 304 ) ( -332 380 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -332 380 304 ) ( -332 381 304 ) ( -331 380 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -422 180 -8 ) ( -422 181 -8 ) ( -422 180 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -422 180 -8 ) ( -422 180 -7 ) ( -421 180 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -422 180 -8 ) ( -421 180 -8 ) ( -422 181 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -332 452 304 ) ( -332 452 305 ) ( -332 453 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -332 452 304 ) ( -331 452 304 ) ( -332 452 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -332 452 304 ) ( -332 453 304 ) ( -331 452 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -4427,9 +4570,9 @@
 "space_id" "space.ext.rear_w_north"
 // acoustic_volume: space.ext.rear_w_north
 {
-( -408 -380 -8 ) ( -408 -379 -8 ) ( -408 -380 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -408 -380 -8 ) ( -408 -380 -7 ) ( -407 -380 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( -408 -380 -8 ) ( -407 -380 -8 ) ( -408 -379 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -422 -452 -8 ) ( -422 -451 -8 ) ( -422 -452 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -422 -452 -8 ) ( -422 -452 -7 ) ( -421 -452 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( -422 -452 -8 ) ( -421 -452 -8 ) ( -422 -451 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 ( -332 -180 304 ) ( -332 -180 305 ) ( -332 -179 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 ( -332 -180 304 ) ( -331 -180 304 ) ( -332 -180 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 ( -332 -180 304 ) ( -332 -179 304 ) ( -331 -180 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
@@ -4443,9 +4586,9 @@
 ( 332 180 -8 ) ( 332 181 -8 ) ( 332 180 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 ( 332 180 -8 ) ( 332 180 -7 ) ( 333 180 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 ( 332 180 -8 ) ( 333 180 -8 ) ( 332 181 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 408 380 304 ) ( 408 380 305 ) ( 408 381 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 408 380 304 ) ( 409 380 304 ) ( 408 380 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 408 380 304 ) ( 408 381 304 ) ( 409 380 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 422 452 304 ) ( 422 452 305 ) ( 422 453 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 422 452 304 ) ( 423 452 304 ) ( 422 452 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 422 452 304 ) ( 422 453 304 ) ( 423 452 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
@@ -4466,12 +4609,12 @@
 "space_id" "space.ext.rear_e_north"
 // acoustic_volume: space.ext.rear_e_north
 {
-( 332 -380 -8 ) ( 332 -379 -8 ) ( 332 -380 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 332 -380 -8 ) ( 332 -380 -7 ) ( 333 -380 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 332 -380 -8 ) ( 333 -380 -8 ) ( 332 -379 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 408 -180 304 ) ( 408 -180 305 ) ( 408 -179 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 408 -180 304 ) ( 409 -180 304 ) ( 408 -180 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
-( 408 -180 304 ) ( 408 -179 304 ) ( 409 -180 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 332 -452 -8 ) ( 332 -451 -8 ) ( 332 -452 -7 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 332 -452 -8 ) ( 332 -452 -7 ) ( 333 -452 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 332 -452 -8 ) ( 333 -452 -8 ) ( 332 -451 -8 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 422 -180 304 ) ( 422 -180 305 ) ( 422 -179 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 422 -180 304 ) ( 423 -180 304 ) ( 422 -180 305 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
+( 422 -180 304 ) ( 422 -179 304 ) ( 423 -180 304 ) vark_surfaces/stone [ 1 0 0 0 ] [ 0 -1 0 0 ] 0 1 1
 }
 }
 {
