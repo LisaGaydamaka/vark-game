@@ -5,6 +5,16 @@ extends Node
 signal gameplay_noise_emitted(summary: Dictionary)
 
 
+const SURFACE_PROFILE_PATHS: Dictionary = {
+	"stone": "res://gameplay/noise/profiles/stone.tres",
+	"carpet": "res://gameplay/noise/profiles/carpet.tres",
+	"tile": "res://gameplay/noise/profiles/tile.tres",
+}
+const SURFACE_TEXTURE_PREFIX: String = "vark_surfaces/"
+const SURFACE_RAY_START_HEIGHT: float = 0.20
+const SURFACE_RAY_DEPTH: float = 0.55
+
+
 @export var player_path: NodePath = NodePath("../Player")
 @export_range(0.2, 4.0, 0.05) var step_distance: float = 1.25
 @export_range(0.0, 5.0, 0.05) var minimum_move_speed: float = 0.35
@@ -24,6 +34,9 @@ var _last_base_strength: float = 0.0
 var _last_strength: float = 0.0
 var _last_stance: String = "standing"
 var _last_gait: String = "walking"
+var _last_resolution_source: StringName = &""
+var _last_surface_texture: StringName = &""
+var _surface_profile_cache: Dictionary = {}
 var _landing_armed: bool = false
 var _mantle_contact_pending: bool = false
 
@@ -192,10 +205,9 @@ func _emit_current_surface_noise(
 		or not is_instance_valid(_world_session)
 	):
 		return false
-	var surface: VarkFootstepSurface = _find_current_surface()
-	if surface == null or not surface.has_valid_surface_profile():
+	var profile: VarkSurfaceProfile = _find_current_surface_profile()
+	if profile == null or not profile.is_valid_profile():
 		return false
-	var profile: VarkSurfaceProfile = surface.get_surface_profile()
 	var base_strength: float = profile.get_footstep_strength()
 	var kind: StringName = profile.get_footstep_sound_kind()
 	if kind.is_empty() or base_strength <= 0.0:
@@ -234,6 +246,8 @@ func get_debug_summary() -> Dictionary:
 		"last_strength": _last_strength,
 		"last_stance": _last_stance,
 		"last_gait": _last_gait,
+		"last_resolution_source": _last_resolution_source,
+		"last_surface_texture": _last_surface_texture,
 		"landing_armed": _landing_armed,
 		"mantle_contact_pending": _mantle_contact_pending,
 		"crouched_strength_scale": crouched_strength_scale,
@@ -254,6 +268,166 @@ func _get_player_movement_state() -> Dictionary:
 			"sprinting": false,
 		}
 	return _player.call("get_movement_semantic_state")
+
+
+func _find_current_surface_profile() -> VarkSurfaceProfile:
+	var map_profile: VarkSurfaceProfile = _find_func_godot_surface_profile()
+	if map_profile != null and map_profile.is_valid_profile():
+		return map_profile
+
+	var surface: VarkFootstepSurface = _find_current_surface()
+	if surface == null or not surface.has_valid_surface_profile():
+		_last_resolution_source = &""
+		_last_surface_texture = &""
+		return null
+	_last_resolution_source = &"authored_volume"
+	_last_surface_texture = &""
+	return surface.get_surface_profile()
+
+
+func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
+	if (
+		_player == null
+		or not is_instance_valid(_player)
+		or not _player.is_inside_tree()
+	):
+		return null
+
+	var world_3d: World3D = _player.get_world_3d()
+	if world_3d == null:
+		return null
+	var query := PhysicsRayQueryParameters3D.create(
+		_player.global_position + Vector3.UP * SURFACE_RAY_START_HEIGHT,
+		_player.global_position + Vector3.DOWN * SURFACE_RAY_DEPTH
+	)
+	query.exclude = [_player.get_rid()]
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var hit: Dictionary = world_3d.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return null
+
+	var collider := hit.get("collider") as CollisionObject3D
+	if collider == null or not collider.has_meta("func_godot_mesh_data"):
+		return null
+	var mesh_data_variant: Variant = collider.get_meta("func_godot_mesh_data")
+	if not (mesh_data_variant is Dictionary):
+		return null
+	var mesh_data: Dictionary = mesh_data_variant as Dictionary
+	var shape_to_faces_variant: Variant = mesh_data.get(
+		"collision_shape_to_face_indices_map",
+		{}
+	)
+	if not (shape_to_faces_variant is Dictionary):
+		return null
+	var shape_to_faces: Dictionary = shape_to_faces_variant as Dictionary
+
+	var shape_index: int = int(hit.get("shape", -1))
+	if shape_index < 0:
+		return null
+	var shape_owner_id: int = collider.shape_find_owner(shape_index)
+	if shape_owner_id < 0:
+		return null
+	var shape_owner: Object = collider.shape_owner_get_owner(shape_owner_id)
+	if not (shape_owner is CollisionShape3D):
+		return null
+	var collision_shape := shape_owner as CollisionShape3D
+	var face_indices_variant: Variant = shape_to_faces.get(
+		collision_shape.name,
+		PackedInt32Array()
+	)
+	if not (face_indices_variant is PackedInt32Array):
+		return null
+	var face_indices: PackedInt32Array = face_indices_variant as PackedInt32Array
+	if face_indices.is_empty():
+		return null
+
+	var texture_names_variant: Variant = mesh_data.get("texture_names", [])
+	var textures_variant: Variant = mesh_data.get("textures", PackedInt32Array())
+	var normals_variant: Variant = mesh_data.get("normals", PackedVector3Array())
+	var positions_variant: Variant = mesh_data.get("positions", PackedVector3Array())
+	if (
+		not (texture_names_variant is Array)
+		or not (textures_variant is PackedInt32Array)
+		or not (normals_variant is PackedVector3Array)
+		or not (positions_variant is PackedVector3Array)
+	):
+		return null
+	var texture_names: Array = texture_names_variant as Array
+	var textures: PackedInt32Array = textures_variant as PackedInt32Array
+	var normals: PackedVector3Array = normals_variant as PackedVector3Array
+	var positions: PackedVector3Array = positions_variant as PackedVector3Array
+	if (
+		textures.is_empty()
+		or normals.is_empty()
+		or positions.is_empty()
+	):
+		return null
+
+	var hit_normal: Vector3 = (hit.get("normal", Vector3.UP) as Vector3).normalized()
+	var hit_position: Vector3 = hit.get("position", _player.global_position) as Vector3
+	var best_face_index: int = -1
+	var best_normal_score: float = -2.0
+	var best_position_distance: float = INF
+	for face_index: int in face_indices:
+		if (
+			face_index < 0
+			or face_index >= textures.size()
+			or face_index >= normals.size()
+			or face_index >= positions.size()
+		):
+			continue
+		var global_normal: Vector3 = (
+			collider.global_transform.basis * normals[face_index]
+		).normalized()
+		var normal_score: float = global_normal.dot(hit_normal)
+		var face_position: Vector3 = collider.to_global(positions[face_index])
+		var position_distance: float = face_position.distance_squared_to(
+			hit_position
+		)
+		if (
+			normal_score > best_normal_score + 0.0001
+			or (
+				is_equal_approx(normal_score, best_normal_score)
+				and position_distance < best_position_distance
+			)
+		):
+			best_face_index = face_index
+			best_normal_score = normal_score
+			best_position_distance = position_distance
+
+	if best_face_index < 0 or best_normal_score < 0.80:
+		return null
+	var texture_index: int = textures[best_face_index]
+	if texture_index < 0 or texture_index >= texture_names.size():
+		return null
+	var texture_name: String = str(texture_names[texture_index])
+	if not texture_name.begins_with(SURFACE_TEXTURE_PREFIX):
+		return null
+	var variant: String = texture_name.trim_prefix(SURFACE_TEXTURE_PREFIX)
+	if variant.contains("."):
+		variant = variant.get_basename()
+	var profile: VarkSurfaceProfile = _get_surface_profile_for_variant(variant)
+	if profile == null:
+		return null
+	_last_resolution_source = &"func_godot_material"
+	_last_surface_texture = StringName(texture_name)
+	return profile
+
+
+func _get_surface_profile_for_variant(variant: String) -> VarkSurfaceProfile:
+	var normalized: String = variant.strip_edges()
+	if _surface_profile_cache.has(normalized):
+		return _surface_profile_cache[normalized] as VarkSurfaceProfile
+	var profile_path: String = str(SURFACE_PROFILE_PATHS.get(normalized, ""))
+	if profile_path.is_empty() or not ResourceLoader.exists(profile_path):
+		return null
+	var loaded: Resource = ResourceLoader.load(profile_path)
+	if not (loaded is VarkSurfaceProfile):
+		return null
+	var profile := loaded as VarkSurfaceProfile
+	_surface_profile_cache[normalized] = profile
+	return profile
 
 
 func _find_current_surface() -> VarkFootstepSurface:
