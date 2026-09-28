@@ -1221,28 +1221,32 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 func _debug_surface_ray(player: CharacterBody3D) -> Dictionary:
 	if player == null or not player.is_inside_tree():
 		return {"error": "player unavailable"}
-	var query := PhysicsRayQueryParameters3D.create(
-		player.global_position + Vector3.UP * 0.20,
-		player.global_position + Vector3.DOWN * 0.55
+	var probe := SphereShape3D.new()
+	probe.radius = 0.10
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = probe
+	query.transform = Transform3D(
+		Basis.IDENTITY,
+		player.global_position + Vector3.UP * 0.04
 	)
-	query.collision_mask = player.collision_mask
+	query.collision_mask = 1
 	query.exclude = [player.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
-	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(
+	var hit: Dictionary = player.get_world_3d().direct_space_state.get_rest_info(
 		query
 	)
 	if hit.is_empty():
 		return {
-			"error": "no hit",
+			"error": "no support contact",
 			"player_position": player.global_position,
-			"from": query.from,
-			"to": query.to,
+			"probe_origin": query.transform.origin,
+			"probe_radius": probe.radius,
 		}
 	var collider := hit.get("collider") as CollisionObject3D
 	return {
 		"player_position": player.global_position,
-		"position": hit.get("position", Vector3.ZERO),
+		"position": hit.get("point", Vector3.ZERO),
 		"normal": hit.get("normal", Vector3.ZERO),
 		"shape": int(hit.get("shape", -1)),
 		"collider": str(collider),
