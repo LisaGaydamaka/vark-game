@@ -205,6 +205,9 @@ func interact(interactor: Node) -> void:
 		var denial_reason: StringName = get_open_denial_reason(interactor)
 		if not request_open(interactor):
 			_queue_access_denied(denial_reason)
+			return
+		# Opening is the complete result of this interaction. Do not fall
+		# through and immediately reverse the same leaf back into closing.
 		return
 	request_close(interactor)
 
@@ -815,16 +818,20 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 			return false
 		locked = bool(snapshot["locked"])
 		barred = bool(snapshot["barred"])
-	if phase == PHASE_CLOSED and not is_zero_approx(fraction):
+	# Terminal phases are canonical exact endpoints. Transitional leaves may be
+	# physically blocked arbitrarily close to either endpoint; those states are
+	# valid save truth and must round-trip instead of being rejected merely
+	# because an approximate comparison considers the fraction "close enough".
+	if phase == PHASE_CLOSED and fraction != 0.0:
 		return false
-	if phase == PHASE_OPEN and not is_equal_approx(fraction, 1.0):
+	if phase == PHASE_OPEN and fraction != 1.0:
 		return false
 	if (
 		motion_blocked
 		and (
 			(phase != PHASE_OPENING and phase != PHASE_CLOSING)
-			or is_zero_approx(fraction)
-			or is_equal_approx(fraction, 1.0)
+			or fraction <= 0.0
+			or fraction >= 1.0
 		)
 	):
 		return false
