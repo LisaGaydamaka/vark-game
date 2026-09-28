@@ -808,6 +808,51 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 rebuilt boulevard stays navigation-ready between both patrol endpoints"
 	)
 
+	var ordinary_links_valid: bool = nav_ready
+	var ordinary_link_count: int = 0
+	var ordinary_link_failure: Dictionary = {}
+	for opening_node: Node in openings:
+		if str(opening_node.get("opening_variant")) == "sneak_window":
+			continue
+		var ordinary := opening_node as VarkOrdinaryDoor
+		if ordinary == null:
+			continue
+		ordinary_link_count += 1
+		var link_summary: Dictionary = ordinary.get_navigation_link_summary()
+		var cut_half_depth: float = float(
+			link_summary.get("bake_cut_half_depth", 0.0)
+		)
+		var clearance: float = float(link_summary.get("clearance", 0.0))
+		var start: Vector3 = link_summary.get("start", Vector3.ZERO)
+		var end: Vector3 = link_summary.get("end", Vector3.ZERO)
+		var frame: Dictionary = ordinary.get_navigation_doorway_frame()
+		var center: Vector3 = frame.get("center", ordinary.global_position)
+		var normal: Vector3 = frame.get("normal", Vector3.ZERO)
+		var start_side: float = (start - center).dot(normal)
+		var end_side: float = (end - center).dot(normal)
+		if (
+			not bool(link_summary.get("configured", false))
+			or not bool(link_summary.get("map_bound", false))
+			or clearance <= cut_half_depth
+			or clearance - cut_half_depth < 0.30
+			or start.distance_to(end) <= 0.10
+			or start_side * end_side >= 0.0
+		):
+			ordinary_links_valid = false
+			ordinary_link_failure = {
+				"door_id": str(ordinary.door_id),
+				"summary": link_summary,
+				"start_side": start_side,
+				"end_side": end_side,
+			}
+			break
+	assert_true.call(
+		ordinary_links_valid
+		and ordinary_link_count == 6,
+		"8.4 all six ordinary door smart links finalize on opposite baked sides with their approach endpoints outside the swept-leaf carve; failure=%s"
+		% str(ordinary_link_failure)
+	)
+
 	var sneak_windows: Dictionary = {
 		"window.mercer.upper": Vector3(-114, 235, 96),
 		"window.watchmaker.upper": Vector3(114, 235, 96),
