@@ -369,7 +369,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		bool(world_material_metadata.get("ok", false))
 		and bool(frame_material_metadata.get("ok", false))
 		and int(world_material_metadata.get("shape_count", 0)) >= 280,
-		"8.4 every imported solid map collision shape carries face texture metadata so footsteps can resolve the rendered stone/tile/carpet plane directly; world=%s frame=%s"
+		"8.4 every imported solid map collision shape carries one uniform supported face texture so footstep support overlap can resolve the rendered stone/tile/carpet material directly; world=%s frame=%s"
 		% [str(world_material_metadata), str(frame_material_metadata)]
 	)
 
@@ -1229,36 +1229,40 @@ func _debug_surface_ray(player: CharacterBody3D) -> Dictionary:
 		Basis.IDENTITY,
 		player.global_position + Vector3.UP * 0.04
 	)
-	query.collision_mask = 1
+	query.collision_mask = 0x7fffffff
 	query.exclude = [player.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
-	var hit: Dictionary = player.get_world_3d().direct_space_state.get_rest_info(
-		query
+	var hits: Array[Dictionary] = (
+		player.get_world_3d().direct_space_state.intersect_shape(query, 16)
 	)
-	if hit.is_empty():
-		return {
-			"error": "no support contact",
-			"player_position": player.global_position,
-			"probe_origin": query.transform.origin,
-			"probe_radius": probe.radius,
-		}
-	var collider := hit.get("collider") as CollisionObject3D
+	var summaries: Array[Dictionary] = []
+	for hit: Dictionary in hits:
+		var collider := hit.get("collider") as CollisionObject3D
+		summaries.append({
+			"shape": int(hit.get("shape", -1)),
+			"collider": str(collider),
+			"collider_path": (
+				str(collider.get_path())
+				if collider != null and collider.is_inside_tree()
+				else ""
+			),
+			"collision_layer": (
+				collider.collision_layer if collider != null else 0
+			),
+			"has_mesh_metadata": (
+				collider != null and collider.has_meta("func_godot_mesh_data")
+			),
+		})
 	return {
 		"player_position": player.global_position,
-		"position": hit.get("point", Vector3.ZERO),
-		"normal": hit.get("normal", Vector3.ZERO),
-		"shape": int(hit.get("shape", -1)),
-		"collider": str(collider),
-		"collider_path": (
-			str(collider.get_path())
-			if collider != null and collider.is_inside_tree()
-			else ""
-		),
-		"has_mesh_metadata": (
-			collider != null and collider.has_meta("func_godot_mesh_data")
-		),
+		"probe_origin": query.transform.origin,
+		"probe_radius": probe.radius,
+		"hit_count": hits.size(),
+		"hits": summaries,
 	}
+
+
 
 
 func _audit_func_godot_surface_metadata(
@@ -1334,6 +1338,7 @@ func _audit_func_godot_surface_metadata(
 		if face_indices.is_empty():
 			continue
 		var valid_shape: bool = true
+		var shape_texture_index: int = -1
 		for face_index: int in face_indices:
 			if face_index < 0 or face_index >= textures.size():
 				valid_shape = false
@@ -1343,6 +1348,11 @@ func _audit_func_godot_surface_metadata(
 				valid_shape = false
 				break
 			if not ALLOWED_SURFACE_TEXTURES.has(str(texture_names[texture_index])):
+				valid_shape = false
+				break
+			if shape_texture_index < 0:
+				shape_texture_index = texture_index
+			elif texture_index != shape_texture_index:
 				valid_shape = false
 				break
 		if valid_shape:
