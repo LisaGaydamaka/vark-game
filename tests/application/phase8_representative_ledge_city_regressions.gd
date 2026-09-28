@@ -1225,6 +1225,7 @@ func _debug_surface_ray(player: CharacterBody3D) -> Dictionary:
 		player.global_position + Vector3.UP * 0.20,
 		player.global_position + Vector3.DOWN * 0.55
 	)
+	query.collision_mask = player.collision_mask
 	query.exclude = [player.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
