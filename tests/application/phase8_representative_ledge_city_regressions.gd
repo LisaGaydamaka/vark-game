@@ -816,7 +816,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		debug_meters.find_child("SoundMeter", true, false) as ProgressBar
 		if debug_meters != null else null
 	)
-	assert_true.call(
+	var meters_valid: bool = (
 		debug_meters != null
 		and exposure_node != null
 		and bool(meter_state.get("exposure_connected", false))
@@ -835,8 +835,24 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		)
 		and str(meter_state.get("last_surface_id", "")) == "stone"
 		and str(meter_state.get("last_gait", "")) == "walking"
+		and bool(meter_state.get("ui_ready", false))
 		and light_meter != null
-		and sound_meter != null,
+		and sound_meter != null
+	)
+	if not meters_valid:
+		print(
+			"8.4 stealth debug meter diagnostics: ",
+			{
+				"meter_state": meter_state,
+				"debug_meters": str(debug_meters),
+				"exposure_node": str(exposure_node),
+				"footstep_emitter": str(footstep_emitter),
+				"light_meter": str(light_meter),
+				"sound_meter": str(sound_meter),
+			}
+		)
+	assert_true.call(
+		meters_valid,
 		"8.4 stealth debug HUD reads live gameplay exposure and reacts to the real player-noise signal"
 	)
 	if footstep_emitter != null:
