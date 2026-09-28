@@ -235,6 +235,15 @@ func _emit_current_surface_noise(
 	return true
 
 
+func get_current_surface_debug() -> Dictionary:
+	var profile: VarkSurfaceProfile = _find_current_surface_profile()
+	return {
+		"surface_id": profile.surface_id if profile != null else &"",
+		"resolution_source": _last_resolution_source,
+		"surface_texture": _last_surface_texture,
+	}
+
+
 func get_debug_summary() -> Dictionary:
 	return {
 		"enabled": emission_enabled,
