@@ -480,8 +480,11 @@ func _rebuild_navigation_from_imported_geometry() -> void:
 		)
 		if not opening.finalize_navigation_traversal(navigation_map):
 			navigation_errors.append(
-				"Opening '%s' could not finalize its navigation link."
-				% opening.door_id
+				"Opening '%s' could not finalize its navigation link. nav=%s"
+				% [
+					opening.door_id,
+					str(opening.get_navigation_link_summary()),
+				]
 			)
 			continue
 		if not await _wait_for_navigation_map_iteration(
