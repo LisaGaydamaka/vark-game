@@ -330,6 +330,27 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		})),
 		"Ordinary door rejects impossible terminal state marked as motion-blocked"
 	)
+	var near_open_blocked := {
+		"phase": OrdinaryDoor.PHASE_OPENING,
+		"open_fraction": 0.999999,
+		"motion_blocked": true,
+		"locked": false,
+		"barred": false,
+	}
+	var near_closed_blocked := {
+		"phase": OrdinaryDoor.PHASE_CLOSING,
+		"open_fraction": 0.000001,
+		"motion_blocked": true,
+		"locked": false,
+		"barred": false,
+	}
+	assert_true.call(
+		bool(door.call("apply_semantic_state", near_open_blocked))
+		and door.call("capture_semantic_state") == near_open_blocked
+		and bool(door.call("apply_semantic_state", near_closed_blocked))
+		and door.call("capture_semantic_state") == near_closed_blocked,
+		"Blocked transitional door state round-trips even arbitrarily close to an endpoint"
+	)
 	assert_true.call(
 		bool(door.call("apply_semantic_state", open_state))
 		and door.call("get_semantic_phase") == OrdinaryDoor.PHASE_OPEN
