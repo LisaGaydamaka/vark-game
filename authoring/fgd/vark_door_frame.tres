@@ -18,3 +18,7 @@ meta_properties = Dictionary[String, Variant]({
 })
 node_class = "StaticBody3D"
 node_groups = Array[String](["vark_door_frame"])
+add_textures_metadata = true
+add_face_position_metadata = true
+add_face_normal_metadata = true
+add_collision_shape_to_face_indices_metadata = true
