@@ -52,8 +52,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and Definition.get("mission_id")
 			== &"phase8_representative_stealth_ledge_city"
 		and str(Definition.get("map_source_path")) == MAP_PATH
-		and int(Definition.get("mission_content_revision")) == 8,
-		"8.4 Ledge City revision 8 owns a distinct save identity after the full brush/object alignment and exact-fit opening rebuild"
+		and int(Definition.get("mission_content_revision")) == 9,
+		"8.4 Ledge City revision 9 owns a distinct save identity after rear-lane floor completion and inward sneak-window swing correction"
 	)
 
 	var source: String = FileAccess.get_file_as_string(MAP_PATH)
@@ -97,6 +97,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and source.count("// supported_terrace:") == 28
 		and source.count("// overstreet:") == 10
 		and source.count("// alley_bridge:") == 8
+		and source.count("// back_valley_floor:") == 4
 		and source.count("// room_wall:") == 14
 		and source.count("// partition:") == 18
 		and source.count("// balcony:") == 0
@@ -105,6 +106,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and _all_upper_floor_coverage_complete(source)
 		and _all_structural_extensions_connected(source)
 		and _all_named_solid_brushes_face_connected(source)
+		and _all_outdoor_ground_coverage_complete(source)
 		and _all_opening_frames_seat_leaf(source)
 		and _all_sneak_window_clearances_are_crouch_only(source)
 		and not source.contains("zebra/zebra16x16")
@@ -112,7 +114,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not source.contains("// platform:")
 		and not source.contains("// west_route:")
 		and not source.contains("// east_route:"),
-		"8.4 all 325 solid map brushes are non-overlapping and face-connected; stairs/floors, supported irregular architecture, partitions, cornices, cross ties, and exact-fit opening frames are aligned"
+		"8.4 all 329 solid map brushes are non-overlapping and face-connected; the full rear/end outdoor ground is tiled to the inner boundary, stairs/floors remain joined, and exact-fit opening frames stay aligned"
 	)
 
 	var root_viewport := tree.get_root() as Viewport
@@ -214,13 +216,13 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and openings.size() == 13
 		and pickups.size() == 4
 		and markers.size() >= 33
-		and surfaces.size() == 29
+		and surfaces.size() == 33
 		and acoustic_spaces.size() == 46
-		and acoustic_portals.size() == 54
+		and acoustic_portals.size() == 58
 		and door_frames.size() == 1
 		and _count_direct_collision_shapes(worldspawn) >= 280
 		and _count_direct_collision_shapes(door_frames[0]) >= 1,
-		"8.4 compact city keeps every representative gameplay role and imports the 39 exact-fit jamb/header brushes as one dedicated solid frame collider owner"
+		"8.4 compact city keeps every representative gameplay role, four added rear/end floor surface regions, four explicit corner acoustic links, and the 39 exact-fit jamb/header brushes"
 	)
 
 	var shadow_budget_state: Dictionary = (
@@ -506,6 +508,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			or not is_equal_approx(window_collision.position.y, 0.59)
 			or not is_equal_approx(window_mesh_bounds.size.x, 1.30)
 			or not is_equal_approx(window_mesh_bounds.size.y, 1.18)
+			or not is_equal_approx(float(opening_node.get("open_angle_degrees")), -90.0)
 			or bool(window_nav.get("configured", true))
 			or bool(window_nav.get("map_bound", true))
 		):
@@ -822,6 +825,15 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			"door_id",
 			window_id
 		) as VarkOrdinaryDoor
+		var exterior_interaction_opens: bool = (
+			await _sneak_window_opens_away_from_exterior_probe(
+				world,
+				tree,
+				sneak_window,
+				sneak_windows[window_id] as Vector3
+			)
+			if sneak_window != null else false
+		)
 		var opened: bool = (
 			sneak_window != null
 			and sneak_window.apply_semantic_state({
@@ -841,10 +853,11 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			)
 			if opened else false
 		)
-		if not opened or not crouched_traverses:
+		if not exterior_interaction_opens or not opened or not crouched_traverses:
 			sneak_windows_valid = false
 			sneak_window_failure = {
 				"window_id": window_id,
+				"exterior_interaction_opens": exterior_interaction_opens,
 				"opened": opened,
 				"crouched_traverses": crouched_traverses,
 				"origin": (
@@ -855,7 +868,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			break
 	assert_true.call(
 		sneak_windows_valid,
-		"8.4 every open sneak window physically admits the accepted 0.95 m crouched capsule; authoritative header clearance remains below standing height; failure=%s"
+		"8.4 every sneak window opens inward through ordinary interaction with a crouched exterior body clear of the swing, then physically admits the accepted 0.95 m crouched capsule; failure=%s"
 		% str(sneak_window_failure)
 	)
 
@@ -1273,6 +1286,30 @@ func _all_sneak_window_clearances_are_crouch_only(source: String) -> bool:
 	return true
 
 
+func _all_outdoor_ground_coverage_complete(source: String) -> bool:
+	var expected: Dictionary = {
+		"street: carriageway": AABB(Vector3(-68, -454, -8), Vector3(136, 908, 8)),
+		"street: west_sidewalk": AABB(Vector3(-110, -454, -8), Vector3(42, 908, 8)),
+		"street: east_sidewalk": AABB(Vector3(68, -454, -8), Vector3(42, 908, 8)),
+		"rear_alley: west": AABB(Vector3(-424, -454, -8), Vector3(94, 908, 8)),
+		"rear_alley: east": AABB(Vector3(330, -454, -8), Vector3(94, 908, 8)),
+		"back_valley_floor: west_south": AABB(Vector3(-330, 360, -8), Vector3(220, 94, 8)),
+		"back_valley_floor: east_south": AABB(Vector3(110, 360, -8), Vector3(220, 94, 8)),
+		"back_valley_floor: west_north": AABB(Vector3(-330, -454, -8), Vector3(220, 94, 8)),
+		"back_valley_floor: east_north": AABB(Vector3(110, -454, -8), Vector3(220, 94, 8)),
+	}
+	for comment: String in expected:
+		var actual: AABB = _brush_bounds_after_comment(source, comment)
+		var wanted: AABB = expected[comment] as AABB
+		if (
+			actual.size == Vector3.ZERO
+			or actual.position.distance_to(wanted.position) > 0.001
+			or actual.size.distance_to(wanted.size) > 0.001
+		):
+			return false
+	return true
+
+
 func _all_opening_frames_seat_leaf(source: String) -> bool:
 	const LEAF_WIDTH_MAP_UNITS := 41.6
 	const ORDINARY_LEAF_HEIGHT_MAP_UNITS := 67.2
@@ -1332,7 +1369,7 @@ func _all_named_solid_brushes_face_connected(source: String) -> bool:
 		)
 		if bounds.size != Vector3.ZERO:
 			named_bounds.append(bounds)
-	if named_bounds.size() != 325:
+	if named_bounds.size() != 329:
 		return false
 	for first_index: int in named_bounds.size():
 		var connected: bool = false
@@ -1578,6 +1615,65 @@ func _opening_completes_real_sweep(opening: VarkOrdinaryDoor) -> bool:
 	)
 	var restored: bool = opening.apply_semantic_state(saved)
 	return completed and restored
+
+
+func _sneak_window_opens_away_from_exterior_probe(
+	world: Node,
+	tree: SceneTree,
+	opening: VarkOrdinaryDoor,
+	map_floor_center: Vector3
+) -> bool:
+	if world == null or opening == null:
+		return false
+	var saved: Dictionary = opening.capture_semantic_state()
+	var closed_state := {
+		"phase": VarkOrdinaryDoor.PHASE_CLOSED,
+		"open_fraction": 0.0,
+		"motion_blocked": false,
+		"locked": false,
+		"barred": false,
+	}
+	if not opening.apply_semantic_state(closed_state):
+		return false
+
+	var probe := StaticBody3D.new()
+	probe.name = "SneakWindowExteriorProbe"
+	probe.collision_layer = 1
+	probe.collision_mask = 0
+	var collision := CollisionShape3D.new()
+	var capsule := CapsuleShape3D.new()
+	capsule.radius = 0.30
+	capsule.height = 0.95
+	collision.shape = capsule
+	probe.add_child(collision)
+	world.add_child(probe)
+
+	var exterior_map: Vector3 = map_floor_center
+	exterior_map.x = -80.0 if map_floor_center.x < 0.0 else 80.0
+	probe.global_position = (
+		_map_origin_to_world(exterior_map)
+		+ Vector3.UP * 0.475
+	)
+	await tree.physics_frame
+
+	var was_processing: bool = opening.is_physics_processing()
+	opening.set_physics_process(false)
+	opening.interact(null)
+	for _step: int in 40:
+		opening.call("_physics_process", 0.02)
+		if opening.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN:
+			break
+	var opened: bool = (
+		opening.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
+		and is_equal_approx(opening.get_open_fraction(), 1.0)
+		and not opening.is_motion_blocked()
+	)
+
+	probe.queue_free()
+	await tree.physics_frame
+	var restored: bool = opening.apply_semantic_state(saved)
+	opening.set_physics_process(was_processing)
+	return opened and restored
 
 
 func _capsule_traverses_map_aperture(
