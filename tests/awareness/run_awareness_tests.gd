@@ -1375,7 +1375,9 @@ func _assert_completed_search_quickload() -> void:
 	guard.investigate_speed_scale = 0.45
 	guard.search_speed_scale = 0.45
 	light.gameplay_enabled = false
-	light.visible = false
+	# Keep fixture geometry visible: OFF gameplay emission is the semantic state;
+	# node visibility is presentation and restore deliberately keeps the lamp body.
+	light.visible = true
 	player.global_position = Vector3(-4.0, 0.0, 6.0)
 	player.velocity = Vector3.ZERO
 	exposure.sample_now()
