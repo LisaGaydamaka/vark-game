@@ -1298,6 +1298,10 @@ A Windows runtime reported `door.office.front` and `door.tenement.front` failing
 
 The door-owned bake cut now uses the actual horizontal swept-leaf radius (or the explicit minimum cut-depth fallback), while link clearance remains `sweep radius + agent radius + path reach tolerance + safety margin`. This leaves a real approach band between the carved navmesh edge and the desired link endpoint rather than a zero-width coincidence. `get_navigation_link_summary()` now exposes the cut half-depth and endpoint/cut margin, and Ledge City navigation errors include that summary. The Phase 8 application regression waits for the real navigation bake and requires all six ordinary doors to be configured, map-bound, projected onto opposite doorway sides, and to retain at least 0.30 m of authored endpoint-to-cut margin. Exact implementation head `9f6f083669fc6db7a348a229761005401dee3dfe` passed the complete Godot 4.7.2 barrier in GitHub Actions Test #631.
 
+### Phase 8.4 stealth debug light/sound meters
+
+Both Representative Stealth world scenes now include a non-persistent `StealthDebugMeters` `CanvasLayer`. The light meter reads the existing `VarkGameplayExposure.get_current_exposure()` value (0–1) and therefore uses exactly the same visibility score consumed by stealth systems. The sound meter listens to the existing `VarkPlayerFootstepEmitter.gameplay_noise_emitted` signal and displays the actual queued movement-noise strength plus the last surface/gait; its short hold/decay is presentation-only and does not feed gameplay. The Phase 8 Ledge City regression resolves the real HUD, exposure owner and footstep emitter, emits through the real player-noise signal, and verifies the HUD reports the same exposure and exact noise payload with both progress bars constructed. Exact implementation head `fe291ea3dc3afd436ed1230753d8a80b6274e93f` passed the full Godot 4.7.2 barrier in GitHub Actions Test #639.
+
 Manual acceptance for revision 9:
 
 1. Fully close/reopen Godot after pulling, then launch **Development Launch → Representative Stealth — Ledge City** from a fresh revision-9 run.
