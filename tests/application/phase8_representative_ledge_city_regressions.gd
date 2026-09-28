@@ -1817,6 +1817,30 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		"8.4 watchmaker sneak window accepts valid near-endpoint blocked state before quicksave"
 	)
 
+	# Reproduce the later F9 failure while the authored guard is dwelling at a
+	# patrol endpoint. This is the exact persistent state whose wait staging is
+	# applied before the replacement world's deferred navigation configuration.
+	var live_guard: VarkGuard = null
+	for candidate: Node in world.find_children("*", "", true, false):
+		if candidate is VarkGuard:
+			live_guard = candidate as VarkGuard
+			break
+	if live_guard != null:
+		live_guard.call("_complete_patrol_leg")
+	var prepared_guard_wait: Dictionary = (
+		live_guard.capture_semantic_state()
+		if live_guard != null else {}
+	)
+	assert_true.call(
+		live_guard != null
+		and bool(prepared_guard_wait.get("patrol_wait_active", false))
+		and float(prepared_guard_wait.get(
+			"patrol_wait_remaining_seconds",
+			0.0
+		)) > 0.0,
+		"8.4 Ledge guard enters a real authored patrol dwell before quicksave"
+	)
+
 	var generation: int = int(application.call("request_quicksave"))
 	var snapshot: Dictionary = await _wait_for_save_commit(
 		tree,
@@ -1833,6 +1857,21 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		await tree.process_frame
 		_cleanup_quickload_storage(TEST_SAVE_DIRECTORY)
 		return
+
+	var saved_guard_state: Dictionary = (
+		snapshot.get("session", {})
+		.get("world_state", {})
+		.get("persistent_entities", {})
+		.get("vark_ledge_guard", {})
+	)
+	assert_true.call(
+		bool(saved_guard_state.get("patrol_wait_active", false))
+		and float(saved_guard_state.get(
+			"patrol_wait_remaining_seconds",
+			0.0
+		)) > 0.0,
+		"8.4 committed quicksave contains the active Ledge guard patrol dwell"
+	)
 
 	var saved_position: Vector3 = (
 		application.get("current_player") as Node3D
@@ -1865,6 +1904,16 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 	var restored_session := application.get("current_session") as Node
 	var restored_world := application.get("current_world") as Node
 	var restored_player := application.get("current_player") as Node3D
+	var restored_guard: VarkGuard = null
+	if restored_world != null:
+		for candidate: Node in restored_world.find_children("*", "", true, false):
+			if candidate is VarkGuard:
+				restored_guard = candidate as VarkGuard
+				break
+	var restored_guard_state: Dictionary = (
+		restored_guard.capture_semantic_state()
+		if restored_guard != null else {}
+	)
 	var restored_watch_window: VarkOrdinaryDoor = null
 	if restored_world != null:
 		var restored_openings: Array[Node] = []
@@ -1932,6 +1981,13 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 		)
 		and int(restored_shadow_budget.get("shared_refcount", 0)) >= 1
 		and restored_watch_state == watch_blocked_state
+		and restored_guard != null
+		and restored_guard_state.get("goal_id", "") == saved_guard_state.get("goal_id", "")
+		and bool(restored_guard_state.get("patrol_wait_active", false))
+		and float(restored_guard_state.get(
+			"patrol_wait_remaining_seconds",
+			0.0
+		)) > 0.0
 	)
 	if not live_after_load:
 		print(
@@ -1966,6 +2022,8 @@ func _test_application_quickload_returns_ledge_city_to_live_play(
 					restored_position_before
 				),
 				"shadow_budget": restored_shadow_budget,
+				"saved_guard_state": saved_guard_state,
+				"restored_guard_state": restored_guard_state,
 				"viewport_shadow_budget_active": _is_ledge_shadow_budget_active(
 					root_viewport
 				),
