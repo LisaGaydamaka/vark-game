@@ -855,6 +855,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 				surface_sample_failures.append({
 					"sample": sample,
 					"resolved": resolved,
+					"ray": _debug_surface_ray(player),
 				})
 		player.global_transform = original_player_transform
 	assert_true.call(
@@ -1215,6 +1216,44 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		tree,
 		assert_true
 	)
+
+
+func _debug_surface_ray(player: CharacterBody3D) -> Dictionary:
+	if player == null or not player.is_inside_tree():
+		return {"error": "player unavailable"}
+	var query := PhysicsRayQueryParameters3D.create(
+		player.global_position + Vector3.UP * 0.20,
+		player.global_position + Vector3.DOWN * 0.55
+	)
+	query.exclude = [player.get_rid()]
+	query.collide_with_areas = false
+	query.collide_with_bodies = true
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(
+		query
+	)
+	if hit.is_empty():
+		return {
+			"error": "no hit",
+			"player_position": player.global_position,
+			"from": query.from,
+			"to": query.to,
+		}
+	var collider := hit.get("collider") as CollisionObject3D
+	return {
+		"player_position": player.global_position,
+		"position": hit.get("position", Vector3.ZERO),
+		"normal": hit.get("normal", Vector3.ZERO),
+		"shape": int(hit.get("shape", -1)),
+		"collider": str(collider),
+		"collider_path": (
+			str(collider.get_path())
+			if collider != null and collider.is_inside_tree()
+			else ""
+		),
+		"has_mesh_metadata": (
+			collider != null and collider.has_meta("func_godot_mesh_data")
+		),
+	}
 
 
 func _audit_func_godot_surface_metadata(
