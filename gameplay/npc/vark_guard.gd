@@ -628,8 +628,8 @@ func capture_semantic_state() -> Dictionary:
 		"transform": global_transform,
 		"velocity": velocity,
 		"goal_id": _current_goal_id(),
-		"patrol_wait_active": _patrol_wait_active,
-		"patrol_wait_remaining_seconds": _patrol_wait_remaining_seconds,
+		"patrol_wait_active": _current_patrol_wait_active(),
+		"patrol_wait_remaining_seconds": _current_patrol_wait_remaining_seconds(),
 	}
 
 
@@ -800,8 +800,8 @@ func get_debug_summary() -> Dictionary:
 		"patrol_a_id": patrol_a_id,
 		"patrol_b_id": patrol_b_id,
 		"patrol_wait_seconds": _patrol_wait_seconds.duplicate(),
-		"patrol_wait_active": _patrol_wait_active,
-		"patrol_wait_remaining_seconds": _patrol_wait_remaining_seconds,
+		"patrol_wait_active": _current_patrol_wait_active(),
+		"patrol_wait_remaining_seconds": _current_patrol_wait_remaining_seconds(),
 		"door_id": door_id,
 		"door_use_distance": door_use_distance,
 		"door_traversal_state": _door_traversal_state_name(),
@@ -1321,6 +1321,27 @@ func _current_goal_id() -> String:
 	if not _restored_goal_id.is_empty():
 		return _restored_goal_id
 	return patrol_a_id if _target_index == 0 else patrol_b_id
+
+
+func _current_patrol_wait_active() -> bool:
+	# A replacement world can receive persistent state before its deferred
+	# navigation bake/configure pass has completed. During that window the
+	# restored patrol goal/wait lives in staging fields. Capture must expose the
+	# staged semantic truth, just like _current_goal_id(), so immediate
+	# post-restore validation round-trips the snapshot exactly.
+	if not _restored_goal_id.is_empty():
+		return _restored_patrol_wait_active
+	return _patrol_wait_active
+
+
+func _current_patrol_wait_remaining_seconds() -> float:
+	if not _restored_goal_id.is_empty():
+		return (
+			_restored_patrol_wait_remaining_seconds
+			if _restored_patrol_wait_active
+			else 0.0
+		)
+	return _patrol_wait_remaining_seconds if _patrol_wait_active else 0.0
 
 
 func _is_finite_vector(value: Vector3) -> bool:
