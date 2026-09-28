@@ -33,6 +33,7 @@ func _run_tests() -> void:
 		return
 	await _assert_guard_awareness_state_machine()
 	await _assert_advanced_local_search_behavior()
+	await _assert_completed_search_quickload()
 	_print_summary()
 	quit(1 if not failures.is_empty() else 0)
 
@@ -1324,6 +1325,173 @@ func _assert_advanced_local_search_behavior() -> void:
 	application.call("exit_current_world")
 	application.queue_free()
 	await process_frame
+
+
+func _assert_completed_search_quickload() -> void:
+	_cleanup_test_storage()
+	var application: Node = await _launch_slice()
+	if application == null:
+		return
+
+	var coordinator: Node = application.get_node("SaveCoordinator")
+	coordinator.set("durable_save_directory", TEST_SAVE_DIRECTORY)
+	var world := application.get("current_world") as Node3D
+	var session := application.get("current_session") as Node
+	var player := application.get("current_player") as CharacterBody3D
+	var guard := world.get_node("Guard") as VarkGuard
+	var reaction := world.get_node("Guard/Reaction") as Node
+	var light := world.get_node("NorthGameplayLight") as VarkGameplayLight
+	var exposure := world.get_node("GameplayExposure") as VarkGameplayExposure
+
+	# Force one real, short search to physically complete at least one stop
+	# before recovery. This reproduces the save state that Ledge City reaches
+	# after ordinary guard investigation, rather than saving only at startup.
+	reaction.hearing_investigate_strength = 0.20
+	reaction.investigation_seconds = 0.06
+	reaction.investigation_stare_min = 0.01
+	reaction.investigation_stare_max = 0.02
+	reaction.search_seconds = 2.50
+	reaction.search_point_count = 2
+	reaction.search_radius = 1.40
+	reaction.search_max_radius = 2.80
+	reaction.search_radius_expansion = 0.70
+	reaction.search_point_min_separation = 0.70
+	reaction.search_arrival_distance = 0.30
+	reaction.search_move_speed_scale_min = 0.50
+	reaction.search_move_speed_scale_max = 0.65
+	reaction.search_arrival_pause_min = 0.02
+	reaction.search_arrival_pause_max = 0.04
+	reaction.search_look_turn_min = 0.02
+	reaction.search_look_turn_max = 0.04
+	reaction.search_look_hold_min = 0.03
+	reaction.search_between_pause_min = 0.02
+	reaction.search_between_pause_max = 0.04
+	reaction.search_departure_pause_min = 0.02
+	reaction.search_departure_pause_max = 0.04
+	reaction.search_look_count_min = 1
+	reaction.search_look_count_max = 1
+	reaction.recovery_seconds = 2.00
+	guard.movement_speed = 5.0
+	guard.investigate_speed_scale = 0.45
+	guard.search_speed_scale = 0.45
+	light.gameplay_enabled = false
+	light.visible = false
+	player.global_position = Vector3(-4.0, 0.0, 6.0)
+	player.velocity = Vector3.ZERO
+	exposure.sample_now()
+	reaction.reset_reaction()
+
+	var evidence_origin: Vector3 = (
+		guard.global_position + Vector3(0.45, 0.0, 0.20)
+	)
+	var queued: bool = bool(session.call(
+		"queue_gameplay_sound",
+		int(session.get("session_id")),
+		&"prop.impact",
+		evidence_origin,
+		0.70
+	))
+	await _completed_physics_frame()
+	var reached_search: bool = await _wait_for_awareness_state(
+		reaction,
+		STATE_SEARCHING,
+		45
+	)
+	var visited_stop: bool = await _wait_for_search_visited(
+		reaction,
+		1,
+		180
+	)
+	var reached_recovery: bool = await _wait_for_awareness_state(
+		reaction,
+		STATE_RECOVERING,
+		240
+	)
+	var recovery_before_save: Dictionary = reaction.get_debug_summary()
+
+	var generation: int = int(application.call("request_quicksave"))
+	var committed: bool = await _wait_for_save_status(
+		coordinator,
+		generation,
+		&"committed",
+		30
+	)
+	var snapshot: Dictionary = coordinator.call(
+		"get_request_snapshot",
+		generation
+	)
+	var awareness_id: String = reaction.get_semantic_save_id()
+	var saved_awareness: Dictionary = (
+		snapshot.get("session", {})
+		.get("world_state", {})
+		.get("semantic_owners", {})
+		.get(awareness_id, {})
+	)
+	var loaded: bool = (
+		bool(application.call("quickload_latest"))
+		if committed
+		else false
+	)
+
+	var restored_world := application.get("current_world") as Node3D
+	var restored_session := application.get("current_session") as Node
+	var restored_reaction: Node = (
+		restored_world.get_node_or_null("Guard/Reaction")
+		if restored_world != null
+		else null
+	)
+	var restored_summary: Dictionary = (
+		restored_reaction.get_debug_summary()
+		if restored_reaction != null
+		else {}
+	)
+	var restored_pending: int = (
+		int(restored_session.call("get_pending_semantic_event_count"))
+		if restored_session != null
+		else -1
+	)
+	_assert_true(
+		queued
+		and reached_search
+		and visited_stop
+		and reached_recovery
+		and recovery_before_save.get("awareness_state", &"")
+			== STATE_RECOVERING
+		and int(recovery_before_save.get("search_points_visited", -1)) == 0
+		and (recovery_before_save.get(
+			"search_visited_positions",
+			[]
+		) as Array).is_empty()
+		and committed
+		and saved_awareness.get("state", &"") == STATE_RECOVERING
+		and int(saved_awareness.get("search_points_visited", -1)) == 0
+		and (saved_awareness.get(
+			"search_visited_positions",
+			[]
+		) as Array).is_empty()
+		and loaded
+		and restored_summary.get("awareness_state", &"")
+			== STATE_RECOVERING
+		and restored_pending == 0,
+		(
+			"Phase 5.5 completed-search recovery clears paired visit bookkeeping "
+			+ "and quickloads through the production Application/WorldSession path "
+			+ "(visited=%s recovery=%s committed=%s loaded=%s saved=%s restored=%s)"
+			% [
+				str(visited_stop),
+				str(reached_recovery),
+				str(committed),
+				str(loaded),
+				str(saved_awareness),
+				str(restored_summary),
+			]
+		)
+	)
+
+	application.call("exit_current_world")
+	application.queue_free()
+	await process_frame
+	_cleanup_test_storage()
 
 
 func _wait_for_stationary_search_action(
