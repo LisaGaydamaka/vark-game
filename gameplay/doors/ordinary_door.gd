@@ -56,6 +56,7 @@ var _material: StandardMaterial3D = null
 var _world_session: Node = null
 var _navigation_link: NavigationLink3D = null
 var _navigation_link_clearance: float = 0.0
+var _navigation_bake_cut_half_depth: float = 0.0
 var _navigation_link_finalized: bool = false
 var _locked: bool = false
 var _barred: bool = false
@@ -550,13 +551,19 @@ func contribute_navigation_bake_cut(
 	var normal: Vector3 = frame.get("normal", Vector3.ZERO)
 	var tangent: Vector3 = frame.get("tangent", Vector3.ZERO)
 	var half_width: float = float(frame.get("half_width", 0.0)) + 0.06
-	# Reserve the complete smart-link corridor, not only a slit at the doorway.
-	# Normal navigation therefore cannot cut diagonally through the moving leaf
-	# before link_reached hands locomotion to the traversal task.
-	var half_depth: float = maxf(
-		_navigation_link_clearance,
+	# Carve the physical swept-leaf footprint, not the farther smart-link
+	# approach point. The old code used _navigation_link_clearance here too,
+	# which put each desired link endpoint exactly on the obstruction boundary
+	# it had just created. Navmesh rasterization/agent erosion could then snap
+	# that endpoint to the wrong side (or the same polygon), making otherwise
+	# valid doors fail finalization nondeterministically. The bake already
+	# expands obstacles for the configured agent radius; the link endpoint owns
+	# the additional radius + reach-tolerance standoff.
+	_navigation_bake_cut_half_depth = maxf(
+		get_navigation_swing_radius(),
 		maxf(navigation_cut_depth * 0.5, 0.05)
 	)
+	var half_depth: float = _navigation_bake_cut_half_depth
 	if (
 		normal.length_squared() <= 0.000001
 		or tangent.length_squared() <= 0.000001
@@ -667,6 +674,10 @@ func get_navigation_link_summary() -> Dictionary:
 		),
 		"access_restricted": _locked or _barred,
 		"clearance": _navigation_link_clearance,
+		"bake_cut_half_depth": _navigation_bake_cut_half_depth,
+		"endpoint_cut_margin": (
+			_navigation_link_clearance - _navigation_bake_cut_half_depth
+		),
 		"start": (
 			_navigation_link.get_global_start_position()
 			if _navigation_link != null
