@@ -52,8 +52,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and Definition.get("mission_id")
 			== &"phase8_representative_stealth_ledge_city"
 		and str(Definition.get("map_source_path")) == MAP_PATH
-		and int(Definition.get("mission_content_revision")) == 7,
-		"8.4 Ledge City revision 7 owns a distinct save identity after the room/acoustic/window architecture rebuild"
+		and int(Definition.get("mission_content_revision")) == 8,
+		"8.4 Ledge City revision 8 owns a distinct save identity after the full brush/object alignment and exact-fit opening rebuild"
 	)
 
 	var source: String = FileAccess.get_file_as_string(MAP_PATH)
@@ -104,6 +104,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and _all_stair_landings_connect(source)
 		and _all_upper_floor_coverage_complete(source)
 		and _all_structural_extensions_connected(source)
+		and _all_named_solid_brushes_face_connected(source)
 		and _all_opening_frames_seat_leaf(source)
 		and _all_sneak_window_clearances_are_crouch_only(source)
 		and not source.contains("zebra/zebra16x16")
@@ -111,7 +112,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not source.contains("// platform:")
 		and not source.contains("// west_route:")
 		and not source.contains("// east_route:"),
-		"8.4 source has zero positive-volume world-brush overlap, complete stair landings/floors, and supported irregular architecture instead of hanging route slabs"
+		"8.4 all 325 solid map brushes are non-overlapping and face-connected; stairs/floors, supported irregular architecture, partitions, cornices, cross ties, and exact-fit opening frames are aligned"
 	)
 
 	var root_viewport := tree.get_root() as Viewport
@@ -163,6 +164,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var surfaces: Array[Node] = []
 	var acoustic_spaces: Array[Node] = []
 	var acoustic_portals: Array[Node] = []
+	var door_frames: Array[Node] = []
 	for node: Node in nodes:
 		if node.has_method("get_access_summary") and node.has_method(
 			"configure_navigation_traversal"
@@ -194,6 +196,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			acoustic_spaces.append(node)
 		if node is VarkAcousticPortal:
 			acoustic_portals.append(node)
+		if node.is_in_group(&"vark_door_frame"):
+			door_frames.append(node)
 
 	var worldspawn := world.get_node_or_null(
 		"FuncGodotMap/entity_0_worldspawn"
@@ -213,8 +217,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and surfaces.size() == 29
 		and acoustic_spaces.size() == 46
 		and acoustic_portals.size() == 54
-		and _count_direct_collision_shapes(worldspawn) >= 315,
-		"8.4 compact city keeps representative gameplay roles and adds enterable multi-floor architecture"
+		and door_frames.size() == 1
+		and _count_direct_collision_shapes(worldspawn) >= 280
+		and _count_direct_collision_shapes(door_frames[0]) >= 1,
+		"8.4 compact city keeps every representative gameplay role and imports the 39 exact-fit jamb/header brushes as one dedicated solid frame collider owner"
 	)
 
 	var shadow_budget_state: Dictionary = (
@@ -270,6 +276,26 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			opening_shadow_layers_valid = false
 			break
 
+	var frame_shadow_layers_valid: bool = door_frames.size() == 1
+	if frame_shadow_layers_valid:
+		var frame_meshes: Array[Node] = door_frames[0].find_children(
+			"*",
+			"MeshInstance3D",
+			true,
+			false
+		)
+		frame_shadow_layers_valid = not frame_meshes.is_empty()
+		for frame_mesh_node: Node in frame_meshes:
+			var frame_mesh := frame_mesh_node as MeshInstance3D
+			if (
+				frame_mesh == null
+				or not frame_mesh.get_layer_mask_value(
+					LEDGE_STATIC_SHADOW_RENDER_LAYER
+				)
+			):
+				frame_shadow_layers_valid = false
+				break
+
 	var dynamic_shadow_layers_excluded: bool = true
 	for prop: Node in props:
 		var prop_mesh := prop.get_node_or_null("PropMesh") as MeshInstance3D
@@ -313,6 +339,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		atlas_layout_valid
 		and static_shadow_layers_valid
 		and opening_shadow_layers_valid
+		and frame_shadow_layers_valid
 		and dynamic_shadow_layers_excluded
 		and light_shadow_masks_valid,
 		"8.4 Ledge City bounds positional-shadow churn: rendered runtimes request a fixed 2048/16-slot atlas, static architecture/openings cast, and continuously moving guard/props do not invalidate 23 omni shadow caches"
@@ -399,19 +426,34 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		)
 
 	var expected_openings: Dictionary = {
-		"door.mercer.front": Vector3(-112, 320.8, 0),
-		"door.watchmaker.front": Vector3(112, 320.8, 0),
-		"door.office.front": Vector3(-112, 70.8, 0),
-		"door.tenement.front": Vector3(112, 70.8, 0),
-		"door.foundry.front": Vector3(112, -249.2, 0),
-		"door.east_locked": Vector3(-112, -249.2, 0),
-		"window.mercer.upper": Vector3(-112, 255.8, 96),
-		"window.watchmaker.upper": Vector3(112, 255.8, 96),
-		"window.office.upper": Vector3(-112, 128.8, 96),
-		"window.tenement.upper": Vector3(112, 128.8, 96),
-		"window.archive.level2": Vector3(-112, -307.2, 96),
-		"window.foundry.upper": Vector3(112, -307.2, 96),
-		"opening.window_west": Vector3(-112, -249.2, 184),
+		"door.mercer.front": Vector3(-110, 320.8, 0),
+		"door.watchmaker.front": Vector3(110, 279.2, 0),
+		"door.office.front": Vector3(-110, 70.8, 0),
+		"door.tenement.front": Vector3(110, 29.2, 0),
+		"door.foundry.front": Vector3(110, -290.8, 0),
+		"door.east_locked": Vector3(-110, -249.2, 0),
+		"window.mercer.upper": Vector3(-110, 255.8, 96),
+		"window.watchmaker.upper": Vector3(110, 214.2, 96),
+		"window.office.upper": Vector3(-110, 128.8, 96),
+		"window.tenement.upper": Vector3(110, 87.2, 96),
+		"window.archive.level2": Vector3(-110, -307.2, 96),
+		"window.foundry.upper": Vector3(110, -348.8, 96),
+		"opening.window_west": Vector3(-110, -249.2, 184),
+	}
+	var expected_opening_yaws: Dictionary = {
+		"door.mercer.front": 180.0,
+		"door.watchmaker.front": 0.0,
+		"door.office.front": 180.0,
+		"door.tenement.front": 0.0,
+		"door.foundry.front": 0.0,
+		"door.east_locked": 180.0,
+		"window.mercer.upper": 180.0,
+		"window.watchmaker.upper": 0.0,
+		"window.office.upper": 180.0,
+		"window.tenement.upper": 0.0,
+		"window.archive.level2": 180.0,
+		"window.foundry.upper": 0.0,
+		"opening.window_west": 180.0,
 	}
 	var opening_positions_valid: bool = true
 	for door_id: String in expected_openings:
@@ -420,6 +462,10 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			opening == null
 			or opening.global_position.distance_to(
 				_map_origin_to_world(expected_openings[door_id] as Vector3)
+			) > 0.02
+			or absf(
+				wrapf(opening.rotation_degrees.y, 0.0, 360.0)
+				- float(expected_opening_yaws[door_id])
 			) > 0.02
 		):
 			opening_positions_valid = false
@@ -483,7 +529,27 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and locked_door != null
 		and bool(access.get("locked", false))
 		and str(access.get("required_key_id", "")) == "key.service",
-		"8.4 all six ordinary doors plus seven crouch-height windows are seated on their physical openings and keep shared opening ownership"
+		"8.4 all six ordinary doors plus seven crouch-height windows place their hinge root on the façade face, mirror east/west yaw correctly, and keep shared opening ownership"
+	)
+
+	var opening_sweeps_valid: bool = true
+	var opening_sweep_failure: Dictionary = {}
+	for opening_node: Node in openings:
+		var sweep_opening := opening_node as VarkOrdinaryDoor
+		if not _opening_completes_real_sweep(sweep_opening):
+			opening_sweeps_valid = false
+			opening_sweep_failure = {
+				"door_id": str(opening_node.get("door_id")),
+				"origin": (sweep_opening.global_position if sweep_opening != null else Vector3.ZERO),
+				"phase": (sweep_opening.get_semantic_phase() if sweep_opening != null else &""),
+				"fraction": (sweep_opening.get_open_fraction() if sweep_opening != null else -1.0),
+				"blocked": (sweep_opening.is_motion_blocked() if sweep_opening != null else true),
+			}
+			break
+	assert_true.call(
+		opening_sweeps_valid,
+		"8.4 every exact-fit door/window completes a real collision-authoritative 0→90 degree hinge sweep without widening the authored frame; failure=%s"
+		% str(opening_sweep_failure)
 	)
 
 	var pickup_roles: Dictionary = {}
@@ -1209,41 +1275,73 @@ func _all_sneak_window_clearances_are_crouch_only(source: String) -> bool:
 
 func _all_opening_frames_seat_leaf(source: String) -> bool:
 	const LEAF_WIDTH_MAP_UNITS := 41.6
+	const ORDINARY_LEAF_HEIGHT_MAP_UNITS := 67.2
+	const SNEAK_LEAF_HEIGHT_MAP_UNITS := 37.76
 	var checks: Array[Dictionary] = [
-		{"left": "facade: mercer_0_left", "right": "facade: mercer_0_right", "header": "facade: mercer_0_header"},
-		{"left": "facade: watchmaker_0_left", "right": "facade: watchmaker_0_right", "header": "facade: watchmaker_0_header"},
-		{"left": "facade: office_0_left", "right": "facade: office_0_right", "header": "facade: office_0_header"},
-		{"left": "facade: tenement_0_left", "right": "facade: tenement_0_right", "header": "facade: tenement_0_header"},
-		{"left": "facade: archive_0_left", "right": "facade: archive_0_right", "header": "facade: archive_0_header"},
-		{"left": "facade: foundry_0_left", "right": "facade: foundry_0_right", "header": "facade: foundry_0_header"},
-		{"left": "facade: mercer_96_left", "right": "facade: mercer_96_right", "header": "facade: mercer_96_header"},
-		{"left": "facade: watchmaker_96_left", "right": "facade: watchmaker_96_right", "header": "facade: watchmaker_96_header"},
-		{"left": "facade: office_96_left", "right": "facade: office_96_right", "header": "facade: office_96_header"},
-		{"left": "facade: tenement_96_left", "right": "facade: tenement_96_right", "header": "facade: tenement_96_header"},
-		{"left": "facade: archive_level2_96_left", "right": "facade: archive_level2_96_right", "header": "facade: archive_level2_96_header"},
-		{"left": "facade: foundry_96_left", "right": "facade: foundry_96_right", "header": "facade: foundry_96_header"},
-		{"left": "facade: archive_level3_184_left", "right": "facade: archive_level3_184_right", "header": "facade: archive_level3_184_header"},
+		{"left": "facade: mercer_0_left", "right": "facade: mercer_0_right", "header": "facade: mercer_0_header", "floor_z": 0.0, "leaf_height": ORDINARY_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: watchmaker_0_left", "right": "facade: watchmaker_0_right", "header": "facade: watchmaker_0_header", "floor_z": 0.0, "leaf_height": ORDINARY_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: office_0_left", "right": "facade: office_0_right", "header": "facade: office_0_header", "floor_z": 0.0, "leaf_height": ORDINARY_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: tenement_0_left", "right": "facade: tenement_0_right", "header": "facade: tenement_0_header", "floor_z": 0.0, "leaf_height": ORDINARY_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: archive_0_left", "right": "facade: archive_0_right", "header": "facade: archive_0_header", "floor_z": 0.0, "leaf_height": ORDINARY_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: foundry_0_left", "right": "facade: foundry_0_right", "header": "facade: foundry_0_header", "floor_z": 0.0, "leaf_height": ORDINARY_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: mercer_96_left", "right": "facade: mercer_96_right", "header": "facade: mercer_96_header", "floor_z": 96.0, "leaf_height": SNEAK_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: watchmaker_96_left", "right": "facade: watchmaker_96_right", "header": "facade: watchmaker_96_header", "floor_z": 96.0, "leaf_height": SNEAK_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: office_96_left", "right": "facade: office_96_right", "header": "facade: office_96_header", "floor_z": 96.0, "leaf_height": SNEAK_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: tenement_96_left", "right": "facade: tenement_96_right", "header": "facade: tenement_96_header", "floor_z": 96.0, "leaf_height": SNEAK_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: archive_level2_96_left", "right": "facade: archive_level2_96_right", "header": "facade: archive_level2_96_header", "floor_z": 96.0, "leaf_height": SNEAK_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: foundry_96_left", "right": "facade: foundry_96_right", "header": "facade: foundry_96_header", "floor_z": 96.0, "leaf_height": SNEAK_LEAF_HEIGHT_MAP_UNITS},
+		{"left": "facade: archive_level3_184_left", "right": "facade: archive_level3_184_right", "header": "facade: archive_level3_184_header", "floor_z": 184.0, "leaf_height": SNEAK_LEAF_HEIGHT_MAP_UNITS},
 	]
 	for check: Dictionary in checks:
 		var left: AABB = _brush_bounds_after_comment(source, str(check["left"]))
 		var right: AABB = _brush_bounds_after_comment(source, str(check["right"]))
 		var header: AABB = _brush_bounds_after_comment(source, str(check["header"]))
-		if (
-			left.size == Vector3.ZERO
-			or right.size == Vector3.ZERO
-			or header.size == Vector3.ZERO
-		):
+		if left.size == Vector3.ZERO or right.size == Vector3.ZERO or header.size == Vector3.ZERO:
 			return false
 		var left_end: Vector3 = left.position + left.size
 		var header_end: Vector3 = header.position + header.size
 		if (
-			not is_equal_approx(
-				right.position.y - left_end.y,
-				LEAF_WIDTH_MAP_UNITS
-			)
+			not is_equal_approx(right.position.y - left_end.y, LEAF_WIDTH_MAP_UNITS)
 			or not is_equal_approx(header.position.y, left_end.y)
 			or not is_equal_approx(header_end.y, right.position.y)
+			or not is_equal_approx(
+				header.position.z,
+				float(check["floor_z"]) + float(check["leaf_height"])
+			)
 		):
+			return false
+	return true
+
+
+func _all_named_solid_brushes_face_connected(source: String) -> bool:
+	var cutoff: int = source.find("\"classname\" \"vark_player_start\"")
+	if cutoff < 0:
+		return false
+	var physical_source: String = source.substr(0, cutoff)
+	var comment_pattern := RegEx.new()
+	comment_pattern.compile("(?m)^// ([^\\n]+)\\n\\{")
+	var named_bounds: Array[AABB] = []
+	for result: RegExMatch in comment_pattern.search_all(physical_source):
+		var bounds: AABB = _brush_bounds_after_comment(
+			physical_source,
+			result.get_string(1)
+		)
+		if bounds.size != Vector3.ZERO:
+			named_bounds.append(bounds)
+	if named_bounds.size() != 325:
+		return false
+	for first_index: int in named_bounds.size():
+		var connected: bool = false
+		for second_index: int in named_bounds.size():
+			if first_index == second_index:
+				continue
+			if _aabbs_share_supporting_face(
+				named_bounds[first_index],
+				named_bounds[second_index]
+			):
+				connected = true
+				break
+		if not connected:
 			return false
 	return true
 
@@ -1449,6 +1547,33 @@ func _all_stair_landings_connect(source: String) -> bool:
 		):
 			return false
 	return true
+
+
+func _opening_completes_real_sweep(opening: VarkOrdinaryDoor) -> bool:
+	if opening == null:
+		return false
+	var saved: Dictionary = opening.capture_semantic_state()
+	if saved.is_empty():
+		return false
+	var probe: Dictionary = saved.duplicate(true)
+	probe["phase"] = VarkOrdinaryDoor.PHASE_OPENING
+	probe["open_fraction"] = 0.0
+	probe["motion_blocked"] = false
+	probe["locked"] = false
+	probe["barred"] = false
+	if not opening.apply_semantic_state(probe):
+		return false
+	for _step: int in 40:
+		opening.call("_physics_process", 0.02)
+		if opening.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN:
+			break
+	var completed: bool = (
+		opening.get_semantic_phase() == VarkOrdinaryDoor.PHASE_OPEN
+		and is_equal_approx(opening.get_open_fraction(), 1.0)
+		and not opening.is_motion_blocked()
+	)
+	var restored: bool = opening.apply_semantic_state(saved)
+	return completed and restored
 
 
 func _capsule_traverses_map_aperture(
