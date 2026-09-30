@@ -756,7 +756,19 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 					!= VarkLightFixtureAsset.SOURCE_EMITTER_DOWNWARD_SPOT
 				or not is_equal_approx(
 					float(hanging_debug.get("visual_spot_angle_degrees", 0.0)),
-					78.0
+					65.0
+				)
+				or not is_equal_approx(
+					float(hanging_debug.get("visual_shadow_bias", -1.0)),
+					0.02
+				)
+				or not is_equal_approx(
+					float(hanging_debug.get("visual_shadow_normal_bias", -1.0)),
+					0.25
+				)
+				or not is_equal_approx(
+					float(hanging_debug.get("visual_shadow_blur", -1.0)),
+					0.50
 				)
 			):
 				light_ids_valid = false
@@ -823,7 +835,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			== VarkLightFixtureAsset.SOURCE_EMITTER_DOWNWARD_SPOT
 		and is_equal_approx(
 			float(lantern_summary.get("source_spot_angle_degrees", 0.0)),
-			78.0
+			65.0
 		)
 		and interior_light.get_emitter() is SpotLight3D
 		and is_equal_approx(float(interior_light.get("omni_range")), 3.4),
@@ -1122,6 +1134,57 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and is_zero_approx(float(lateral_sample.get("contribution", -1.0))),
 		"8.4 hanging lantern emits/exposes only into its lower room: downward is live while upper-floor and same-height adjacent-room directions are rejected before shadowing; down=%s up=%s lateral=%s"
 		% [str(downward_sample), str(upward_sample), str(lateral_sample)]
+	)
+
+	var blocked_room_samples: Dictionary = {
+		"light.rep.mercer_inside": Vector3(-250, 240, 40),
+		"light.rep.watch_inside": Vector3(250, 240, 40),
+		"light.rep.office_inside": Vector3(-250, 115, 40),
+		"light.rep.tenement_inside": Vector3(250, 115, 40),
+		"light.rep.archive_inside": Vector3(-200, -210, 40),
+		"light.rep.foundry_inside": Vector3(200, -210, 40),
+		"light.rep.watch_key_room": Vector3(250, 245, 128),
+		"light.rep.mercer.upper": Vector3(-250, 275, 128),
+		"light.rep.office.upper": Vector3(-250, 105, 128),
+		"light.rep.tenement.upper": Vector3(250, 105, 128),
+		"light.rep.foundry.upper": Vector3(250, -205, 128),
+		"light.rep.archive.mid": Vector3(-250, -285, 128),
+		"light.rep.archive_upper": Vector3(-250, -310, 216),
+	}
+	var blocked_room_failures: Array[Dictionary] = []
+	for light_id: String in blocked_room_samples:
+		var room_light := _find_by_property(
+			lights,
+			"gameplay_light_id",
+			light_id
+		) as VarkGameplayLight
+		if room_light == null:
+			blocked_room_failures.append({
+				"light_id": light_id,
+				"error": "missing light",
+			})
+			continue
+		var sample_position: Vector3 = _map_origin_to_world(
+			blocked_room_samples[light_id] as Vector3
+		)
+		var blocked: Dictionary = room_light.sample_gameplay_exposure(
+			sample_position,
+			world.get_world_3d().direct_space_state
+		)
+		if (
+			not bool(blocked.get("within_emission_shape", false))
+			or not bool(blocked.get("occluded", false))
+			or not is_zero_approx(float(blocked.get("contribution", -1.0)))
+		):
+			blocked_room_failures.append({
+				"light_id": light_id,
+				"sample": blocked_room_samples[light_id],
+				"state": blocked,
+			})
+	assert_true.call(
+		blocked_room_failures.is_empty(),
+		"8.4 every interior lantern stays shadow-occluded across the authored wall into its neighboring same-floor room while remaining inside the light cone; failures=%s"
+		% str(blocked_room_failures)
 	)
 
 	var began_playing: bool = bool(session.call("begin_play"))
