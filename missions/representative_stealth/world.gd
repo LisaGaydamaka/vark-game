@@ -154,17 +154,20 @@ func _should_apply_shadow_atlas_budget() -> bool:
 func _configure_ledge_city_shadow_casters() -> void:
 	var worldspawn := func_map.get_node_or_null("entity_0_worldspawn") as StaticBody3D
 	if worldspawn != null:
-		_set_shadow_render_layer_recursive(worldspawn, true)
+		_set_shadow_render_layer_recursive(worldspawn, true, true)
 
 	for node: Node in func_map.find_children("*", "", true, false):
 		if node.is_in_group(DOOR_FRAME_GROUP):
-			_set_shadow_render_layer_recursive(node, true)
+			_set_shadow_render_layer_recursive(node, true, true)
 		if node is VarkOrdinaryDoor:
 			var door_mesh := node.get_node_or_null("DoorMesh") as MeshInstance3D
 			if door_mesh != null:
 				door_mesh.set_layer_mask_value(
 					LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER,
 					true
+				)
+				door_mesh.cast_shadow = (
+					GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 				)
 		if node is VarkGameplayLight:
 			var light := node as VarkGameplayLight
@@ -242,14 +245,23 @@ func get_shadow_budget_debug_state() -> Dictionary:
 	}
 
 
-func _set_shadow_render_layer_recursive(root: Node, enabled: bool) -> void:
+func _set_shadow_render_layer_recursive(
+	root: Node,
+	enabled: bool,
+	double_sided: bool = false
+) -> void:
 	if root is MeshInstance3D:
-		(root as MeshInstance3D).set_layer_mask_value(
+		var mesh := root as MeshInstance3D
+		mesh.set_layer_mask_value(
 			LEDGE_CITY_STATIC_SHADOW_RENDER_LAYER,
 			enabled
 		)
+		if enabled and double_sided:
+			mesh.cast_shadow = (
+				GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
+			)
 	for child: Node in root.get_children():
-		_set_shadow_render_layer_recursive(child, enabled)
+		_set_shadow_render_layer_recursive(child, enabled, double_sided)
 
 
 func get_representative_debug_summary() -> Dictionary:

@@ -16,10 +16,13 @@ const DOWNWARD_SPOT_LOCAL_ROTATION := Vector3(-PI * 0.5, 0.0, 0.0)
 # Interior lanterns illuminate short rooms through thin authored walls/floors.
 # Godot's generic positional-light shadow bias is intentionally generous for
 # large scenes, but here it can detach shadows enough to reveal light through
-# seams. Keep the indoor spot map tight; outdoor omni lights retain defaults.
-const INTERIOR_SPOT_SHADOW_BIAS: float = 0.02
-const INTERIOR_SPOT_SHADOW_NORMAL_BIAS: float = 0.25
-const INTERIOR_SPOT_SHADOW_BLUR: float = 0.50
+# seams. The static room shell is also configured for double-sided shadow
+# casting by the representative mission so backface orientation cannot open a
+# one-sided shadow leak. Keep the indoor spot map tight; outdoor omni lights
+# retain defaults.
+const INTERIOR_SPOT_SHADOW_BIAS: float = 0.005
+const INTERIOR_SPOT_SHADOW_NORMAL_BIAS: float = 0.05
+const INTERIOR_SPOT_SHADOW_BLUR: float = 0.10
 
 
 @export var persistent_id: String = ""

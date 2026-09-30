@@ -264,6 +264,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		static_shadow_layers_valid = (
 			static_shadow_layers_valid
 			and mesh.get_layer_mask_value(LEDGE_STATIC_SHADOW_RENDER_LAYER)
+			and mesh.cast_shadow
+				== GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 		)
 
 	var opening_shadow_layers_valid: bool = true
@@ -274,6 +276,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 			or not door_mesh.get_layer_mask_value(
 				LEDGE_STATIC_SHADOW_RENDER_LAYER
 			)
+			or door_mesh.cast_shadow
+				!= GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 		):
 			opening_shadow_layers_valid = false
 			break
@@ -294,6 +298,8 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 				or not frame_mesh.get_layer_mask_value(
 					LEDGE_STATIC_SHADOW_RENDER_LAYER
 				)
+				or frame_mesh.cast_shadow
+					!= GeometryInstance3D.SHADOW_CASTING_SETTING_DOUBLE_SIDED
 			):
 				frame_shadow_layers_valid = false
 				break
@@ -344,7 +350,7 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and frame_shadow_layers_valid
 		and dynamic_shadow_layers_excluded
 		and light_shadow_masks_valid,
-		"8.4 Ledge City bounds positional-shadow churn: rendered runtimes request a fixed 2048/16-slot atlas, static architecture/openings cast, and continuously moving guard/props do not invalidate 23 omni shadow caches"
+		"8.4 Ledge City bounds positional-shadow churn and seam leaks: rendered runtimes request a fixed 2048/16-slot atlas, static architecture/openings cast double-sided shadows, and continuously moving guard/props do not invalidate 23 gameplay-light shadow caches"
 	)
 
 	var surface_variants: Dictionary = {}
@@ -760,15 +766,15 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 				)
 				or not is_equal_approx(
 					float(hanging_debug.get("visual_shadow_bias", -1.0)),
-					0.02
+					0.005
 				)
 				or not is_equal_approx(
 					float(hanging_debug.get("visual_shadow_normal_bias", -1.0)),
-					0.25
+					0.05
 				)
 				or not is_equal_approx(
 					float(hanging_debug.get("visual_shadow_blur", -1.0)),
-					0.50
+					0.10
 				)
 			):
 				light_ids_valid = false
