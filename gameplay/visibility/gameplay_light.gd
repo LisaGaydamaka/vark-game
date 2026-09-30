@@ -12,6 +12,7 @@ const VISUAL_SHADOW_FADE_RANGE_PADDING: float = 2.0
 const VISUAL_LIGHT_FADE_MIN_BEGIN: float = 12.0
 const VISUAL_LIGHT_FADE_RANGE_SCALE: float = 2.0
 const VISUAL_LIGHT_FADE_LENGTH: float = 4.0
+const DOWNWARD_SPOT_LOCAL_ROTATION := Vector3(-PI * 0.5, 0.0, 0.0)
 
 
 @export var persistent_id: String = ""
@@ -33,7 +34,7 @@ const VISUAL_LIGHT_FADE_LENGTH: float = 4.0
 @export var gameplay_sound_strength: float = 0.30
 
 var _world_session: Node = null
-var _emitter: OmniLight3D = null
+var _emitter: Light3D = null
 var _fixture_anchor: Node3D = null
 var _fixture_asset: VarkLightFixtureAsset = null
 var _interaction_proxy: Area3D = null
@@ -48,7 +49,6 @@ var _exposure_query_exclude: Array[RID] = []
 func _ready() -> void:
 	add_to_group(&"vark_gameplay_light")
 	_world_session = _find_world_session()
-	_ensure_emitter()
 	_fixture_anchor = get_node_or_null("FixtureAnchor") as Node3D
 	_interaction_proxy = get_node_or_null("InteractionProxy") as Area3D
 	_interaction_collision = get_node_or_null(
@@ -56,6 +56,8 @@ func _ready() -> void:
 	) as CollisionShape3D
 	_configured_light_energy = maxf(light_energy, 0.0)
 	_configure_fixture()
+	_ensure_emitter()
+	_sync_emitter_transform()
 	_sync_emitter_configuration()
 	_configure_interaction_proxy()
 	set_enabled_state(starts_on, false)
@@ -68,6 +70,8 @@ func _func_godot_apply_properties(_properties: Dictionary) -> void:
 	# are the same truth the mapper authored.
 	_configured_light_energy = maxf(light_energy, 0.0)
 	_configure_fixture()
+	_ensure_emitter()
+	_sync_emitter_transform()
 	_sync_emitter_configuration()
 	_configure_interaction_proxy()
 	set_enabled_state(starts_on, false)
@@ -93,7 +97,7 @@ func is_enabled_state() -> bool:
 	return gameplay_enabled and visible
 
 
-func get_emitter() -> OmniLight3D:
+func get_emitter() -> Light3D:
 	return _emitter
 
 
@@ -200,10 +204,16 @@ func get_gameplay_debug_state() -> Dictionary:
 			if _fixture_asset != null
 			else gameplay_enabled
 		),
+		"visual_emitter_mode": _get_visual_emitter_mode(),
+		"visual_spot_angle_degrees": (
+			(_emitter as SpotLight3D).spot_angle
+			if _emitter is SpotLight3D
+			else 0.0
+		),
 		"visual_shadow_mode": (
-			_emitter.omni_shadow_mode
-			if _emitter != null
-			else OmniLight3D.SHADOW_DUAL_PARABOLOID
+			(_emitter as OmniLight3D).omni_shadow_mode
+			if _emitter is OmniLight3D
+			else -1
 		),
 		"visual_distance_fade_enabled": (
 			_emitter.distance_fade_enabled
@@ -242,6 +252,7 @@ func sample_gameplay_contribution(
 		or not visible
 		or gameplay_strength <= 0.0
 		or distance >= range_meters
+		or not _is_within_emission_shape(sample_position)
 	):
 		return 0.0
 	if _is_exposure_occluded(sample_position, space_state):
@@ -260,16 +271,21 @@ func sample_gameplay_exposure(
 	var emitter_position: Vector3 = get_emitter_global_position()
 	var distance: float = emitter_position.distance_to(sample_position)
 	var range_meters: float = maxf(omni_range, 0.001)
+	var within_emission_shape: bool = _is_within_emission_shape(
+		sample_position
+	)
 	if (
 		not gameplay_enabled
 		or not visible
 		or gameplay_strength <= 0.0
 		or distance >= range_meters
+		or not within_emission_shape
 	):
 		var inactive_state: Dictionary = get_gameplay_debug_state()
 		inactive_state.merge({
 			"distance": distance,
 			"distance_weight": 0.0,
+			"within_emission_shape": within_emission_shape,
 			"occluded": false,
 			"contribution": 0.0,
 		}, true)
@@ -288,6 +304,7 @@ func sample_gameplay_exposure(
 	state.merge({
 		"distance": distance,
 		"distance_weight": distance_weight,
+		"within_emission_shape": true,
 		"occluded": occluded,
 		"contribution": (
 			0.0
@@ -315,13 +332,70 @@ func _is_exposure_occluded(
 	return not space_state.intersect_ray(_exposure_ray_query).is_empty()
 
 
+func _get_visual_emitter_mode() -> String:
+	if _fixture_asset == null:
+		return VarkLightFixtureAsset.SOURCE_EMITTER_OMNI
+	return _fixture_asset.get_source_emitter_mode()
+
+
+func _get_visual_spot_angle_degrees() -> float:
+	if _fixture_asset == null:
+		return 78.0
+	return _fixture_asset.get_source_spot_angle_degrees()
+
+
 func _ensure_emitter() -> void:
-	_emitter = get_node_or_null("Emitter") as OmniLight3D
-	if _emitter != null:
+	var desired_mode: String = _get_visual_emitter_mode()
+	var existing := get_node_or_null("Emitter") as Light3D
+	var correct_type: bool = (
+		(existing is SpotLight3D)
+		if desired_mode == VarkLightFixtureAsset.SOURCE_EMITTER_DOWNWARD_SPOT
+		else (existing is OmniLight3D)
+	)
+	if existing != null and correct_type:
+		_emitter = existing
 		return
-	_emitter = OmniLight3D.new()
+	if existing != null:
+		remove_child(existing)
+		existing.free()
+
+	_emitter = (
+		SpotLight3D.new()
+		if desired_mode == VarkLightFixtureAsset.SOURCE_EMITTER_DOWNWARD_SPOT
+		else OmniLight3D.new()
+	)
 	_emitter.name = "Emitter"
 	add_child(_emitter)
+
+
+func _sync_emitter_transform() -> void:
+	if _emitter == null:
+		return
+	var source_transform := Transform3D.IDENTITY
+	if _fixture_anchor != null and _fixture_asset != null:
+		source_transform = (
+			_fixture_anchor.transform
+			* _fixture_asset.transform
+			* _fixture_asset.get_emitter_transform()
+		)
+	if _emitter is SpotLight3D:
+		source_transform.basis = (
+			source_transform.basis
+			* Basis.from_euler(DOWNWARD_SPOT_LOCAL_ROTATION)
+		)
+	_emitter.transform = source_transform
+
+
+func _is_within_emission_shape(sample_position: Vector3) -> bool:
+	if not (_emitter is SpotLight3D):
+		return true
+	var offset: Vector3 = sample_position - get_emitter_global_position()
+	if offset.length_squared() <= 0.000001:
+		return true
+	var spot := _emitter as SpotLight3D
+	var forward: Vector3 = -spot.global_transform.basis.z.normalized()
+	var cosine_limit: float = cos(deg_to_rad(clampf(spot.spot_angle, 1.0, 89.0)))
+	return forward.dot(offset.normalized()) >= cosine_limit
 
 
 func _configure_fixture() -> void:
@@ -362,26 +436,24 @@ func _configure_fixture() -> void:
 	_fixture_asset.set_lit_enabled(gameplay_enabled)
 	_fixture_asset.set_highlighted(_highlighted)
 	_exposure_query_exclude = _fixture_asset.get_collision_rids()
-	if _emitter != null:
-		_emitter.transform = (
-			_fixture_anchor.transform
-			* _fixture_asset.transform
-			* _fixture_asset.get_emitter_transform()
-		)
 
 
 func _sync_emitter_configuration() -> void:
 	if _emitter == null:
 		return
 	_emitter.light_color = light_color
-	_emitter.omni_range = maxf(omni_range, 0.001)
 	_emitter.shadow_enabled = shadow_enabled
 	_emitter.shadow_caster_mask = _visual_shadow_caster_mask
-	# Twenty-plus cube-shadow omnis are the dominant visual scaling cost in
-	# authored stealth maps. Dual paraboloid cuts each omni shadow from six
-	# faces to two; camera-distance LOD stops distant shadow work while leaving
-	# semantic gameplay exposure fully raycast-driven and unchanged.
-	_emitter.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+	if _emitter is OmniLight3D:
+		var omni := _emitter as OmniLight3D
+		omni.omni_range = maxf(omni_range, 0.001)
+		# Street/wall omnis keep the cheaper dual-paraboloid shadow path.
+		omni.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+	elif _emitter is SpotLight3D:
+		var spot := _emitter as SpotLight3D
+		spot.spot_range = maxf(omni_range, 0.001)
+		spot.spot_angle = _get_visual_spot_angle_degrees()
+		spot.spot_angle_attenuation = 0.45
 	_emitter.distance_fade_enabled = true
 	_emitter.distance_fade_shadow = maxf(
 		omni_range + VISUAL_SHADOW_FADE_RANGE_PADDING,
