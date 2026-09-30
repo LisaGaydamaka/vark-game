@@ -14,6 +14,8 @@ const FIXTURE_SELF_FILL_RENDER_LAYER: int = 1 << 19
 const EXPOSURE_OCCLUDER_PHYSICS_LAYER: int = 1 << 5
 const SOURCE_EMITTER_OMNI: String = "omni"
 const SOURCE_EMITTER_DOWNWARD_SPOT: String = "downward_spot"
+const SOURCE_OMNI_SHADOW_DUAL_PARABOLOID: String = "dual_paraboloid"
+const SOURCE_OMNI_SHADOW_CUBE: String = "cube"
 
 
 @export var asset_id: StringName = &""
@@ -26,6 +28,9 @@ const SOURCE_EMITTER_DOWNWARD_SPOT: String = "downward_spot"
 @export_range(0.05, 4.0, 0.05) var self_fill_range: float = 0.85
 @export_enum("omni", "downward_spot") var source_emitter_mode: String = (
 	SOURCE_EMITTER_OMNI
+)
+@export_enum("dual_paraboloid", "cube") var source_omni_shadow_mode: String = (
+	SOURCE_OMNI_SHADOW_DUAL_PARABOLOID
 )
 @export_range(1.0, 89.0, 0.5) var source_spot_angle_degrees: float = 78.0
 
@@ -93,6 +98,10 @@ func validate_contract() -> bool:
 			get_source_emitter_mode() == SOURCE_EMITTER_OMNI
 			or get_source_emitter_mode() == SOURCE_EMITTER_DOWNWARD_SPOT
 		)
+		and (
+			get_source_omni_shadow_mode() == SOURCE_OMNI_SHADOW_DUAL_PARABOLOID
+			or get_source_omni_shadow_mode() == SOURCE_OMNI_SHADOW_CUBE
+		)
 		and get_source_spot_angle_degrees() >= 1.0
 		and get_source_spot_angle_degrees() <= 89.0
 	)
@@ -103,6 +112,14 @@ func get_source_emitter_mode() -> String:
 		SOURCE_EMITTER_DOWNWARD_SPOT
 		if source_emitter_mode == SOURCE_EMITTER_DOWNWARD_SPOT
 		else SOURCE_EMITTER_OMNI
+	)
+
+
+func get_source_omni_shadow_mode() -> String:
+	return (
+		SOURCE_OMNI_SHADOW_CUBE
+		if source_omni_shadow_mode == SOURCE_OMNI_SHADOW_CUBE
+		else SOURCE_OMNI_SHADOW_DUAL_PARABOLOID
 	)
 
 
@@ -175,6 +192,7 @@ func get_contract_summary() -> Dictionary:
 		),
 		"emitter_inside_lit_surface": _emitter_is_inside_lit_surface(),
 		"source_emitter_mode": get_source_emitter_mode(),
+		"source_omni_shadow_mode": get_source_omni_shadow_mode(),
 		"source_spot_angle_degrees": get_source_spot_angle_degrees(),
 		"collision_shape_count": _collision_shape_count(solid_body),
 		"exposure_occluder_shape_count": _collision_shape_count(exposure_occluder),

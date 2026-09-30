@@ -58,6 +58,8 @@ lit_surface_emission_energy = 4.4
 lit_surface_visible_when_off = true
 self_fill_energy_scale = 0.35
 self_fill_range = 1.10
+source_emitter_mode = "omni"
+source_omni_shadow_mode = "dual_paraboloid"
 
 [node name="BodyMesh" type="MeshInstance3D" parent="."]
 position = Vector3(0, 1.145, 0)

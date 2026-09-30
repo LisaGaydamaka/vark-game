@@ -7,22 +7,13 @@ const EXTINGUISH_SOUND_KIND: StringName = &"light.extinguish"
 const DIRECT_NONE: String = "none"
 const DIRECT_EXTINGUISH: String = "extinguish"
 const INTERACTION_PROXY_LAYER: int = 1 << 4
-const VISUAL_SHADOW_FADE_MIN_DISTANCE: float = 6.0
-const VISUAL_SHADOW_FADE_RANGE_PADDING: float = 2.0
-const VISUAL_LIGHT_FADE_MIN_BEGIN: float = 12.0
-const VISUAL_LIGHT_FADE_RANGE_SCALE: float = 2.0
-const VISUAL_LIGHT_FADE_LENGTH: float = 4.0
 const DOWNWARD_SPOT_LOCAL_ROTATION := Vector3(-PI * 0.5, 0.0, 0.0)
-# Interior lanterns illuminate short rooms through thin authored walls/floors.
-# Godot's generic positional-light shadow bias is intentionally generous for
-# large scenes, but here it can detach shadows enough to reveal light through
-# seams. The static room shell is also configured for double-sided shadow
-# casting by the representative mission so backface orientation cannot open a
-# one-sided shadow leak. Keep the indoor spot map tight; outdoor omni lights
-# retain defaults.
-const INTERIOR_SPOT_SHADOW_BIAS: float = 0.005
-const INTERIOR_SPOT_SHADOW_NORMAL_BIAS: float = 0.05
-const INTERIOR_SPOT_SHADOW_BLUR: float = 0.10
+# Keep positional offsets small enough that flush architectural contacts read
+# as contact. The representative mission supplies a higher-resolution fixed
+# atlas and double-sided static casters; bias is only an acne guard.
+const POSITIONAL_SHADOW_BIAS: float = 0.002
+const POSITIONAL_SHADOW_NORMAL_BIAS: float = 0.02
+const POSITIONAL_SHADOW_BLUR: float = 1.0
 
 
 @export var persistent_id: String = ""
@@ -357,6 +348,12 @@ func _get_visual_emitter_mode() -> String:
 	return _fixture_asset.get_source_emitter_mode()
 
 
+func _get_visual_omni_shadow_mode() -> String:
+	if _fixture_asset == null:
+		return VarkLightFixtureAsset.SOURCE_OMNI_SHADOW_DUAL_PARABOLOID
+	return _fixture_asset.get_source_omni_shadow_mode()
+
+
 func _get_visual_spot_angle_degrees() -> float:
 	if _fixture_asset == null:
 		return 78.0
@@ -466,26 +463,24 @@ func _sync_emitter_configuration() -> void:
 	if _emitter is OmniLight3D:
 		var omni := _emitter as OmniLight3D
 		omni.omni_range = maxf(omni_range, 0.001)
-		# Street/wall omnis keep the cheaper dual-paraboloid shadow path.
-		omni.omni_shadow_mode = OmniLight3D.SHADOW_DUAL_PARABOLOID
+		omni.omni_shadow_mode = (
+			OmniLight3D.SHADOW_CUBE
+			if _get_visual_omni_shadow_mode()
+				== VarkLightFixtureAsset.SOURCE_OMNI_SHADOW_CUBE
+			else OmniLight3D.SHADOW_DUAL_PARABOLOID
+		)
 	elif _emitter is SpotLight3D:
 		var spot := _emitter as SpotLight3D
 		spot.spot_range = maxf(omni_range, 0.001)
 		spot.spot_angle = _get_visual_spot_angle_degrees()
 		spot.spot_angle_attenuation = 0.45
-		spot.shadow_bias = INTERIOR_SPOT_SHADOW_BIAS
-		spot.shadow_normal_bias = INTERIOR_SPOT_SHADOW_NORMAL_BIAS
-		spot.shadow_blur = INTERIOR_SPOT_SHADOW_BLUR
-	_emitter.distance_fade_enabled = true
-	_emitter.distance_fade_shadow = maxf(
-		omni_range + VISUAL_SHADOW_FADE_RANGE_PADDING,
-		VISUAL_SHADOW_FADE_MIN_DISTANCE
-	)
-	_emitter.distance_fade_begin = maxf(
-		omni_range * VISUAL_LIGHT_FADE_RANGE_SCALE,
-		VISUAL_LIGHT_FADE_MIN_BEGIN
-	)
-	_emitter.distance_fade_length = VISUAL_LIGHT_FADE_LENGTH
+	_emitter.shadow_bias = POSITIONAL_SHADOW_BIAS
+	_emitter.shadow_normal_bias = POSITIONAL_SHADOW_NORMAL_BIAS
+	_emitter.shadow_blur = POSITIONAL_SHADOW_BLUR
+	# A gameplay light must never survive after its shadow has been culled.
+	# Camera-distance shadow LOD caused direct light to appear through walls
+	# while semantic exposure remained correctly physics-occluded.
+	_emitter.distance_fade_enabled = false
 	if _fixture_asset != null:
 		_fixture_asset.configure_source_lighting(
 			light_color,
