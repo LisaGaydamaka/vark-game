@@ -87,6 +87,8 @@ func _assert_exposure_lab() -> void:
 	var decorative_light := world.get_node_or_null(
 		"DecorativeOnlyLight"
 	) as OmniLight3D
+	var key_emitter := key_light.get_emitter() as OmniLight3D if key_light != null else null
+	var fill_emitter := fill_light.get_emitter() as OmniLight3D if fill_light != null else null
 	var light_gem := world.get_node_or_null(
 		"ExposureHUD/Panel"
 	) as VarkLightGem
@@ -104,20 +106,20 @@ func _assert_exposure_lab() -> void:
 		and light_gem.get_script() == LightGem
 		and key_light.get_script() == GameplayLight
 		and fill_light.get_script() == GameplayLight
-		and key_light.get_emitter() is OmniLight3D
-		and fill_light.get_emitter() is OmniLight3D
-		and key_light.get_emitter().shadow_enabled
-		and fill_light.get_emitter().shadow_enabled
-		and key_light.get_emitter().omni_shadow_mode
+		and key_emitter != null
+		and fill_emitter != null
+		and key_emitter.shadow_enabled
+		and fill_emitter.shadow_enabled
+		and key_emitter.omni_shadow_mode
 			== OmniLight3D.SHADOW_DUAL_PARABOLOID
-		and fill_light.get_emitter().omni_shadow_mode
+		and fill_emitter.omni_shadow_mode
 			== OmniLight3D.SHADOW_DUAL_PARABOLOID
-		and key_light.get_emitter().distance_fade_enabled
-		and fill_light.get_emitter().distance_fade_enabled
-		and key_light.get_emitter().distance_fade_shadow
-			< key_light.get_emitter().distance_fade_begin
-		and fill_light.get_emitter().distance_fade_shadow
-			< fill_light.get_emitter().distance_fade_begin
+		and key_emitter.distance_fade_enabled
+		and fill_emitter.distance_fade_enabled
+		and key_emitter.distance_fade_shadow
+			< key_emitter.distance_fade_begin
+		and fill_emitter.distance_fade_shadow
+			< fill_emitter.distance_fade_begin
 		and decorative_light.get_script() != GameplayLight
 		and decorative_light.light_energy > key_light.light_energy
 		and readout != null
