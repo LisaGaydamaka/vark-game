@@ -12,6 +12,8 @@ const FIXTURE_SELF_FILL_RENDER_LAYER: int = 1 << 19
 # from the opaque fixture body mesh so semantic exposure follows rendered
 # fixture shadowing without treating glass as opaque.
 const EXPOSURE_OCCLUDER_PHYSICS_LAYER: int = 1 << 5
+const SOURCE_EMITTER_OMNI: String = "omni"
+const SOURCE_EMITTER_DOWNWARD_SPOT: String = "downward_spot"
 
 
 @export var asset_id: StringName = &""
@@ -22,6 +24,10 @@ const EXPOSURE_OCCLUDER_PHYSICS_LAYER: int = 1 << 5
 @export var lit_surface_visible_when_off: bool = true
 @export_range(0.0, 2.0, 0.01) var self_fill_energy_scale: float = 0.45
 @export_range(0.05, 4.0, 0.05) var self_fill_range: float = 0.85
+@export_enum("omni", "downward_spot") var source_emitter_mode: String = (
+	SOURCE_EMITTER_OMNI
+)
+@export_range(1.0, 89.0, 0.5) var source_spot_angle_degrees: float = 78.0
 
 @onready var body_mesh: MeshInstance3D = $BodyMesh
 @onready var lit_surface_mesh: MeshInstance3D = $LitSurfaceMesh
@@ -84,6 +90,18 @@ func validate_contract() -> bool:
 		and fixture_fill.light_cull_mask == FIXTURE_SELF_FILL_RENDER_LAYER
 		and not fixture_fill.shadow_enabled
 	)
+
+
+func get_source_emitter_mode() -> String:
+	return (
+		SOURCE_EMITTER_DOWNWARD_SPOT
+		if source_emitter_mode == SOURCE_EMITTER_DOWNWARD_SPOT
+		else SOURCE_EMITTER_OMNI
+	)
+
+
+func get_source_spot_angle_degrees() -> float:
+	return clampf(source_spot_angle_degrees, 1.0, 89.0)
 
 
 func get_emitter_transform() -> Transform3D:
