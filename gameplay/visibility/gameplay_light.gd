@@ -173,10 +173,10 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	):
 		return false
 	gameplay_enabled = bool(snapshot["gameplay_enabled"])
-	var saved_visible: bool = bool(snapshot["visible"])
-	# Pre-fixture-state saves represented OFF by hiding the old OmniLight root.
-	# Migrate hidden+disabled snapshots so the fixture remains present while OFF.
-	visible = true if not gameplay_enabled and not saved_visible else saved_visible
+	# Visibility is explicit semantic save truth. Do not silently rewrite an
+	# OFF+hidden snapshot to visible during restore: WorldSession validates the
+	# replacement against the captured snapshot before gameplay resumes.
+	visible = bool(snapshot["visible"])
 	_apply_enabled_presentation()
 	_refresh_interaction_proxy()
 	return true
