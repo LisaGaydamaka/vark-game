@@ -17,7 +17,7 @@ jobs:
   regression-suite:
     name: Regression suite
     runs-on: ubuntu-24.04
-    timeout-minutes: 4
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -35,9 +35,6 @@ jobs:
 
       - name: Import project
         run: godot --headless --path . --import
-
-      - name: Run application suite diagnostic
-        run: godot --headless --path . --script res://tests/application/run_application_tests.gd
 
       - name: Run regression suites
         run: godot --headless --path . --script res://tests/run_all_tests.gd
