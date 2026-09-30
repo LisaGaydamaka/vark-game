@@ -151,7 +151,7 @@ World geometry and closed opaque doors block vision.
 
 Mission authors may create NPCs with unusual perception, but ordinary guards use the common stealth model.
 
-The exact exposure algorithm is **OPEN** until a representative lighting test space proves it. Rendered brightness and gameplay exposure are related but are not required to be the same computation. Decorative emissives or artistic darkness must not accidentally define stealth rules.
+The exact exposure algorithm is **OPEN** until a representative lighting test space proves it. Rendered brightness and gameplay exposure are related but are not required to be the same computation. Decorative emissives or artistic darkness must not accidentally define stealth rules. Environment/ambient illumination may intentionally provide a visual readability baseline without contributing to the light gem; only explicit gameplay-light sources participate in ordinary stealth exposure unless a mission deliberately defines another semantic source.
 
 The system must be tested against dark, partially lit, fully lit, occluded, edge-of-light, and multiple-light cases until the light gem and what the player sees agree intuitively.
 
