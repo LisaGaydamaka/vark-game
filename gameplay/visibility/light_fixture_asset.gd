@@ -89,6 +89,12 @@ func validate_contract() -> bool:
 		) == 0
 		and fixture_fill.light_cull_mask == FIXTURE_SELF_FILL_RENDER_LAYER
 		and not fixture_fill.shadow_enabled
+		and (
+			get_source_emitter_mode() == SOURCE_EMITTER_OMNI
+			or get_source_emitter_mode() == SOURCE_EMITTER_DOWNWARD_SPOT
+		)
+		and get_source_spot_angle_degrees() >= 1.0
+		and get_source_spot_angle_degrees() <= 89.0
 	)
 
 
@@ -168,6 +174,8 @@ func get_contract_summary() -> Dictionary:
 			else Vector3.ZERO
 		),
 		"emitter_inside_lit_surface": _emitter_is_inside_lit_surface(),
+		"source_emitter_mode": get_source_emitter_mode(),
+		"source_spot_angle_degrees": get_source_spot_angle_degrees(),
 		"collision_shape_count": _collision_shape_count(solid_body),
 		"exposure_occluder_shape_count": _collision_shape_count(exposure_occluder),
 		"exposure_occluder_layer": exposure_occluder.collision_layer if exposure_occluder != null else 0,
