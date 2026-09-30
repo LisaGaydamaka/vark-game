@@ -13,6 +13,13 @@ const VISUAL_LIGHT_FADE_MIN_BEGIN: float = 12.0
 const VISUAL_LIGHT_FADE_RANGE_SCALE: float = 2.0
 const VISUAL_LIGHT_FADE_LENGTH: float = 4.0
 const DOWNWARD_SPOT_LOCAL_ROTATION := Vector3(-PI * 0.5, 0.0, 0.0)
+# Interior lanterns illuminate short rooms through thin authored walls/floors.
+# Godot's generic positional-light shadow bias is intentionally generous for
+# large scenes, but here it can detach shadows enough to reveal light through
+# seams. Keep the indoor spot map tight; outdoor omni lights retain defaults.
+const INTERIOR_SPOT_SHADOW_BIAS: float = 0.02
+const INTERIOR_SPOT_SHADOW_NORMAL_BIAS: float = 0.25
+const INTERIOR_SPOT_SHADOW_BLUR: float = 0.50
 
 
 @export var persistent_id: String = ""
@@ -231,6 +238,15 @@ func get_gameplay_debug_state() -> Dictionary:
 			else 0.0
 		),
 		"visual_shadow_caster_mask": _visual_shadow_caster_mask,
+		"visual_shadow_bias": (
+			_emitter.shadow_bias if _emitter != null else 0.0
+		),
+		"visual_shadow_normal_bias": (
+			_emitter.shadow_normal_bias if _emitter != null else 0.0
+		),
+		"visual_shadow_blur": (
+			_emitter.shadow_blur if _emitter != null else 0.0
+		),
 		"active": (
 			gameplay_enabled
 			and visible
@@ -454,6 +470,9 @@ func _sync_emitter_configuration() -> void:
 		spot.spot_range = maxf(omni_range, 0.001)
 		spot.spot_angle = _get_visual_spot_angle_degrees()
 		spot.spot_angle_attenuation = 0.45
+		spot.shadow_bias = INTERIOR_SPOT_SHADOW_BIAS
+		spot.shadow_normal_bias = INTERIOR_SPOT_SHADOW_NORMAL_BIAS
+		spot.shadow_blur = INTERIOR_SPOT_SHADOW_BLUR
 	_emitter.distance_fade_enabled = true
 	_emitter.distance_fade_shadow = maxf(
 		omni_range + VISUAL_SHADOW_FADE_RANGE_PADDING,
