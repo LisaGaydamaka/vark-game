@@ -37,6 +37,8 @@ lit_surface_emission_energy = 4.0
 lit_surface_visible_when_off = true
 self_fill_energy_scale = 0.30
 self_fill_range = 0.75
+source_emitter_mode = "downward_spot"
+source_spot_angle_degrees = 78.0
 
 [node name="BodyMesh" type="MeshInstance3D" parent="."]
 layers = 524289
