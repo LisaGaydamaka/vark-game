@@ -732,11 +732,32 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 				Vector3(INF, INF, INF)
 			)
 			var light_node := light as Node3D
+			var hanging_gameplay_light := light as VarkGameplayLight
+			var hanging_emitter := (
+				hanging_gameplay_light.get_emitter()
+				if hanging_gameplay_light != null else null
+			)
+			var hanging_forward := (
+				-(hanging_emitter as SpotLight3D).global_transform.basis.z.normalized()
+				if hanging_emitter is SpotLight3D else Vector3.ZERO
+			)
+			var hanging_debug: Dictionary = (
+				hanging_gameplay_light.get_gameplay_debug_state()
+				if hanging_gameplay_light != null else {}
+			)
 			if (
 				light_node == null
 				or light_node.global_position.distance_to(
 					_map_origin_to_world(expected_origin)
 				) > 0.02
+				or not (hanging_emitter is SpotLight3D)
+				or hanging_forward.dot(Vector3.DOWN) < 0.999
+				or str(hanging_debug.get("visual_emitter_mode", ""))
+					!= VarkLightFixtureAsset.SOURCE_EMITTER_DOWNWARD_SPOT
+				or not is_equal_approx(
+					float(hanging_debug.get("visual_spot_angle_degrees", 0.0)),
+					78.0
+				)
 			):
 				light_ids_valid = false
 				break
@@ -747,11 +768,20 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 				Vector3(INF, INF, INF)
 			)
 			var street_light_node := light as Node3D
+			var street_gameplay_light := light as VarkGameplayLight
 			if (
 				street_light_node == null
 				or street_light_node.global_position.distance_to(
 					_map_origin_to_world(expected_street_origin)
 				) > 0.02
+				or street_gameplay_light == null
+				or not (street_gameplay_light.get_emitter() is OmniLight3D)
+				or str(
+					street_gameplay_light.get_gameplay_debug_state().get(
+						"visual_emitter_mode",
+						""
+					)
+				) != VarkLightFixtureAsset.SOURCE_EMITTER_OMNI
 			):
 				light_ids_valid = false
 				break
@@ -789,9 +819,15 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and is_equal_approx(emitter_local.y, -0.38)
 		and int(lantern_summary.get("collision_shape_count", 0)) == 8
 		and int(lantern_summary.get("exposure_occluder_shape_count", 0)) == 1
-		and interior_light.get_emitter() is OmniLight3D
+		and str(lantern_summary.get("source_emitter_mode", ""))
+			== VarkLightFixtureAsset.SOURCE_EMITTER_DOWNWARD_SPOT
+		and is_equal_approx(
+			float(lantern_summary.get("source_spot_angle_degrees", 0.0)),
+			78.0
+		)
+		and interior_light.get_emitter() is SpotLight3D
 		and is_equal_approx(float(interior_light.get("omni_range")), 3.4),
-		"8.4 rooms use short ceiling-hung omni lanterns with an open lower frame while streets keep freestanding omni lamps"
+		"8.4 rooms use wide downward ceiling spot lanterns that cannot emit into upper floors while streets keep freestanding omni lamps"
 	)
 
 	var guard := guards[0] as VarkGuard if guards.size() == 1 else null
@@ -1058,18 +1094,34 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	)
 
 	var downward_sample: Dictionary = {}
+	var upward_sample: Dictionary = {}
+	var lateral_sample: Dictionary = {}
 	if interior_light != null:
 		var emitter_position: Vector3 = interior_light.get_emitter_global_position()
+		var space_state := world.get_world_3d().direct_space_state
 		downward_sample = interior_light.sample_gameplay_exposure(
 			emitter_position + Vector3.DOWN * 0.75,
-			world.get_world_3d().direct_space_state
+			space_state
+		)
+		upward_sample = interior_light.sample_gameplay_exposure(
+			emitter_position + Vector3.UP * 0.75,
+			space_state
+		)
+		lateral_sample = interior_light.sample_gameplay_exposure(
+			emitter_position + Vector3.RIGHT * 1.50,
+			space_state
 		)
 	assert_true.call(
 		not downward_sample.is_empty()
+		and bool(downward_sample.get("within_emission_shape", false))
 		and not bool(downward_sample.get("occluded", true))
-		and float(downward_sample.get("contribution", 0.0)) > 0.0,
-		"8.4 hanging lantern has a physically clear downward light path through its open bottom frame; sample=%s"
-		% str(downward_sample)
+		and float(downward_sample.get("contribution", 0.0)) > 0.0
+		and not bool(upward_sample.get("within_emission_shape", true))
+		and is_zero_approx(float(upward_sample.get("contribution", -1.0)))
+		and not bool(lateral_sample.get("within_emission_shape", true))
+		and is_zero_approx(float(lateral_sample.get("contribution", -1.0))),
+		"8.4 hanging lantern emits/exposes only into its lower room: downward is live while upper-floor and same-height adjacent-room directions are rejected before shadowing; down=%s up=%s lateral=%s"
+		% [str(downward_sample), str(upward_sample), str(lateral_sample)]
 	)
 
 	var began_playing: bool = bool(session.call("begin_play"))
