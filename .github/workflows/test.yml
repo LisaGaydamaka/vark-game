@@ -17,7 +17,7 @@ jobs:
   regression-suite:
     name: Regression suite
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 4
 
     steps:
       - name: Checkout
