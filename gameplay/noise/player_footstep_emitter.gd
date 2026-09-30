@@ -11,8 +11,8 @@ const SURFACE_PROFILE_PATHS: Dictionary = {
 	"tile": "res://gameplay/noise/profiles/tile.tres",
 }
 const SURFACE_TEXTURE_PREFIX: String = "vark_surfaces/"
-const SURFACE_PROBE_RADIUS: float = 0.10
-const SURFACE_PROBE_CENTER_HEIGHT: float = 0.04
+const SURFACE_RAY_START_HEIGHT: float = 0.20
+const SURFACE_RAY_DEPTH: float = 0.45
 
 
 @export var player_path: NodePath = NodePath("../Player")
@@ -306,30 +306,30 @@ func _find_func_godot_surface_profile() -> VarkSurfaceProfile:
 	if world_3d == null:
 		return null
 
-	# Resolve the solid brush actually touching the player's feet. The Vark map
-	# contract uses one visible surface material for every face of a brush, so
-	# collision-shape identity is sufficient and more robust than a zero-width
-	# ray against convex brush boundaries.
-	var probe_shape := SphereShape3D.new()
-	probe_shape.radius = SURFACE_PROBE_RADIUS
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = probe_shape
-	query.transform = Transform3D(
-		Basis.IDENTITY,
-		_player.global_position + Vector3.UP * SURFACE_PROBE_CENTER_HEIGHT
+	# Resolve the rendered/colliding brush directly under the player's feet.
+	# The old overlap sphere could return no hit while merely touching a convex
+	# floor boundary, and near walls it could also select an unrelated vertical
+	# brush. A short downward ray is deterministic for grounded footsteps and
+	# returns the exact collision-shape index needed by FuncGodot metadata.
+	var query := PhysicsRayQueryParameters3D.new()
+	query.from = (
+		_player.global_position
+		+ Vector3.UP * SURFACE_RAY_START_HEIGHT
+	)
+	query.to = (
+		_player.global_position
+		- Vector3.UP * SURFACE_RAY_DEPTH
 	)
 	query.collision_mask = 0x7fffffff
 	query.exclude = [_player.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
-	var hits: Array[Dictionary] = world_3d.direct_space_state.intersect_shape(
-		query,
-		16
-	)
-	for hit: Dictionary in hits:
-		var profile: VarkSurfaceProfile = _get_func_godot_shape_profile(hit)
-		if profile != null and profile.is_valid_profile():
-			return profile
+	var hit: Dictionary = world_3d.direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return null
+	var profile: VarkSurfaceProfile = _get_func_godot_shape_profile(hit)
+	if profile != null and profile.is_valid_profile():
+		return profile
 	return null
 
 
