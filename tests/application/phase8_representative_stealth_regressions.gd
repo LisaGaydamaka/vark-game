@@ -273,13 +273,19 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and not str(south_fixture_summary.get("lit_surface_model_path", "")).ends_with(".obj"),
 		"8.4 south/north authored lights use the self-contained street-lamp fixture without depending on newly imported raw model files"
 	)
+	var south_emitter := south_light.get_emitter() as OmniLight3D
+	var north_emitter := north_light.get_emitter() as OmniLight3D
+	var east_emitter := east_light.get_emitter() as OmniLight3D
 	assert_true.call(
-		is_equal_approx(south_light.get_emitter().omni_range, 9.0)
-		and is_equal_approx(south_light.get_emitter().light_energy, 4.5)
-		and is_equal_approx(north_light.get_emitter().omni_range, 11.0)
-		and is_equal_approx(north_light.get_emitter().light_energy, 5.0)
-		and is_equal_approx(east_light.get_emitter().omni_range, 8.5)
-		and is_equal_approx(east_light.get_emitter().light_energy, 3.8)
+		south_emitter != null
+		and north_emitter != null
+		and east_emitter != null
+		and is_equal_approx(south_emitter.omni_range, 9.0)
+		and is_equal_approx(south_emitter.light_energy, 4.5)
+		and is_equal_approx(north_emitter.omni_range, 11.0)
+		and is_equal_approx(north_emitter.light_energy, 5.0)
+		and is_equal_approx(east_emitter.omni_range, 8.5)
+		and is_equal_approx(east_emitter.light_energy, 3.8)
 		and east_light.is_in_group(&"vark_interactable"),
 		"8.4 mapper-authored light range/energy/direct-interaction values reconcile onto the live emitter after FuncGodot property application"
 	)
