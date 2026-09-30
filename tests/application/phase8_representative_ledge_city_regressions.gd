@@ -1105,6 +1105,15 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		% str(overlap_audit)
 	)
 
+
+	var began_playing: bool = bool(session.call("begin_play"))
+	if began_playing:
+		# begin_play() enables the live producers again. Let that startup
+		# boundary finish, then isolate this geometry-only patrol proof from
+		# sight/footstep investigation before configuring the route.
+		await tree.physics_frame
+		await tree.process_frame
+
 	var downward_sample: Dictionary = {}
 	var upward_sample: Dictionary = {}
 	var lateral_sample: Dictionary = {}
@@ -1188,14 +1197,6 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4 every interior lantern stays shadow-occluded across the authored wall into its neighboring same-floor room while remaining inside the light cone; failures=%s"
 		% str(blocked_room_failures)
 	)
-
-	var began_playing: bool = bool(session.call("begin_play"))
-	if began_playing:
-		# begin_play() enables the live producers again. Let that startup
-		# boundary finish, then isolate this geometry-only patrol proof from
-		# sight/footstep investigation before configuring the route.
-		await tree.physics_frame
-		await tree.process_frame
 	if awareness != null:
 		awareness.set_physics_process(false)
 		awareness.process_mode = Node.PROCESS_MODE_DISABLED
