@@ -806,65 +806,6 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		awareness.set_physics_process(false)
 	var footstep_emitter := world.get_node_or_null("FootstepEmitter")
 	var player := world.get_node_or_null("Player") as CharacterBody3D
-	var surface_sample_failures: Array[Dictionary] = []
-	if footstep_emitter != null and player != null:
-		var original_player_transform: Transform3D = player.global_transform
-		for sample: Dictionary in [
-			{
-				"label": "Mercer carpet ground floor",
-				"map_position": Vector3(-200.0, 300.0, 0.0),
-				"expected": "carpet",
-			},
-			{
-				"label": "Watchmaker tile ground floor",
-				"map_position": Vector3(200.0, 300.0, 0.0),
-				"expected": "tile",
-			},
-			{
-				"label": "Mercer stone terrace (old carpet-volume mismatch)",
-				"map_position": Vector3(-93.5, 234.5, 96.0),
-				"expected": "stone",
-			},
-			{
-				"label": "Archive upper carpet stair (old tile-volume mismatch)",
-				"map_position": Vector3(-162.5, -219.5, 120.0),
-				"expected": "carpet",
-			},
-			{
-				"label": "Mercer over-street stone floor (previously unowned)",
-				"map_position": Vector3(-91.5, 322.5, 96.0),
-				"expected": "stone",
-			},
-			{
-				"label": "West alley stone bridge (previously unowned)",
-				"map_position": Vector3(-285.5, 160.5, 96.0),
-				"expected": "stone",
-			},
-		]:
-			player.global_position = _map_origin_to_world(
-				sample.get("map_position", Vector3.ZERO) as Vector3
-			)
-			var resolved: Dictionary = footstep_emitter.call(
-				"get_current_surface_debug"
-			)
-			if (
-				str(resolved.get("surface_id", "")) != str(sample.get("expected", ""))
-				or str(resolved.get("resolution_source", ""))
-					!= "func_godot_material"
-			):
-				surface_sample_failures.append({
-					"sample": sample,
-					"resolved": resolved,
-					"ray": _debug_surface_ray(player),
-				})
-		player.global_transform = original_player_transform
-	assert_true.call(
-		footstep_emitter != null
-		and player != null
-		and surface_sample_failures.is_empty(),
-		"8.4 representative material probes resolve footstep sound from the exact rendered plane, including former terrace/stair mismatches and previously unowned elevated floors; failures=%s"
-		% str(surface_sample_failures)
-	)
 
 	var debug_meters := world.get_node_or_null("StealthDebugMeters")
 	var exposure_node := world.get_node_or_null(
@@ -1145,6 +1086,68 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	if footstep_emitter != null:
 		footstep_emitter.set_physics_process(false)
 		footstep_emitter.process_mode = Node.PROCESS_MODE_DISABLED
+
+	var surface_sample_failures: Array[Dictionary] = []
+	if footstep_emitter != null and player != null:
+		var original_player_transform: Transform3D = player.global_transform
+		for sample: Dictionary in [
+			{
+				"label": "Mercer carpet ground floor",
+				"map_position": Vector3(-200.0, 300.0, 0.0),
+				"expected": "carpet",
+			},
+			{
+				"label": "Watchmaker tile ground floor",
+				"map_position": Vector3(200.0, 300.0, 0.0),
+				"expected": "tile",
+			},
+			{
+				"label": "Mercer stone terrace (old carpet-volume mismatch)",
+				"map_position": Vector3(-93.5, 234.5, 96.0),
+				"expected": "stone",
+			},
+			{
+				"label": "Archive upper carpet stair (old tile-volume mismatch)",
+				"map_position": Vector3(-162.5, -219.5, 120.0),
+				"expected": "carpet",
+			},
+			{
+				"label": "Mercer over-street stone floor (previously unowned)",
+				"map_position": Vector3(-91.5, 322.5, 96.0),
+				"expected": "stone",
+			},
+			{
+				"label": "West alley stone bridge (previously unowned)",
+				"map_position": Vector3(-285.5, 160.5, 96.0),
+				"expected": "stone",
+			},
+		]:
+			player.global_position = _map_origin_to_world(
+				sample.get("map_position", Vector3.ZERO) as Vector3
+			)
+			player.velocity = Vector3.ZERO
+			await tree.physics_frame
+			var resolved: Dictionary = footstep_emitter.call(
+				"get_current_surface_debug"
+			)
+			if (
+				str(resolved.get("surface_id", "")) != str(sample.get("expected", ""))
+				or str(resolved.get("resolution_source", ""))
+					!= "func_godot_material"
+			):
+				surface_sample_failures.append({
+					"sample": sample,
+					"resolved": resolved,
+					"ray": _debug_surface_ray(player),
+				})
+		player.global_transform = original_player_transform
+	assert_true.call(
+		footstep_emitter != null
+		and player != null
+		and surface_sample_failures.is_empty(),
+		"8.4 representative material probes resolve footstep sound from the exact rendered plane, including former terrace/stair mismatches and previously unowned elevated floors; failures=%s"
+		% str(surface_sample_failures)
+	)
 	if guard != null:
 		guard.call("set_awareness_observation_paused", false)
 		guard.call("clear_awareness_navigation_target")
