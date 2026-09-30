@@ -114,12 +114,8 @@ func _assert_exposure_lab() -> void:
 			== OmniLight3D.SHADOW_DUAL_PARABOLOID
 		and fill_emitter.omni_shadow_mode
 			== OmniLight3D.SHADOW_DUAL_PARABOLOID
-		and key_emitter.distance_fade_enabled
-		and fill_emitter.distance_fade_enabled
-		and key_emitter.distance_fade_shadow
-			< key_emitter.distance_fade_begin
-		and fill_emitter.distance_fade_shadow
-			< fill_emitter.distance_fade_begin
+		and not key_emitter.distance_fade_enabled
+		and not fill_emitter.distance_fade_enabled
 		and decorative_light.get_script() != GameplayLight
 		and decorative_light.light_energy > key_light.light_energy
 		and readout != null
