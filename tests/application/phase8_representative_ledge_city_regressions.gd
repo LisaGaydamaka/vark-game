@@ -1110,7 +1110,9 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 	var lateral_sample: Dictionary = {}
 	if interior_light != null:
 		var emitter_position: Vector3 = interior_light.get_emitter_global_position()
-		var space_state := world.get_world_3d().direct_space_state
+		var space_state: PhysicsDirectSpaceState3D = (
+			world.get_world_3d().direct_space_state
+		)
 		downward_sample = interior_light.sample_gameplay_exposure(
 			emitter_position + Vector3.DOWN * 0.75,
 			space_state
