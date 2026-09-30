@@ -1221,46 +1221,38 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 func _debug_surface_ray(player: CharacterBody3D) -> Dictionary:
 	if player == null or not player.is_inside_tree():
 		return {"error": "player unavailable"}
-	var probe := SphereShape3D.new()
-	probe.radius = 0.10
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = probe
-	query.transform = Transform3D(
-		Basis.IDENTITY,
-		player.global_position + Vector3.UP * 0.04
-	)
+	var query := PhysicsRayQueryParameters3D.new()
+	query.from = player.global_position + Vector3.UP * 0.20
+	query.to = player.global_position - Vector3.UP * 0.45
 	query.collision_mask = 0x7fffffff
 	query.exclude = [player.get_rid()]
 	query.collide_with_areas = false
 	query.collide_with_bodies = true
-	var hits: Array[Dictionary] = (
-		player.get_world_3d().direct_space_state.intersect_shape(query, 16)
+	var hit: Dictionary = (
+		player.get_world_3d().direct_space_state.intersect_ray(query)
 	)
-	var summaries: Array[Dictionary] = []
-	for hit: Dictionary in hits:
-		var collider := hit.get("collider") as CollisionObject3D
-		summaries.append({
-			"shape": int(hit.get("shape", -1)),
-			"collider": str(collider),
-			"collider_path": (
-				str(collider.get_path())
-				if collider != null and collider.is_inside_tree()
-				else ""
-			),
-			"collision_layer": (
-				collider.collision_layer if collider != null else 0
-			),
-			"has_mesh_metadata": (
-				collider != null and collider.has_meta("func_godot_mesh_data")
-			),
-		})
+	var collider := hit.get("collider") as CollisionObject3D
 	return {
 		"player_position": player.global_position,
-		"probe_origin": query.transform.origin,
-		"probe_radius": probe.radius,
-		"hit_count": hits.size(),
-		"hits": summaries,
+		"ray_from": query.from,
+		"ray_to": query.to,
+		"hit": not hit.is_empty(),
+		"position": hit.get("position", Vector3.ZERO),
+		"normal": hit.get("normal", Vector3.ZERO),
+		"shape": int(hit.get("shape", -1)),
+		"collider": str(collider),
+		"collider_path": (
+			str(collider.get_path())
+			if collider != null and collider.is_inside_tree()
+			else ""
+		),
+		"collision_layer": collider.collision_layer if collider != null else 0,
+		"has_mesh_metadata": (
+			collider != null and collider.has_meta("func_godot_mesh_data")
+		),
 	}
+
+
 
 
 
