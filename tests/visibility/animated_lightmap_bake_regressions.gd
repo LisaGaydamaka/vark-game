@@ -10,6 +10,7 @@ const BAKE_PATH: String = (
 	"res://scenes/animated_lightmap_lab/animated_surface_bake.tres"
 )
 const LIGHT_ID: String = VarkAnimatedLightmapLab.LIGHT_ID
+const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
 
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
@@ -122,15 +123,19 @@ func _test_real_lab_bake_and_runtime(
 	await tree.physics_frame
 
 	var descriptors: Dictionary = lab.get_expected_light_descriptors()
+	var surface_map: FuncGodotMap = await _build_surface_map(tree)
 	var builder := VarkAnimatedLightmapLayoutBuilder.new()
 	var layout: VarkAnimatedLightmapLayout = builder.build_from_root(
-		lab.func_map, descriptors
+		surface_map, descriptors
 	)
+	if layout == null:
+		print("[8.4.1B_LAYOUT_ERRORS] ", builder.get_errors())
 	assert_true.call(
 		layout != null and builder.get_errors().is_empty(),
 		"8.4.1B real Animated Lightmap Lab resolves the accepted A face/tile/page representation before baking"
 	)
 	if layout == null:
+		surface_map.queue_free()
 		lab.queue_free()
 		await tree.process_frame
 		return
@@ -175,6 +180,7 @@ func _test_real_lab_bake_and_runtime(
 		"8.4.1B physics rays are diagnostic cross-checks only: removing PhysicsDirectSpaceState3D produces byte-identical authoritative BVH bake output"
 	)
 	if pure_bake == null:
+		surface_map.queue_free()
 		lab.queue_free()
 		await tree.process_frame
 		return
@@ -342,8 +348,21 @@ func _test_real_lab_bake_and_runtime(
 	changed_renderer.queue_free()
 	stale_renderer.queue_free()
 	incomplete_renderer.queue_free()
+	surface_map.queue_free()
 	lab.queue_free()
 	await tree.process_frame
+
+
+func _build_surface_map(tree: SceneTree) -> FuncGodotMap:
+	var func_map := FuncGodotMap.new()
+	func_map.name = "AnimatedSurfaceBakeSource"
+	func_map.map_settings = load(MAP_SETTINGS_PATH) as FuncGodotMapSettings
+	func_map.local_map_file = LAB_MAP_PATH
+	func_map.build_flags = 0
+	tree.get_root().add_child(func_map)
+	func_map.build()
+	await tree.process_frame
+	return func_map
 
 
 func _contact_fixture_mesh() -> MeshInstance3D:

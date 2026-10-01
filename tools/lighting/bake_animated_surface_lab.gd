@@ -6,6 +6,7 @@ const LabScene = preload(
 const OUTPUT_PATH: String = (
 	"res://scenes/animated_lightmap_lab/animated_surface_bake.tres"
 )
+const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
 
 
 func _initialize() -> void:
@@ -20,9 +21,17 @@ func _run() -> void:
 	await physics_frame
 
 	var descriptors: Dictionary = lab.get_expected_light_descriptors()
+	var surface_map := FuncGodotMap.new()
+	surface_map.name = "AnimatedSurfaceBakeSource"
+	surface_map.map_settings = load(MAP_SETTINGS_PATH) as FuncGodotMapSettings
+	surface_map.local_map_file = VarkAnimatedLightmapLab.MAP_SOURCE_PATH
+	surface_map.build_flags = 0
+	get_root().add_child(surface_map)
+	surface_map.build()
+	await process_frame
 	var builder := VarkAnimatedLightmapLayoutBuilder.new()
 	var layout: VarkAnimatedLightmapLayout = builder.build_from_root(
-		lab.func_map, descriptors
+		surface_map, descriptors
 	)
 	if layout == null:
 		push_error(
@@ -65,6 +74,7 @@ func _run() -> void:
 		print(resource_text)
 		print("ANIMATED_SURFACE_BAKE_RESOURCE_END")
 
+	surface_map.queue_free()
 	lab.queue_free()
 	await process_frame
 	quit(0)
