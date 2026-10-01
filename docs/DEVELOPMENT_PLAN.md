@@ -1916,17 +1916,19 @@ offline sparse direct-light contributions
 runtime static-world material
 ```
 
-FuncGodot remains vendored and unmodified unless project-side reconstruction is proven impossible. Its current generated world mesh is suitable for the project-side seam: brush-face vertices are duplicated rather than shared across unrelated faces, surfaces retain material identity, and worldspawn already requests per-triangle texture/normal/position metadata plus collision-to-face metadata. Vark should reconstruct the exact **rendered** planar faces after FuncGodot culling/generation rather than maintaining a second independent raw-brush geometry truth.
+This is intentionally a **Thief 1 & 2-style lighting architecture target**, not a byte-for-byte Dark Engine clone. Static rendered surfaces own local lightmap data; stationary switchable/fading lights contribute independently addressable precomputed layers; moving actors/props/opening leaves remain a separate bounded realtime-lighting problem. Do not inherit legacy storage limits merely because the ownership pattern is similar.
+
+FuncGodot remains vendored and unmodified unless project-side reconstruction is proven impossible. Its generator already appends each surviving brush face as its own contiguous face-local vertex/index block inside the material surface, while worldspawn exports per-triangle texture/normal/position metadata plus collision-to-face metadata. Vark must recover and preserve those **generated render-face boundaries after FuncGodot culling/generation**. Adjacent edge-connected coplanar faces with the same material remain separate logical faces; do not merge them into arbitrary connected components and do not maintain a second independent raw-brush geometry truth.
 
 #### 8.4.1A Surface-lightmap representation and storage `[ ]`
 
-Implement the complete static-surface representation as one bounded foundation item.
+Implement the complete static-surface representation as one bounded foundation item. This item must settle both the surface/storage model and the runtime composition ABI before 8.4.1B locks bake output around it.
 
-Create a project-side extractor that walks the generated static world mesh and reconstructs planar render faces by grouping triangles only when they are edge-connected, coplanar within a documented epsilon, and use the same authored material/surface. Each face record must contain the exact rendered triangle set, world-space plane/normal, canonical boundary/vertices as needed for baking, material identity, bounds, and a stable `face_id`.
+Create a project-side extractor that walks the generated static world mesh and **recovers each surviving FuncGodot render-face boundary**. FuncGodot's generated material surfaces may contain many brush faces, but one face must never absorb an adjacent brush face merely because the two are edge-connected, coplanar and use the same material. Recover the existing face-local vertex/index blocks and corroborate them with the exported per-triangle metadata; if the generated structure is ambiguous, fail validation rather than heuristically merging geometry.
 
-The `face_id` must be derived from canonicalized/quantized rendered geometry + plane + material rather than transient node order, triangle order or atlas placement. Unrelated source ordering must not silently retarget existing bake data. Duplicate/coincident canonical faces are an authoring error and must fail validation rather than receiving ambiguous identity.
+Each face record must contain its exact rendered triangle set, world-space plane/normal, canonical boundary/vertices needed for baking, material identity, bounds, and a stable `face_id`. The `face_id` is derived from canonicalized/quantized rendered geometry + plane + material, not transient node order, triangle order, atlas placement or source declaration order. Duplicate/coincident canonical faces are an authoring error and fail closed.
 
-For every face, derive a deterministic orthonormal 2D face basis and project the polygon into that basis. Allocate useful texels from **physical face dimensions** using one documented Vark texel-density contract. The initial target may reuse the current approximately 6.25 cm/texel intent, but the density is Vark-owned and must be explicit rather than inherited accidentally from Godot's generic unwrap.
+For every face, derive a deterministic orthonormal 2D basis and project the polygon into that basis. Allocate useful texels from **physical face dimensions** using an explicit Vark texel-density contract; the initial proof target remains approximately 6.25 cm/texel until the contact-shadow fixture proves whether that density is sufficient.
 
 ```text
 useful_width  = ceil(face_extent_u / texel_size)
@@ -1934,46 +1936,48 @@ useful_height = ceil(face_extent_v / texel_size)
 rectangle     = useful area + guarded border
 ```
 
-Non-rectangular polygon regions inside the local bounding rectangle are masked. Every valid texel must map back to an exact point on its owning face. Samples at polygon boundaries use a deterministic inward/half-texel rule so numerical edge points do not jump outside the face.
+Non-rectangular polygon regions inside the local rectangle are masked. Every valid texel maps back to an exact point on its owning face. Boundary samples use a deterministic inward/half-texel rule. If one logical face would exceed an atlas page at the chosen physical density, split only its storage into deterministic `face_id + tile_id` rectangles; the logical face identity does not change and the face is never downscaled merely to fit.
 
-Pack these guarded face rectangles into deterministic one-or-more atlas pages **after** their local resolutions are fixed. Atlas packing is a storage optimization, never a reason to rescale a face. Each face owns enough guard pixels for the selected linear filtering policy; edge dilation may copy only that face's own values into its guard region. The schema must already support multiple pages even when the lab fits on one. Foundation mipmaps may remain disabled; any later mipmap support needs its own mip-safe padding/downsampling proof.
+Pack guarded rectangles into deterministic fixed-size one-or-more atlas pages **after** local resolutions are fixed. Packing is storage only, never a rescaling policy. Linear-filter guards/dilation may copy only the owning face/tile values. Foundation mipmaps may remain disabled for 8.4.1A–C, but 8.4.4 is blocked until a mip-safe padding/downsampling path is proven for representative-distance use.
 
-Define the new durable animated-lightmap asset schema around stable face IDs, face-local mapping, page/rectangle ownership, configured texel density, geometry/source revision information, and room for sparse per-light contributions. Replace the obsolete whole-mesh UV2/64×64 assumptions in the data model; do not preserve them for compatibility.
+Before the durable asset schema is frozen, define the **GPU composition contract**. A face/tile stores a bounded sparse list of relevant animated-light contribution handles/slots so the shader samples only lights that can affect that face/tile; it must not loop over every mission light and ordinary weight changes must not rebuild a full atlas on the CPU. The concrete Godot representation may use fixed-size texture-array/page layers or an equivalent bounded indirection, but it must be selected and proven in 8.4.1A. Run a conservative light-range/face influence analysis against current Ledge City to measure average/max candidate animated lights per face/tile before choosing any fixed slot limit; overflow must fail/report rather than silently truncate. Atlas/page packing must either respect light affinity or use a representation where unrelated page occupants do not force dense sampling.
 
-**Done when:** generated FuncGodot architecture can be deterministically converted into stable face records with physically derived texel rectangles and deterministic guarded atlas pages, with no dependency on Godot `lightmap_unwrap()` for production brush-light coordinates and no arbitrary atlas downscaling.
+Define baked contribution storage as **linear lighting data with sufficient HDR precision** for overlap and fade math. Individual light layers must not be clamped to 1.0 during baking and must not be accidentally interpreted as sRGB. The schema records format/color-space/version information together with face/tile mapping, page/rectangle ownership, texel density, source/geometry revision and sparse light references.
 
-**Automated:** repeated-build face IDs; source-order independence; geometry/material identity invalidation; known physical face→texel dimensions; texel→world→face round trips; polygon masking; guarded bright/dark rectangle isolation under the actual sampling policy; deterministic page/rectangle packing; oversized/impossible allocation refusal; deterministic data serialization and stale representation rejection.
+The representation tooling must emit a deterministic scale report before 8.4.1A is accepted: logical faces, face tiles, useful/guard texels, atlas pages, conservative average/max candidate lights per face/tile, projected contribution slices/bytes and estimated runtime VRAM. This is an estimator, not a performance budget yet, but it must be runnable against Ledge City before migration.
 
-**Manual:** none — this item is data/geometry/storage foundation only.
+**Done when:** generated FuncGodot architecture is deterministically converted into the same surviving render-face boundaries FuncGodot produced; adjacent coplanar brush faces remain distinct; stable faces/tiles receive physically derived texel rectangles and guarded deterministic pages without arbitrary downscaling; large faces tile deterministically; the sparse GPU composition ABI and linear/HDR storage format are defined and proven without full-atlas CPU recomposition; Ledge City influence/size reporting is available; and production brush-light coordinates do not depend on Godot `lightmap_unwrap()`.
+
+**Automated:** repeated-build face IDs; source/triangle-order independence; explicit adjacent-coplanar-face non-merge case; geometry/material identity invalidation; known physical face→texel dimensions; texel→world→face round trips; polygon masking; deterministic face tiling; guarded bright/dark isolation under the actual sampling policy; deterministic page/rectangle packing; impossible allocation refusal after tiling; conservative light-affinity/influence analysis including overflow diagnostics; linear/HDR encode/decode without per-light saturation; bounded sparse GPU binding/composition proof with no full-atlas CPU rewrite; deterministic serialization; stale representation rejection; and a Ledge City scale report.
+
+**Manual:** none — this item is data/geometry/storage/runtime-ABI foundation only.
 
 #### 8.4.1B Per-surface baker and runtime renderer `[ ]`
 
-Build the complete static-light bake/render path on top of the accepted 8.4.1A representation.
+Build the complete static-light bake/render path on the accepted 8.4.1A representation. The production baker must use the exact extracted static render geometry as its own visibility source rather than delegating bake truth to live gameplay physics.
 
-Bake direct irradiance at valid face texels using authoritative static collision/world geometry. Every sample uses the exact face point/normal, gameplay-light position/range/color/energy, front-facing term, deterministic surface epsilon and physical occlusion ray. The bake stores **lighting**, not material albedo; material presentation remains separately authored.
+Build one deterministic Vark-owned static triangle scene/BVH from the extracted render faces/tiles. Every sample uses the exact face point/normal, gameplay-light position/range/color/energy, front-facing term, explicit self-face/grazing-ray rules and deterministic surface epsilon. Ray/triangle visibility against that bake scene is authoritative. `PhysicsDirectSpaceState3D` may remain only as a validation cross-check; collision simplification, runtime collision filters or live-world timing must not define production lightmap visibility.
 
-Store light data sparsely: a gameplay light only owns contribution data for faces/pages where at least one valid texel receives nonzero direct contribution. The durable relationship is:
+Hard shadow boundaries can lie inside one face, so per-face ownership alone does not solve the pillar halo. Bake every final texel with deterministic supersampled/conservative coverage and resolve in linear space. The first lab target is configurable 4×4 sub-samples per final texel; if the pillar/contact proof shows that insufficient, change the actual density/coverage contract rather than hiding the error with filtering. Include explicit pillar-floor and wall-floor contact-shadow cases.
+
+Keep the bake pipeline linear/HDR internally and write the storage format chosen in 8.4.1A without clamping an individual light contribution to 1.0. Store light data sparsely: a gameplay light owns contribution data only for face tiles where at least one valid resolved texel receives nonzero direct contribution.
 
 ```text
-face_id
+face_id / tile_id
     ├── atlas page + guarded rectangle
     ├── face-space mapping
-    └── affecting gameplay-light contribution(s)
+    └── sparse animated-light contribution handle(s)
 ```
 
-rather than one mandatory full-world texture per light. Whole-source revision invalidation may remain conservative initially, but stable face/light identities must already exist so later incremental authoring does not require redesign.
+Build the project-owned runtime static-world representation from the generated FuncGodot render mesh without changing collision or authoritative `.map` geometry. The shader/material preserves authored material/environment presentation and adds baked direct irradiance × surface albedo. Environment ambient remains visual-only and outside gameplay LIGHT. The authored proof `Light3D` must not directly illuminate static architecture, so realtime shadows cannot conceal a broken bake.
 
-Build the project-owned runtime static-world representation from the generated FuncGodot render mesh without changing collision or authoritative `.map` geometry. Since FuncGodot already duplicates vertices per brush face, Vark may assign the new lightmap mapping per reconstructed face without forcing unrelated faces into a shared generic unwrap. The runtime seam must explicitly support multiple atlas pages.
+Contribution data remains resident and the 8.4.1A GPU composition path applies full/partial/off weights by sampling only the face/tile's relevant contribution handles. No ordinary fade/toggle may rerasterize or rebuild a full lightmap atlas on the CPU.
 
-The static-world shader/material must preserve accepted material/environment presentation and add the baked **direct irradiance × surface albedo** contribution. Environment ambient remains visual-only and outside gameplay LIGHT. The authored gameplay `Light3D` used by the proof must be prevented from directly illuminating static architecture, so no realtime shadow map can conceal a broken bake.
+**Done when:** the accepted face/tile/page representation bakes from an exact deterministic static-render BVH into sparse linear/HDR per-light contributions; supersampled contact/shadow boundaries survive storage/filtering; those contributions render back onto their exact owning static faces through the bounded GPU composition path; multiple pages/tiles work; and proof architecture has no realtime direct-light/shadow dependency.
 
-Keep baked contribution data resident. The 8.4.1 proof may use a local test weight for ON/OFF/fade, but ordinary weight changes must not require rebaking geometry. Production gameplay-state ownership, save/load, flicker and dynamic-object receiver lighting remain 8.4.2.
+**Automated:** deterministic static-triangle/BVH construction; exact fresh lab-bake regeneration on the pinned CI environment; directly lit vs partition/floor/pillar-occluded texels; supersampled pillar-floor/contact cases that would expose a one-texel bright rim; physics-ray cross-check diagnostics without physics becoming bake authority; sparse face/tile/light ownership; no contribution for wholly unaffected tiles; linear/HDR contribution values survive encode/decode above 1.0 where warranted; correct face/tile/page runtime binding; full/partial/off GPU weighting with no full-atlas CPU rebuild; changed geometry/light/mapping/missing-contribution refusal; Environment ambient outside semantic exposure; and no shadow-enabled realtime source required for static proof geometry.
 
-**Done when:** the accepted face/atlas representation can be baked from real static geometry into sparse per-light contributions and rendered back onto the exact owning static faces, including multiple-page ownership, without realtime direct lighting on static proof architecture.
-
-**Automated:** exact fresh-bake regeneration; directly lit vs partition/floor/pillar-occluded texels; sparse face/light ownership; no contribution for wholly unaffected faces; correct face/page runtime binding; full/partial/off proof weighting; changed geometry/light/mapping/missing-contribution refusal; Environment ambient outside semantic exposure; no shadow-enabled realtime source required for static proof geometry.
-
-**Manual:** none — rendered visual acceptance belongs to the integrated lab item below.
+**Manual:** none — rendered visual acceptance belongs to 8.4.1C.
 
 #### 8.4.1C Replace the Animated Lightmap Lab and accept the representation `[ ]`
 
@@ -1981,65 +1985,77 @@ Replace the rejected whole-mesh UV2 lab path with the complete 8.4.1A+B per-surf
 
 Keep the deliberately difficult fixture: two vertically stacked rooms, an adjacent room separated by an opaque partition, a flush pillar/floor contact, wall/floor and wall/ceiling junctions, one authored switchable gameplay light, intentional Environment ambient, and a playable supported Player spawn. The proof-owned toggle/fade may remain local to the lab; 8.4.2 binds production light state and dynamic-object illumination.
 
-The lab must expose enough diagnostics to identify the owning `face_id`, page/rectangle and affecting light for a visible surface if rendered validation finds an error. A reported leak must therefore be traceable to face extraction, atlas isolation, bake visibility or runtime mapping rather than requiring visual guesswork.
+The lab must expose enough diagnostics to identify the owning `face_id`, `tile_id`, page/rectangle, relevant animated-light slot/handle and resolved bake contribution for a visible surface if rendered validation finds an error. A reported leak must therefore be traceable to face extraction, tile/atlas isolation, supersampled bake visibility, contribution storage or runtime mapping rather than requiring visual guesswork.
 
-**Done when:** the lab uses only the per-surface representation for static direct lighting; directly visible faces receive the expected warm contribution; opaque wall/floor/pillar occlusion is preserved in the rendered result; there is no UV/atlas/filtering bleed behind the pillar or across unrelated faces; the contribution switches/fades completely on/off; intentional ambient remains; static architecture uses no realtime positional shadow map; stale data fails closed; the Player starts supported; and obsolete whole-mesh-UV2 proof ownership is removed.
+**Done when:** the lab uses only the per-surface representation for static direct lighting; directly visible faces receive the expected warm contribution; opaque wall/floor/pillar occlusion is preserved in the rendered result; there is no UV/atlas/filtering/contact-coverage bleed behind the pillar or across unrelated faces; the contribution switches/fades completely on/off through the GPU weight path; intentional ambient remains; static architecture uses no realtime positional shadow map; stale data fails closed; the Player starts supported; and obsolete whole-mesh-UV2/CPU-composite proof ownership is removed.
 
-**Automated:** full 8.4.1A+B regression barrier on the integrated lab; generated-world support below the Player; exact tracked bake regeneration; diagnostics resolve representative world surfaces to stable face/page/light ownership; obsolete 64×64/global-UV2 path is absent from the authoritative lab runtime.
+**Automated:** full 8.4.1A+B regression barrier on the integrated lab; generated-world support below the Player; exact tracked lab-bake regeneration; diagnostics resolve representative world surfaces to stable face/tile/page/light ownership; and obsolete fixed-64×64/global-UV2/full-atlas-CPU-composite paths are absent from the authoritative lab runtime.
 
-**Manual:** required — Windows user/playtester moves around the pillar, partition, floor/ceiling junctions and upper storey while toggling/fading the light. There must be no bright halo behind the pillar, no direct light through opaque architecture, no detached static contact shadow, no atlas seam on unrelated surfaces, no camera-dependent boundary change, and the direct contribution must fade fully off while ambient remains.
+**Manual:** required — Windows user/playtester moves around the pillar, partition, floor/ceiling junctions and upper storey while toggling/fading the light. There must be no bright halo behind the pillar, no direct light through opaque architecture, no detached static contact shadow, no atlas seam on unrelated surfaces, no camera-dependent boundary change, no obvious texel shimmer/aliasing at representative distances, and the direct contribution must fade fully off while ambient remains.
 
-**Current status:** 8.4.1 remains `[~]`. The old whole-mesh UV2 spike proved useful supporting seams—offline gameplay-light sampling, deterministic serialization, fail-closed source/light validation, static-vs-realtime receiver separation and animated weighting—but its rendered representation is **rejected**. Windows validation showed a bright halo behind the flush pillar because the spike forced the complete two-storey mesh into one fixed 64×64 linearly filtered atlas. Do not continue to 8.4.2 and do not tune that rejected atlas. Execute the three larger items **8.4.1A → 8.4.1B → 8.4.1C** in order; only 8.4.1C requires the rendered Windows acceptance.
+**Current status:** 8.4.1 remains `[~]`. The old whole-mesh UV2 spike proved useful supporting seams—offline gameplay-light sampling, deterministic serialization, fail-closed source/light validation, static-vs-realtime receiver separation and animated weighting—but its rendered representation is **rejected**. Windows validation showed a bright halo behind the flush pillar because the spike forced the complete two-storey mesh into one fixed 64×64 linearly filtered atlas. A pre-implementation audit also rejected four underspecified foundation choices that could force another rewrite: coplanar connected-component face merging, leaving sparse GPU composition until later, using live gameplay physics as production bake authority, and omitting explicit supersampling/HDR/scale-budget contracts. The corrected target is the Thief-style surface-local/layered architecture described above. Do not continue to 8.4.2 and do not tune the rejected atlas. Execute **8.4.1A → 8.4.1B → 8.4.1C** in order; only 8.4.1C requires rendered Windows acceptance.
 
 ### 8.4.2 Animated-light runtime ownership `[ ]`
 
-Bind animated baked contribution to the existing `VarkGameplayLight` semantic owner rather than creating a second gameplay-light state system.
+Bind the accepted 8.4.1 contribution-weight interface to the existing `VarkGameplayLight` semantic owner rather than creating a second gameplay-light state system. **Do not redesign GPU composition here**: 8.4.1A+B must already have proven the sparse face/tile binding and weight path.
 
-Static FuncGodot architecture must receive switchable direct illumination from the accepted **per-surface** baked contribution only. Dynamic actors, props and moving opening leaves may continue to receive a bounded realtime representation of active gameplay lights. Gameplay exposure/LIGHT remains the existing physics-based semantic calculation and does not include Environment ambient.
+Static FuncGodot architecture receives switchable direct illumination from the per-surface baked contribution only. Dynamic actors, props and moving opening leaves may continue to receive a bounded realtime representation of active gameplay lights. Gameplay exposure/LIGHT remains the existing physics-based semantic calculation and does not include Environment ambient.
 
-ON/OFF, fades, flicker, switch groups, persistence and save/restore must all derive from the existing light owner. Production fade/flicker must change contribution weights without rebuilding/rerasterizing the entire static atlas on the CPU every frame. Keep baked contribution textures/data resident and use a bounded runtime weight/composition seam appropriate for the number of simultaneously relevant gameplay lights.
+ON/OFF, fades, flicker, switch groups, persistence and save/restore all derive from the existing light owner. Production fade/flicker changes resident GPU contribution weights only; it does not rebuild/rerasterize static atlases on the CPU.
 
-**Done when:** one gameplay light controls per-surface baked static illumination, dynamic-object illumination and semantic gameplay exposure from one authoritative state, with no duplicated save truth and no full-atlas per-frame CPU rewrite for ordinary fade/flicker.
+Moving props/guards are **not required in this phase to rewrite or dynamically shadow the baked static-world lightmap**. They remain realtime-lit, while gameplay LIGHT continues to use its authoritative physics occlusion and may therefore be stricter than decorative static-world illumination immediately behind a moved crate. Treat that as an explicit TARGET limitation and test it. If Windows validation finds the mismatch unacceptable, add a bounded dynamic-occluder overlay here or at 8.4.5; do not contaminate static bake ownership with continuously changing geometry.
 
-**Automated:** state transition/fade, switch ownership, save/restore, static-vs-dynamic receiver separation, and bounded contribution-weight update behavior.
+**Done when:** one gameplay light controls per-surface baked static illumination, dynamic-object illumination and semantic gameplay exposure from one authoritative state, with no duplicated save truth, no second lighting-state owner and no full-atlas per-frame CPU rewrite for ordinary fade/flicker.
 
-**Manual:** required — actor/prop illumination and static-world switching look coherent together.
+**Automated:** state transition/fade, switch ownership, save/restore, static-vs-dynamic receiver separation, bounded sparse GPU weight updates, and proof that moving ordinary props do not mutate/rebake static lightmap resources.
+
+**Manual:** required — actor/prop illumination and static-world switching look coherent together; specifically inspect a moved crate between a lamp and wall/floor and report whether the intentional lack of moving baked-world shadow is visually acceptable.
 
 ### 8.4.3 Authored opening light-transfer proof `[ ]`
 
 Static baked lighting must support legitimate light transfer through ordinary doors/windows without reverting the source room to realtime architectural shadows.
 
-Bake portal-dependent direct-light contributions against authored opening identity. Runtime opening state controls only those contributions whose baked rays depend on that opening. Reuse the existing ordinary-opening semantic IDs and open-fraction state; do not create a separate lighting-door framework.
+A rotating/sliding leaf changes the **shape** of transmitted light; `fully_open_contribution × open_fraction` is not a correct lighting model and must not be used as the production shortcut. Reuse existing ordinary-opening semantic IDs and `open_fraction` only to select the lighting representation; do not create a second lighting-door state owner.
 
-**Done when:** a closed ordinary opening blocks static direct-light transfer, opening it reveals the precomputed adjacent-space contribution, closing it removes that contribution again, and save/load restores the same result.
+Start with a bounded opening-state micro-proof. Bake opening-dependent direct-light transfer at several deterministic representative leaf poses (initial proof target: closed, quarter, half, three-quarter and open) against the same exact static bake scene plus the authored leaf geometry. Runtime chooses the contribution set from semantic opening state. Do not interpolate between spatially different shadow masks unless the proof demonstrates that interpolation cannot reveal light through the physical leaf. If discrete states produce unacceptable popping/storage cost, the alternative to prove is an open-state bake plus a small realtime doorway/leaf shadow overlay—not scalar multiplication of one open map.
 
-**Automated:** stable opening-dependency identity, closed/open/partial transfer, unknown dependency refusal and save/restore.
+Opening-dependent data is keyed by stable opening identity + pose-state identity and remains sparse to only affected face tiles. Save/load restores the ordinary opening semantic state first and derives the same lighting pose without duplicated persistence.
 
-**Manual:** required — door and sneak-window spill looks spatially plausible through the real opening.
+**Done when:** closed, representative partial and open ordinary opening states produce spatially plausible static direct-light transfer; an opaque leaf never becomes transparent merely because a scalar weight is between 0 and 1; runtime state derives from the existing opening owner; closing removes the transfer again; and save/load restores the same result.
+
+**Automated:** stable opening-dependency identity; deterministic pose-state bake selection; closed/open/partial spatial transfer; explicit regression rejecting scalar fully-open-map × `open_fraction`; unknown dependency/pose refusal; sparse affected-face ownership; and save/restore.
+
+**Manual:** required — rotate a real door and sneak-window through partial states and verify spill/shadow shape follows the physical opening without obvious transparent-leaf leakage or unacceptable state popping.
 
 ### 8.4.4 Ledge City animated-lightmap migration `[ ]`
 
 Migrate the real representative mission only after 8.4.1–8.4.3 are accepted.
 
-Begin with the Archive stacked-light case, then migrate the remaining interiors and appropriate exterior static illumination. Static architectural direct light must use the accepted per-surface face/lightmap representation and must no longer depend on gameplay-light positional shadow maps. Atlas/page growth must preserve the 8.4.1 face texel-density and guard-band contracts rather than downscaling surfaces to fit.
+Before changing Ledge City rendering, run the 8.4.1A estimator plus a real targeted bake dry run and record: logical faces, face tiles, useful/guard texels, atlas pages, average/max relevant animated lights per face/tile, contribution slices, tracked bake size, estimated runtime VRAM/draw-call impact and measured bake time on the recorded environment. Resolve any slot/VRAM/storage explosion before migration rather than after authoring all lights.
 
-After equivalent behavior is proven, remove only the obsolete Ledge-specific renderer workarounds whose sole purpose was static-light containment: realtime interior architectural cube-shadow dependence, mission-scoped shadow-atlas containment tuning and bias/seam workarounds. Preserve realtime lighting needed for moving objects and any renderer configuration still justified independently.
+Foundation 8.4.1 may disable mipmaps, but **production migration requires a mip-safe lightmap path**: per-face/tile guards and deterministic mip downsampling must not allow unrelated charts/layers to contaminate one another. Representative-distance sampling must be checked before the first real mission bake is accepted.
 
-**Done when:** all representative switchable lights use the new static-lighting path for static architecture, old containment hacks are removed rather than left as competing systems, and existing semantic exposure/switch/save behavior remains intact.
+Begin with the Archive stacked-light case, then migrate the remaining interiors and appropriate exterior static illumination. Static architectural direct light must use the accepted per-surface face/tile/lightmap representation and must no longer depend on gameplay-light positional shadow maps. Atlas/page growth preserves physical texel density and guard contracts rather than downscaling surfaces to fit.
 
-**Automated:** every migrated light has valid bake ownership; Archive lower/middle/upper contributions remain statically separated; neighboring-room and cross-floor static contributions are absent unless explicitly portal dependent; stale bake/source mismatch fails closed.
+Default CI must not rebake the entire production mission on every commit. The small Animated Lightmap Lab remains the exact byte-regeneration gate. For Ledge City, ordinary CI validates tracked bake schema/version, source/geometry/light fingerprints, face/tile ownership, manifests and stale-data refusal. A targeted authoring command performs the full Ledge City bake and exact tracked-output comparison whenever production bake inputs/outputs change and as part of 8.4.4 acceptance; document that final command when the production baker lands.
 
-**Manual:** required — full Ledge City lighting traversal.
+After equivalent behavior is proven, remove only obsolete Ledge-specific renderer workarounds whose sole purpose was static-light containment: realtime interior architectural cube-shadow dependence, mission-scoped shadow-atlas containment tuning and bias/seam workarounds. Preserve realtime lighting needed for moving objects/opening overlays and any renderer configuration still justified independently.
+
+**Done when:** resource/bake scaling is recorded and acceptable for the representative mission; mip-safe sampling is proven; all representative switchable lights use the new static-lighting path for static architecture; old containment hacks are removed rather than left as competing systems; and existing semantic exposure/switch/save behavior remains intact.
+
+**Automated:** production manifest/source/schema validation in the ordinary barrier; targeted full-bake exact comparison for changed production bake inputs; every migrated light has valid sparse bake ownership; Archive lower/middle/upper contributions remain statically separated; neighboring-room and cross-floor static contributions are absent unless explicitly opening dependent; mip-level chart/layer isolation; and stale bake/source mismatch fails closed.
+
+**Manual:** required — full Ledge City lighting traversal at near and long sightlines, including switch/fade behavior and representative moving-prop/opening cases.
 
 ### 8.4.5 Lighting and renderer acceptance `[ ]`
 
 This is the final lighting gate for 8.4.
 
-**Done when:** Windows rendered validation confirms no impossible static direct light across opaque walls/floors; no shadow-map crack artifacts or detached static contact shadows; no camera-dependent horizontal lighting boundaries; switch/extinguish/fade behavior remains correct; ordinary openings transfer light correctly; dynamic actors/props remain plausibly lit; intentional ambient is unchanged and remains outside LIGHT; quicksave/quickload restores lighting state; and representative traversal has acceptable frame pacing.
+**Done when:** Windows rendered validation confirms no impossible static direct light across opaque walls/floors; no lightmap chart/layer bleed or detached static contact shadows; no camera-dependent horizontal lighting boundaries; switch/extinguish/fade behavior remains correct; ordinary openings transfer light with spatially correct partial-state behavior; dynamic actors/props remain plausibly lit; the chosen moving-occluder limitation/overlay is acceptable; intentional ambient is unchanged and remains outside LIGHT; quicksave/quickload restores lighting state; and representative traversal has acceptable frame pacing.
 
-**Automated:** full production-path regression barrier remains green after removal of obsolete static-world realtime-shadow workarounds; animated-light bake/source validation and save/restore coverage pass.
+**Automated:** full production-path regression barrier remains green after removal of obsolete static-world realtime-shadow workarounds; animated-light bake/source validation, mip-safe isolation, sparse runtime weighting, opening-state transfer and save/restore coverage pass; targeted production full-bake evidence is current.
 
-**Manual:** required — Windows user/playtester performs the final Ledge City lighting/performance traversal.
+**Manual:** required — Windows user/playtester performs the final Ledge City lighting/performance traversal, including close contact shadows, long-distance mip behavior, partial doors/windows and a moved prop between a gameplay light and static architecture.
 
 8.4 remains `[~]` and **8.5 must not begin until this acceptance passes**.
 
