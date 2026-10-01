@@ -46,6 +46,12 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		second_mesh != null and fingerprint == second_fingerprint,
 		"8.4.1 repeated FuncGodot builds produce the same UV2/geometry fingerprint"
 	)
+	# Do not leave the duplicate proof shell in the same physics world while
+	# baking. Coincident duplicate colliders make ray-hit ownership ambiguous
+	# even when the generated UV2/geometry data itself is deterministic.
+	second.queue_free()
+	await tree.process_frame
+	await tree.physics_frame
 
 	var context: Dictionary = lab.get_bake_context()
 	var generated := VarkAnimatedLightmapBaker.bake_data(
@@ -180,7 +186,6 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		"8.4.1 intentional Environment ambient remains visually present while disabled gameplay-light state leaves semantic LIGHT exposure at zero"
 	)
 
-	second.queue_free()
 	lab.queue_free()
 	await tree.process_frame
 
