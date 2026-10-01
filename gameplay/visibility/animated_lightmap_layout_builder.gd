@@ -404,6 +404,7 @@ func _extract_mesh_faces(mesh_instance: MeshInstance3D) -> Array[Dictionary]:
 	for surface_index: int in mesh_instance.mesh.get_surface_count():
 		var arrays: Array = mesh_instance.mesh.surface_get_arrays(surface_index)
 		var vertices_variant: Variant = arrays[Mesh.ARRAY_VERTEX]
+		var normals_variant: Variant = arrays[Mesh.ARRAY_NORMAL]
 		var indices_variant: Variant = arrays[Mesh.ARRAY_INDEX]
 		if not (vertices_variant is PackedVector3Array):
 			_errors.append("surface %d has no vertex array" % surface_index)
@@ -412,6 +413,11 @@ func _extract_mesh_faces(mesh_instance: MeshInstance3D) -> Array[Dictionary]:
 			_errors.append("surface %d has no indexed triangle array" % surface_index)
 			continue
 		var vertices: PackedVector3Array = vertices_variant as PackedVector3Array
+		var normals := (
+			normals_variant as PackedVector3Array
+			if normals_variant is PackedVector3Array
+			else PackedVector3Array()
+		)
 		var indices: PackedInt32Array = indices_variant as PackedInt32Array
 		if vertices.is_empty() or indices.is_empty() or indices.size() % 3 != 0:
 			_errors.append(
@@ -475,6 +481,7 @@ func _extract_mesh_faces(mesh_instance: MeshInstance3D) -> Array[Dictionary]:
 				surface_index,
 				material_id,
 				vertices,
+				normals,
 				indices,
 				component
 			)
@@ -575,6 +582,7 @@ func _build_face_record(
 	surface_index: int,
 	material_id: String,
 	vertices: PackedVector3Array,
+	normals: PackedVector3Array,
 	indices: PackedInt32Array,
 	component: PackedInt32Array
 ) -> Dictionary:
@@ -614,6 +622,16 @@ func _build_face_record(
 		_errors.append("surface %d contains a degenerate rendered triangle" % surface_index)
 		return {}
 	normal = normal.normalized()
+	var rendered_normal := Vector3.ZERO
+	for vertex_index: int in vertex_indices:
+		if vertex_index < normals.size():
+			rendered_normal += (
+				_mesh_transform(mesh_instance).basis * normals[vertex_index]
+			).normalized()
+	if rendered_normal.length_squared() > PLANE_EPSILON * PLANE_EPSILON:
+		rendered_normal = rendered_normal.normalized()
+		if normal.dot(rendered_normal) < 0.0:
+			normal = -normal
 	for triangle_index: int in component:
 		var ta: Vector3 = world_vertices_by_index[indices[triangle_index * 3]]
 		var tb: Vector3 = world_vertices_by_index[indices[triangle_index * 3 + 1]]
@@ -623,7 +641,7 @@ func _build_face_record(
 			_errors.append("surface %d contains a degenerate rendered triangle" % surface_index)
 			return {}
 		triangle_normal = triangle_normal.normalized()
-		if triangle_normal.dot(normal) < 1.0 - PLANE_EPSILON:
+		if absf(triangle_normal.dot(normal)) < 1.0 - PLANE_EPSILON:
 			_errors.append(
 				"surface %d connected vertex block is not one planar rendered face"
 				% surface_index
