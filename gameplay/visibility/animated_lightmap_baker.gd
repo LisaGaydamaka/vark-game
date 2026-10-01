@@ -25,8 +25,15 @@ static func has_complete_uv2(mesh_instance: MeshInstance3D) -> bool:
 		return false
 	for surface_index: int in mesh_instance.mesh.get_surface_count():
 		var arrays: Array = mesh_instance.mesh.surface_get_arrays(surface_index)
-		var vertices := arrays[Mesh.ARRAY_VERTEX] as PackedVector3Array
-		var uv2 := arrays[Mesh.ARRAY_TEX_UV2] as PackedVector2Array
+		var vertices_value: Variant = arrays[Mesh.ARRAY_VERTEX]
+		var uv2_value: Variant = arrays[Mesh.ARRAY_TEX_UV2]
+		if (
+			typeof(vertices_value) != TYPE_PACKED_VECTOR3_ARRAY
+			or typeof(uv2_value) != TYPE_PACKED_VECTOR2_ARRAY
+		):
+			return false
+		var vertices: PackedVector3Array = vertices_value
+		var uv2: PackedVector2Array = uv2_value
 		if vertices.is_empty() or uv2.size() != vertices.size():
 			return false
 	return mesh_instance.mesh.get_surface_count() > 0

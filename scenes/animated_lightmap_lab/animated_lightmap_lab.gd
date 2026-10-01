@@ -109,7 +109,7 @@ func get_probe_positions() -> Dictionary:
 		return {}
 	return {
 		"lit_floor": Vector3(0.25, 0.03, -4.8),
-		"blocked_neighbor": Vector3(0.25, 0.8, 2.6),
+		"blocked_neighbor": Vector3(0.25, 0.8, 0.5),
 		"blocked_upper": Vector3(0.25, 4.1, -3.0),
 		"pillar_shadow": Vector3(2.3, 0.03, -3.3),
 		"light_position": source_light.get_emitter_global_position(),
