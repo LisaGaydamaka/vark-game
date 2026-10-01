@@ -3,13 +3,13 @@ extends Resource
 
 const CURRENT_FORMAT_VERSION: int = 1
 const DEFAULT_TEXEL_SIZE_METERS: float = 0.0625
-const DEFAULT_PAGE_SIZE: int = 1024
+const DEFAULT_PAGE_SIZE: int = 256
 const DEFAULT_GUARD_TEXELS: int = 2
 const DEFAULT_MAX_LIGHT_SLOTS_PER_TILE: int = 8
-const STORAGE_FORMAT: StringName = &"rgba16f_linear"
-const COMPOSITION_BACKEND: StringName = &"texture2darray_page_light_layers"
-const HDR_IMAGE_FORMAT: Image.Format = Image.FORMAT_RGBAH
-const BYTES_PER_TEXEL: int = 8
+const STORAGE_FORMAT: StringName = &"r16f_linear_irradiance"
+const COMPOSITION_BACKEND: StringName = &"texture2darray_page_light_scalar_layers"
+const HDR_IMAGE_FORMAT: Image.Format = Image.FORMAT_RH
+const BYTES_PER_TEXEL: int = 2
 
 @export var format_version: int = CURRENT_FORMAT_VERSION
 @export var texel_size_meters: float = DEFAULT_TEXEL_SIZE_METERS
@@ -249,17 +249,20 @@ func to_canonical_text() -> String:
 "
 
 
-static func encode_hdr_colors(colors: Array[Color]) -> PackedByteArray:
-	if colors.is_empty():
+static func encode_hdr_scalars(values: PackedFloat32Array) -> PackedByteArray:
+	if values.is_empty():
 		return PackedByteArray()
-	var image := Image.create_empty(colors.size(), 1, false, HDR_IMAGE_FORMAT)
-	for index: int in colors.size():
-		image.set_pixel(index, 0, colors[index])
+	var image := Image.create_empty(values.size(), 1, false, HDR_IMAGE_FORMAT)
+	for index: int in values.size():
+		image.set_pixel(index, 0, Color(values[index], 0.0, 0.0, 1.0))
 	return image.get_data()
 
 
-static func decode_hdr_colors(data: PackedByteArray, count: int) -> Array[Color]:
-	var result: Array[Color] = []
+static func decode_hdr_scalars(
+	data: PackedByteArray,
+	count: int
+) -> PackedFloat32Array:
+	var result := PackedFloat32Array()
 	if count <= 0 or data.size() != count * BYTES_PER_TEXEL:
 		return result
 	var image := Image.create_from_data(
@@ -267,8 +270,9 @@ static func decode_hdr_colors(data: PackedByteArray, count: int) -> Array[Color]
 	)
 	if image == null or image.is_empty():
 		return result
+	result.resize(count)
 	for index: int in count:
-		result.append(image.get_pixel(index, 0))
+		result[index] = image.get_pixel(index, 0).r
 	return result
 
 

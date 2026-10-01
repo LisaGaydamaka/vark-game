@@ -209,21 +209,20 @@ func _test_mapping_tiling_guards_and_refusal(assert_true: Callable) -> void:
 
 
 func _test_hdr_and_sparse_weight_abi(assert_true: Callable) -> void:
-	var source_color := Color(3.5, 1.25, 0.5, 1.0)
-	var hdr_colors: Array[Color] = [source_color]
-	var encoded: PackedByteArray = VarkAnimatedLightmapLayout.encode_hdr_colors(
-		hdr_colors
+	var source_value: float = 3.5
+	var hdr_values := PackedFloat32Array([source_value])
+	var encoded: PackedByteArray = VarkAnimatedLightmapLayout.encode_hdr_scalars(
+		hdr_values
 	)
-	var decoded: Array[Color] = VarkAnimatedLightmapLayout.decode_hdr_colors(
-		encoded, 1
+	var decoded: PackedFloat32Array = (
+		VarkAnimatedLightmapLayout.decode_hdr_scalars(encoded, 1)
 	)
 	assert_true.call(
 		encoded.size() == VarkAnimatedLightmapLayout.BYTES_PER_TEXEL
 		and decoded.size() == 1
-		and decoded[0].r > 3.0
-		and absf(decoded[0].r - source_color.r) < 0.01
-		and absf(decoded[0].g - source_color.g) < 0.01,
-		"8.4.1A uses linear RGBA16F contribution storage that preserves HDR values above 1.0 instead of clamping individual light layers to RGBA8"
+		and decoded[0] > 3.0
+		and absf(decoded[0] - source_value) < 0.01,
+		"8.4.1A uses linear R16F irradiance-factor storage that preserves HDR values above 1.0; stable light color/energy remain separate descriptor data rather than duplicating RGB into every texel"
 	)
 
 	var descriptors: Dictionary = {}
