@@ -38,27 +38,32 @@ float read_weight(int index) {
 	return texture(light_weights, vec2(u, 0.5)).r;
 }
 
-vec3 read_contribution(int layer_index, int weight_index, vec3 light_color) {
+vec3 read_contribution(
+	int layer_index,
+	int weight_index,
+	vec3 light_color,
+	vec2 atlas_uv
+) {
 	if (layer_index < 0 || weight_index < 0) {
 		return vec3(0.0);
 	}
 	float irradiance = texture(
 		direct_layers,
-		vec3(UV, float(layer_index))
+		vec3(atlas_uv, float(layer_index))
 	).r;
 	return light_color * irradiance * read_weight(weight_index);
 }
 
 void fragment() {
 	vec3 direct = vec3(0.0);
-	direct += read_contribution(layer_0, weight_0, color_0.rgb);
-	direct += read_contribution(layer_1, weight_1, color_1.rgb);
-	direct += read_contribution(layer_2, weight_2, color_2.rgb);
-	direct += read_contribution(layer_3, weight_3, color_3.rgb);
-	direct += read_contribution(layer_4, weight_4, color_4.rgb);
-	direct += read_contribution(layer_5, weight_5, color_5.rgb);
-	direct += read_contribution(layer_6, weight_6, color_6.rgb);
-	direct += read_contribution(layer_7, weight_7, color_7.rgb);
+	direct += read_contribution(layer_0, weight_0, color_0.rgb, UV);
+	direct += read_contribution(layer_1, weight_1, color_1.rgb, UV);
+	direct += read_contribution(layer_2, weight_2, color_2.rgb, UV);
+	direct += read_contribution(layer_3, weight_3, color_3.rgb, UV);
+	direct += read_contribution(layer_4, weight_4, color_4.rgb, UV);
+	direct += read_contribution(layer_5, weight_5, color_5.rgb, UV);
+	direct += read_contribution(layer_6, weight_6, color_6.rgb, UV);
+	direct += read_contribution(layer_7, weight_7, color_7.rgb, UV);
 
 	vec3 authored_albedo = COLOR.rgb;
 	ALBEDO = authored_albedo;

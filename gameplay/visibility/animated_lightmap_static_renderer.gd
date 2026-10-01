@@ -73,6 +73,10 @@ func is_applied() -> bool:
 	return _applied
 
 
+func dispose() -> void:
+	_clear_runtime_state()
+
+
 func get_validation_errors() -> PackedStringArray:
 	return _last_errors.duplicate()
 

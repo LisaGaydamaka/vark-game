@@ -354,6 +354,10 @@ func _test_real_lab_bake_and_runtime(
 		"8.4.1B static proof rendering requires no realtime direct-light/shadow receiver while intentional Environment ambient remains visual-only and outside semantic LIGHT exposure"
 	)
 
+	renderer.dispose()
+	changed_renderer.dispose()
+	stale_renderer.dispose()
+	incomplete_renderer.dispose()
 	renderer.free()
 	changed_renderer.free()
 	stale_renderer.free()
