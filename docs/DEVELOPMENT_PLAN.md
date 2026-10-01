@@ -1920,7 +1920,7 @@ This is intentionally a **Thief 1 & 2-style lighting architecture target**, not 
 
 FuncGodot remains vendored and unmodified unless project-side reconstruction is proven impossible. Its generator already appends each surviving brush face as its own contiguous face-local vertex/index block inside the material surface, while worldspawn exports per-triangle texture/normal/position metadata plus collision-to-face metadata. Vark must recover and preserve those **generated render-face boundaries after FuncGodot culling/generation**. Adjacent edge-connected coplanar faces with the same material remain separate logical faces; do not merge them into arbitrary connected components and do not maintain a second independent raw-brush geometry truth.
 
-#### 8.4.1A Surface-lightmap representation and storage `[ ]`
+#### 8.4.1A Surface-lightmap representation and storage `[~]`
 
 Implement the complete static-surface representation as one bounded foundation item. This item must settle both the surface/storage model and the runtime composition ABI before 8.4.1B locks bake output around it.
 
@@ -1951,6 +1951,12 @@ The representation tooling must emit a deterministic scale report before 8.4.1A 
 **Automated:** repeated-build face IDs; source/triangle-order independence; explicit adjacent-coplanar-face non-merge case; geometry/material identity invalidation; known physical face→texel dimensions; texel→world→face round trips; polygon masking; deterministic face tiling; guarded bright/dark isolation under the actual sampling policy; deterministic page/rectangle packing; impossible allocation refusal after tiling; conservative light-affinity/influence analysis including overflow diagnostics; linear/HDR encode/decode without per-light saturation; bounded sparse GPU binding/composition proof with no full-atlas CPU rewrite; deterministic serialization; stale representation rejection; and a Ledge City scale report.
 
 **Manual:** none — this item is data/geometry/storage/runtime-ABI foundation only.
+
+**Current A status:** implementation is checked in for exact generated-face recovery, stable canonical face/tile IDs, physical 6.25 cm texels, deterministic oversized-face tiling, two-texel linear-filter guards, deterministic 1024×1024 light-affinity pages, linear RGBA16F storage, sparse per-tile page/light layer bindings, eight animated-light slots per tile, weight-buffer-only runtime updates, fail-closed stale/overflow validation and a real Ledge City scale estimator. The authoritative Visibility suite now builds the Animated Lightmap Lab twice with UV2 unwrap disabled, exercises synthetic ordering/tiling/HDR/guard/overflow cases, and performs the 23-light Ledge City dry analysis. Post-push Godot 4.7.2 CI is still required before this item may become `[x]`. The standalone estimator is:
+
+`godot --headless --path . --script res://tools/lighting/report_animated_lightmap_layout.gd`
+
+8.4.1B remains blocked until A is accepted.
 
 #### 8.4.1B Per-surface baker and runtime renderer `[ ]`
 
