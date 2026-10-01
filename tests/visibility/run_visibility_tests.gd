@@ -11,6 +11,9 @@ const AnimatedLightmapRegressions = preload(
 const AnimatedLightmapLayoutRegressions = preload(
 	"res://tests/visibility/animated_lightmap_layout_regressions.gd"
 )
+const AnimatedLightmapBakeRegressions = preload(
+	"res://tests/visibility/animated_lightmap_bake_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -22,6 +25,8 @@ func _initialize() -> void:
 func _run_tests() -> void:
 	var animated_lightmap_layout: RefCounted = AnimatedLightmapLayoutRegressions.new()
 	await animated_lightmap_layout.run(self, Callable(self, "_assert_true"))
+	var animated_lightmap_bake: RefCounted = AnimatedLightmapBakeRegressions.new()
+	await animated_lightmap_bake.run(self, Callable(self, "_assert_true"))
 	var animated_lightmap: RefCounted = AnimatedLightmapRegressions.new()
 	await animated_lightmap.run(self, Callable(self, "_assert_true"))
 	await _assert_exposure_lab()

@@ -311,10 +311,19 @@ static func is_face_texel_valid(
 		or texel.y >= useful_size.y
 	):
 		return false
-	var sample := Vector2(
-		(float(texel.x) + 0.5) * texel_size_meters,
-		(float(texel.y) + 0.5) * texel_size_meters
+	return is_face_local_point_valid(
+		face,
+		Vector2(
+			(float(texel.x) + 0.5) * texel_size_meters,
+			(float(texel.y) + 0.5) * texel_size_meters
+		)
 	)
+
+
+static func is_face_local_point_valid(
+	face: Dictionary,
+	local_point: Vector2
+) -> bool:
 	var triangles: PackedVector2Array = face.get(
 		"triangles_uv", PackedVector2Array()
 	)
@@ -322,13 +331,68 @@ static func is_face_texel_valid(
 		if index + 2 >= triangles.size():
 			break
 		if _point_in_triangle(
-			sample,
+			local_point,
 			triangles[index],
 			triangles[index + 1],
 			triangles[index + 2]
 		):
 			return true
 	return false
+
+
+static func face_local_point_world(
+	face: Dictionary,
+	local_point: Vector2
+) -> Vector3:
+	var origin: Vector3 = face.get("origin", Vector3.ZERO)
+	var basis_u: Vector3 = face.get("basis_u", Vector3.RIGHT)
+	var basis_v: Vector3 = face.get("basis_v", Vector3.UP)
+	var projection_min: Vector2 = face.get("projection_min", Vector2.ZERO)
+	return (
+		origin
+		+ basis_u * (projection_min.x + local_point.x)
+		+ basis_v * (projection_min.y + local_point.y)
+	)
+
+
+static func find_face_at_world_point(
+	layout: VarkAnimatedLightmapLayout,
+	world_point: Vector3,
+	plane_tolerance: float = 0.08
+) -> Dictionary:
+	if layout == null:
+		return {}
+	var best: Dictionary = {}
+	var best_distance: float = INF
+	for face: Dictionary in layout.faces:
+		var origin: Vector3 = face.get("origin", Vector3.ZERO)
+		var normal: Vector3 = face.get("normal", Vector3.ZERO).normalized()
+		if normal.length_squared() <= 0.0:
+			continue
+		var signed_distance: float = (world_point - origin).dot(normal)
+		var plane_distance: float = absf(signed_distance)
+		if plane_distance > plane_tolerance or plane_distance > best_distance:
+			continue
+		var projected_world: Vector3 = world_point - normal * signed_distance
+		var texel_point: Vector2 = world_to_face_texel(
+			face,
+			projected_world,
+			layout.texel_size_meters
+		)
+		var local_point: Vector2 = texel_point * layout.texel_size_meters
+		if not is_face_local_point_valid(face, local_point):
+			continue
+		if (
+			plane_distance < best_distance
+			or (
+				is_equal_approx(plane_distance, best_distance)
+				and str(face.get("face_id", ""))
+					< str(best.get("face_id", "~"))
+			)
+		):
+			best = face
+			best_distance = plane_distance
+	return best
 
 
 func _extract_mesh_faces(mesh_instance: MeshInstance3D) -> Array[Dictionary]:
