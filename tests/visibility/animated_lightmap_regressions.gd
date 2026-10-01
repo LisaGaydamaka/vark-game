@@ -153,10 +153,68 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		assert_true.call(
 			not stale_applied
 			and not stale_surface.is_applied()
-			and not stale_surface.get_validation_errors().is_empty(),
+			and _contains_error_fragment(
+				stale_surface.get_validation_errors(),
+				"UV2/geometry fingerprint mismatch"
+			),
 			"8.4.1 stale geometry/lightmap data fails closed instead of silently applying to changed authoritative geometry"
 		)
 		stale_surface.queue_free()
+
+		var changed_descriptors: Dictionary = descriptors.duplicate(true)
+		var changed_descriptor: Dictionary = (
+			changed_descriptors.get(
+				VarkAnimatedLightmapLab.LIGHT_ID,
+				{}
+			) as Dictionary
+		).duplicate(true)
+		changed_descriptor["range"] = (
+			float(changed_descriptor.get("range", 0.0)) + 0.25
+		)
+		changed_descriptors[VarkAnimatedLightmapLab.LIGHT_ID] = (
+			changed_descriptor
+		)
+		var changed_light_surface := VarkAnimatedLightmapSurface.new()
+		lab.add_child(changed_light_surface)
+		var changed_light_applied: bool = changed_light_surface.configure(
+			mesh,
+			generated,
+			VarkAnimatedLightmapLab.MAP_SOURCE_PATH,
+			changed_descriptors
+		)
+		assert_true.call(
+			not changed_light_applied
+			and not changed_light_surface.is_applied()
+			and _contains_error_fragment(
+				changed_light_surface.get_validation_errors(),
+				"light identity/configuration fingerprint mismatch"
+			),
+			"8.4.1 changing a required gameplay-light bake configuration invalidates the tracked contribution and fails closed"
+		)
+		changed_light_surface.queue_free()
+
+		var incomplete := generated.duplicate(true) as VarkAnimatedLightmapData
+		incomplete.light_layers_base64.erase(
+			VarkAnimatedLightmapLab.LIGHT_ID
+		)
+		var incomplete_surface := VarkAnimatedLightmapSurface.new()
+		lab.add_child(incomplete_surface)
+		var incomplete_applied: bool = incomplete_surface.configure(
+			mesh,
+			incomplete,
+			VarkAnimatedLightmapLab.MAP_SOURCE_PATH,
+			descriptors
+		)
+		assert_true.call(
+			not incomplete_applied
+			and not incomplete_surface.is_applied()
+			and _contains_error_fragment(
+				incomplete_surface.get_validation_errors(),
+				"missing baked contribution"
+			),
+			"8.4.1 incomplete bake data with a missing required light contribution fails closed"
+		)
+		incomplete_surface.queue_free()
 
 	var source_emitter: Light3D = source_light.get_emitter()
 	var shadowed_realtime_count: int = 0
@@ -188,6 +246,15 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 
 	lab.queue_free()
 	await tree.process_frame
+
+func _contains_error_fragment(
+	errors: PackedStringArray,
+	fragment: String
+) -> bool:
+	for error: String in errors:
+		if error.contains(fragment):
+			return true
+	return false
 
 func _max_rgb(color: Color) -> float:
 	return maxf(color.r, maxf(color.g, color.b))
