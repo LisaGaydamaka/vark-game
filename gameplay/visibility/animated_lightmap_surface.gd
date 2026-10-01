@@ -10,6 +10,7 @@ var _data: VarkAnimatedLightmapData = null
 var _weights: Dictionary = {}
 var _materials: Array[ShaderMaterial] = []
 var _composite_texture: ImageTexture = null
+var _composite_image: Image = null
 var _applied: bool = false
 var _last_errors := PackedStringArray()
 
@@ -65,9 +66,11 @@ func get_light_weight(light_id: String) -> float:
 	return float(_weights.get(light_id, 0.0))
 
 func get_composite_image() -> Image:
-	if _composite_texture == null:
-		return null
-	return _composite_texture.get_image()
+	return (
+		_composite_image.duplicate()
+		if _composite_image != null
+		else null
+	)
 
 func get_debug_state() -> Dictionary:
 	return {
@@ -136,6 +139,10 @@ func _rebuild_composite() -> void:
 	var image := Image.create_from_data(
 		width, height, false, Image.FORMAT_RGBA8, bytes
 	)
+	# Keep the CPU composition as deterministic authoring/test truth. Reading
+	# an ImageTexture back in headless mode depends on renderer availability;
+	# the exact same Image is still what the runtime texture receives.
+	_composite_image = image
 	if _composite_texture == null:
 		_composite_texture = ImageTexture.create_from_image(image)
 	else:
@@ -155,5 +162,6 @@ func _clear_runtime_state() -> void:
 	_weights.clear()
 	_materials.clear()
 	_composite_texture = null
+	_composite_image = null
 	_applied = false
 	_last_errors = PackedStringArray()
