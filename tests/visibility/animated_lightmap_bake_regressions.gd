@@ -269,8 +269,12 @@ func _test_real_lab_bake_and_runtime(
 	var after_off: Dictionary = renderer.get_debug_state()
 	assert_true.call(
 		renderer_ok
-		and int(after_full.get("tile_mesh_count", 0)) > 0
-		and int(after_full.get("tile_material_count", 0)) > 0
+		and int(after_full.get("page_mesh_count", 0))
+			== layout.pages.size()
+		and int(after_full.get("page_material_count", 0))
+			== layout.pages.size()
+		and int(after_full.get("page_mesh_count", 0))
+			< layout.tiles.size()
 		and _max_rgb(full) > 0.05
 		and _max_rgb(half) > 0.0
 		and _max_rgb(half) < _max_rgb(full)
@@ -279,7 +283,7 @@ func _test_real_lab_bake_and_runtime(
 			== contribution_texture_id
 		and int(after_off.get("contribution_texture_build_count", -1)) == 1
 		and int(after_off.get("weight_texture_upload_count", 0)) >= 4,
-		"8.4.1B runtime tile renderer binds exact face/tile/page contribution layers and applies full/partial/off weights through only the small GPU weight texture without rebuilding contribution atlases"
+		"8.4.1B runtime renderer batches tile-clipped geometry by accepted atlas page, preserves per-vertex authored solid material parameters, binds exact page/light layers, and applies full/partial/off weights through only the small GPU weight texture without rebuilding contribution atlases"
 	)
 
 	var changed_descriptors: Dictionary = descriptors.duplicate(true)
@@ -350,12 +354,13 @@ func _test_real_lab_bake_and_runtime(
 		"8.4.1B static proof rendering requires no realtime direct-light/shadow receiver while intentional Environment ambient remains visual-only and outside semantic LIGHT exposure"
 	)
 
-	renderer.queue_free()
-	changed_renderer.queue_free()
-	stale_renderer.queue_free()
-	incomplete_renderer.queue_free()
+	renderer.free()
+	changed_renderer.free()
+	stale_renderer.free()
+	incomplete_renderer.free()
 	surface_map.queue_free()
 	lab.queue_free()
+	await tree.process_frame
 	await tree.process_frame
 
 

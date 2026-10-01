@@ -13,7 +13,7 @@ var _contribution_texture: Texture2DArray = null
 var _weight_texture: ImageTexture = null
 var _weight_image: Image = null
 var _renderer_root: Node3D = null
-var _tile_materials: Dictionary = {}
+var _page_materials: Dictionary = {}
 var _applied: bool = false
 var _last_errors := PackedStringArray()
 var _contribution_texture_build_count: int = 0
@@ -61,8 +61,8 @@ func configure(
 		_last_errors.append("failed to build static-light weight texture")
 		_clear_runtime_state(false)
 		return false
-	if not _build_tile_geometry():
-		_last_errors.append("failed to build static-light tile render geometry")
+	if not _build_page_geometry():
+		_last_errors.append("failed to build static-light page render geometry")
 		_clear_runtime_state(false)
 		return false
 	_applied = true
@@ -129,11 +129,13 @@ func sample_weighted_direct_at_world_point(
 func get_debug_state() -> Dictionary:
 	return {
 		"applied": _applied,
-		"tile_mesh_count": (
+		"page_mesh_count": (
 			_renderer_root.get_child_count()
 			if _renderer_root != null else 0
 		),
-		"tile_material_count": _tile_materials.size(),
+		"page_material_count": _page_materials.size(),
+		"layout_page_count": _layout.pages.size() if _layout != null else 0,
+		"layout_tile_count": _layout.tiles.size() if _layout != null else 0,
 		"contribution_texture_layers": (
 			_layout.contribution_layer_count if _layout != null else 0
 		),
@@ -221,76 +223,53 @@ func _upload_weight_texture() -> void:
 	_weight_texture_upload_count += 1
 
 
-func _build_tile_geometry() -> bool:
+func _build_page_geometry() -> bool:
 	if _layout == null or _bake == null:
 		return false
 	_renderer_root = Node3D.new()
-	_renderer_root.name = "StaticSurfaceTiles"
+	_renderer_root.name = "StaticSurfacePages"
 	add_child(_renderer_root)
-	for tile: Dictionary in _layout.tiles:
-		var face: Dictionary = _layout.get_face(str(tile.get("face_id", "")))
-		if face.is_empty():
-			return false
-		var mesh: ArrayMesh = _build_tile_mesh(face, tile)
+	for page: Dictionary in _layout.pages:
+		var mesh: ArrayMesh = _build_page_mesh(page)
 		if mesh == null or mesh.get_surface_count() == 0:
 			continue
+		var page_index: int = int(page.get("page_index", -1))
 		var mesh_instance := MeshInstance3D.new()
-		mesh_instance.name = "Tile_%s" % _safe_name(
-			str(tile.get("tile_id", ""))
-		)
+		mesh_instance.name = "Page_%03d" % page_index
 		mesh_instance.mesh = mesh
 		mesh_instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var material: ShaderMaterial = _build_tile_material(face, tile)
+		var material: ShaderMaterial = _build_page_material(page)
 		if material == null:
 			return false
 		mesh_instance.set_surface_override_material(0, material)
 		_renderer_root.add_child(mesh_instance)
-		_tile_materials[str(tile.get("tile_id", ""))] = material
-	return _renderer_root.get_child_count() > 0
+		_page_materials[str(page_index)] = material
+	return (
+		_renderer_root.get_child_count() > 0
+		and _renderer_root.get_child_count() == _layout.pages.size()
+	)
 
 
-func _build_tile_material(
-	face: Dictionary,
-	tile: Dictionary
-) -> ShaderMaterial:
+func _build_page_material(page: Dictionary) -> ShaderMaterial:
 	var material := ShaderMaterial.new()
 	material.shader = StaticLightShader
-	var authored: StandardMaterial3D = _load_authored_material(
-		str(face.get("material_id", ""))
-	)
-	material.set_shader_parameter(
-		"base_albedo",
-		authored.albedo_color if authored != null else Color.WHITE
-	)
-	material.set_shader_parameter(
-		"base_roughness",
-		authored.roughness if authored != null else 1.0
-	)
-	material.set_shader_parameter(
-		"base_metallic",
-		authored.metallic if authored != null else 0.0
-	)
 	material.set_shader_parameter("direct_layers", _contribution_texture)
 	material.set_shader_parameter("light_weights", _weight_texture)
 	material.set_shader_parameter(
 		"weight_count", maxi(_layout.light_ids.size(), 1)
 	)
-
-	var bindings_by_light: Dictionary = {}
-	for binding: Dictionary in tile.get("light_bindings", []):
-		bindings_by_light[str(binding.get("light_id", ""))] = binding
-	var contributing: PackedStringArray = _bake.get_tile_light_ids(
-		str(tile.get("tile_id", ""))
+	var page_lights: PackedStringArray = page.get(
+		"light_ids", PackedStringArray()
 	)
+	var layer_by_light: Dictionary = page.get("layer_by_light", {})
 	for slot: int in _layout.max_light_slots_per_tile:
 		var layer_index: int = -1
 		var weight_index: int = -1
 		var color := Color(0, 0, 0, 1)
-		if slot < contributing.size():
-			var light_id: String = contributing[slot]
-			var binding: Dictionary = bindings_by_light.get(light_id, {})
-			layer_index = int(binding.get("layer_index", -1))
-			weight_index = int(binding.get("weight_index", -1))
+		if slot < page_lights.size():
+			var light_id: String = page_lights[slot]
+			layer_index = int(layer_by_light.get(light_id, -1))
+			weight_index = _layout.light_ids.find(light_id)
 			var descriptor: Dictionary = _descriptors.get(light_id, {})
 			color = descriptor.get("color", Color.WHITE)
 		material.set_shader_parameter("layer_%d" % slot, layer_index)
@@ -299,14 +278,79 @@ func _build_tile_material(
 	return material
 
 
-func _build_tile_mesh(
-	face: Dictionary,
-	tile: Dictionary
-) -> ArrayMesh:
+func _build_page_mesh(page: Dictionary) -> ArrayMesh:
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
+	var colors := PackedColorArray()
+	var material_params := PackedVector2Array()
 	var indices := PackedInt32Array()
+	var tile_ids: PackedStringArray = page.get(
+		"tile_ids", PackedStringArray()
+	)
+	for tile_id: String in tile_ids:
+		var tile: Dictionary = _layout.get_tile(tile_id)
+		if tile.is_empty():
+			return null
+		var face: Dictionary = _layout.get_face(str(tile.get("face_id", "")))
+		if face.is_empty():
+			return null
+		var geometry: Dictionary = _build_tile_geometry_arrays(face, tile)
+		var tile_vertices: PackedVector3Array = geometry.get(
+			"vertices", PackedVector3Array()
+		)
+		if tile_vertices.is_empty():
+			continue
+		var base: int = vertices.size()
+		vertices.append_array(tile_vertices)
+		normals.append_array(
+			geometry.get("normals", PackedVector3Array())
+		)
+		uvs.append_array(geometry.get("uvs", PackedVector2Array()))
+		colors.append_array(
+			geometry.get("colors", PackedColorArray())
+		)
+		material_params.append_array(
+			geometry.get("material_params", PackedVector2Array())
+		)
+		var tile_indices: PackedInt32Array = geometry.get(
+			"indices", PackedInt32Array()
+		)
+		for tile_index: int in tile_indices:
+			indices.append(base + tile_index)
+	if vertices.is_empty():
+		return null
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_TEX_UV2] = material_params
+	arrays[Mesh.ARRAY_INDEX] = indices
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _build_tile_geometry_arrays(
+	face: Dictionary,
+	tile: Dictionary
+) -> Dictionary:
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var uvs := PackedVector2Array()
+	var colors := PackedColorArray()
+	var material_params := PackedVector2Array()
+	var indices := PackedInt32Array()
+	var authored: StandardMaterial3D = _load_authored_material(
+		str(face.get("material_id", ""))
+	)
+	var albedo: Color = (
+		authored.albedo_color if authored != null else Color.WHITE
+	)
+	var roughness: float = authored.roughness if authored != null else 1.0
+	var metallic: float = authored.metallic if authored != null else 0.0
 	var triangles: PackedVector2Array = face.get(
 		"triangles_uv", PackedVector2Array()
 	)
@@ -345,23 +389,25 @@ func _build_tile_mesh(
 					)
 				)
 				normals.append(
-					face.get("lighting_normal", face.get("normal", Vector3.UP))
+					face.get(
+						"lighting_normal",
+						face.get("normal", Vector3.UP)
+					)
 				)
 				uvs.append(_atlas_uv_for_local_point(tile, local_point))
+				colors.append(albedo)
+				material_params.append(Vector2(roughness, metallic))
 			indices.append_array(PackedInt32Array([
 				base, base + 1, base + 2
 			]))
-	if vertices.is_empty():
-		return null
-	var arrays: Array = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	arrays[Mesh.ARRAY_INDEX] = indices
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return mesh
+	return {
+		"vertices": vertices,
+		"normals": normals,
+		"uvs": uvs,
+		"colors": colors,
+		"material_params": material_params,
+		"indices": indices,
+	}
 
 
 func _atlas_uv_for_local_point(
@@ -454,7 +500,7 @@ func _clear_runtime_state(clear_errors: bool = true) -> void:
 	_contribution_texture = null
 	_weight_texture = null
 	_weight_image = null
-	_tile_materials.clear()
+	_page_materials.clear()
 	_applied = false
 	_contribution_texture_build_count = 0
 	_weight_texture_upload_count = 0
