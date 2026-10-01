@@ -61,6 +61,7 @@ func _test_deterministic_bvh_and_contact_fixture(
 		"8.4.1B deterministic static-render BVH is built from exact face triangles and is independent of face declaration order"
 	)
 	if layout == null or not configured:
+		mesh.free()
 		return
 
 	var baker := VarkAnimatedLightmapSurfaceBaker.new()
@@ -104,12 +105,14 @@ func _test_deterministic_bvh_and_contact_fixture(
 		"8.4.1B 4x4 supersampled final texels preserve a finite flush wall/pillar contact shadow with no bright one-texel rim while a same-face point outside the blocker remains directly lit"
 	)
 	if bake == null:
+		mesh.free()
 		return
 	var max_scalar: float = _max_bake_scalar(layout, bake)
 	assert_true.call(
 		max_scalar > 1.0,
 		"8.4.1B real baked R16F irradiance remains HDR above 1.0 instead of clamping individual light contribution values"
 	)
+	mesh.free()
 
 
 func _test_real_lab_bake_and_runtime(
