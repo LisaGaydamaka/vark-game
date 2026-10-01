@@ -27,6 +27,25 @@ func run(tree: SceneTree, assert_true: Callable) -> void:
 		and source_light != null,
 		"8.4.1 Animated Lightmap Lab builds authoritative FuncGodot geometry with complete UV2s and one authored bake-source gameplay-light identity"
 	)
+
+	var support_query := PhysicsRayQueryParameters3D.create(
+		lab.player.global_position + Vector3.UP * 0.25,
+		lab.player.global_position + Vector3.DOWN * 1.0,
+		1
+	)
+	support_query.collide_with_areas = false
+	support_query.collide_with_bodies = true
+	var support_hit: Dictionary = (
+		lab.get_world_3d().direct_space_state.intersect_ray(support_query)
+	)
+	var support_collider := support_hit.get("collider", null) as Node
+	assert_true.call(
+		not support_hit.is_empty()
+		and support_collider != null
+		and lab.func_map.is_ancestor_of(support_collider),
+		"8.4.1 Development Launch player spawn starts over generated FuncGodot world collision instead of outside the lab floor"
+	)
+
 	if mesh == null or source_light == null:
 		lab.queue_free()
 		await tree.process_frame

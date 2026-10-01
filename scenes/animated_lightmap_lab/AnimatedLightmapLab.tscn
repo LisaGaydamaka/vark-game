@@ -21,7 +21,7 @@ script = ExtResource("1_lab")
 environment = SubResource("Environment_anim")
 
 [node name="Player" parent="." instance=ExtResource("4_player")]
-position = Vector3(7.4, 0, 0)
+position = Vector3(3.5, 0, 0)
 rotation_degrees = Vector3(0, 90, 0)
 
 [node name="GameplayExposure" type="Node3D" parent="."]
