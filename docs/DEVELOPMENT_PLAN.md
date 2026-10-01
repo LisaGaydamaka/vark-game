@@ -1907,34 +1907,26 @@ authoritative FuncGodot render mesh
     ↓
 stable planar render-face records
     ↓
-face-local 2D lightmap basis + physical texel density
+face-local lightmap coordinates + physical texel density
     ↓
-one guarded rectangle per face
+guarded deterministic atlas pages
     ↓
-deterministic atlas packing
-    ↓
-offline direct-light samples against real static geometry
-    ↓
-sparse switchable-light contributions
+offline sparse direct-light contributions
     ↓
 runtime static-world material
 ```
 
 FuncGodot remains vendored and unmodified unless project-side reconstruction is proven impossible. Its current generated world mesh is suitable for the project-side seam: brush-face vertices are duplicated rather than shared across unrelated faces, surfaces retain material identity, and worldspawn already requests per-triangle texture/normal/position metadata plus collision-to-face metadata. Vark should reconstruct the exact **rendered** planar faces after FuncGodot culling/generation rather than maintaining a second independent raw-brush geometry truth.
 
-#### 8.4.1a Stable render-face extraction and identity
+#### 8.4.1A Surface-lightmap representation and storage `[ ]`
 
-Create a project-side extractor that walks the generated static world mesh and groups triangles into one face record only when they are edge-connected, coplanar within a documented epsilon, and use the same authored material/surface. Each record must contain the exact rendered triangle set, ordered boundary/vertices as needed for baking, world-space plane/normal, material identity, bounds, and a stable `face_id`.
+Implement the complete static-surface representation as one bounded foundation item.
 
-The `face_id` must be derived from canonicalized/quantized rendered geometry + plane + material rather than transient scene-node order or atlas placement, so unrelated brush reorder/import changes do not silently retarget baked data. Duplicate/coincident canonical faces are an authoring error and must fail validation rather than receiving ambiguous identity.
+Create a project-side extractor that walks the generated static world mesh and reconstructs planar render faces by grouping triangles only when they are edge-connected, coplanar within a documented epsilon, and use the same authored material/surface. Each face record must contain the exact rendered triangle set, world-space plane/normal, canonical boundary/vertices as needed for baking, material identity, bounds, and a stable `face_id`.
 
-**Automated proof:** rebuilding the same lab twice produces the same ordered face records/IDs; reordering unrelated source blocks where geometry is unchanged does not change surviving face IDs; changing one face geometry/material invalidates only the corresponding identity set plus the enclosing bake/source revision contract.
+The `face_id` must be derived from canonicalized/quantized rendered geometry + plane + material rather than transient node order, triangle order or atlas placement. Unrelated source ordering must not silently retarget existing bake data. Duplicate/coincident canonical faces are an authoring error and must fail validation rather than receiving ambiguous identity.
 
-#### 8.4.1b Face-local lightmap coordinates and texel-density contract
-
-Do not use Godot `lightmap_unwrap()` as the production coordinate authority for brush lighting. For every planar face, derive a deterministic orthonormal 2D basis from the face plane, project its polygon into that basis, and allocate useful texels from **physical dimensions** using one documented Vark texel density. The initial target may reuse the current approximately 6.25 cm/texel intent, but the value is a project-owned parameter and must be validated in the lab rather than guessed per map.
-
-Dimensions are derived per face:
+For every face, derive a deterministic orthonormal 2D face basis and project the polygon into that basis. Allocate useful texels from **physical face dimensions** using one documented Vark texel-density contract. The initial target may reuse the current approximately 6.25 cm/texel intent, but the density is Vark-owned and must be explicit rather than inherited accidentally from Godot's generic unwrap.
 
 ```text
 useful_width  = ceil(face_extent_u / texel_size)
@@ -1942,25 +1934,25 @@ useful_height = ceil(face_extent_v / texel_size)
 rectangle     = useful area + guarded border
 ```
 
-Every valid texel maps back to an exact point on that face. Non-rectangular polygon regions inside the face's bounding rectangle are masked, not sampled as world surface. Samples on/near polygon boundaries use a deterministic inward/half-texel rule so numerical edge points do not jump outside the intended face.
+Non-rectangular polygon regions inside the local bounding rectangle are masked. Every valid texel must map back to an exact point on its owning face. Samples at polygon boundaries use a deterministic inward/half-texel rule so numerical edge points do not jump outside the face.
 
-**Automated proof:** known lab faces receive predictable dimensions from physical size; texel→world→face round trips stay on the same polygon within tolerance; no useful texel from one face aliases another face.
+Pack these guarded face rectangles into deterministic one-or-more atlas pages **after** their local resolutions are fixed. Atlas packing is a storage optimization, never a reason to rescale a face. Each face owns enough guard pixels for the selected linear filtering policy; edge dilation may copy only that face's own values into its guard region. The schema must already support multiple pages even when the lab fits on one. Foundation mipmaps may remain disabled; any later mipmap support needs its own mip-safe padding/downsampling proof.
 
-#### 8.4.1c Guarded deterministic atlas packing
+Define the new durable animated-lightmap asset schema around stable face IDs, face-local mapping, page/rectangle ownership, configured texel density, geometry/source revision information, and room for sparse per-light contributions. Replace the obsolete whole-mesh UV2/64×64 assumptions in the data model; do not preserve them for compatibility.
 
-Pack face rectangles only as a storage/runtime optimization **after** face-local resolution is established. Each face owns a border/gutter large enough for the chosen linear filtering policy. Bake valid face texels first, then dilate only that face's own edge values into its guard region. Never fill a face's padding from a neighboring atlas rectangle.
+**Done when:** generated FuncGodot architecture can be deterministically converted into stable face records with physically derived texel rectangles and deterministic guarded atlas pages, with no dependency on Godot `lightmap_unwrap()` for production brush-light coordinates and no arbitrary atlas downscaling.
 
-Atlas placement must be deterministic: same face set/configuration produces byte-identical page count, page dimensions, rectangle positions and face→page mapping. The data format must support more than one atlas page even if the small lab fits on one page. Do not silently downscale face rectangles to force them into an arbitrary page size.
+**Automated:** repeated-build face IDs; source-order independence; geometry/material identity invalidation; known physical face→texel dimensions; texel→world→face round trips; polygon masking; guarded bright/dark rectangle isolation under the actual sampling policy; deterministic page/rectangle packing; oversized/impossible allocation refusal; deterministic data serialization and stale representation rejection.
 
-For the foundation proof, mipmaps may remain disabled rather than introducing cross-chart mip bleed. Production mipmaps, if later required, need a separately proven mip-safe padding/downsampling policy before Ledge City acceptance.
+**Manual:** none — this item is data/geometry/storage foundation only.
 
-**Automated proof:** deliberately adjacent bright/dark face rectangles retain independent guarded texels under bilinear sampling; atlas repacking is deterministic; impossible/oversized rectangle requests fail with useful diagnostics rather than rescaling.
+#### 8.4.1B Per-surface baker and runtime renderer `[ ]`
 
-#### 8.4.1d Offline per-face direct-light bake and sparse light ownership
+Build the complete static-light bake/render path on top of the accepted 8.4.1A representation.
 
-Bake direct irradiance at valid face texels using the authoritative static collision/world geometry. Each sample must use the face point/normal, light position/range/color/energy, front-facing term, deterministic surface epsilon, and physical occlusion ray. The static bake stores **lighting**, not material albedo; the runtime material combines baked irradiance with the surface presentation so material color remains authored separately.
+Bake direct irradiance at valid face texels using authoritative static collision/world geometry. Every sample uses the exact face point/normal, gameplay-light position/range/color/energy, front-facing term, deterministic surface epsilon and physical occlusion ray. The bake stores **lighting**, not material albedo; material presentation remains separately authored.
 
-Store a contribution only when a gameplay light actually affects at least one texel of that face/page. The durable data model must therefore represent:
+Store light data sparsely: a gameplay light only owns contribution data for faces/pages where at least one valid texel receives nonzero direct contribution. The durable relationship is:
 
 ```text
 face_id
@@ -1969,31 +1961,35 @@ face_id
     └── affecting gameplay-light contribution(s)
 ```
 
-rather than one mandatory full-world texture per light. Whole-source SHA/revision invalidation is acceptable initially for safety, but stable face/light IDs must already exist so later incremental authoring is possible without redesign.
+rather than one mandatory full-world texture per light. Whole-source revision invalidation may remain conservative initially, but stable face/light identities must already exist so later incremental authoring does not require redesign.
 
-**Automated proof:** the lower-room lamp produces positive samples on directly visible faces, zero samples behind the partition/upper floor/pillar, and no stored contribution for faces wholly unaffected by the light.
+Build the project-owned runtime static-world representation from the generated FuncGodot render mesh without changing collision or authoritative `.map` geometry. Since FuncGodot already duplicates vertices per brush face, Vark may assign the new lightmap mapping per reconstructed face without forcing unrelated faces into a shared generic unwrap. The runtime seam must explicitly support multiple atlas pages.
 
-#### 8.4.1e Runtime static-world mapping
+The static-world shader/material must preserve accepted material/environment presentation and add the baked **direct irradiance × surface albedo** contribution. Environment ambient remains visual-only and outside gameplay LIGHT. The authored gameplay `Light3D` used by the proof must be prevented from directly illuminating static architecture, so no realtime shadow map can conceal a broken bake.
 
-Build a project-owned runtime mesh/material representation from the generated FuncGodot render mesh without changing collision or authoritative `.map` geometry. Because FuncGodot already duplicates vertices per brush face, Vark may rewrite/add the lightmap UV mapping per extracted face without creating geometric cracks or requiring one shared UV chart across unrelated faces.
+Keep baked contribution data resident. The 8.4.1 proof may use a local test weight for ON/OFF/fade, but ordinary weight changes must not require rebaking geometry. Production gameplay-state ownership, save/load, flicker and dynamic-object receiver lighting remain 8.4.2.
 
-The static-world shader must preserve the accepted surface presentation/environment response and add the animated **direct irradiance × surface albedo** contribution. Environment ambient stays visual-only and remains outside gameplay LIGHT. The source gameplay `Light3D` must still be prevented from directly illuminating the static proof architecture, so no realtime positional shadow map can mask a bad bake.
+**Done when:** the accepted face/atlas representation can be baked from real static geometry into sparse per-light contributions and rendered back onto the exact owning static faces, including multiple-page ownership, without realtime direct lighting on static proof architecture.
 
-The data/runtime seam must explicitly carry atlas-page ownership. The lab may use one page, but the format and mesh/material association must not assume that the production mission is single-page.
+**Automated:** exact fresh-bake regeneration; directly lit vs partition/floor/pillar-occluded texels; sparse face/light ownership; no contribution for wholly unaffected faces; correct face/page runtime binding; full/partial/off proof weighting; changed geometry/light/mapping/missing-contribution refusal; Environment ambient outside semantic exposure; no shadow-enabled realtime source required for static proof geometry.
 
-#### 8.4.1f Animated Lightmap Lab acceptance
+**Manual:** none — rendered visual acceptance belongs to the integrated lab item below.
 
-Replace the rejected whole-mesh UV2 lab path with the per-surface representation. Keep the same hard cases: two vertically stacked rooms, an adjacent room separated by an opaque partition, a flush pillar/floor contact, one authored switchable gameplay light, intentional Environment ambient, and a playable supported spawn.
+#### 8.4.1C Replace the Animated Lightmap Lab and accept the representation `[ ]`
 
-The lab toggle/fade may remain a proof-owned weight in 8.4.1; binding that weight to the authoritative `VarkGameplayLight` state and providing dynamic-object receiver lighting belongs to 8.4.2.
+Replace the rejected whole-mesh UV2 lab path with the complete 8.4.1A+B per-surface system and delete/retire obsolete spike-only code, bake assets and assertions rather than leaving two competing static-light representations.
 
-**Done when:** the lab uses only the per-surface lightmap representation for static direct lighting; directly visible faces receive the expected warm contribution; opaque wall/floor/pillar occlusion is preserved in the rendered result; no UV/atlas/filtering bleed appears behind the pillar or across unrelated faces; the contribution switches/fades fully on/off; intentional ambient remains; static architecture requires no realtime positional shadow map; stale geometry/light/bake data fails closed; and the player spawn is supported.
+Keep the deliberately difficult fixture: two vertically stacked rooms, an adjacent room separated by an opaque partition, a flush pillar/floor contact, wall/floor and wall/ceiling junctions, one authored switchable gameplay light, intentional Environment ambient, and a playable supported Player spawn. The proof-owned toggle/fade may remain local to the lab; 8.4.2 binds production light state and dynamic-object illumination.
 
-**Automated:** stable extracted face identity; deterministic face-local basis/resolution; guarded atlas isolation under bilinear sampling; deterministic atlas packing; exact bake regeneration; physical static-occlusion probes; sparse face/light ownership; full/partial/off contribution weighting; geometry/light/bake revision refusal; generated-world support below the Development Launch player.
+The lab must expose enough diagnostics to identify the owning `face_id`, page/rectangle and affecting light for a visible surface if rendered validation finds an error. A reported leak must therefore be traceable to face extraction, atlas isolation, bake visibility or runtime mapping rather than requiring visual guesswork.
 
-**Manual:** required — Windows rendered proof while moving the camera around the pillar, partition, floor/ceiling junctions and upper storey. There must be no bright halo behind the pillar, no light transfer through opaque architecture, no detached static contact shadow, no camera-dependent boundary change, and the contribution must fade completely on/off while ambient remains.
+**Done when:** the lab uses only the per-surface representation for static direct lighting; directly visible faces receive the expected warm contribution; opaque wall/floor/pillar occlusion is preserved in the rendered result; there is no UV/atlas/filtering bleed behind the pillar or across unrelated faces; the contribution switches/fades completely on/off; intentional ambient remains; static architecture uses no realtime positional shadow map; stale data fails closed; the Player starts supported; and obsolete whole-mesh-UV2 proof ownership is removed.
 
-**Current status:** `[~]`. The first whole-mesh UV2 animated-lightmap spike proved several useful seams—offline gameplay-light sampling, deterministic bake serialization, fail-closed source/light validation, static-vs-realtime receiver separation, and animated contribution weighting—but its rendered representation is **rejected**. Windows validation after the spawn fix showed a bright halo behind the flush pillar. Investigation found the spike ignored the surface-resolution contract by forcing the entire two-storey mesh into a fixed 64×64 atlas and sampling it with linear filtering; therefore its green point-ray/byte-regeneration tests did not protect spatial lightmap correctness. Do not continue to 8.4.2 and do not spend time tuning the rejected global atlas. Rework 8.4.1 through 8.4.1a–8.4.1f and replace the obsolete whole-mesh UV2 acceptance/tests as each production seam becomes authoritative.
+**Automated:** full 8.4.1A+B regression barrier on the integrated lab; generated-world support below the Player; exact tracked bake regeneration; diagnostics resolve representative world surfaces to stable face/page/light ownership; obsolete 64×64/global-UV2 path is absent from the authoritative lab runtime.
+
+**Manual:** required — Windows user/playtester moves around the pillar, partition, floor/ceiling junctions and upper storey while toggling/fading the light. There must be no bright halo behind the pillar, no direct light through opaque architecture, no detached static contact shadow, no atlas seam on unrelated surfaces, no camera-dependent boundary change, and the direct contribution must fade fully off while ambient remains.
+
+**Current status:** 8.4.1 remains `[~]`. The old whole-mesh UV2 spike proved useful supporting seams—offline gameplay-light sampling, deterministic serialization, fail-closed source/light validation, static-vs-realtime receiver separation and animated weighting—but its rendered representation is **rejected**. Windows validation showed a bright halo behind the flush pillar because the spike forced the complete two-storey mesh into one fixed 64×64 linearly filtered atlas. Do not continue to 8.4.2 and do not tune that rejected atlas. Execute the three larger items **8.4.1A → 8.4.1B → 8.4.1C** in order; only 8.4.1C requires the rendered Windows acceptance.
 
 ### 8.4.2 Animated-light runtime ownership `[ ]`
 
