@@ -1920,7 +1920,7 @@ This is intentionally a **Thief 1 & 2-style lighting architecture target**, not 
 
 FuncGodot remains vendored and unmodified unless project-side reconstruction is proven impossible. Its generator already appends each surviving brush face as its own contiguous face-local vertex/index block inside the material surface, while worldspawn exports per-triangle texture/normal/position metadata plus collision-to-face metadata. Vark must recover and preserve those **generated render-face boundaries after FuncGodot culling/generation**. Adjacent edge-connected coplanar faces with the same material remain separate logical faces; do not merge them into arbitrary connected components and do not maintain a second independent raw-brush geometry truth.
 
-#### 8.4.1A Surface-lightmap representation and storage `[~]`
+#### 8.4.1A Surface-lightmap representation and storage `[x]`
 
 Implement the complete static-surface representation as one bounded foundation item. This item must settle both the surface/storage model and the runtime composition ABI before 8.4.1B locks bake output around it.
 
@@ -1952,11 +1952,13 @@ The representation tooling must emit a deterministic scale report before 8.4.1A 
 
 **Manual:** none — this item is data/geometry/storage/runtime-ABI foundation only.
 
-**Current A status:** implementation is checked in for exact generated-face recovery, stable canonical face/tile IDs, physical 6.25 cm texels, deterministic oversized-face tiling, two-texel linear-filter guards, deterministic 1024×1024 light-affinity pages, linear RGBA16F storage, sparse per-tile page/light layer bindings, eight animated-light slots per tile, weight-buffer-only runtime updates, fail-closed stale/overflow validation and a real Ledge City scale estimator. The authoritative Visibility suite now builds the Animated Lightmap Lab twice with UV2 unwrap disabled, exercises synthetic ordering/tiling/HDR/guard/overflow cases, and performs the 23-light Ledge City dry analysis. Post-push Godot 4.7.2 CI is still required before this item may become `[x]`. The standalone estimator is:
+**Current A status:** accepted. Exact implementation head `f97ce0109e8f185f710b518ad3c2f1d67de1603c` passed clean Godot 4.7.2 import and the complete GitHub Actions Test #700 regression barrier. A recovers exact generated FuncGodot face-local indexed components and corroborates exported texture/normal/position metadata; adjacent coplanar brush faces remain distinct, while only same-geometry/same-oriented-plane duplicates fail closed. The durable layout uses physical 6.25 cm texels, deterministic oversized-face tiling, two-texel linear-filter guards, deterministic 256×256 light-affinity pages, linear R16F HDR irradiance factors with stable light color/energy kept in the light descriptor, sparse per-tile page/light layer bindings, an eight animated-light-slot cap, and weight-buffer-only runtime updates with no atlas-pixel rewrite.
+
+The real 23-light Ledge City estimator at that head measured **1,974 logical faces / 2,010 face tiles**, **2,120,946 useful texels**, **202 atlas pages**, **6,265 face-tile/light candidate relationships**, **3.12 average / 7 maximum relevant animated lights per tile**, and **669 contribution layers**. The selected 256² R16F representation estimates **87,687,168 bytes (~83.6 MiB)** of uncompressed resident contribution texture storage. This replaced the first measured 1024² RGBA16F draft, which would have reserved ~4.62 GB, before the ABI was accepted. The standalone estimator is:
 
 `godot --headless --path . --script res://tools/lighting/report_animated_lightmap_layout.gd`
 
-8.4.1B remains blocked until A is accepted.
+**8.4.1B is now the next lighting implementation item.**
 
 #### 8.4.1B Per-surface baker and runtime renderer `[ ]`
 
@@ -1999,7 +2001,7 @@ The lab must expose enough diagnostics to identify the owning `face_id`, `tile_i
 
 **Manual:** required — Windows user/playtester moves around the pillar, partition, floor/ceiling junctions and upper storey while toggling/fading the light. There must be no bright halo behind the pillar, no direct light through opaque architecture, no detached static contact shadow, no atlas seam on unrelated surfaces, no camera-dependent boundary change, no obvious texel shimmer/aliasing at representative distances, and the direct contribution must fade fully off while ambient remains.
 
-**Current status:** 8.4.1 remains `[~]`. The old whole-mesh UV2 spike proved useful supporting seams—offline gameplay-light sampling, deterministic serialization, fail-closed source/light validation, static-vs-realtime receiver separation and animated weighting—but its rendered representation is **rejected**. Windows validation showed a bright halo behind the flush pillar because the spike forced the complete two-storey mesh into one fixed 64×64 linearly filtered atlas. A pre-implementation audit also rejected four underspecified foundation choices that could force another rewrite: coplanar connected-component face merging, leaving sparse GPU composition until later, using live gameplay physics as production bake authority, and omitting explicit supersampling/HDR/scale-budget contracts. The corrected target is the Thief-style surface-local/layered architecture described above. Do not continue to 8.4.2 and do not tune the rejected atlas. Execute **8.4.1A → 8.4.1B → 8.4.1C** in order; only 8.4.1C requires rendered Windows acceptance.
+**Current status:** 8.4.1 remains `[~]`. The old whole-mesh UV2 spike remains rejected. **8.4.1A is accepted on Test #700** with exact generated-face ownership, physical face/tile mapping, guarded 256² pages, sparse eight-slot page/light bindings, linear R16F HDR factors, bounded weight updates and the recorded Ledge City scale proof above. The remaining work is now **8.4.1B → 8.4.1C**: B must replace live-physics bake authority with the deterministic static-render BVH/supersampled baker and render through the accepted A ABI; C then replaces the rejected lab runtime and receives Windows visual acceptance. Do not continue to 8.4.2 and do not tune the rejected atlas.
 
 ### 8.4.2 Animated-light runtime ownership `[ ]`
 
