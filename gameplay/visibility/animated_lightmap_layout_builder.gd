@@ -630,8 +630,8 @@ func _build_face_record(
 			).normalized()
 	if rendered_normal.length_squared() > PLANE_EPSILON * PLANE_EPSILON:
 		rendered_normal = rendered_normal.normalized()
-		if normal.dot(rendered_normal) < 0.0:
-			normal = -normal
+	else:
+		rendered_normal = normal
 	for triangle_index: int in component:
 		var ta: Vector3 = world_vertices_by_index[indices[triangle_index * 3]]
 		var tb: Vector3 = world_vertices_by_index[indices[triangle_index * 3 + 1]]
@@ -641,7 +641,7 @@ func _build_face_record(
 			_errors.append("surface %d contains a degenerate rendered triangle" % surface_index)
 			return {}
 		triangle_normal = triangle_normal.normalized()
-		if absf(triangle_normal.dot(normal)) < 1.0 - PLANE_EPSILON:
+		if triangle_normal.dot(normal) < 1.0 - PLANE_EPSILON:
 			_errors.append(
 				"surface %d connected vertex block is not one planar rendered face"
 				% surface_index
@@ -709,6 +709,7 @@ func _build_face_record(
 		"coincident_key": coincident_key,
 		"material_id": material_id,
 		"normal": normal,
+		"lighting_normal": rendered_normal,
 		"origin": origin,
 		"basis_u": basis_u,
 		"basis_v": basis_v,

@@ -344,7 +344,9 @@ func _build_tile_mesh(
 						face, local_point
 					)
 				)
-				normals.append(face.get("normal", Vector3.UP))
+				normals.append(
+					face.get("lighting_normal", face.get("normal", Vector3.UP))
+				)
 				uvs.append(_atlas_uv_for_local_point(tile, local_point))
 			indices.append_array(PackedInt32Array([
 				base, base + 1, base + 2

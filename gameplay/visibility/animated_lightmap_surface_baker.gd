@@ -170,7 +170,9 @@ func _bake_tile_light(
 	useful_values.fill(0.0)
 	var useful_mask := PackedByteArray()
 	useful_mask.resize(useful_size.x * useful_size.y)
-	var normal: Vector3 = face.get("normal", Vector3.ZERO).normalized()
+	var normal: Vector3 = face.get(
+		"lighting_normal", face.get("normal", Vector3.ZERO)
+	).normalized()
 	var face_id: String = str(face.get("face_id", ""))
 	var any_nonzero: bool = false
 	var sub_count: int = supersample_grid * supersample_grid
