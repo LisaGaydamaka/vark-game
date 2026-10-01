@@ -615,7 +615,9 @@ func _build_face_record(
 	var vertex_parts := PackedStringArray()
 	for point: Vector3 in sorted_world_vertices:
 		vertex_parts.append(_vector3_key(point))
-	var coincident_key: String = ";".join(vertex_parts)
+	var coincident_key: String = "%s|%s" % [
+		_vector3_key(normal), ";".join(vertex_parts)
+	]
 	var face_id: String = _hash_text(
 		"%s|n=%s|verts=%s"
 		% [material_id, _vector3_key(normal), ";".join(vertex_parts)]
