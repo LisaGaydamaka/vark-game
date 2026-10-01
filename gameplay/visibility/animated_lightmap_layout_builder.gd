@@ -258,9 +258,7 @@ static func compute_light_influence_fingerprint(
 				float(descriptor.get("range", 0.0)),
 			]
 		)
-	return _hash_text("
-".join(lines) + "
-")
+	return _hash_text("\n".join(lines) + "\n")
 
 
 static func face_texel_center_world(
@@ -493,14 +491,14 @@ func _corroborate_func_godot_metadata(
 				% [str(texture_names[texture_index]), material_id]
 			)
 		var metadata_normal: Vector3 = (
-			mesh_instance.global_transform.basis * normals[metadata_index]
+			_mesh_transform(mesh_instance).basis * normals[metadata_index]
 		).normalized()
 		if absf(metadata_normal.dot(face_normal)) < 1.0 - PLANE_EPSILON:
 			_errors.append(
 				"FuncGodot triangle metadata normal disagrees with recovered rendered face"
 			)
 		var metadata_position: Vector3 = (
-			mesh_instance.global_transform * positions[metadata_index]
+			_mesh_transform(mesh_instance) * positions[metadata_index]
 		)
 		if absf((metadata_position - face_origin).dot(face_normal)) > PLANE_EPSILON:
 			_errors.append(
@@ -537,7 +535,7 @@ func _build_face_record(
 	var world_vertices_by_index: Dictionary = {}
 	var sorted_world_vertices: Array[Vector3] = []
 	for vertex_index: int in vertex_indices:
-		var world_vertex: Vector3 = mesh_instance.global_transform * vertices[vertex_index]
+		var world_vertex: Vector3 = _mesh_transform(mesh_instance) * vertices[vertex_index]
 		world_vertices_by_index[vertex_index] = world_vertex
 		sorted_world_vertices.append(world_vertex)
 	sorted_world_vertices.sort_custom(_sort_vector3)
@@ -802,9 +800,7 @@ static func _geometry_canonical_text(faces: Array[Dictionary]) -> String:
 				str(face.get("triangles_uv", PackedVector2Array())),
 			]
 		)
-	return "
-".join(lines) + "
-"
+	return "\n".join(lines) + "\n"
 
 
 static func _hash_text(value: String) -> String:
@@ -842,6 +838,16 @@ static func _sort_triangle_records(a: Dictionary, b: Dictionary) -> bool:
 
 static func _sort_vector3(a: Vector3, b: Vector3) -> bool:
 	return _vector3_key(a) < _vector3_key(b)
+
+
+static func _mesh_transform(mesh_instance: MeshInstance3D) -> Transform3D:
+	if mesh_instance == null:
+		return Transform3D.IDENTITY
+	return (
+		mesh_instance.global_transform
+		if mesh_instance.is_inside_tree()
+		else mesh_instance.transform
+	)
 
 
 static func _distance_to_aabb(

@@ -381,6 +381,11 @@ func _test_ledge_city_scale_and_slot_budget(
 		}
 	)
 	var report: Dictionary = analysis.get_scale_report() if analysis != null else {}
+	if analysis == null:
+		print(
+			"[ANIMATED_LIGHTMAP_LAYOUT_LEDGE_ERRORS] ",
+			JSON.stringify(Array(analysis_builder.get_errors()))
+		)
 	print("[ANIMATED_LIGHTMAP_LAYOUT_LEDGE] ", JSON.stringify(report))
 	var max_candidates: int = int(report.get("max_candidate_lights_per_tile", 0))
 	var production_builder := VarkAnimatedLightmapLayoutBuilder.new()
