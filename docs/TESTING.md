@@ -1310,6 +1310,20 @@ Vark now uses a project-owned `vark_worldspawn.tres` instead of modifying the ve
 
 The Phase 8 application regression audits every source face against the three allowed material paths, verifies imported metadata for all 290 worldspawn collision shapes plus the dedicated door-frame collider, and runs live PLAYING-state probes for Mercer carpet, Watchmaker tile, the Mercer stone terrace that formerly inherited carpet, the Archive upper carpet stair that formerly inherited tile, and two elevated stone floors that previously had no footstep volume at all. Exact implementation head `ae97d5996d6b789bc483bc59318520df597f8834` passed the complete Godot 4.7.2 barrier in GitHub Actions Test #658.
 
+### Phase 8.4.1 animated static-lighting foundation
+
+The tracked **Animated Lightmap Lab** at `scenes/animated_lightmap_lab/` is the isolated proof for replacing realtime static-architecture shadow ownership. Its FuncGodot node enables `UNWRAP_UV2`; the authoritative `.map` contains a two-storey/two-room static shell, a flush structural pillar and one ordinary authored `vark_gameplay_light` source identity. The source `Light3D` is runtime-masked away from ordinary receivers and has shadows disabled, while the fixture's private self-fill remains unshadowed.
+
+`VarkAnimatedLightmapBaker` rasterizes the generated UV2 triangles offline, evaluates direct point-light attenuation and physical world-geometry ray occlusion, and stores per-light RGBA8 contribution bytes in a versioned `VarkAnimatedLightmapData` resource using compressed base64 payloads. `VarkAnimatedLightmapSurface` validates source SHA-256, UV2/geometry fingerprint and light-configuration fingerprint before installing a material; invalid/stale data fails closed. The proof material retains normal PBR/environment response and adds only the precomputed direct-light contribution through emission, so Environment ambient remains presentation-only and is not represented by the bake or LIGHT meter.
+
+The Visibility suite builds the lab twice and requires identical UV2/geometry fingerprints; regenerates the tracked bake and requires exact data equality; probes one directly lit lower-room point plus same-range points blocked by the room partition, upper floor and flush pillar; verifies full/partial/off contribution weighting; rejects a deliberately stale geometry fingerprint; proves no shadow-enabled realtime `Light3D` exists in the lab and the authored source emitter has cull mask zero; and proves Environment ambient remains nonzero while semantic exposure becomes zero when the gameplay light is disabled.
+
+Authoring regeneration command:
+
+`godot --headless --path . --script res://tools/lighting/bake_animated_lightmap_lab.gd -- --write`
+
+Manual Windows acceptance: Development Launch → **Animated Lightmap Lab**. From the open front, inspect the lower-left lit room, lower-right neighboring room, upper storey, and the pillar/floor contact while moving the camera. Press **L** repeatedly and watch the precomputed direct contribution fade fully on/off. The lower-left room should gain/lose warm direct light; the neighboring and upper rooms should remain at the intentional ambient baseline; the pillar shadow/contact must not detach or reveal a bright seam; and camera movement must not change the static shadow boundaries. 8.4.2, not this proof, will bind the layer weight to production gameplay-light state and dynamic-object receiver lighting.
+
 ### Phase 8.4 room-confined dynamic lantern lighting
 
 Ledge City keeps its authored Environment ambient light as intentional visual-only readability; ambient is not a gameplay-light source and does not enter the LIGHT meter. Direct gameplay-light rendering must nevertheless remain spatially coherent with architecture: there must be no camera-distance state where a lamp still contributes direct light after its shadows have been culled.

@@ -5,6 +5,9 @@ const ApplicationScene = preload("res://application/Application.tscn")
 const ExposureOwner = preload("res://gameplay/visibility/gameplay_exposure.gd")
 const GameplayLight = preload("res://gameplay/visibility/gameplay_light.gd")
 const LightGem = preload("res://gameplay/visibility/light_gem.gd")
+const AnimatedLightmapRegressions = preload(
+	"res://tests/visibility/animated_lightmap_regressions.gd"
+)
 
 var failures: Array[String] = []
 
@@ -14,6 +17,8 @@ func _initialize() -> void:
 
 
 func _run_tests() -> void:
+	var animated_lightmap: RefCounted = AnimatedLightmapRegressions.new()
+	await animated_lightmap.run(self, Callable(self, "_assert_true"))
 	await _assert_exposure_lab()
 	_print_summary()
 	quit(1 if not failures.is_empty() else 0)

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="VarkAnimatedLightmapData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://gameplay/visibility/animated_lightmap_data.gd" id="1_data"]
+
+[resource]
+script = ExtResource("1_data")
+format_version = 1
+source_map_path = "res://scenes/animated_lightmap_lab/animated_lightmap_lab.map"
+source_sha256 = ""
+geometry_fingerprint = ""
+texture_size = Vector2i(64, 64)
+light_descriptors = {}
+light_fingerprint = ""
+light_layers_base64 = {}
