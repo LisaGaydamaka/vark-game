@@ -160,7 +160,14 @@ func _test_integrated_per_surface_lab_and_runtime_ownership(
 	var contribution_texture_id: int = renderer.get_contribution_texture_instance_id()
 	var before_fade: Dictionary = renderer.get_debug_state()
 	var full: Color = renderer.sample_weighted_direct_at_world_point(lit_point)
-	var semantic_point: Vector3 = lit_point + Vector3.UP * 0.8
+	var semantic_probe_distance: float = minf(
+		0.75,
+		maxf(source_light.omni_range * 0.25, 0.25)
+	)
+	var semantic_point: Vector3 = (
+		source_light.get_emitter_global_position()
+		+ Vector3.DOWN * semantic_probe_distance
+	)
 	var full_semantic: float = source_light.sample_gameplay_contribution(
 		semantic_point, lab.get_world_3d().direct_space_state
 	)
