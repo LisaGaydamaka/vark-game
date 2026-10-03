@@ -246,6 +246,7 @@ func reconcile_after_restore() -> bool:
 
 
 func get_gameplay_debug_state() -> Dictionary:
+	var semantic_output_weight: float = _get_semantic_output_weight()
 	return {
 		"light_id": gameplay_light_id,
 		"control_id": control_id,
@@ -256,6 +257,7 @@ func get_gameplay_debug_state() -> Dictionary:
 		"range_meters": maxf(omni_range, 0.0),
 		"runtime_weight": _runtime_weight,
 		"runtime_base_weight": _runtime_base_weight,
+		"semantic_output_weight": semantic_output_weight,
 		"visual_transition_seconds": visual_transition_seconds,
 		"flicker_pattern": flicker_pattern,
 		"flicker_hz": flicker_hz,
@@ -308,7 +310,7 @@ func get_gameplay_debug_state() -> Dictionary:
 			_emitter.shadow_blur if _emitter != null else 0.0
 		),
 		"active": (
-			_runtime_weight > 0.0001
+			semantic_output_weight > 0.0001
 			and is_finite(gameplay_strength)
 			and gameplay_strength > 0.0
 		),
@@ -322,7 +324,7 @@ func sample_gameplay_contribution(
 	var emitter_position: Vector3 = get_emitter_global_position()
 	var distance: float = emitter_position.distance_to(sample_position)
 	var range_meters: float = maxf(omni_range, 0.001)
-	var runtime_strength: float = gameplay_strength * _runtime_weight
+	var runtime_strength: float = gameplay_strength * _get_semantic_output_weight()
 	if (
 		runtime_strength <= 0.0
 		or distance >= range_meters
@@ -348,7 +350,7 @@ func sample_gameplay_exposure(
 	var within_emission_shape: bool = _is_within_emission_shape(
 		sample_position
 	)
-	var runtime_strength: float = gameplay_strength * _runtime_weight
+	var runtime_strength: float = gameplay_strength * _get_semantic_output_weight()
 	if (
 		runtime_strength <= 0.0
 		or distance >= range_meters
@@ -605,6 +607,19 @@ func _apply_runtime_presentation() -> void:
 
 func _semantic_target_weight() -> float:
 	return 1.0 if gameplay_enabled and visible else 0.0
+
+
+func _get_semantic_output_weight() -> float:
+	# Preserve the pre-8.4.2 immediate LIGHT contract for ordinary lights that
+	# do not opt into runtime modulation. Existing gameplay/tests may assign the
+	# semantic booleans directly and sample in the same tick. Fade/flicker lights
+	# deliberately use the derived owner weight so rendering and LIGHT agree.
+	if (
+		visual_transition_seconds <= 0.0
+		and flicker_pattern.strip_edges().is_empty()
+	):
+		return _semantic_target_weight()
+	return _runtime_weight
 
 
 func _sample_flicker_multiplier() -> float:
