@@ -4,14 +4,14 @@ const LabScene = preload(
 	"res://scenes/animated_lightmap_lab/AnimatedLightmapLab.tscn"
 )
 const LIGHT_ID: String = VarkAnimatedLightmapLab.LIGHT_ID
-const OBSOLETE_PATHS := PackedStringArray([
+const OBSOLETE_PATHS := [
 	"res://gameplay/visibility/animated_lightmap_baker.gd",
 	"res://gameplay/visibility/animated_lightmap_data.gd",
 	"res://gameplay/visibility/animated_lightmap_surface.gd",
 	"res://gameplay/visibility/animated_lightmap_surface.gdshader",
 	"res://scenes/animated_lightmap_lab/animated_lightmap_data.tres",
 	"res://tools/lighting/bake_animated_lightmap_lab.gd",
-])
+]
 
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
