@@ -8,7 +8,7 @@ const EXTINGUISH_SOUND_KIND: StringName = &"light.extinguish"
 const DIRECT_NONE: String = "none"
 const DIRECT_EXTINGUISH: String = "extinguish"
 const INTERACTION_PROXY_LAYER: int = 1 << 4
-const DEFAULT_OCCLUSION_MASK: int = (1 << 0) | (1 << 2) | (1 << 3)
+const DEFAULT_OCCLUSION_MASK: int = 1
 const DOWNWARD_SPOT_LOCAL_ROTATION := Vector3(-PI * 0.5, 0.0, 0.0)
 # Keep positional offsets small enough that flush architectural contacts read
 # as contact. The representative mission supplies a higher-resolution fixed
@@ -119,6 +119,10 @@ func get_emitter() -> Light3D:
 
 func get_emitter_global_position() -> Vector3:
 	return _emitter.global_position if _emitter != null else global_position
+
+
+func get_configured_light_energy() -> float:
+	return _configured_light_energy
 
 
 func get_runtime_light_weight() -> float:
@@ -584,10 +588,11 @@ func _refresh_fixture_visual() -> void:
 
 
 func _apply_enabled_presentation() -> void:
-	# Keep authored source energy stable. Runtime ON/OFF/fade/flicker owns only
-	# the child emitter output so bake descriptors and saved semantic truth do
-	# not depend on a transient presentation weight.
-	light_energy = _configured_light_energy
+	# Preserve the established public authored-energy contract: semantic OFF
+	# reads as zero immediately. The immutable configured value remains
+	# available separately for bake descriptors while runtime fade/flicker owns
+	# the actual emitter output.
+	light_energy = _configured_light_energy if gameplay_enabled else 0.0
 	if _fixture_asset != null:
 		_fixture_asset.set_lit_enabled(gameplay_enabled)
 	_apply_runtime_presentation()
