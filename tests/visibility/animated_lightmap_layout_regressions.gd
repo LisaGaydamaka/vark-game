@@ -439,9 +439,12 @@ func _collect_light_descriptors(root: Node) -> Dictionary:
 		var light_id: String = str(light.gameplay_light_id).strip_edges()
 		if light_id.is_empty() or descriptors.has(light_id):
 			continue
-		descriptors[light_id] = VarkAnimatedLightmapBaker.descriptor_from_gameplay_light(
-			light
-		)
+		descriptors[light_id] = {
+			"position": light.get_emitter_global_position(),
+			"color": light.light_color,
+			"energy": maxf(light.light_energy, 0.0),
+			"range": maxf(light.omni_range, 0.001),
+		}
 	return descriptors
 
 
