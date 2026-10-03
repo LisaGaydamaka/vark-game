@@ -2,50 +2,51 @@ shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2DArray direct_layers : filter_linear, repeat_disable;
+uniform sampler2D tile_light_lookup : filter_nearest, repeat_disable;
 uniform sampler2D light_states : filter_nearest, repeat_disable;
-uniform int light_count = 1;
 uniform int page_layer_base = 0;
 uniform int page_layer_count = 0;
 
-varying flat vec4 light_ids_0_3;
-varying flat vec4 light_ids_4_7;
-
-void vertex() {
-	light_ids_0_3 = CUSTOM0;
-	light_ids_4_7 = CUSTOM1;
+float lookup_slot_state_u(int slot) {
+	vec4 first = texture(tile_light_lookup, vec2(0.25, COLOR.a));
+	vec4 second = texture(tile_light_lookup, vec2(0.75, COLOR.a));
+	if (slot == 0) { return first.r; }
+	if (slot == 1) { return first.g; }
+	if (slot == 2) { return first.b; }
+	if (slot == 3) { return first.a; }
+	if (slot == 4) { return second.r; }
+	if (slot == 5) { return second.g; }
+	if (slot == 6) { return second.b; }
+	if (slot == 7) { return second.a; }
+	return -1.0;
 }
 
-vec4 read_light_state(float encoded_index) {
-	int index = int(round(encoded_index)) - 1;
-	if (index < 0 || index >= light_count) {
-		return vec4(0.0);
+vec3 read_local_slot(int slot, vec2 atlas_uv) {
+	if (slot < 0 || slot >= page_layer_count) {
+		return vec3(0.0);
 	}
-	float u = (float(index) + 0.5) / float(light_count);
-	return texture(light_states, vec2(u, 0.5));
-}
-
-vec3 read_local_slot(int slot, float encoded_index, vec2 atlas_uv) {
-	if (slot < 0 || slot >= page_layer_count || encoded_index < 0.5) {
+	float state_u = lookup_slot_state_u(slot);
+	if (state_u < 0.0) {
 		return vec3(0.0);
 	}
 	float irradiance = texture(
 		direct_layers,
 		vec3(atlas_uv, float(page_layer_base + slot))
 	).r;
-	vec4 state = read_light_state(encoded_index);
+	vec4 state = texture(light_states, vec2(state_u, 0.5));
 	return state.rgb * irradiance * state.a;
 }
 
 void fragment() {
 	vec3 direct = vec3(0.0);
-	direct += read_local_slot(0, light_ids_0_3.x, UV);
-	direct += read_local_slot(1, light_ids_0_3.y, UV);
-	direct += read_local_slot(2, light_ids_0_3.z, UV);
-	direct += read_local_slot(3, light_ids_0_3.w, UV);
-	direct += read_local_slot(4, light_ids_4_7.x, UV);
-	direct += read_local_slot(5, light_ids_4_7.y, UV);
-	direct += read_local_slot(6, light_ids_4_7.z, UV);
-	direct += read_local_slot(7, light_ids_4_7.w, UV);
+	direct += read_local_slot(0, UV);
+	direct += read_local_slot(1, UV);
+	direct += read_local_slot(2, UV);
+	direct += read_local_slot(3, UV);
+	direct += read_local_slot(4, UV);
+	direct += read_local_slot(5, UV);
+	direct += read_local_slot(6, UV);
+	direct += read_local_slot(7, UV);
 
 	vec3 authored_albedo = COLOR.rgb;
 	ALBEDO = authored_albedo;

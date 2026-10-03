@@ -12,6 +12,12 @@ var _weight_state := VarkAnimatedLightmapWeightState.new()
 var _contribution_texture: Texture2DArray = null
 var _light_state_texture: ImageTexture = null
 var _light_state_image: Image = null
+var _tile_lookup_texture: ImageTexture = null
+var _tile_lookup_image: Image = null
+var _tile_lookup_row_by_id: Dictionary = {}
+var _page_layer_base: Dictionary = {}
+var _page_layer_count: Dictionary = {}
+var _runtime_contribution_layer_count: int = 0
 var _renderer_root: Node3D = null
 var _page_materials: Dictionary = {}
 var _applied: bool = false
@@ -30,7 +36,6 @@ func configure(
 	if layout == null or bake == null:
 		_last_errors.append("static surface renderer requires layout and bake data")
 		return false
-	layout.ensure_local_slot_representation()
 	_last_errors = layout.get_validation_errors(
 		layout.geometry_fingerprint,
 		VarkAnimatedLightmapLayoutBuilder.compute_light_influence_fingerprint(
@@ -54,12 +59,17 @@ func configure(
 		_last_errors.append("failed to configure static-light weight state")
 		_clear_runtime_state(false)
 		return false
+	_build_runtime_slot_layout()
 	if not _build_contribution_texture():
-		_last_errors.append("failed to build local-slot contribution Texture2DArray")
+		_last_errors.append("failed to build page-local-slot contribution Texture2DArray")
 		_clear_runtime_state(false)
 		return false
 	if not _build_light_state_texture():
 		_last_errors.append("failed to build global animated-light state texture")
+		_clear_runtime_state(false)
+		return false
+	if not _build_tile_lookup_texture():
+		_last_errors.append("failed to build per-tile animated-light lookup texture")
 		_clear_runtime_state(false)
 		return false
 	if not _build_page_geometry():
@@ -132,7 +142,7 @@ func sample_weighted_direct_at_world_point(
 
 
 func get_debug_state() -> Dictionary:
-	var report: Dictionary = _layout.get_scale_report() if _layout != null else {}
+	var legacy_layers: int = _layout.contribution_layer_count if _layout != null else 0
 	return {
 		"applied": _applied,
 		"page_mesh_count": (
@@ -142,17 +152,14 @@ func get_debug_state() -> Dictionary:
 		"page_material_count": _page_materials.size(),
 		"layout_page_count": _layout.pages.size() if _layout != null else 0,
 		"layout_tile_count": _layout.tiles.size() if _layout != null else 0,
-		"contribution_texture_layers": (
-			_layout.contribution_layer_count if _layout != null else 0
-		),
+		"contribution_texture_layers": _runtime_contribution_layer_count,
+		"offline_contribution_layers": legacy_layers,
+		"runtime_layer_reduction": legacy_layers - _runtime_contribution_layer_count,
 		"contribution_texture_build_count": _contribution_texture_build_count,
 		"light_state_texture_upload_count": _light_state_texture_upload_count,
-		# Compatibility name for existing B/C diagnostics: this is now the same
-		# tiny global light-state upload, not an atlas or contribution rewrite.
 		"weight_texture_upload_count": _light_state_texture_upload_count,
 		"weight_revision": _weight_state.get_revision(),
-		"legacy_affinity_pages": int(report.get("legacy_affinity_pages", 0)),
-		"legacy_affinity_layers": int(report.get("legacy_affinity_layers", 0)),
+		"binding_transport": &"vertex_color_alpha_to_tile_lookup",
 		"errors": get_validation_errors(),
 	}
 
@@ -164,10 +171,30 @@ func get_contribution_texture_instance_id() -> int:
 	)
 
 
+func _build_runtime_slot_layout() -> void:
+	_page_layer_base.clear()
+	_page_layer_count.clear()
+	_runtime_contribution_layer_count = 0
+	if _layout == null:
+		return
+	for page: Dictionary in _layout.pages:
+		var page_index: int = int(page.get("page_index", -1))
+		var max_slots: int = 0
+		for tile_id: String in page.get("tile_ids", PackedStringArray()):
+			var tile: Dictionary = _layout.get_tile(tile_id)
+			max_slots = maxi(
+				max_slots,
+				(tile.get("candidate_light_ids", PackedStringArray()) as PackedStringArray).size()
+			)
+		_page_layer_base[page_index] = _runtime_contribution_layer_count
+		_page_layer_count[page_index] = max_slots
+		_runtime_contribution_layer_count += max_slots
+
+
 func _build_contribution_texture() -> bool:
 	if _layout == null or _bake == null:
 		return false
-	var layer_count: int = maxi(_layout.contribution_layer_count, 1)
+	var layer_count: int = maxi(_runtime_contribution_layer_count, 1)
 	var images: Array[Image] = []
 	for _index: int in layer_count:
 		var image := Image.create_empty(
@@ -179,14 +206,13 @@ func _build_contribution_texture() -> bool:
 		image.fill(Color(0, 0, 0, 1))
 		images.append(image)
 
-	# The tracked bake stays sparse and author-friendly as page|global-light data.
-	# Runtime residency is repacked here into page|local-slot layers. Different
-	# tiles can therefore reuse slot 0 for different global lights without forcing
-	# separate affinity pages or duplicating unused global-light layers.
 	var source_images: Dictionary = {}
 	for tile: Dictionary in _layout.tiles:
 		var tile_id: String = str(tile.get("tile_id", ""))
 		var page_index: int = int(tile.get("page_index", -1))
+		var page_base: int = int(_page_layer_base.get(page_index, -1))
+		if page_base < 0:
+			return false
 		var rect_position: Vector2i = tile.get("rect_position", Vector2i.ZERO)
 		var rect_size: Vector2i = tile.get("rect_size", Vector2i.ZERO)
 		var binding_by_light: Dictionary = {}
@@ -194,15 +220,14 @@ func _build_contribution_texture() -> bool:
 			binding_by_light[str(binding.get("light_id", ""))] = binding
 		for light_id: String in _bake.get_tile_light_ids(tile_id):
 			var binding: Dictionary = binding_by_light.get(light_id, {})
-			var target_layer: int = int(binding.get("layer_index", -1))
-			if target_layer < 0 or target_layer >= _layout.contribution_layer_count:
+			var slot: int = int(binding.get("slot", -1))
+			if slot < 0 or slot >= int(_page_layer_count.get(page_index, 0)):
 				return false
+			var target_layer: int = page_base + slot
 			var source_key: String = _bake.get_layer_key(page_index, light_id)
 			var source: Image = source_images.get(source_key, null)
 			if source == null:
-				var bytes: PackedByteArray = _bake.get_layer_bytes(
-					page_index, light_id
-				)
+				var bytes: PackedByteArray = _bake.get_layer_bytes(page_index, light_id)
 				if bytes.is_empty():
 					return false
 				source = Image.create_from_data(
@@ -255,11 +280,52 @@ func _upload_light_state_texture() -> void:
 		var descriptor: Dictionary = _descriptors.get(light_id, {})
 		var color: Color = descriptor.get("color", Color.WHITE)
 		var weight: float = weights[index] if index < weights.size() else 0.0
-		_light_state_image.set_pixel(
-			index, 0, Color(color.r, color.g, color.b, weight)
-		)
+		_light_state_image.set_pixel(index, 0, Color(color.r, color.g, color.b, weight))
 	_light_state_texture.update(_light_state_image)
 	_light_state_texture_upload_count += 1
+
+
+func _build_tile_lookup_texture() -> bool:
+	if _layout == null:
+		return false
+	_tile_lookup_row_by_id.clear()
+	var height: int = maxi(_layout.tiles.size(), 1)
+	_tile_lookup_image = Image.create_empty(2, height, false, Image.FORMAT_RGBAH)
+	_tile_lookup_image.fill(Color(-1, -1, -1, -1))
+	var light_count: int = maxi(_layout.light_ids.size(), 1)
+	for tile_index: int in _layout.tiles.size():
+		var tile: Dictionary = _layout.tiles[tile_index]
+		var tile_id: String = str(tile.get("tile_id", ""))
+		_tile_lookup_row_by_id[tile_id] = tile_index
+		var first := Color(-1, -1, -1, -1)
+		var second := Color(-1, -1, -1, -1)
+		for binding: Dictionary in tile.get("light_bindings", []):
+			var slot: int = int(binding.get("slot", -1))
+			var weight_index: int = int(binding.get("weight_index", -1))
+			if slot < 0 or slot >= 8 or weight_index < 0:
+				continue
+			var state_u: float = (float(weight_index) + 0.5) / float(light_count)
+			if slot < 4:
+				first = _with_color_channel(first, slot, state_u)
+			else:
+				second = _with_color_channel(second, slot - 4, state_u)
+		_tile_lookup_image.set_pixel(0, tile_index, first)
+		_tile_lookup_image.set_pixel(1, tile_index, second)
+	_tile_lookup_texture = ImageTexture.create_from_image(_tile_lookup_image)
+	return _tile_lookup_texture != null
+
+
+func _with_color_channel(color: Color, channel: int, value: float) -> Color:
+	match channel:
+		0:
+			color.r = value
+		1:
+			color.g = value
+		2:
+			color.b = value
+		3:
+			color.a = value
+	return color
 
 
 func _build_page_geometry() -> bool:
@@ -290,13 +356,14 @@ func _build_page_geometry() -> bool:
 
 
 func _build_page_material(page: Dictionary) -> ShaderMaterial:
+	var page_index: int = int(page.get("page_index", -1))
 	var material := ShaderMaterial.new()
 	material.shader = StaticLightShader
 	material.set_shader_parameter("direct_layers", _contribution_texture)
+	material.set_shader_parameter("tile_light_lookup", _tile_lookup_texture)
 	material.set_shader_parameter("light_states", _light_state_texture)
-	material.set_shader_parameter("light_count", maxi(_layout.light_ids.size(), 1))
-	material.set_shader_parameter("page_layer_base", int(page.get("layer_base", 0)))
-	material.set_shader_parameter("page_layer_count", int(page.get("layer_count", 0)))
+	material.set_shader_parameter("page_layer_base", int(_page_layer_base.get(page_index, 0)))
+	material.set_shader_parameter("page_layer_count", int(_page_layer_count.get(page_index, 0)))
 	return material
 
 
@@ -306,8 +373,6 @@ func _build_page_mesh(page: Dictionary) -> ArrayMesh:
 	var uvs := PackedVector2Array()
 	var colors := PackedColorArray()
 	var material_params := PackedVector2Array()
-	var custom0 := PackedFloat32Array()
-	var custom1 := PackedFloat32Array()
 	var indices := PackedInt32Array()
 	var tile_ids: PackedStringArray = page.get("tile_ids", PackedStringArray())
 	for tile_id: String in tile_ids:
@@ -318,9 +383,7 @@ func _build_page_mesh(page: Dictionary) -> ArrayMesh:
 		if face.is_empty():
 			return null
 		var geometry: Dictionary = _build_tile_geometry_arrays(face, tile)
-		var tile_vertices: PackedVector3Array = geometry.get(
-			"vertices", PackedVector3Array()
-		)
+		var tile_vertices: PackedVector3Array = geometry.get("vertices", PackedVector3Array())
 		if tile_vertices.is_empty():
 			continue
 		var base: int = vertices.size()
@@ -328,14 +391,8 @@ func _build_page_mesh(page: Dictionary) -> ArrayMesh:
 		normals.append_array(geometry.get("normals", PackedVector3Array()))
 		uvs.append_array(geometry.get("uvs", PackedVector2Array()))
 		colors.append_array(geometry.get("colors", PackedColorArray()))
-		material_params.append_array(
-			geometry.get("material_params", PackedVector2Array())
-		)
-		custom0.append_array(geometry.get("custom0", PackedFloat32Array()))
-		custom1.append_array(geometry.get("custom1", PackedFloat32Array()))
-		var tile_indices: PackedInt32Array = geometry.get(
-			"indices", PackedInt32Array()
-		)
+		material_params.append_array(geometry.get("material_params", PackedVector2Array()))
+		var tile_indices: PackedInt32Array = geometry.get("indices", PackedInt32Array())
 		for tile_index: int in tile_indices:
 			indices.append(base + tile_index)
 	if vertices.is_empty():
@@ -347,51 +404,28 @@ func _build_page_mesh(page: Dictionary) -> ArrayMesh:
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_TEX_UV2] = material_params
-	arrays[Mesh.ARRAY_CUSTOM0] = custom0
-	arrays[Mesh.ARRAY_CUSTOM1] = custom1
 	arrays[Mesh.ARRAY_INDEX] = indices
-	var flags: int = (
-		(int(RenderingServer.ARRAY_CUSTOM_RGBA_FLOAT) << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
-		| (int(RenderingServer.ARRAY_CUSTOM_RGBA_FLOAT) << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT)
-	)
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(
-		Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags
-	)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
 
 
-func _build_tile_geometry_arrays(
-	face: Dictionary,
-	tile: Dictionary
-) -> Dictionary:
+func _build_tile_geometry_arrays(face: Dictionary, tile: Dictionary) -> Dictionary:
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
 	var colors := PackedColorArray()
 	var material_params := PackedVector2Array()
-	var custom0 := PackedFloat32Array()
-	var custom1 := PackedFloat32Array()
 	var indices := PackedInt32Array()
-	var authored: StandardMaterial3D = _load_authored_material(
-		str(face.get("material_id", ""))
-	)
+	var authored: StandardMaterial3D = _load_authored_material(str(face.get("material_id", "")))
 	var albedo: Color = authored.albedo_color if authored != null else Color.WHITE
 	var roughness: float = authored.roughness if authored != null else 1.0
 	var metallic: float = authored.metallic if authored != null else 0.0
-	var encoded_ids := PackedFloat32Array()
-	encoded_ids.resize(_layout.max_light_slots_per_tile)
-	encoded_ids.fill(0.0)
-	for binding: Dictionary in tile.get("light_bindings", []):
-		var slot: int = int(binding.get("slot", -1))
-		var weight_index: int = int(binding.get("weight_index", -1))
-		if slot >= 0 and slot < encoded_ids.size() and weight_index >= 0:
-			# Zero is the unused sentinel; valid global-light indices are +1 encoded.
-			encoded_ids[slot] = float(weight_index + 1)
-
-	var triangles: PackedVector2Array = face.get(
-		"triangles_uv", PackedVector2Array()
-	)
+	var tile_id: String = str(tile.get("tile_id", ""))
+	var row_index: int = int(_tile_lookup_row_by_id.get(tile_id, 0))
+	var row_count: int = maxi(_layout.tiles.size(), 1)
+	var lookup_v: float = (float(row_index) + 0.5) / float(row_count)
+	var triangles: PackedVector2Array = face.get("triangles_uv", PackedVector2Array())
 	var offset: Vector2i = tile.get("texel_offset", Vector2i.ZERO)
 	var useful: Vector2i = tile.get("useful_size", Vector2i.ZERO)
 	var local_min := Vector2(
@@ -420,20 +454,12 @@ func _build_tile_geometry_arrays(
 			var base: int = vertices.size()
 			for local_point: Vector2 in triangle_points:
 				vertices.append(
-					VarkAnimatedLightmapLayoutBuilder.face_local_point_world(
-						face, local_point
-					)
+					VarkAnimatedLightmapLayoutBuilder.face_local_point_world(face, local_point)
 				)
-				normals.append(
-					face.get("lighting_normal", face.get("normal", Vector3.UP))
-				)
+				normals.append(face.get("lighting_normal", face.get("normal", Vector3.UP)))
 				uvs.append(_atlas_uv_for_local_point(tile, local_point))
-				colors.append(albedo)
+				colors.append(Color(albedo.r, albedo.g, albedo.b, lookup_v))
 				material_params.append(Vector2(roughness, metallic))
-				for slot: int in 4:
-					custom0.append(encoded_ids[slot] if slot < encoded_ids.size() else 0.0)
-				for slot: int in range(4, 8):
-					custom1.append(encoded_ids[slot] if slot < encoded_ids.size() else 0.0)
 			indices.append_array(PackedInt32Array([base, base + 1, base + 2]))
 	return {
 		"vertices": vertices,
@@ -441,16 +467,11 @@ func _build_tile_geometry_arrays(
 		"uvs": uvs,
 		"colors": colors,
 		"material_params": material_params,
-		"custom0": custom0,
-		"custom1": custom1,
 		"indices": indices,
 	}
 
 
-func _atlas_uv_for_local_point(
-	tile: Dictionary,
-	local_point: Vector2
-) -> Vector2:
+func _atlas_uv_for_local_point(tile: Dictionary, local_point: Vector2) -> Vector2:
 	var offset: Vector2i = tile.get("texel_offset", Vector2i.ZERO)
 	var rect_position: Vector2i = tile.get("rect_position", Vector2i.ZERO)
 	var face_texel: Vector2 = local_point / _layout.texel_size_meters
@@ -486,13 +507,9 @@ func _clip_axis(
 	if polygon.is_empty():
 		return output
 	var previous: Vector2 = polygon[polygon.size() - 1]
-	var previous_inside: bool = _inside_boundary(
-		previous[axis], boundary, keep_greater
-	)
+	var previous_inside: bool = _inside_boundary(previous[axis], boundary, keep_greater)
 	for current: Vector2 in polygon:
-		var current_inside: bool = _inside_boundary(
-			current[axis], boundary, keep_greater
-		)
+		var current_inside: bool = _inside_boundary(current[axis], boundary, keep_greater)
 		if current_inside != previous_inside:
 			var denominator: float = current[axis] - previous[axis]
 			if absf(denominator) > 0.0000001:
@@ -505,16 +522,8 @@ func _clip_axis(
 	return output
 
 
-func _inside_boundary(
-	value: float,
-	boundary: float,
-	keep_greater: bool
-) -> bool:
-	return (
-		value >= boundary - 0.000001
-		if keep_greater
-		else value <= boundary + 0.000001
-	)
+func _inside_boundary(value: float, boundary: float, keep_greater: bool) -> bool:
+	return value >= boundary - 0.000001 if keep_greater else value <= boundary + 0.000001
 
 
 func _load_authored_material(material_id: String) -> StandardMaterial3D:
@@ -537,6 +546,12 @@ func _clear_runtime_state(clear_errors: bool = true) -> void:
 	_contribution_texture = null
 	_light_state_texture = null
 	_light_state_image = null
+	_tile_lookup_texture = null
+	_tile_lookup_image = null
+	_tile_lookup_row_by_id.clear()
+	_page_layer_base.clear()
+	_page_layer_count.clear()
+	_runtime_contribution_layer_count = 0
 	_page_materials.clear()
 	_applied = false
 	_contribution_texture_build_count = 0

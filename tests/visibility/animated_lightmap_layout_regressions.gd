@@ -288,10 +288,8 @@ func _test_hdr_and_sparse_weight_abi(assert_true: Callable) -> void:
 		and tile_bindings.size() <= layout.max_light_slots_per_tile
 		and layout.get_gpu_contract().get("backend", &"")
 			== VarkAnimatedLightmapLayout.COMPOSITION_BACKEND
-		and layout.get_gpu_contract().get("binding_transport", &"")
-			== &"vertex_custom0_custom1"
 		and layout.to_canonical_text() == canonical_before,
-		"8.4.1A/GoldSrc convergence fixes the runtime ABI to page-local contribution slots plus per-vertex global-light indices and a tiny global light-state table, so fades change state only and never rewrite contribution atlases"
+		"8.4.1A fixes the GPU ABI to sparse per-tile Texture2DArray page/light layers plus a small weight buffer, so a fade changes only one weight entry and never rewrites atlas pixels"
 	)
 
 	var affinity_descriptors := {
@@ -311,28 +309,16 @@ func _test_hdr_and_sparse_weight_abi(assert_true: Callable) -> void:
 			}
 		)
 	)
-	var shared_local_slot_page: bool = (
-		affinity_layout != null
-		and affinity_layout.pages.size() == 1
-		and affinity_layout.tiles.size() == 2
-		and int(affinity_layout.pages[0].get("layer_count", -1)) == 1
-	)
-	if shared_local_slot_page:
-		var first_bindings: Array = affinity_layout.tiles[0].get("light_bindings", [])
-		var second_bindings: Array = affinity_layout.tiles[1].get("light_bindings", [])
-		shared_local_slot_page = (
-			first_bindings.size() == 1
-			and second_bindings.size() == 1
-			and int(first_bindings[0].get("slot", -1)) == 0
-			and int(second_bindings[0].get("slot", -1)) == 0
-			and int(first_bindings[0].get("layer_index", -1))
-				== int(second_bindings[0].get("layer_index", -2))
-			and int(first_bindings[0].get("weight_index", -1))
-				!= int(second_bindings[0].get("weight_index", -1))
-		)
+	var affinity_isolated: bool = affinity_layout != null and affinity_layout.pages.size() == 2
+	if affinity_isolated:
+		for page: Dictionary in affinity_layout.pages:
+			var page_lights: PackedStringArray = page.get(
+				"light_ids", PackedStringArray()
+			)
+			affinity_isolated = affinity_isolated and page_lights.size() == 1
 	assert_true.call(
-		shared_local_slot_page,
-		"GoldSrc-style local slots allow unrelated animated lights to share one atlas page/layer while each tile keeps its own global light-state index"
+		affinity_isolated,
+		"8.4.1A deterministic atlas packing groups tiles by animated-light affinity so unrelated page occupants do not force dense page/light sampling"
 	)
 
 	var stale_errors: PackedStringArray = layout.get_validation_errors(
@@ -413,11 +399,6 @@ func _test_ledge_city_scale_and_slot_budget(
 		and int(report.get("atlas_pages", 0)) > 0
 		and max_candidates
 			<= VarkAnimatedLightmapLayout.DEFAULT_MAX_LIGHT_SLOTS_PER_TILE
-		and int(report.get("legacy_affinity_pages", 0))
-			> int(report.get("atlas_pages", 0))
-		and int(report.get("legacy_affinity_layers", 0))
-			> int(report.get("contribution_layers", 0))
-		and int(report.get("runtime_vram_savings_bytes", 0)) > 0
 		and production != null
 		and production.get_validation_errors(
 			production.geometry_fingerprint,
@@ -425,7 +406,7 @@ func _test_ledge_city_scale_and_slot_budget(
 				descriptors
 			)
 		).is_empty(),
-		"GoldSrc-style local slots retain the measured eight-light production cap while reducing Ledge City atlas pages, resident contribution layers, and runtime VRAM versus exact light-affinity packing"
+		"8.4.1A Ledge City dry analysis measures the real 23-light mission before locking the sparse slot ABI and fits the declared eight-light per-tile limit without truncation"
 	)
 	ledge.queue_free()
 	await tree.process_frame
