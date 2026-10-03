@@ -36,8 +36,8 @@ jobs:
       - name: Import project
         run: godot --headless --path . --import
 
-      - name: Diagnose visibility suite
-        run: timeout 180s godot --headless --path . --script res://tests/visibility/run_visibility_tests.gd
+      - name: Diagnose 8.4.1C visibility
+        run: timeout 180s godot --headless --path . --script res://tests/visibility/diagnose_841c.gd
 
       - name: Run regression suites
         run: godot --headless --path . --script res://tests/run_all_tests.gd
