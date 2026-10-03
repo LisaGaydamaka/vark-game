@@ -5,7 +5,7 @@
 [ext_resource type="Resource" path="res://authoring/vark_map_settings.tres" id="3_settings"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="4_player"]
 [ext_resource type="Script" path="res://gameplay/visibility/gameplay_exposure.gd" id="5_exposure"]
-[ext_resource type="Script" path="res://gameplay/visibility/animated_lightmap_surface.gd" id="6_surface"]
+[ext_resource type="Script" path="res://gameplay/visibility/animated_lightmap_static_renderer.gd" id="6_renderer"]
 
 [sub_resource type="Environment" id="Environment_anim"]
 background_mode = 1
@@ -31,15 +31,15 @@ player_path = NodePath("../Player")
 [node name="FuncGodotMap" type="Node3D" parent="."]
 script = ExtResource("2_map")
 map_settings = ExtResource("3_settings")
-build_flags = 1
+build_flags = 0
 metadata/_custom_type_script = "uid://cwu5cf7a0awcd"
 
-[node name="AnimatedLightmapSurface" type="Node" parent="."]
-script = ExtResource("6_surface")
+[node name="AnimatedStaticRenderer" type="Node3D" parent="."]
+script = ExtResource("6_renderer")
 
 [node name="StatusLabel" type="Label3D" parent="."]
 position = Vector3(6.2, 3.8, -5.6)
-text = "8.4.1 ANIMATED STATIC-LIGHT FOUNDATION"
+text = "8.4.1C PER-SURFACE ANIMATED STATIC LIGHT"
 billboard = 1
 font_size = 20
 outline_size = 6

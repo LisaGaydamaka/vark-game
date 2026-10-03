@@ -3,288 +3,231 @@ extends RefCounted
 const LabScene = preload(
 	"res://scenes/animated_lightmap_lab/AnimatedLightmapLab.tscn"
 )
-const BAKE_DATA_PATH: String = (
-	"res://scenes/animated_lightmap_lab/animated_lightmap_data.tres"
-)
+const LIGHT_ID: String = VarkAnimatedLightmapLab.LIGHT_ID
+const OBSOLETE_PATHS := PackedStringArray([
+	"res://gameplay/visibility/animated_lightmap_baker.gd",
+	"res://gameplay/visibility/animated_lightmap_data.gd",
+	"res://gameplay/visibility/animated_lightmap_surface.gd",
+	"res://gameplay/visibility/animated_lightmap_surface.gdshader",
+	"res://scenes/animated_lightmap_lab/animated_lightmap_data.tres",
+	"res://tools/lighting/bake_animated_lightmap_lab.gd",
+])
+
 
 func run(tree: SceneTree, assert_true: Callable) -> void:
+	_test_obsolete_representation_is_retired(assert_true)
+	await _test_integrated_per_surface_lab(tree, assert_true)
+
+
+func _test_obsolete_representation_is_retired(assert_true: Callable) -> void:
+	var obsolete_absent: bool = true
+	for path: String in OBSOLETE_PATHS:
+		obsolete_absent = obsolete_absent and not FileAccess.file_exists(path)
+	var lab_source: String = FileAccess.get_file_as_string(
+		"res://scenes/animated_lightmap_lab/animated_lightmap_lab.gd"
+	)
+	var scene_source: String = FileAccess.get_file_as_string(
+		"res://scenes/animated_lightmap_lab/AnimatedLightmapLab.tscn"
+	)
+	assert_true.call(
+		obsolete_absent
+		and not lab_source.contains("VarkAnimatedLightmapBaker")
+		and not lab_source.contains("VarkAnimatedLightmapSurface")
+		and not lab_source.contains("BAKE_TEXTURE_SIZE")
+		and not scene_source.contains("animated_lightmap_surface.gd")
+		and not scene_source.contains("AnimatedLightmapSurface")
+		and not scene_source.contains("build_flags = 1"),
+		"8.4.1C retires the rejected fixed-64x64/global-UV2/full-atlas-CPU-composite proof so the authoritative lab has only the A+B per-surface representation"
+	)
+
+
+func _test_integrated_per_surface_lab(
+	tree: SceneTree,
+	assert_true: Callable
+) -> void:
 	var lab := LabScene.instantiate() as VarkAnimatedLightmapLab
-	lab.auto_apply_committed_bake = false
 	tree.get_root().add_child(lab)
 	await tree.process_frame
 	await tree.physics_frame
-	var mesh: MeshInstance3D = lab.get_bake_mesh()
-	var source_light: VarkGameplayLight = lab.get_source_light()
-	var descriptors: Dictionary = lab.get_expected_light_descriptors()
-	var fingerprint: String = (
-		VarkAnimatedLightmapBaker.compute_geometry_fingerprint(mesh)
-		if mesh != null else ""
-	)
-	assert_true.call(
-		mesh != null
-		and VarkAnimatedLightmapBaker.has_complete_uv2(mesh)
-		and not fingerprint.is_empty()
-		and source_light != null,
-		"8.4.1 Animated Lightmap Lab builds authoritative FuncGodot geometry with complete UV2s and one authored bake-source gameplay-light identity"
-	)
+	await tree.process_frame
 
-	var support_query := PhysicsRayQueryParameters3D.create(
-		lab.player.global_position + Vector3.UP * 0.25,
-		lab.player.global_position + Vector3.DOWN * 1.0,
-		1
-	)
-	support_query.collide_with_areas = false
-	support_query.collide_with_bodies = true
-	var support_hit: Dictionary = (
-		lab.get_world_3d().direct_space_state.intersect_ray(support_query)
-	)
-	var support_collider := support_hit.get("collider", null) as Node
+	var renderer: VarkAnimatedLightmapStaticRenderer = lab.get_static_renderer()
+	var layout: VarkAnimatedLightmapLayout = lab.get_surface_layout()
+	var bake: VarkAnimatedLightmapBakeData = lab.get_surface_bake()
+	var debug: Dictionary = lab.get_debug_state()
+	var renderer_debug: Dictionary = debug.get("renderer", {})
+	var source_mesh_count: int = int(debug.get("source_static_mesh_count", 0))
 	assert_true.call(
-		not support_hit.is_empty()
-		and support_collider != null
-		and lab.func_map.is_ancestor_of(support_collider),
-		"8.4.1 Development Launch player spawn starts over generated FuncGodot world collision instead of outside the lab floor"
+		layout != null
+		and bake != null
+		and renderer != null
+		and renderer.is_applied()
+		and lab.get_validation_errors().is_empty()
+		and lab.func_map.build_flags == 0
+		and source_mesh_count > 0
+		and int(debug.get("hidden_source_static_mesh_count", -1))
+			== source_mesh_count
+		and int(renderer_debug.get("page_mesh_count", 0))
+			== layout.pages.size()
+		and int(renderer_debug.get("page_material_count", 0))
+			== layout.pages.size()
+		and int(renderer_debug.get("page_mesh_count", 0))
+			< layout.tiles.size(),
+		"8.4.1C integrated lab renders static architecture only through page-batched per-surface A+B geometry while preserving the original FuncGodot collision source hidden from rendering and disabling UV2 unwrap"
 	)
-
-	if mesh == null or source_light == null:
+	if layout == null or bake == null or renderer == null or not renderer.is_applied():
 		lab.queue_free()
 		await tree.process_frame
 		return
 
-	var second := LabScene.instantiate() as VarkAnimatedLightmapLab
-	second.auto_apply_committed_bake = false
-	tree.get_root().add_child(second)
-	await tree.process_frame
-	await tree.physics_frame
-	var second_mesh: MeshInstance3D = second.get_bake_mesh()
-	var second_fingerprint: String = (
-		VarkAnimatedLightmapBaker.compute_geometry_fingerprint(second_mesh)
-		if second_mesh != null else ""
+	var probes: Dictionary = lab.get_probe_positions()
+	var lit_point: Vector3 = probes.get("lit_floor", Vector3.ZERO)
+	var neighbor_point: Vector3 = probes.get("blocked_neighbor", Vector3.ZERO)
+	var upper_point: Vector3 = probes.get("blocked_upper", Vector3.ZERO)
+	var pillar_point: Vector3 = probes.get("pillar_shadow", Vector3.ZERO)
+	var lit_diag: Dictionary = lab.get_surface_diagnostics(lit_point)
+	var lit_repeat: Dictionary = lab.get_surface_diagnostics(lit_point)
+	var neighbor_diag: Dictionary = lab.get_surface_diagnostics(neighbor_point)
+	var upper_diag: Dictionary = lab.get_surface_diagnostics(upper_point)
+	var pillar_diag: Dictionary = lab.get_surface_diagnostics(pillar_point)
+	var lit_owner: Dictionary = _find_light_ownership(lit_diag, LIGHT_ID)
+	var neighbor_owner: Dictionary = _find_light_ownership(neighbor_diag, LIGHT_ID)
+	var upper_owner: Dictionary = _find_light_ownership(upper_diag, LIGHT_ID)
+	var pillar_owner: Dictionary = _find_light_ownership(pillar_diag, LIGHT_ID)
+	var diagnostics_ok: bool = (
+		_surface_identity_is_complete(lit_diag)
+		and _surface_identity_is_complete(neighbor_diag)
+		and _surface_identity_is_complete(upper_diag)
+		and _surface_identity_is_complete(pillar_diag)
+		and _same_surface_identity(lit_diag, lit_repeat)
+		and _ownership_is_complete(lit_owner)
+		and _ownership_is_complete(neighbor_owner)
+		and _ownership_is_complete(upper_owner)
+		and _ownership_is_complete(pillar_owner)
+		and float(lit_owner.get("bake_contribution", 0.0)) > 0.05
+		and float(neighbor_owner.get("bake_contribution", -1.0)) <= 0.0001
+		and float(upper_owner.get("bake_contribution", -1.0)) <= 0.0001
+		and float(pillar_owner.get("bake_contribution", -1.0)) <= 0.0001
 	)
+	if not diagnostics_ok:
+		print(
+			"[8.4.1C_SURFACE_DIAGNOSTICS] ",
+			{
+				"lit": lit_diag,
+				"neighbor": neighbor_diag,
+				"upper": upper_diag,
+				"pillar": pillar_diag,
+			}
+		)
 	assert_true.call(
-		second_mesh != null and fingerprint == second_fingerprint,
-		"8.4.1 repeated FuncGodot builds produce the same UV2/geometry fingerprint"
+		diagnostics_ok,
+		"8.4.1C visible-surface diagnostics resolve stable face/tile/page/rectangle plus animated-light slot/layer/weight handles and preserve lit versus partition/floor/pillar-occluded bake contributions"
 	)
-	# Do not leave the duplicate proof shell in the same physics world while
-	# baking. Coincident duplicate colliders make ray-hit ownership ambiguous
-	# even when the generated UV2/geometry data itself is deterministic.
-	second.queue_free()
-	await tree.process_frame
-	await tree.physics_frame
 
-	var context: Dictionary = lab.get_bake_context()
-	var generated := VarkAnimatedLightmapBaker.bake_data(
-		str(context.get("source_map_path", "")),
-		mesh,
-		descriptors,
-		context.get("space_state", null) as PhysicsDirectSpaceState3D,
-		context.get("texture_size", Vector2i.ZERO) as Vector2i
-	)
-	var committed := load(BAKE_DATA_PATH) as VarkAnimatedLightmapData
-	var committed_matches: bool = (
-		generated != null
-		and committed != null
-		and committed.content_equals(generated)
-	)
-	if generated != null and not committed_matches:
-		print("ANIMATED_LIGHTMAP_RESOURCE_BEGIN")
-		print(generated.to_resource_text())
-		print("ANIMATED_LIGHTMAP_RESOURCE_END")
+	var center_view: Dictionary = lab.get_center_view_surface_diagnostics()
 	assert_true.call(
-		committed_matches,
-		"8.4.1 tracked animated-lightmap asset exactly matches a fresh headless bake of authoritative source/UV2/light identity"
+		_surface_identity_is_complete(center_view)
+		and not str(center_view.get("collider", "")).is_empty(),
+		"8.4.1C the playable lab can resolve the actually visible center-view world surface to the same face/tile/page diagnostics used by the bake/runtime path"
 	)
 
-	var probe: Dictionary = lab.get_probe_positions()
-	var descriptor: Dictionary = descriptors.get(
-		VarkAnimatedLightmapLab.LIGHT_ID, {}
+	var source_light: VarkGameplayLight = lab.get_source_light()
+	var emitter: Light3D = (
+		source_light.get_emitter() if source_light != null else null
 	)
-	var space_state: PhysicsDirectSpaceState3D = (
-		lab.get_world_3d().direct_space_state
-	)
-	var light_position: Vector3 = probe.get("light_position", Vector3.ZERO)
-	var lit_point: Vector3 = probe.get("lit_floor", Vector3.ZERO)
-	var blocked_neighbor: Vector3 = probe.get(
-		"blocked_neighbor", Vector3.ZERO
-	)
-	var blocked_upper: Vector3 = probe.get("blocked_upper", Vector3.ZERO)
-	var shadow_point: Vector3 = probe.get("pillar_shadow", Vector3.ZERO)
-	var lit: Color = VarkAnimatedLightmapBaker.sample_direct_light_at_point(
-		lit_point, Vector3.UP, descriptor, space_state
-	)
-	var neighbor: Color = VarkAnimatedLightmapBaker.sample_direct_light_at_point(
-		blocked_neighbor,
-		(light_position - blocked_neighbor).normalized(),
-		descriptor,
-		space_state
-	)
-	var upper: Color = VarkAnimatedLightmapBaker.sample_direct_light_at_point(
-		blocked_upper,
-		(light_position - blocked_upper).normalized(),
-		descriptor,
-		space_state
-	)
-	var pillar_shadow: Color = (
-		VarkAnimatedLightmapBaker.sample_direct_light_at_point(
-			shadow_point, Vector3.UP, descriptor, space_state
-		)
-	)
-	assert_true.call(
-		_max_rgb(lit) > 0.05
-		and _max_rgb(neighbor) <= 0.0001
-		and _max_rgb(upper) <= 0.0001
-		and _max_rgb(pillar_shadow) <= 0.0001,
-		"8.4.1 offline direct-light sampler illuminates an unobstructed lower-room point while the real partition, upper floor and flush pillar physically occlude neighboring/upper/contact-shadow probes"
-	)
-
-	if generated != null:
-		var surface := lab.animated_surface
-		var configured: bool = surface.configure(
-			mesh,
-			generated,
-			VarkAnimatedLightmapLab.MAP_SOURCE_PATH,
-			descriptors
-		)
-		surface.set_light_weight(VarkAnimatedLightmapLab.LIGHT_ID, 1.0)
-		var full_sum: int = _image_rgb_sum(surface.get_composite_image())
-		surface.set_light_weight(VarkAnimatedLightmapLab.LIGHT_ID, 0.5)
-		var half_sum: int = _image_rgb_sum(surface.get_composite_image())
-		surface.set_light_weight(VarkAnimatedLightmapLab.LIGHT_ID, 0.0)
-		var off_sum: int = _image_rgb_sum(surface.get_composite_image())
-		assert_true.call(
-			configured
-			and full_sum > 0
-			and half_sum > 0
-			and half_sum < full_sum
-			and off_sum == 0,
-			"8.4.1 runtime material path independently weights the precomputed direct-light contribution through full, partial and fully-off states"
-		)
-		var stale := generated.duplicate(true) as VarkAnimatedLightmapData
-		stale.geometry_fingerprint = "stale-geometry"
-		var stale_surface := VarkAnimatedLightmapSurface.new()
-		lab.add_child(stale_surface)
-		var stale_applied: bool = stale_surface.configure(
-			mesh,
-			stale,
-			VarkAnimatedLightmapLab.MAP_SOURCE_PATH,
-			descriptors
-		)
-		assert_true.call(
-			not stale_applied
-			and not stale_surface.is_applied()
-			and _contains_error_fragment(
-				stale_surface.get_validation_errors(),
-				"UV2/geometry fingerprint mismatch"
-			),
-			"8.4.1 stale geometry/lightmap data fails closed instead of silently applying to changed authoritative geometry"
-		)
-		stale_surface.queue_free()
-
-		var changed_descriptors: Dictionary = descriptors.duplicate(true)
-		var changed_descriptor: Dictionary = (
-			changed_descriptors.get(
-				VarkAnimatedLightmapLab.LIGHT_ID,
-				{}
-			) as Dictionary
-		).duplicate(true)
-		changed_descriptor["range"] = (
-			float(changed_descriptor.get("range", 0.0)) + 0.25
-		)
-		changed_descriptors[VarkAnimatedLightmapLab.LIGHT_ID] = (
-			changed_descriptor
-		)
-		var changed_light_surface := VarkAnimatedLightmapSurface.new()
-		lab.add_child(changed_light_surface)
-		var changed_light_applied: bool = changed_light_surface.configure(
-			mesh,
-			generated,
-			VarkAnimatedLightmapLab.MAP_SOURCE_PATH,
-			changed_descriptors
-		)
-		assert_true.call(
-			not changed_light_applied
-			and not changed_light_surface.is_applied()
-			and _contains_error_fragment(
-				changed_light_surface.get_validation_errors(),
-				"light identity/configuration fingerprint mismatch"
-			),
-			"8.4.1 changing a required gameplay-light bake configuration invalidates the tracked contribution and fails closed"
-		)
-		changed_light_surface.queue_free()
-
-		var incomplete := generated.duplicate(true) as VarkAnimatedLightmapData
-		incomplete.light_layers_base64.erase(
-			VarkAnimatedLightmapLab.LIGHT_ID
-		)
-		var incomplete_surface := VarkAnimatedLightmapSurface.new()
-		lab.add_child(incomplete_surface)
-		var incomplete_applied: bool = incomplete_surface.configure(
-			mesh,
-			incomplete,
-			VarkAnimatedLightmapLab.MAP_SOURCE_PATH,
-			descriptors
-		)
-		assert_true.call(
-			not incomplete_applied
-			and not incomplete_surface.is_applied()
-			and _contains_error_fragment(
-				incomplete_surface.get_validation_errors(),
-				"missing baked contribution"
-			),
-			"8.4.1 incomplete bake data with a missing required light contribution fails closed"
-		)
-		incomplete_surface.queue_free()
-
-	var source_emitter: Light3D = source_light.get_emitter()
-	var shadowed_realtime_count: int = 0
-	for candidate: Node in lab.func_map.find_children("*", "Light3D", true, false):
-		var light := candidate as Light3D
-		if light != null and light.shadow_enabled:
-			shadowed_realtime_count += 1
-	assert_true.call(
-		source_emitter != null
-		and source_emitter.light_cull_mask == 0
-		and not source_emitter.shadow_enabled
-		and shadowed_realtime_count == 0,
-		"8.4.1 lab static architecture requires no realtime positional shadow map: the authored gameplay-light emitter has no receivers/shadows and fixture self-fill is unshadowed/private"
-	)
-
 	var environment := lab.get_node("WorldEnvironment") as WorldEnvironment
-	source_light.set_enabled_state(false, false)
-	for _frame: int in 3:
-		await tree.physics_frame
-		await tree.process_frame
-	var exposure: Dictionary = lab.gameplay_exposure.sample_now()
+	var contribution_texture_id: int = renderer.get_contribution_texture_instance_id()
+	var full: Color = renderer.sample_weighted_direct_at_world_point(lit_point)
+	var before_weights: Dictionary = renderer.get_debug_state()
+	lab.set_proof_light_weight_immediate(0.5)
+	var half: Color = renderer.sample_weighted_direct_at_world_point(lit_point)
+	lab.set_proof_light_weight_immediate(0.0)
+	var off: Color = renderer.sample_weighted_direct_at_world_point(lit_point)
+	var after_weights: Dictionary = renderer.get_debug_state()
 	assert_true.call(
-		environment != null
+		full.r > full.g
+		and full.g > full.b
+		and _max_rgb(full) > 0.05
+		and _max_rgb(half) > 0.0
+		and _max_rgb(half) < _max_rgb(full)
+		and _max_rgb(off) <= 0.0001
+		and renderer.get_contribution_texture_instance_id()
+			== contribution_texture_id
+		and int(after_weights.get("contribution_texture_build_count", -1))
+			== int(before_weights.get("contribution_texture_build_count", -2))
+		and int(after_weights.get("weight_texture_upload_count", 0))
+			> int(before_weights.get("weight_texture_upload_count", 0))
+		and emitter != null
+		and emitter.light_cull_mask == 0
+		and not emitter.shadow_enabled
+		and environment != null
 		and environment.environment != null
-		and environment.environment.ambient_light_energy > 0.0
-		and is_zero_approx(float(exposure.get("exposure", -1.0))),
-		"8.4.1 intentional Environment ambient remains visually present while disabled gameplay-light state leaves semantic LIGHT exposure at zero"
+		and environment.environment.ambient_light_energy > 0.0,
+		"8.4.1C integrated lab produces the authored warm direct contribution and full/partial/off changes use only the GPU weight texture while intentional ambient remains and static architecture has no realtime positional shadow dependency"
+	)
+
+	var space_state: PhysicsDirectSpaceState3D = lab.get_world_3d().direct_space_state
+	var support_query := PhysicsRayQueryParameters3D.create(
+		lab.player.global_position + Vector3.UP * 0.05,
+		lab.player.global_position + Vector3.DOWN * 0.30,
+		1
+	)
+	var support_hit: Dictionary = space_state.intersect_ray(support_query)
+	assert_true.call(
+		not support_hit.is_empty(),
+		"8.4.1C Development Launch player spawn remains supported by generated FuncGodot world collision after replacing only static rendering"
 	)
 
 	lab.queue_free()
 	await tree.process_frame
+	await tree.process_frame
 
-func _contains_error_fragment(
-	errors: PackedStringArray,
-	fragment: String
-) -> bool:
-	for error: String in errors:
-		if error.contains(fragment):
-			return true
-	return false
+
+func _surface_identity_is_complete(summary: Dictionary) -> bool:
+	var rect_position: Vector2i = summary.get(
+		"rect_position", Vector2i(-1, -1)
+	)
+	var rect_size: Vector2i = summary.get("rect_size", Vector2i.ZERO)
+	return (
+		bool(summary.get("resolved", false))
+		and not str(summary.get("face_id", "")).is_empty()
+		and not str(summary.get("tile_id", "")).is_empty()
+		and int(summary.get("page_index", -1)) >= 0
+		and rect_position.x >= 0
+		and rect_position.y >= 0
+		and rect_size.x > 0
+		and rect_size.y > 0
+	)
+
+
+func _same_surface_identity(a: Dictionary, b: Dictionary) -> bool:
+	return (
+		str(a.get("face_id", "")) == str(b.get("face_id", ""))
+		and str(a.get("tile_id", "")) == str(b.get("tile_id", ""))
+		and int(a.get("page_index", -1)) == int(b.get("page_index", -2))
+		and a.get("rect_position", Vector2i(-1, -1))
+			== b.get("rect_position", Vector2i(-2, -2))
+		and a.get("rect_size", Vector2i.ZERO)
+			== b.get("rect_size", Vector2i(-1, -1))
+	)
+
+
+func _find_light_ownership(summary: Dictionary, light_id: String) -> Dictionary:
+	for ownership: Dictionary in summary.get("light_ownership", []):
+		if str(ownership.get("light_id", "")) == light_id:
+			return ownership
+	return {}
+
+
+func _ownership_is_complete(ownership: Dictionary) -> bool:
+	return (
+		not ownership.is_empty()
+		and int(ownership.get("slot", -1)) >= 0
+		and int(ownership.get("layer_index", -1)) >= 0
+		and int(ownership.get("weight_index", -1)) >= 0
+		and not str(ownership.get("contribution_handle", "")).is_empty()
+	)
+
 
 func _max_rgb(color: Color) -> float:
 	return maxf(color.r, maxf(color.g, color.b))
-
-func _image_rgb_sum(image: Image) -> int:
-	if image == null:
-		return -1
-	var data: PackedByteArray = image.get_data()
-	var total: int = 0
-	for byte_index: int in range(0, data.size(), 4):
-		total += int(data[byte_index])
-		total += int(data[byte_index + 1])
-		total += int(data[byte_index + 2])
-	return total

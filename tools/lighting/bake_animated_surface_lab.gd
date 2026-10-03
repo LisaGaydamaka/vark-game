@@ -6,7 +6,6 @@ const LabScene = preload(
 const OUTPUT_PATH: String = (
 	"res://scenes/animated_lightmap_lab/animated_surface_bake.tres"
 )
-const MAP_SETTINGS_PATH: String = "res://authoring/vark_map_settings.tres"
 
 
 func _initialize() -> void:
@@ -20,26 +19,15 @@ func _run() -> void:
 	await process_frame
 	await physics_frame
 
-	var descriptors: Dictionary = lab.get_expected_light_descriptors()
-	var surface_map := FuncGodotMap.new()
-	surface_map.name = "AnimatedSurfaceBakeSource"
-	surface_map.map_settings = load(MAP_SETTINGS_PATH) as FuncGodotMapSettings
-	surface_map.local_map_file = VarkAnimatedLightmapLab.MAP_SOURCE_PATH
-	surface_map.build_flags = 0
-	get_root().add_child(surface_map)
-	surface_map.build()
-	await process_frame
-	var builder := VarkAnimatedLightmapLayoutBuilder.new()
-	var layout: VarkAnimatedLightmapLayout = builder.build_from_root(
-		surface_map, descriptors
-	)
+	var layout: VarkAnimatedLightmapLayout = lab.get_surface_layout()
 	if layout == null:
 		push_error(
-			"8.4.1B layout build failed: %s" % str(builder.get_errors())
+			"8.4.1C integrated lab layout build failed: %s"
+			% str(lab.get_validation_errors())
 		)
 		quit(1)
 		return
-
+	var descriptors: Dictionary = lab.get_expected_light_descriptors()
 	var baker := VarkAnimatedLightmapSurfaceBaker.new()
 	var data: VarkAnimatedLightmapBakeData = baker.bake(
 		VarkAnimatedLightmapLab.MAP_SOURCE_PATH,
@@ -50,7 +38,7 @@ func _run() -> void:
 	)
 	if data == null:
 		push_error(
-			"8.4.1B surface bake failed: %s"
+			"8.4.1C surface bake failed: %s"
 			% JSON.stringify(baker.get_diagnostics())
 		)
 		quit(1)
@@ -74,7 +62,6 @@ func _run() -> void:
 		print(resource_text)
 		print("ANIMATED_SURFACE_BAKE_RESOURCE_END")
 
-	surface_map.queue_free()
 	lab.queue_free()
 	await process_frame
 	quit(0)
