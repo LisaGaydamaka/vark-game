@@ -36,6 +36,14 @@ func _ready() -> void:
 		_fail("8.4.2 Animated Lightmap Lab failed to resolve the authored gameplay light.")
 		return
 
+	var emitter: Light3D = source_light.get_emitter()
+	if emitter != null:
+		# Preserve the accepted 8.4.1B proof contract while the lab is used as a
+		# bake-only fixture: no realtime receiver or shadow path may contribute to
+		# static architecture until the committed bake is actually bound.
+		emitter.light_cull_mask = 0
+		emitter.shadow_enabled = false
+
 	expected_light_descriptors = {
 		LIGHT_ID: _descriptor_from_gameplay_light(source_light),
 	}
@@ -83,8 +91,8 @@ func _ready() -> void:
 		# runtime output and a realtime shadowed representation for dynamic props.
 		source_light.visual_transition_seconds = FADE_SECONDS
 		source_light.shadow_enabled = true
-		var emitter: Light3D = source_light.get_emitter()
 		if emitter != null:
+			emitter.light_cull_mask = 1
 			emitter.shadow_enabled = true
 
 		runtime_binding = VarkAnimatedLightRuntimeBinding.new()
@@ -280,7 +288,7 @@ func _descriptor_from_gameplay_light(light: VarkGameplayLight) -> Dictionary:
 	return {
 		"position": light.get_emitter_global_position(),
 		"color": light.light_color,
-		"energy": maxf(light.light_energy, 0.0),
+		"energy": maxf(light.get_configured_light_energy(), 0.0),
 		"range": maxf(light.omni_range, 0.001),
 	}
 
@@ -322,6 +330,14 @@ func _spawn_dynamic_crate_proof() -> void:
 	dynamic_crate.prop_id = "prop.phase8.runtime.dynamic_crate"
 	dynamic_crate.position = Vector3(2.4, 0.32, -1.6)
 	add_child(dynamic_crate)
+	if source_light != null:
+		# The production default remains world-geometry occlusion only. This lab
+		# opts into the ordinary-prop layers solely to prove the documented
+		# moving-occluder limitation without perturbing global stealth behavior.
+		source_light.occlusion_mask |= (
+			VarkOrdinaryProp.COLLISION_LAYER_ORDINARY_PROP
+			| VarkOrdinaryProp.COLLISION_LAYER_PROP_IGNORING_PLAYER
+		)
 
 
 func _find_owning_tile(face_id: String, face_texel: Vector2i) -> Dictionary:
