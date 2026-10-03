@@ -2,68 +2,50 @@ shader_type spatial;
 render_mode diffuse_burley, specular_schlick_ggx;
 
 uniform sampler2DArray direct_layers : filter_linear, repeat_disable;
-uniform sampler2D light_weights : filter_nearest, repeat_disable;
-uniform int weight_count = 1;
+uniform sampler2D light_states : filter_nearest, repeat_disable;
+uniform int light_count = 1;
+uniform int page_layer_base = 0;
+uniform int page_layer_count = 0;
 
-uniform int layer_0 = -1;
-uniform int weight_0 = -1;
-uniform vec4 color_0 : source_color = vec4(0.0);
-uniform int layer_1 = -1;
-uniform int weight_1 = -1;
-uniform vec4 color_1 : source_color = vec4(0.0);
-uniform int layer_2 = -1;
-uniform int weight_2 = -1;
-uniform vec4 color_2 : source_color = vec4(0.0);
-uniform int layer_3 = -1;
-uniform int weight_3 = -1;
-uniform vec4 color_3 : source_color = vec4(0.0);
-uniform int layer_4 = -1;
-uniform int weight_4 = -1;
-uniform vec4 color_4 : source_color = vec4(0.0);
-uniform int layer_5 = -1;
-uniform int weight_5 = -1;
-uniform vec4 color_5 : source_color = vec4(0.0);
-uniform int layer_6 = -1;
-uniform int weight_6 = -1;
-uniform vec4 color_6 : source_color = vec4(0.0);
-uniform int layer_7 = -1;
-uniform int weight_7 = -1;
-uniform vec4 color_7 : source_color = vec4(0.0);
+varying flat vec4 light_ids_0_3;
+varying flat vec4 light_ids_4_7;
 
-float read_weight(int index) {
-	if (index < 0 || weight_count <= 0) {
-		return 0.0;
-	}
-	float u = (float(index) + 0.5) / float(weight_count);
-	return texture(light_weights, vec2(u, 0.5)).r;
+void vertex() {
+	light_ids_0_3 = CUSTOM0;
+	light_ids_4_7 = CUSTOM1;
 }
 
-vec3 read_contribution(
-	int layer_index,
-	int weight_index,
-	vec3 light_color,
-	vec2 atlas_uv
-) {
-	if (layer_index < 0 || weight_index < 0) {
+vec4 read_light_state(float encoded_index) {
+	int index = int(round(encoded_index)) - 1;
+	if (index < 0 || index >= light_count) {
+		return vec4(0.0);
+	}
+	float u = (float(index) + 0.5) / float(light_count);
+	return texture(light_states, vec2(u, 0.5));
+}
+
+vec3 read_local_slot(int slot, float encoded_index, vec2 atlas_uv) {
+	if (slot < 0 || slot >= page_layer_count || encoded_index < 0.5) {
 		return vec3(0.0);
 	}
 	float irradiance = texture(
 		direct_layers,
-		vec3(atlas_uv, float(layer_index))
+		vec3(atlas_uv, float(page_layer_base + slot))
 	).r;
-	return light_color * irradiance * read_weight(weight_index);
+	vec4 state = read_light_state(encoded_index);
+	return state.rgb * irradiance * state.a;
 }
 
 void fragment() {
 	vec3 direct = vec3(0.0);
-	direct += read_contribution(layer_0, weight_0, color_0.rgb, UV);
-	direct += read_contribution(layer_1, weight_1, color_1.rgb, UV);
-	direct += read_contribution(layer_2, weight_2, color_2.rgb, UV);
-	direct += read_contribution(layer_3, weight_3, color_3.rgb, UV);
-	direct += read_contribution(layer_4, weight_4, color_4.rgb, UV);
-	direct += read_contribution(layer_5, weight_5, color_5.rgb, UV);
-	direct += read_contribution(layer_6, weight_6, color_6.rgb, UV);
-	direct += read_contribution(layer_7, weight_7, color_7.rgb, UV);
+	direct += read_local_slot(0, light_ids_0_3.x, UV);
+	direct += read_local_slot(1, light_ids_0_3.y, UV);
+	direct += read_local_slot(2, light_ids_0_3.z, UV);
+	direct += read_local_slot(3, light_ids_0_3.w, UV);
+	direct += read_local_slot(4, light_ids_4_7.x, UV);
+	direct += read_local_slot(5, light_ids_4_7.y, UV);
+	direct += read_local_slot(6, light_ids_4_7.z, UV);
+	direct += read_local_slot(7, light_ids_4_7.w, UV);
 
 	vec3 authored_albedo = COLOR.rgb;
 	ALBEDO = authored_albedo;

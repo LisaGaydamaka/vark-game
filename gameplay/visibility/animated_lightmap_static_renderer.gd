@@ -10,14 +10,14 @@ var _bake: VarkAnimatedLightmapBakeData = null
 var _descriptors: Dictionary = {}
 var _weight_state := VarkAnimatedLightmapWeightState.new()
 var _contribution_texture: Texture2DArray = null
-var _weight_texture: ImageTexture = null
-var _weight_image: Image = null
+var _light_state_texture: ImageTexture = null
+var _light_state_image: Image = null
 var _renderer_root: Node3D = null
 var _page_materials: Dictionary = {}
 var _applied: bool = false
 var _last_errors := PackedStringArray()
 var _contribution_texture_build_count: int = 0
-var _weight_texture_upload_count: int = 0
+var _light_state_texture_upload_count: int = 0
 
 
 func configure(
@@ -30,6 +30,7 @@ func configure(
 	if layout == null or bake == null:
 		_last_errors.append("static surface renderer requires layout and bake data")
 		return false
+	layout.ensure_local_slot_representation()
 	_last_errors = layout.get_validation_errors(
 		layout.geometry_fingerprint,
 		VarkAnimatedLightmapLayoutBuilder.compute_light_influence_fingerprint(
@@ -54,11 +55,11 @@ func configure(
 		_clear_runtime_state(false)
 		return false
 	if not _build_contribution_texture():
-		_last_errors.append("failed to build static-light contribution Texture2DArray")
+		_last_errors.append("failed to build local-slot contribution Texture2DArray")
 		_clear_runtime_state(false)
 		return false
-	if not _build_weight_texture():
-		_last_errors.append("failed to build static-light weight texture")
+	if not _build_light_state_texture():
+		_last_errors.append("failed to build global animated-light state texture")
 		_clear_runtime_state(false)
 		return false
 	if not _build_page_geometry():
@@ -84,7 +85,7 @@ func get_validation_errors() -> PackedStringArray:
 func set_light_weight(light_id: String, weight: float) -> bool:
 	if not _applied or not _weight_state.set_light_weight(light_id, weight):
 		return false
-	_upload_weight_texture()
+	_upload_light_state_texture()
 	return true
 
 
@@ -131,6 +132,7 @@ func sample_weighted_direct_at_world_point(
 
 
 func get_debug_state() -> Dictionary:
+	var report: Dictionary = _layout.get_scale_report() if _layout != null else {}
 	return {
 		"applied": _applied,
 		"page_mesh_count": (
@@ -144,8 +146,13 @@ func get_debug_state() -> Dictionary:
 			_layout.contribution_layer_count if _layout != null else 0
 		),
 		"contribution_texture_build_count": _contribution_texture_build_count,
-		"weight_texture_upload_count": _weight_texture_upload_count,
+		"light_state_texture_upload_count": _light_state_texture_upload_count,
+		# Compatibility name for existing B/C diagnostics: this is now the same
+		# tiny global light-state upload, not an atlas or contribution rewrite.
+		"weight_texture_upload_count": _light_state_texture_upload_count,
 		"weight_revision": _weight_state.get_revision(),
+		"legacy_affinity_pages": int(report.get("legacy_affinity_pages", 0)),
+		"legacy_affinity_layers": int(report.get("legacy_affinity_layers", 0)),
 		"errors": get_validation_errors(),
 	}
 
@@ -171,29 +178,49 @@ func _build_contribution_texture() -> bool:
 		)
 		image.fill(Color(0, 0, 0, 1))
 		images.append(image)
-	for page: Dictionary in _layout.pages:
-		var page_index: int = int(page.get("page_index", -1))
-		var layer_by_light: Dictionary = page.get("layer_by_light", {})
-		for key: Variant in layer_by_light.keys():
-			var light_id: String = str(key)
-			var layer_index: int = int(layer_by_light[key])
-			if layer_index < 0 or layer_index >= images.size():
+
+	# The tracked bake stays sparse and author-friendly as page|global-light data.
+	# Runtime residency is repacked here into page|local-slot layers. Different
+	# tiles can therefore reuse slot 0 for different global lights without forcing
+	# separate affinity pages or duplicating unused global-light layers.
+	var source_images: Dictionary = {}
+	for tile: Dictionary in _layout.tiles:
+		var tile_id: String = str(tile.get("tile_id", ""))
+		var page_index: int = int(tile.get("page_index", -1))
+		var rect_position: Vector2i = tile.get("rect_position", Vector2i.ZERO)
+		var rect_size: Vector2i = tile.get("rect_size", Vector2i.ZERO)
+		var binding_by_light: Dictionary = {}
+		for binding: Dictionary in tile.get("light_bindings", []):
+			binding_by_light[str(binding.get("light_id", ""))] = binding
+		for light_id: String in _bake.get_tile_light_ids(tile_id):
+			var binding: Dictionary = binding_by_light.get(light_id, {})
+			var target_layer: int = int(binding.get("layer_index", -1))
+			if target_layer < 0 or target_layer >= _layout.contribution_layer_count:
 				return false
-			var bytes: PackedByteArray = _bake.get_layer_bytes(
-				page_index, light_id
+			var source_key: String = _bake.get_layer_key(page_index, light_id)
+			var source: Image = source_images.get(source_key, null)
+			if source == null:
+				var bytes: PackedByteArray = _bake.get_layer_bytes(
+					page_index, light_id
+				)
+				if bytes.is_empty():
+					return false
+				source = Image.create_from_data(
+					_layout.page_size,
+					_layout.page_size,
+					false,
+					VarkAnimatedLightmapLayout.HDR_IMAGE_FORMAT,
+					bytes
+				)
+				if source == null or source.is_empty():
+					return false
+				source_images[source_key] = source
+			images[target_layer].blit_rect(
+				source,
+				Rect2i(rect_position, rect_size),
+				rect_position
 			)
-			if bytes.is_empty():
-				continue
-			var image := Image.create_from_data(
-				_layout.page_size,
-				_layout.page_size,
-				false,
-				VarkAnimatedLightmapLayout.HDR_IMAGE_FORMAT,
-				bytes
-			)
-			if image == null or image.is_empty():
-				return false
-			images[layer_index] = image
+
 	_contribution_texture = Texture2DArray.new()
 	var error: Error = _contribution_texture.create_from_images(images)
 	if error != OK:
@@ -203,28 +230,36 @@ func _build_contribution_texture() -> bool:
 	return true
 
 
-func _build_weight_texture() -> bool:
+func _build_light_state_texture() -> bool:
 	if _layout == null:
 		return false
 	var width: int = maxi(_layout.light_ids.size(), 1)
-	_weight_image = Image.create_empty(
-		width, 1, false, VarkAnimatedLightmapLayout.HDR_IMAGE_FORMAT
-	)
-	_weight_image.fill(Color(0, 0, 0, 1))
-	_weight_texture = ImageTexture.create_from_image(_weight_image)
-	_weight_texture_upload_count += 1
-	return _weight_texture != null
+	_light_state_image = Image.create_empty(width, 1, false, Image.FORMAT_RGBAH)
+	_light_state_image.fill(Color(0, 0, 0, 0))
+	for index: int in _layout.light_ids.size():
+		var light_id: String = _layout.light_ids[index]
+		var descriptor: Dictionary = _descriptors.get(light_id, {})
+		var color: Color = descriptor.get("color", Color.WHITE)
+		_light_state_image.set_pixel(index, 0, Color(color.r, color.g, color.b, 0.0))
+	_light_state_texture = ImageTexture.create_from_image(_light_state_image)
+	_light_state_texture_upload_count += 1
+	return _light_state_texture != null
 
 
-func _upload_weight_texture() -> void:
-	if _weight_image == null or _weight_texture == null or _layout == null:
+func _upload_light_state_texture() -> void:
+	if _light_state_image == null or _light_state_texture == null or _layout == null:
 		return
 	var weights: PackedFloat32Array = _weight_state.get_weight_buffer()
-	for index: int in _weight_image.get_width():
-		var value: float = weights[index] if index < weights.size() else 0.0
-		_weight_image.set_pixel(index, 0, Color(value, 0, 0, 1))
-	_weight_texture.update(_weight_image)
-	_weight_texture_upload_count += 1
+	for index: int in _layout.light_ids.size():
+		var light_id: String = _layout.light_ids[index]
+		var descriptor: Dictionary = _descriptors.get(light_id, {})
+		var color: Color = descriptor.get("color", Color.WHITE)
+		var weight: float = weights[index] if index < weights.size() else 0.0
+		_light_state_image.set_pixel(
+			index, 0, Color(color.r, color.g, color.b, weight)
+		)
+	_light_state_texture.update(_light_state_image)
+	_light_state_texture_upload_count += 1
 
 
 func _build_page_geometry() -> bool:
@@ -258,27 +293,10 @@ func _build_page_material(page: Dictionary) -> ShaderMaterial:
 	var material := ShaderMaterial.new()
 	material.shader = StaticLightShader
 	material.set_shader_parameter("direct_layers", _contribution_texture)
-	material.set_shader_parameter("light_weights", _weight_texture)
-	material.set_shader_parameter(
-		"weight_count", maxi(_layout.light_ids.size(), 1)
-	)
-	var page_lights: PackedStringArray = page.get(
-		"light_ids", PackedStringArray()
-	)
-	var layer_by_light: Dictionary = page.get("layer_by_light", {})
-	for slot: int in _layout.max_light_slots_per_tile:
-		var layer_index: int = -1
-		var weight_index: int = -1
-		var color := Color(0, 0, 0, 1)
-		if slot < page_lights.size():
-			var light_id: String = page_lights[slot]
-			layer_index = int(layer_by_light.get(light_id, -1))
-			weight_index = _layout.light_ids.find(light_id)
-			var descriptor: Dictionary = _descriptors.get(light_id, {})
-			color = descriptor.get("color", Color.WHITE)
-		material.set_shader_parameter("layer_%d" % slot, layer_index)
-		material.set_shader_parameter("weight_%d" % slot, weight_index)
-		material.set_shader_parameter("color_%d" % slot, color)
+	material.set_shader_parameter("light_states", _light_state_texture)
+	material.set_shader_parameter("light_count", maxi(_layout.light_ids.size(), 1))
+	material.set_shader_parameter("page_layer_base", int(page.get("layer_base", 0)))
+	material.set_shader_parameter("page_layer_count", int(page.get("layer_count", 0)))
 	return material
 
 
@@ -288,10 +306,10 @@ func _build_page_mesh(page: Dictionary) -> ArrayMesh:
 	var uvs := PackedVector2Array()
 	var colors := PackedColorArray()
 	var material_params := PackedVector2Array()
+	var custom0 := PackedFloat32Array()
+	var custom1 := PackedFloat32Array()
 	var indices := PackedInt32Array()
-	var tile_ids: PackedStringArray = page.get(
-		"tile_ids", PackedStringArray()
-	)
+	var tile_ids: PackedStringArray = page.get("tile_ids", PackedStringArray())
 	for tile_id: String in tile_ids:
 		var tile: Dictionary = _layout.get_tile(tile_id)
 		if tile.is_empty():
@@ -307,16 +325,14 @@ func _build_page_mesh(page: Dictionary) -> ArrayMesh:
 			continue
 		var base: int = vertices.size()
 		vertices.append_array(tile_vertices)
-		normals.append_array(
-			geometry.get("normals", PackedVector3Array())
-		)
+		normals.append_array(geometry.get("normals", PackedVector3Array()))
 		uvs.append_array(geometry.get("uvs", PackedVector2Array()))
-		colors.append_array(
-			geometry.get("colors", PackedColorArray())
-		)
+		colors.append_array(geometry.get("colors", PackedColorArray()))
 		material_params.append_array(
 			geometry.get("material_params", PackedVector2Array())
 		)
+		custom0.append_array(geometry.get("custom0", PackedFloat32Array()))
+		custom1.append_array(geometry.get("custom1", PackedFloat32Array()))
 		var tile_indices: PackedInt32Array = geometry.get(
 			"indices", PackedInt32Array()
 		)
@@ -331,9 +347,17 @@ func _build_page_mesh(page: Dictionary) -> ArrayMesh:
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_COLOR] = colors
 	arrays[Mesh.ARRAY_TEX_UV2] = material_params
+	arrays[Mesh.ARRAY_CUSTOM0] = custom0
+	arrays[Mesh.ARRAY_CUSTOM1] = custom1
 	arrays[Mesh.ARRAY_INDEX] = indices
+	var flags: int = (
+		(int(RenderingServer.ARRAY_CUSTOM_RGBA_FLOAT) << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+		| (int(RenderingServer.ARRAY_CUSTOM_RGBA_FLOAT) << Mesh.ARRAY_FORMAT_CUSTOM1_SHIFT)
+	)
 	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	mesh.add_surface_from_arrays(
+		Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags
+	)
 	return mesh
 
 
@@ -346,15 +370,25 @@ func _build_tile_geometry_arrays(
 	var uvs := PackedVector2Array()
 	var colors := PackedColorArray()
 	var material_params := PackedVector2Array()
+	var custom0 := PackedFloat32Array()
+	var custom1 := PackedFloat32Array()
 	var indices := PackedInt32Array()
 	var authored: StandardMaterial3D = _load_authored_material(
 		str(face.get("material_id", ""))
 	)
-	var albedo: Color = (
-		authored.albedo_color if authored != null else Color.WHITE
-	)
+	var albedo: Color = authored.albedo_color if authored != null else Color.WHITE
 	var roughness: float = authored.roughness if authored != null else 1.0
 	var metallic: float = authored.metallic if authored != null else 0.0
+	var encoded_ids := PackedFloat32Array()
+	encoded_ids.resize(_layout.max_light_slots_per_tile)
+	encoded_ids.fill(0.0)
+	for binding: Dictionary in tile.get("light_bindings", []):
+		var slot: int = int(binding.get("slot", -1))
+		var weight_index: int = int(binding.get("weight_index", -1))
+		if slot >= 0 and slot < encoded_ids.size() and weight_index >= 0:
+			# Zero is the unused sentinel; valid global-light indices are +1 encoded.
+			encoded_ids[slot] = float(weight_index + 1)
+
 	var triangles: PackedVector2Array = face.get(
 		"triangles_uv", PackedVector2Array()
 	)
@@ -381,9 +415,7 @@ func _build_tile_geometry_arrays(
 			continue
 		for fan_index: int in range(1, polygon.size() - 1):
 			var triangle_points: Array[Vector2] = [
-				polygon[0],
-				polygon[fan_index],
-				polygon[fan_index + 1],
+				polygon[0], polygon[fan_index], polygon[fan_index + 1],
 			]
 			var base: int = vertices.size()
 			for local_point: Vector2 in triangle_points:
@@ -393,23 +425,24 @@ func _build_tile_geometry_arrays(
 					)
 				)
 				normals.append(
-					face.get(
-						"lighting_normal",
-						face.get("normal", Vector3.UP)
-					)
+					face.get("lighting_normal", face.get("normal", Vector3.UP))
 				)
 				uvs.append(_atlas_uv_for_local_point(tile, local_point))
 				colors.append(albedo)
 				material_params.append(Vector2(roughness, metallic))
-			indices.append_array(PackedInt32Array([
-				base, base + 1, base + 2
-			]))
+				for slot: int in 4:
+					custom0.append(encoded_ids[slot] if slot < encoded_ids.size() else 0.0)
+				for slot: int in range(4, 8):
+					custom1.append(encoded_ids[slot] if slot < encoded_ids.size() else 0.0)
+			indices.append_array(PackedInt32Array([base, base + 1, base + 2]))
 	return {
 		"vertices": vertices,
 		"normals": normals,
 		"uvs": uvs,
 		"colors": colors,
 		"material_params": material_params,
+		"custom0": custom0,
+		"custom1": custom1,
 		"indices": indices,
 	}
 
@@ -502,15 +535,11 @@ func _clear_runtime_state(clear_errors: bool = true) -> void:
 	_descriptors.clear()
 	_weight_state = VarkAnimatedLightmapWeightState.new()
 	_contribution_texture = null
-	_weight_texture = null
-	_weight_image = null
+	_light_state_texture = null
+	_light_state_image = null
 	_page_materials.clear()
 	_applied = false
 	_contribution_texture_build_count = 0
-	_weight_texture_upload_count = 0
+	_light_state_texture_upload_count = 0
 	if clear_errors:
 		_last_errors = PackedStringArray()
-
-
-static func _safe_name(value: String) -> String:
-	return value.replace("/", "_").replace("|", "_").replace(":", "_")
