@@ -1,12 +1,14 @@
 class_name VarkGameplayLight
 extends Node3D
 
+signal runtime_weight_changed(light_id: String, weight: float)
 
 const STATE_CHANGED_EVENT_NAME: StringName = &"light.state_changed"
 const EXTINGUISH_SOUND_KIND: StringName = &"light.extinguish"
 const DIRECT_NONE: String = "none"
 const DIRECT_EXTINGUISH: String = "extinguish"
 const INTERACTION_PROXY_LAYER: int = 1 << 4
+const DEFAULT_OCCLUSION_MASK: int = (1 << 0) | (1 << 2) | (1 << 3)
 const DOWNWARD_SPOT_LOCAL_ROTATION := Vector3(-PI * 0.5, 0.0, 0.0)
 # Keep positional offsets small enough that flush architectural contacts read
 # as contact. The representative mission supplies a higher-resolution fixed
@@ -22,11 +24,14 @@ const POSITIONAL_SHADOW_BLUR: float = 1.0
 @export_range(0.0, 4.0, 0.01) var gameplay_strength: float = 1.0
 @export var gameplay_enabled: bool = true
 @export var starts_on: bool = true
-@export_flags_3d_physics var occlusion_mask: int = 1
+@export_flags_3d_physics var occlusion_mask: int = DEFAULT_OCCLUSION_MASK
 @export var light_energy: float = 2.4
 @export var light_color: Color = Color(1.0, 0.82, 0.58, 1.0)
 @export var omni_range: float = 5.0
 @export var shadow_enabled: bool = true
+@export_range(0.0, 5.0, 0.01) var visual_transition_seconds: float = 0.0
+@export var flicker_pattern: String = ""
+@export_range(0.1, 30.0, 0.1) var flicker_hz: float = 10.0
 @export var fixture_asset_scene: PackedScene
 @export var fixture_asset_path: String = "res://assets/light_assets/WallLamp.tscn"
 @export var direct_interaction: String = DIRECT_NONE
@@ -45,6 +50,10 @@ var _configured_light_energy: float = 0.0
 var _visual_shadow_caster_mask: int = 1048575
 var _exposure_ray_query := PhysicsRayQueryParameters3D.new()
 var _exposure_query_exclude: Array[RID] = []
+var _runtime_base_weight: float = 1.0
+var _runtime_weight: float = 1.0
+var _runtime_elapsed_seconds: float = 0.0
+var _runtime_initialized: bool = false
 
 
 func _ready() -> void:
@@ -62,6 +71,11 @@ func _ready() -> void:
 	_sync_emitter_configuration()
 	_configure_interaction_proxy()
 	set_enabled_state(starts_on, false)
+	_snap_runtime_weight_to_semantic_state(false)
+
+
+func _process(delta: float) -> void:
+	advance_runtime_visual_state(delta)
 
 
 func _func_godot_apply_properties(_properties: Dictionary) -> void:
@@ -76,6 +90,7 @@ func _func_godot_apply_properties(_properties: Dictionary) -> void:
 	_sync_emitter_configuration()
 	_configure_interaction_proxy()
 	set_enabled_state(starts_on, false)
+	_snap_runtime_weight_to_semantic_state(true)
 
 
 func is_vark_persistent_entity() -> bool:
@@ -106,6 +121,42 @@ func get_emitter_global_position() -> Vector3:
 	return _emitter.global_position if _emitter != null else global_position
 
 
+func get_runtime_light_weight() -> float:
+	return _runtime_weight
+
+
+func get_runtime_base_weight() -> float:
+	return _runtime_base_weight
+
+
+func advance_runtime_visual_state(delta: float) -> void:
+	if not _runtime_initialized:
+		_snap_runtime_weight_to_semantic_state(false)
+	_runtime_elapsed_seconds += maxf(delta, 0.0)
+	var target: float = _semantic_target_weight()
+	var duration: float = maxf(visual_transition_seconds, 0.0)
+	var next_base: float = target
+	if duration > 0.0:
+		next_base = move_toward(
+			_runtime_base_weight,
+			target,
+			maxf(delta, 0.0) / duration
+		)
+	_runtime_base_weight = clampf(next_base, 0.0, 1.0)
+	_set_runtime_weight(
+		_runtime_base_weight * _sample_flicker_multiplier(),
+		true
+	)
+
+
+func restart_runtime_flicker() -> void:
+	_runtime_elapsed_seconds = 0.0
+	_set_runtime_weight(
+		_runtime_base_weight * _sample_flicker_multiplier(),
+		true
+	)
+
+
 func set_visual_shadow_caster_mask(mask: int) -> void:
 	# Renderer-only control. Gameplay exposure keeps using its independent
 	# physics occlusion mask and is intentionally unaffected by this.
@@ -127,6 +178,10 @@ func set_enabled_state(
 	gameplay_enabled = enabled
 	_apply_enabled_presentation()
 	_refresh_interaction_proxy()
+	if not _runtime_initialized:
+		_snap_runtime_weight_to_semantic_state(false)
+	elif visual_transition_seconds <= 0.0:
+		_snap_runtime_weight_to_semantic_state(true)
 	if emit_event and changed:
 		_queue_state_changed(source_id)
 	return changed
@@ -172,6 +227,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 	# replacement against the captured snapshot before gameplay resumes.
 	visible = bool(snapshot["visible"])
 	_apply_enabled_presentation()
+	_snap_runtime_weight_to_semantic_state(true)
 	_refresh_interaction_proxy()
 	return true
 
@@ -179,6 +235,7 @@ func apply_semantic_state(snapshot: Dictionary) -> bool:
 func reconcile_after_restore() -> bool:
 	_world_session = _find_world_session()
 	_apply_enabled_presentation()
+	_snap_runtime_weight_to_semantic_state(true)
 	_refresh_interaction_proxy()
 	_refresh_fixture_visual()
 	return true
@@ -193,6 +250,11 @@ func get_gameplay_debug_state() -> Dictionary:
 		"visible": visible,
 		"gameplay_strength": gameplay_strength,
 		"range_meters": maxf(omni_range, 0.0),
+		"runtime_weight": _runtime_weight,
+		"runtime_base_weight": _runtime_base_weight,
+		"visual_transition_seconds": visual_transition_seconds,
+		"flicker_pattern": flicker_pattern,
+		"flicker_hz": flicker_hz,
 		"emitter_energy": (
 			_emitter.light_energy
 			if _emitter != null
@@ -242,8 +304,7 @@ func get_gameplay_debug_state() -> Dictionary:
 			_emitter.shadow_blur if _emitter != null else 0.0
 		),
 		"active": (
-			gameplay_enabled
-			and visible
+			_runtime_weight > 0.0001
 			and is_finite(gameplay_strength)
 			and gameplay_strength > 0.0
 		),
@@ -257,17 +318,16 @@ func sample_gameplay_contribution(
 	var emitter_position: Vector3 = get_emitter_global_position()
 	var distance: float = emitter_position.distance_to(sample_position)
 	var range_meters: float = maxf(omni_range, 0.001)
+	var runtime_strength: float = gameplay_strength * _runtime_weight
 	if (
-		not gameplay_enabled
-		or not visible
-		or gameplay_strength <= 0.0
+		runtime_strength <= 0.0
 		or distance >= range_meters
 		or not _is_within_emission_shape(sample_position)
 	):
 		return 0.0
 	if _is_exposure_occluded(sample_position, space_state):
 		return 0.0
-	return gameplay_strength * clampf(
+	return runtime_strength * clampf(
 		1.0 - distance / range_meters,
 		0.0,
 		1.0
@@ -284,10 +344,9 @@ func sample_gameplay_exposure(
 	var within_emission_shape: bool = _is_within_emission_shape(
 		sample_position
 	)
+	var runtime_strength: float = gameplay_strength * _runtime_weight
 	if (
-		not gameplay_enabled
-		or not visible
-		or gameplay_strength <= 0.0
+		runtime_strength <= 0.0
 		or distance >= range_meters
 		or not within_emission_shape
 	):
@@ -319,7 +378,7 @@ func sample_gameplay_exposure(
 		"contribution": (
 			0.0
 			if occluded
-			else gameplay_strength * distance_weight
+			else runtime_strength * distance_weight
 		),
 	}, true)
 	return state
@@ -525,11 +584,52 @@ func _refresh_fixture_visual() -> void:
 
 
 func _apply_enabled_presentation() -> void:
-	light_energy = _configured_light_energy if gameplay_enabled else 0.0
-	if _emitter != null:
-		_emitter.light_energy = light_energy
+	# Keep authored source energy stable. Runtime ON/OFF/fade/flicker owns only
+	# the child emitter output so bake descriptors and saved semantic truth do
+	# not depend on a transient presentation weight.
+	light_energy = _configured_light_energy
 	if _fixture_asset != null:
 		_fixture_asset.set_lit_enabled(gameplay_enabled)
+	_apply_runtime_presentation()
+
+
+func _apply_runtime_presentation() -> void:
+	if _emitter != null:
+		_emitter.light_energy = _configured_light_energy * _runtime_weight
+
+
+func _semantic_target_weight() -> float:
+	return 1.0 if gameplay_enabled and visible else 0.0
+
+
+func _sample_flicker_multiplier() -> float:
+	var pattern: String = flicker_pattern.strip_edges().to_lower()
+	if pattern.is_empty():
+		return 1.0
+	var hz: float = maxf(flicker_hz, 0.1)
+	var index: int = int(floor(_runtime_elapsed_seconds * hz)) % pattern.length()
+	var codepoint: int = pattern.unicode_at(index)
+	if codepoint < 97 or codepoint > 122:
+		return 1.0
+	return clampf(float(codepoint - 97) / 25.0, 0.0, 1.0)
+
+
+func _set_runtime_weight(weight: float, emit_signal: bool) -> void:
+	var normalized: float = clampf(weight, 0.0, 1.0)
+	var changed: bool = not is_equal_approx(_runtime_weight, normalized)
+	_runtime_weight = normalized
+	_apply_runtime_presentation()
+	if emit_signal and changed:
+		runtime_weight_changed.emit(str(gameplay_light_id), _runtime_weight)
+
+
+func _snap_runtime_weight_to_semantic_state(emit_signal: bool) -> void:
+	_runtime_initialized = true
+	_runtime_base_weight = _semantic_target_weight()
+	_set_runtime_weight(
+		_runtime_base_weight * _sample_flicker_multiplier(),
+		emit_signal
+	)
 
 
 func _queue_state_changed(source_id: StringName) -> void:

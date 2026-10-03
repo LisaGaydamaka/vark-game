@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_point")
 classname = "vark_gameplay_light"
-description = "Mapper-authored visual + gameplay stealth light. Lights sharing control_id are toggled together by vark_switch. This entity owns persistent on/off truth."
+description = "Mapper-authored visual + gameplay stealth light. Lights sharing control_id are toggled together by vark_switch. This entity owns persistent on/off truth; fade/flicker are derived runtime output, not separate saved state."
 class_properties = Dictionary[String, Variant]({
 "persistent_id": "",
 "gameplay_light_id": "light",
@@ -17,6 +17,9 @@ class_properties = Dictionary[String, Variant]({
 "light_energy": 2.4,
 "light_color": Color(1, 0.82, 0.58, 1),
 "shadow_enabled": true,
+"visual_transition_seconds": 0.0,
+"flicker_pattern": "",
+"flicker_hz": 10.0,
 "fixture_asset_path": "res://assets/light_assets/WallLamp.tscn",
 "direct_interaction": "none",
 "interaction_size": Vector3(0.42, 0.42, 0.42),
@@ -28,11 +31,14 @@ class_property_descriptions = Dictionary[String, Variant]({
 "gameplay_light_id": "Required unique semantic light ID. Keep unique even when several lights share one control_id.",
 "control_id": "Author-facing control group. Every vark_switch with the same value controls this light.",
 "starts_on": "Initial on/off state before save restore.",
-"gameplay_strength": "Semantic stealth-exposure strength. Rendering and gameplay on/off state share one light owner.",
+"gameplay_strength": "Semantic stealth-exposure strength. Rendering and gameplay state share one light owner.",
 "omni_range": "Visual/gameplay light range in Vark meters.",
-"light_energy": "Rendered child-emitter energy. The reusable fixture asset authors the emitter position.",
-"light_color": "Rendered light color.",
-"shadow_enabled": "Whether the visual light casts shadows.",
+"light_energy": "Authored full-output rendered emitter energy. Runtime fade/flicker multiplies this without rewriting authored/bake energy.",
+"light_color": "Rendered and baked direct-light color.",
+"shadow_enabled": "Whether the realtime dynamic-receiver light representation casts shadows. Baked static architecture is excluded from this realtime receiver path.",
+"visual_transition_seconds": "Seconds for the authoritative gameplay light runtime output to fade between semantic OFF and ON. Zero changes immediately.",
+"flicker_pattern": "Optional classic lightstyle brightness pattern using letters a-z (a=dark, z=full). The pattern modulates the same runtime output used by baked static light, dynamic receivers and semantic LIGHT.",
+"flicker_hz": "Playback rate in pattern characters per second when flicker_pattern is non-empty.",
 "fixture_asset_path": "Reusable Vark light-fixture asset scene. The asset owns the always-present imported fixture, solid player collision, the emitter anchor, and authored lit-surface ON/OFF appearance.",
 "direct_interaction": "none or extinguish. Extinguish exposes an interaction-only proxy and turns this same saved light state off.",
 "interaction_size": "Invisible interaction proxy size used only when direct_interaction is extinguish.",
